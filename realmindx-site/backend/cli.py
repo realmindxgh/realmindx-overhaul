@@ -78,4 +78,122 @@ DEFAULT_PERMISSIONS = [
             "services": ["view", "create", "edit", "delete"],
             "partners": ["view", "create", "edit", "delete"],
             "people": ["view", "create", "edit", "delete"],
-            
+            "homeHeroSlides": ["view", "create", "edit", "delete"],
+            "donationSlides": ["view", "create", "edit", "delete"],
+            "siteCopy": ["view", "create", "edit", "delete"],
+            "news": ["view", "create", "edit", "delete"],
+            "gallery": ["view", "create", "edit", "delete", "export"],
+            "resources": ["view", "create", "edit", "delete", "export"],
+            "messages": ["view", "edit", "delete"],
+            "newsletters": ["view", "create", "edit", "delete", "export"],
+            "alerts": ["view", "edit"],
+            "settings": ["view", "create", "edit", "delete"],
+            "admins": ["view", "create", "edit", "delete"],
+            "staff": ["view", "create", "edit", "delete"],
+            "auditLogs": ["view"],
+        }.items()
+        for action in actions
+    ],
+]
+
+
+def ensure_role(name, description=""):
+    role = Role.query.filter_by(name=name).first()
+    if not role:
+        role = Role(name=name, description=description)
+        db.session.add(role)
+    return role
+
+
+def seed_permissions():
+    permissions = {}
+    for key in DEFAULT_PERMISSIONS:
+        permission = Permission.query.filter_by(key=key).first()
+        if not permission:
+            permission = Permission(key=key, description=key.replace("_", " ").title())
+            db.session.add(permission)
+        permissions[key] = permission
+
+    admin = ensure_role("admin", "Full RealMindX administration access.")
+    staff = ensure_role("staff", "Permission-scoped staff account.")
+    user = ensure_role("user", "Public applicant or customer account.")
+    admin.permissions = list(permissions.values())
+    db.session.flush()
+    return admin, staff, user
+
+
+def register_cli(app):
+    @app.cli.command("seed-permissions")
+    def seed_permissions_command():
+        seed_permissions()
+        db.session.commit()
+        click.echo("Seeded RealMindX roles and permissions.")
+
+    @app.cli.command("seed-admin")
+    def seed_admin_command():
+        admin_role, _, _ = seed_permissions()
+        email = current_app.config.get("ADMIN_EMAIL")
+        password = current_app.config.get("ADMIN_PASSWORD")
+        first_name = current_app.config.get("ADMIN_FIRST_NAME", "RealMindX")
+        last_name = current_app.config.get("ADMIN_LAST_NAME", "Admin")
+
+        if not email or not password or password == "change-this-before-seeding":
+            raise click.ClickException("Set ADMIN_EMAIL and a secure ADMIN_PASSWORD before seeding.")
+
+        user = User.query.filter_by(email=email.lower()).first()
+        if not user:
+            user = User(
+                email=email.lower(),
+                first_name=first_name,
+                last_name=last_name,
+                role=admin_role,
+                is_verified=True,
+            )
+            user.set_password(password)
+            db.session.add(user)
+            db.session.flush()
+            db.session.add(UserProfile(user_id=user.id))
+            action = "Created"
+        else:
+            user.role = admin_role
+            user.is_verified = True
+            action = "Updated"
+
+        db.session.commit()
+        click.echo(f"{action} admin account: {email.lower()}")
+
+    @app.cli.command("seed-delivery-zones")
+    @click.option("--region", default="greater-accra", help="Region to seed (default: greater-accra)")
+    @click.option("--clear", is_flag=True, help="Remove existing zones first (use with caution)")
+    def seed_delivery_zones_command(region, clear):
+        """Seed delivery zones with fee=0. Set fees via Admin → Delivery Zones."""
+        if clear:
+            count = DeliveryZone.query.delete()
+            db.session.commit()
+            click.echo(f"Removed {count} existing delivery zones.")
+
+        towns = GREATER_ACCRA_TOWNS if region == "greater-accra" else []
+        if not towns:
+            raise click.ClickException(f"Unknown region '{region}'. Currently only 'greater-accra' is available.")
+
+        added = 0
+        skipped = 0
+        for i, town in enumerate(sorted(towns)):
+            if DeliveryZone.query.filter_by(name=town).first():
+                skipped += 1
+                continue
+            db.session.add(DeliveryZone(
+                name=town,
+                fee=0,
+                description=f"Greater Accra — {town}. Set delivery fee in Admin → Delivery Zones.",
+                sort_order=i + 1,
+                is_active=True,
+            ))
+            added += 1
+
+        db.session.commit()
+        click.echo(
+            f"Seeded {added} delivery zones (fee=0) for Greater Accra. "
+            f"Skipped {skipped} that already existed. "
+            f"Go to Admin → Bookshop → Delivery Zones to set the fees."
+        )

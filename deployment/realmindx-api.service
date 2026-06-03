@@ -16,7 +16,7 @@ Environment="PATH=/var/www/realmindx/realmindx-site/.venv/bin"
 EnvironmentFile=/var/www/realmindx/realmindx-site/.env
 ExecStart=/var/www/realmindx/realmindx-site/.venv/bin/gunicorn \
     --workers 2 \
-    --bind 127.0.0.1:5001 \
+    --bind 127.0.0.1:5002 \
     --timeout 120 \
     --access-logfile /var/log/realmindx/api-access.log \
     --error-logfile  /var/log/realmindx/api-error.log \
