@@ -152,4 +152,14 @@ const BOOKS = [
   { id:'b16', title:'English Grammar & Composition, SHS', cat:'textbooks', catName:'Textbooks', price:52, desc:'Complete WASSCE preparation', rating:5.0, reviews:140, stock:true, grade:'SHS', subject:'English', publisher:'Excellence Series', isbn:'978-9988-2-5568-9' },
   { id:'b17', title:'Owl & Co. Spelling Workbook, P3', cat:'readers', catName:'Readers', price:22, desc:'Weekly graded word lists', rating:4.0, reviews:24, stock:true, grade:'Primary 3', subject:'English', publisher:'Sedco', isbn:'978-9988-2-1192-8' },
   { id:'b18', title:'HB Pencils (Box of 12)', cat:'stationery', catName:'Stationery', price:15, desc:'Smooth graphite, eraser-tipped', rating:4.5, reviews:188, stock:true, subject:'Stationery', publisher:'Sky Stationery', isbn:'-' },
-  { id:'b19', title:'Geography for SHS', cat:'textbooks', catName:'Textbooks', price:58, desc:'Physical & human geograp
+  { id:'b19', title:'Geography for SHS', cat:'textbooks', catName:'Textbooks', price:58, desc:'Physical & human geography', rating:4.0, reviews:37, stock:true, grade:'SHS', subject:'Geography', publisher:'Approachers', isbn:'978-9988-2-9924-1' },
+  { id:'b20', title:'BECE Past Questions: Mathematics', cat:'past', catName:'Past Questions', price:35, desc:'Worked solutions, 2015-2024', rating:5.0, reviews:176, stock:true, grade:'JHS 3', subject:'Mathematics', publisher:'Aki-Ola Series', isbn:'978-9988-2-7783-4', badge:'Bestseller' },
+];
+
+const REVIEWS = [
+  { name:'Ama Mensah',   role:'Parent', rating:5, date:'12 May 2026', body:'Exactly the approved edition my daughter needed. Delivered to Madina the next morning - beautifully packaged.' },
+  { name:'Kwesi Boateng',role:'Teacher',rating:4, date:'28 Apr 2026', body:'Good quality print and binding. Bought a class set at wholesale and the pricing was very fair.' },
+  { name:'Efua Asante',  role:'Student',rating:5, date:'15 Apr 2026', body:'The solved past questions are a lifesaver for BECE prep. Clear explanations throughout.' },
+];
+
+export { Icon, BrainMark, Logo, Stars, cedis, CoverPlaceholder, Reveal, CATEGORIES, BOOKS, REVIEWS };

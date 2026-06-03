@@ -1196,4 +1196,47 @@ export const Footer = () => (
             <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <Icon name="phone" size={18} /> +233 55 803 9190
             </span>
-            <span style={{ marginLeft: 28, fontSize: 14 }}>+233 55 45
+            <span style={{ marginLeft: 28, fontSize: 14 }}>+233 55 452 9493</span>
+            <span style={{ marginLeft: 28, fontSize: 14 }}>+233 55 132 4729</span>
+          </div>
+        </div>
+        <div>
+          <h4>Legal</h4>
+          <div className="footer-links">
+            <a href="/privacy">Privacy Policy</a>
+            <a href="/terms">Terms of Service</a>
+            <a href="https://schoolms.realmindxgh.com/">SchoolMS</a>
+            <a href="/bookshop">Bookshop</a>
+            <a href="/donate">Donate</a>
+          </div>
+        </div>
+      </div>
+      <div className="footer-bottom">
+        &copy; {new Date().getFullYear()} RealMindX Education Limited. All rights reserved.
+      </div>
+    </div>
+  </footer>
+);
+
+// ====================== App ======================
+const App = () => (
+  <div className="home-page">
+    <Nav />
+    <Hero />
+    <Marquee items={SERVICE_MARQUEE} variant="gold" />
+    <MissionStats />
+    <Services />
+    <Marquee items={IMPACT_MARQUEE} variant="navy" />
+    <WhyUs />
+    <Gallery />
+    <News />
+    <Testimonials />
+    <Bookshop />
+    <SchoolMS />
+    <Donate />
+    <Partners />
+    <Footer />
+  </div>
+);
+
+export default App;
