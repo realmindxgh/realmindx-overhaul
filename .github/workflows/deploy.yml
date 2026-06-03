@@ -1,3 +1,4 @@
+# Repo: https://github.com/realmindxgh/realmindx-overhaul.git
 name: Deploy RealMindX to Hostinger VPS
 
 # Runs on every push to main branch, or manually from the Actions tab
@@ -9,7 +10,7 @@ on:
 jobs:
   deploy:
     name: Build & Deploy
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
 
     steps:
