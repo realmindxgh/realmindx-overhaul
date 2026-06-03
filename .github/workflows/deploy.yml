@@ -26,7 +26,6 @@ jobs:
           cache: "npm"
 
       # ── 3. Build the Vite frontend ────────────────────────────────────
-      #    Production .env values are injected from GitHub Secrets
       - name: Install Node dependencies
         run: npm ci
 
@@ -37,43 +36,32 @@ jobs:
           VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
         run: npm run build
 
-      # ── 4. Upload built frontend to VPS via rsync ─────────────────────
-      - name: Sync built frontend to VPS
-        uses: burnett01/rsync-deployments@7.0.1
-        with:
-          switches: -avzr --delete
-          path: dist/
-          remote_path: ${{ secrets.VPS_DEPLOY_PATH }}/dist/
-          remote_host: ${{ secrets.VPS_HOST }}
-          remote_user: ${{ secrets.VPS_USER }}
-          remote_key: ${{ secrets.VPS_SSH_KEY }}
+      # ── 4. Copy built frontend into place (we're already on the VPS) ──
+      - name: Deploy frontend
+        run: rsync -avr --delete dist/ /var/www/realmindx/dist/
 
-      # ── 5. SSH into VPS and complete the deployment ───────────────────
-      - name: Deploy on VPS
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            set -e
-            cd ${{ secrets.VPS_DEPLOY_PATH }}
+      # ── 5. Update backend code, migrate DB, restart services ──────────
+      - name: Deploy backend & restart
+        run: |
+          set -e
+          cd /var/www/realmindx
 
-            echo "── Pulling latest code ──"
-            git pull origin main
+          echo "── Pulling latest backend code ──"
+          git fetch origin main
+          git reset --hard origin/main
 
-            echo "── Updating Python dependencies ──"
-            realmindx-site/.venv/bin/pip install -r realmindx-site/requirements.txt -q
+          echo "── Updating Python dependencies ──"
+          realmindx-site/.venv/bin/pip install -r realmindx-site/requirements.txt -q
 
-            echo "── Running database migrations ──"
-            cd realmindx-site
-            .venv/bin/python -m flask --app backend:create_app db upgrade heads
-            cd ..
+          echo "── Running database migrations ──"
+          cd realmindx-site
+          .venv/bin/python -m flask --app backend:create_app db upgrade heads
+          cd ..
 
-            echo "── Restarting Flask API ──"
-            sudo systemctl restart realmindx-api
+          echo "── Restarting Flask API ──"
+          systemctl restart realmindx-api
 
-            echo "── Reloading nginx ──"
-            sudo systemctl reload nginx
+          echo "── Reloading nginx ──"
+          systemctl reload nginx
 
-            echo "✓ Deployment complete"
+          echo "✓ Deployment complete"
