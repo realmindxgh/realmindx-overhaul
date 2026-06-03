@@ -2,8 +2,8 @@
 import { Nav, Footer } from '../components/NavFooter';
 import { Icon } from '../assets/components.jsx';
 import { usePublicPeople, useSiteCopy } from '../../src/lib/siteContent.js';
-import aboutMain from '../uploads/Redesign/hero/School Restructuring-3.jpg';
-import aboutAccent from '../uploads/Redesign/hero/Home Teaching-1.jpg';
+const aboutMain = '/uploads/Redesign/hero/School Restructuring-3.jpg';
+const aboutAccent = '/uploads/Redesign/hero/Home Teaching-1.jpg';
 
 const GOALS = [
   { num: '01', title: 'Enhance Student Performance', body: 'Provide high-quality educational support that helps students improve their academic performance and reach their potential.' },

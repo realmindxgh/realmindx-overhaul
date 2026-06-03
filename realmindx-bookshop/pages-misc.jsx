@@ -5,7 +5,7 @@ import { submitMessage } from '../src/lib/managedContent.js';
 import { useSiteCopy } from '../src/lib/siteContent.js';
 import { resendVerificationOtp, signIn, signUp, verifyEmailOtp } from '../src/lib/authClient.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
-import bookshopHeroImage from '../realmindx-site/uploads/Redesign/hero/Books and Stationery (Hero).png';
+const bookshopHeroImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
 
 const AuthPage = ({ navigate, mode = 'login' }) => {
   const isLogin = mode === 'login';

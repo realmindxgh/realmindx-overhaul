@@ -1,11 +1,11 @@
 ﻿import React from 'react';
 import { isApiMode, api } from './apiClient.js';
-import bookshopHeroImage from '../../realmindx-site/uploads/Redesign/hero/Books and Stationery (Hero).png';
-import homeTeachingImage from '../../realmindx-site/uploads/Redesign/hero/Home Teaching-1.jpg';
-import schoolStructuringImage from '../../realmindx-site/uploads/Redesign/hero/School Restructuring-3.jpg';
-import specialNeedsImage from '../../realmindx-site/uploads/Redesign/hero/Special Needs-4.jpg';
-import stationeryImage from '../../realmindx-site/uploads/Redesign/Stationery(Bookshop).jpg';
-import teacherRecruitmentImage from '../../realmindx-site/uploads/Redesign/hero/Teacher Recruitment (Services).jpg';
+const bookshopHeroImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
+const homeTeachingImage = '/uploads/Redesign/hero/Home Teaching-1.jpg';
+const schoolStructuringImage = '/uploads/Redesign/hero/School Restructuring-3.jpg';
+const specialNeedsImage = '/uploads/Redesign/hero/Special Needs-4.jpg';
+const stationeryImage = '/uploads/Redesign/Stationery(Bookshop).jpg';
+const teacherRecruitmentImage = '/uploads/Redesign/hero/Teacher Recruitment (Services).jpg';
 
 export const ADMIN_OWNER = 'admin@realmindxgh.com';
 const STORAGE_KEY = 'realmindx.adminManagedContent.v2';
