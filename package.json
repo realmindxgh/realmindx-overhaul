@@ -1,0 +1,21 @@
+{
+  "name": "realmindx-overhaul",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.15.1",
+    "vite": "^6.4.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

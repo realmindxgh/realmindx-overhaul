@@ -1,0 +1,1978 @@
+﻿import React from 'react';
+import { Icon } from '../assets/components.jsx';
+import { resetManagedContent } from '../../src/lib/managedContent.js';
+import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
+import { API_BASE, api, isApiMode } from '../../src/lib/apiClient.js';
+import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
+import logoWhite from '../assets/logo-white.png';
+
+const NAV = [
+  { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
+  { key: 'jobs', label: 'Jobs', group: 'Jobs', icon: 'briefcase' },
+  { key: 'applications', label: 'Applications', group: 'Jobs', icon: 'clipboard' },
+  { key: 'products', label: 'Products', group: 'Bookshop', icon: 'book' },
+  { key: 'productReviews', label: 'Product Reviews', group: 'Bookshop', icon: 'award' },
+  { key: 'categories', label: 'Categories', group: 'Bookshop', icon: 'package' },
+  { key: 'flyers', label: 'Flyers', group: 'Bookshop', icon: 'image' },
+  { key: 'promoCodes', label: 'Promo Codes', group: 'Bookshop', icon: 'spark' },
+  { key: 'priceTools', label: 'Price & Delivery Tools', group: 'Bookshop', icon: 'money' },
+  { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
+  { key: 'services', label: 'Services', group: 'Content', icon: 'consulting' },
+  { key: 'partners', label: 'Partners', group: 'Content', icon: 'users' },
+  { key: 'people', label: 'The People', group: 'Content', icon: 'users' },
+  { key: 'homeHeroSlides', label: 'Home Hero', group: 'Content', icon: 'image' },
+  { key: 'donationSlides', label: 'Donation Slides', group: 'Content', icon: 'image' },
+  { key: 'siteCopy', label: 'Page Text', group: 'Content', icon: 'file' },
+  { key: 'news', label: 'News', group: 'Content', icon: 'newspaper' },
+  { key: 'gallery', label: 'Gallery', group: 'Content', icon: 'image' },
+  { key: 'resources', label: 'Resources', group: 'Content', icon: 'file' },
+  { key: 'messages', label: 'Messages', group: 'Comms', icon: 'message' },
+  { key: 'newsletters', label: 'Newsletters', group: 'Comms', icon: 'mail' },
+  { key: 'alerts', label: 'Job Alerts', group: 'Comms', icon: 'bell' },
+  { key: 'settings', label: 'Contact & Site Details', group: 'System', icon: 'settings' },
+  { key: 'admins', label: 'Admin Accounts', group: 'System', icon: 'shield' },
+  { key: 'staff', label: 'Staff Accounts', group: 'System', icon: 'shield' },
+  { key: 'teachers', label: 'Registered Teachers', group: 'System', icon: 'teacher' },
+  { key: 'auditLogs', label: 'Audit Log', group: 'System', icon: 'clipboard' },
+];
+
+const field = (name, label, type = 'text', options = {}) => ({ name, label, type, ...options });
+
+const FALLBACK_IMAGE_OPTIONS = [
+  { value: 'recruitment', label: 'Teacher / classroom image' },
+  { value: 'school', label: 'School systems image' },
+  { value: 'bookshop', label: 'Books and stationery image' },
+  { value: 'tutoring', label: 'Home learning image' },
+  { value: 'research', label: 'Research support image' },
+  { value: 'secretarial', label: 'Admin documents image' },
+  { value: 'special', label: 'Inclusive education image' },
+  { value: 'consulting', label: 'Consulting image' },
+  { value: 'schoolms', label: 'SchoolMS image' },
+];
+
+const PARTNER_ICON_OPTIONS = [
+  { value: 'pBuilding', label: 'School building' },
+  { value: 'pBook', label: 'Book' },
+  { value: 'pStar', label: 'Star' },
+  { value: 'pColumn', label: 'Institution' },
+  { value: 'pLeaf', label: 'Growth' },
+  { value: 'pShield', label: 'Shield' },
+];
+
+const SERVICE_ICON_OPTIONS = [
+  { value: 'teacher', label: 'Teacher' },
+  { value: 'growth', label: 'Growth' },
+  { value: 'school', label: 'School' },
+  { value: 'book', label: 'Book' },
+  { value: 'tutor', label: 'Tutoring' },
+  { value: 'research', label: 'Search' },
+  { value: 'secretarial', label: 'Documents' },
+  { value: 'special', label: 'Heart' },
+  { value: 'consulting', label: 'Consulting' },
+  { value: 'extra', label: 'Activities' },
+  { value: 'home', label: 'Home' },
+  { value: 'schoolms', label: 'SchoolMS' },
+];
+
+const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 'orders', 'newsletters', 'gallery', 'resources', 'auditLogs']);
+const PERMISSION_GROUPS = NAV
+  .filter(item => item.key !== 'dashboard' && item.key !== 'admins' && item.key !== 'auditLogs')
+  .map(item => {
+    const actions = item.key === 'auditLogs'
+      ? ['view']
+      : item.key === 'alerts'
+        ? ['view', 'edit']
+        : item.key === 'staff'
+          ? ['view', 'create', 'edit', 'delete']
+          : ['view', 'create', 'edit', 'delete', ...(EXPORTABLE_PERMISSION_KEYS.has(item.key) ? ['export'] : [])];
+    return { ...item, actions };
+  });
+const PERMISSION_OPTIONS = PERMISSION_GROUPS.flatMap(group => group.actions.map(action => `${group.key}.${action}`));
+const LEGACY_PERMISSION_OPTIONS = [
+  'manage_jobs',
+  'view_applications',
+  'manage_applications',
+  'manage_users',
+  'manage_products',
+  'manage_orders',
+  'manage_news',
+  'manage_gallery',
+  'manage_resources',
+  'view_messages',
+  'manage_newsletters',
+  'manage_settings',
+  'manage_admins',
+];
+const expandPermissionsForSave = permissions => {
+  const selected = new Set(Array.isArray(permissions) ? permissions : []);
+  const addLegacy = (group, legacyKey) => {
+    if (PERMISSION_OPTIONS.some(key => key.startsWith(`${group}.`) && selected.has(key))) {
+      selected.add(legacyKey);
+    }
+  };
+  addLegacy('jobs', 'manage_jobs');
+  addLegacy('applications', 'view_applications');
+  if (selected.has('applications.edit')) selected.add('manage_applications');
+  if ([...selected].some(key => ['products.', 'productReviews.', 'categories.', 'flyers.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_products');
+  if ([...selected].some(key => key.startsWith('orders.'))) selected.add('manage_orders');
+  if ([...selected].some(key => key.startsWith('news.'))) selected.add('manage_news');
+  if ([...selected].some(key => key.startsWith('gallery.'))) selected.add('manage_gallery');
+  if ([...selected].some(key => key.startsWith('resources.'))) selected.add('manage_resources');
+  if ([...selected].some(key => key.startsWith('messages.'))) selected.add('view_messages');
+  if ([...selected].some(key => key.startsWith('newsletters.'))) selected.add('manage_newsletters');
+  if ([...selected].some(key => ['services.', 'partners.', 'people.', 'homeHeroSlides.', 'donationSlides.', 'siteCopy.', 'settings.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_settings');
+  if ([...selected].some(key => key.startsWith('staff.'))) selected.add('manage_admins');
+  return [...selected];
+};
+
+const PUBLISHABLE_COLLECTIONS = new Set(['jobs', 'products', 'categories', 'flyers', 'services', 'partners', 'people', 'homeHeroSlides', 'donationSlides', 'siteCopy', 'news', 'gallery', 'resources']);
+
+const canAccessAdminItem = (item, session) => {
+  const role = session?.role;
+  if (role === 'admin') return true;
+  if (item.key === 'dashboard') return true;
+  if (item.key === 'admins' || item.key === 'auditLogs') return false;
+  const permissions = new Set(session?.permissions || []);
+  return permissions.has(`${item.key}.view`);
+};
+
+const CONFIG = {
+  jobs: {
+    title: 'Job Posts',
+    description: 'Every public job on the jobs page is controlled here.',
+    collection: 'jobs',
+    createLabel: 'Post Job',
+    fields: [
+      field('title', 'Job Title'),
+      field('organisation', 'School / Organisation'),
+      field('location', 'Location'),
+      field('subject', 'Subject'),
+      field('level', 'Level'),
+      field('employment_type', 'Employment Type'),
+      field('salary', 'Salary'),
+      field('deadline', 'Deadline'),
+      field('description', 'Description', 'textarea'),
+      field('status', 'Status', 'select', { options: ['published', 'draft', 'closed'] }),
+    ],
+    columns: ['title', 'organisation', 'location', 'subject', 'status'],
+  },
+  products: {
+    title: 'Bookshop Products',
+    description: 'Books, stationery, and learning materials shown in the public bookshop.',
+    collection: 'products',
+    createLabel: 'Add Product',
+    fields: [
+      field('name', 'Product Name'),
+      field('category_id', 'Product Category', 'category-select', { help: 'Choose an existing category.' }),
+      field('category_name', 'New Category (Optional)', 'text', { help: 'If the category is not listed, type it here and it will be created automatically.' }),
+      field('short_description', 'Short Description'),
+      field('price', 'Price (GHS)', 'number'),
+      field('old_price', 'Old Price (GHS)', 'number'),
+      field('source', 'Supplier / Source', 'text', { help: 'Admin-only supplier, vendor, or source note. This is never shown in the public bookshop.' }),
+      field('stock_status', 'Stock', 'select', { options: ['in_stock', 'low_stock', 'out_of_stock'] }),
+      field('curriculum', 'Curriculum Name', 'text', { help: 'Optional: e.g. Cambridge, IB, Montessori, GES, Pearson Edexcel, WAEC.' }),
+      field('author', 'Author'),
+      field('publisher', 'Publisher'),
+      field('level', 'Level', 'text', { help: 'e.g. JHS 1, SHS, Primary 4' }),
+      field('subject', 'Subject'),
+      field('image_file_id', 'Product Image', 'image', { help: 'Upload a portrait book-cover image. A 3:4 ratio keeps product cards and search results tidy.' }),
+      field('tags', 'Tags', 'tags', { help: 'Comma-separated: popular,new,sale' }),
+      field('featured', 'Featured', 'checkbox'),
+      field('is_active', 'Published / Visible', 'checkbox'),
+    ],
+    columns: ['image_url', 'name', 'category', 'curriculum', 'publisher', 'price', 'stock_status'],
+    columnLabels: { image_url: 'Image', stock_status: 'Stock' },
+  },
+  productReviews: {
+    title: 'Product Reviews',
+    description: 'Approve, reject, or delete customer ratings before they appear in the public bookshop.',
+    collection: 'productReviews',
+    createLabel: '',
+    allowCreate: false,
+    allowEdit: false,         // moderation only — no editing reviews
+    moderationOnly: true,
+    statusOptions: ['pending', 'approved', 'rejected'],
+    emptyTitle: 'No Product Reviews Yet',
+    emptyBody: 'When customers rate purchased products, their reviews will wait here for approval.',
+    fields: [],               // no edit form
+    columns: ['product_name', 'customer_name', 'rating', 'status'],
+    columnLabels: { product_name: 'Product', customer_name: 'Customer', rating: 'Rating' },
+  },
+  promoCodes: {
+    title: 'Promo Codes',
+    description: 'Create and manage discount codes for products and/or delivery. Codes are validated in real-time at checkout.',
+    collection: 'promoCodes',
+    createLabel: 'Add Promo Code',
+    fields: [
+      field('code', 'Code', 'text', { help: 'Uppercase, no spaces. e.g. SCHOOL25 or FREESHIP' }),
+      field('description', 'Description', 'text', { help: 'Shown to the customer at checkout when code is applied.' }),
+      field('discount_type', 'Discount Type', 'select', { options: ['percentage', 'fixed'] }),
+      field('discount_value', 'Discount Value', 'number', { help: 'For percentage: enter e.g. 15 (= 15%). For fixed: enter the GH₵ amount.' }),
+      field('applies_to', 'Applies To', 'select', { options: ['products', 'delivery', 'all'] }),
+      field('min_order_amount', 'Minimum Order Amount (GH₵)', 'number', { help: 'Leave 0 for no minimum.' }),
+      field('max_uses', 'Maximum Uses', 'number', { help: 'Leave blank for unlimited.' }),
+      field('valid_from', 'Valid From', 'text', { help: 'Date format YYYY-MM-DD. Leave blank for no start restriction.' }),
+      field('valid_until', 'Valid Until', 'text', { help: 'Date format YYYY-MM-DD. Leave blank for no expiry.' }),
+      field('is_active', 'Active', 'checkbox'),
+    ],
+    columns: ['code', 'discount_type', 'discount_value', 'applies_to', 'is_active'],
+    columnLabels: { discount_type: 'Type', discount_value: 'Value', applies_to: 'Applies To' },
+  },
+  flyers: {
+    title: 'Bookshop Flyers',
+    description: 'Hero flyers shown in the bookshop homepage slideshow. Published flyers appear in order; drafts are hidden.',
+    collection: 'flyers',
+    createLabel: 'Add Flyer',
+    fields: [
+      field('headline', 'Headline'),
+      field('accent', 'Accent Text', 'text', { help: 'The gold highlighted line under the headline.' }),
+      field('subline', 'Subline', 'textarea'),
+      field('badge', 'Badge / CTA Label', 'text', { help: 'Leave blank if the flyer image already includes the call to action.' }),
+      field('sort_order', 'Order', 'number', { help: 'Lower numbers appear first.' }),
+      field('image_file_id', 'Hero Image', 'image', { help: 'Use a wide banner where possible. Fit and position controls below help crop the image without hiding important text.' }),
+      field('show_overlay', 'Dark / Stripe Overlay', 'checkbox'),
+      field('image_fit', 'Image Fit', 'select', { options: ['cover', 'contain'] }),
+      field('image_position', 'Image Position', 'select', { options: ['center', 'top', 'bottom', 'left', 'right'] }),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['image_url', 'headline', 'accent', 'badge', 'status'],
+    columnLabels: { image_url: 'Image' },
+  },
+  categories: {
+    title: 'Product Categories',
+    description: 'These appear in the bookshop category menu. Set a bulk discount to automatically reduce the price when a customer orders 10+ units of any product in that category.',
+    collection: 'categories',
+    createLabel: 'Add Category',
+    fields: [
+      field('name', 'Category Name'),
+      field('slug', 'Slug', 'text', { help: 'URL-friendly identifier, e.g. textbooks' }),
+      field('description', 'Description', 'textarea'),
+      field('sort_order', 'Sort Order', 'number'),
+      field('is_active', 'Active / Visible', 'checkbox'),
+      field('bulk_discount_percent', 'Bulk Discount %', 'number', { help: 'Discount applied when a customer orders 10+ units of any product in this category. Set to 0 to disable. e.g. 10 = 10% off.' }),
+      field('bulk_min_qty', 'Bulk Min. Quantity', 'number', { help: 'Minimum quantity to trigger the bulk discount. Default is 10.' }),
+    ],
+    columns: ['name', 'slug', 'bulk_discount_percent', 'is_active'],
+    columnLabels: { bulk_discount_percent: 'Bulk Discount %' },
+  },
+  services: {
+    title: 'Services',
+    description: 'Every service shown on the homepage strip and services page can be edited, reordered, published, or deleted here.',
+    collection: 'services',
+    createLabel: 'Add Service',
+    fields: [
+      field('id', 'Anchor ID', 'text', { help: 'Stable URL anchor, e.g. teacher-recruitment. Avoid changing after publishing.' }),
+      field('label', 'Service Label'),
+      field('tag', 'Eyebrow / Category'),
+      field('title', 'Section Title'),
+      field('summary', 'Short Summary', 'textarea'),
+      field('body', 'Body Copy', 'textarea', { help: 'Separate paragraphs with a blank line.' }),
+      field('features', 'Feature List', 'textarea', { help: 'One feature per line.' }),
+      field('primary_cta_label', 'Primary CTA Label'),
+      field('primary_cta_href', 'Primary CTA Link'),
+      field('secondary_cta_label', 'Secondary CTA Label'),
+      field('secondary_cta_href', 'Secondary CTA Link'),
+      field('icon', 'Service Icon', 'select', { options: SERVICE_ICON_OPTIONS }),
+      field('image_file_id', 'Service Image', 'image', { help: 'Upload the image to show on the services page.' }),
+      field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
+      field('badge', 'Badge'),
+      field('sort_order', 'Sort Order', 'number'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['image_url', 'label', 'tag', 'sort_order', 'status'],
+    columnLabels: { image_url: 'Image', sort_order: 'Order' },
+  },
+  partners: {
+    title: 'Partner Logos',
+    description: 'Schools and organisations displayed on the homepage partners section. After five items, the public section becomes a logo marquee.',
+    collection: 'partners',
+    createLabel: 'Add Partner',
+    idField: 'id',
+    fields: [
+      field('id', 'Anchor ID', 'text', { help: 'Stable identifier, e.g. bright-minds-school.' }),
+      field('name', 'Partner Name'),
+      field('icon', 'Fallback Icon', 'select', { options: PARTNER_ICON_OPTIONS }),
+      field('image_file_id', 'Logo Image', 'image', { help: 'Upload a transparent or white-background logo when available.' }),
+      field('sort_order', 'Sort Order', 'number'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['image_url', 'name', 'sort_order', 'status'],
+    columnLabels: { image_url: 'Logo', sort_order: 'Order' },
+  },
+  people: {
+    title: 'The People',
+    description: 'Leadership and team cards shown on the About page. Add photos, roles, and short bios here.',
+    collection: 'people',
+    createLabel: 'Add Person',
+    idField: 'id',
+    fields: [
+      field('id', 'Person ID', 'text', { help: 'Stable identifier, e.g. founder-chief-executive.' }),
+      field('name', 'Full Name'),
+      field('position', 'Position / Role'),
+      field('bio', 'Short Bio', 'textarea'),
+      field('initials', 'Fallback Initials', 'text', { help: 'Shown only if no profile photo is uploaded.' }),
+      field('image_file_id', 'Profile Photo', 'image', { help: 'Upload a square or portrait team photo.' }),
+      field('sort_order', 'Sort Order', 'number'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['image_url', 'name', 'position', 'sort_order', 'status'],
+    columnLabels: { image_url: 'Photo', sort_order: 'Order' },
+  },
+  homeHeroSlides: {
+    title: 'Homepage Hero Slides',
+    description: 'Published slides control the rotating hero images on the homepage.',
+    collection: 'homeHeroSlides',
+    createLabel: 'Add Hero Slide',
+    idField: 'id',
+    fields: [
+      field('id', 'Slide ID', 'text', { help: 'Stable identifier, e.g. homepage-teacher-recruitment.' }),
+      field('label', 'Admin Label'),
+      field('alt', 'Image Alt Text'),
+      field('image_file_id', 'Hero Image', 'image', { help: 'Upload the image used in the homepage hero slideshow.' }),
+      field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
+      field('sort_order', 'Sort Order', 'number'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['image_url', 'label', 'sort_order', 'status'],
+    columnLabels: { image_url: 'Image', sort_order: 'Order' },
+  },
+  donationSlides: {
+    title: 'Donation Page Slides',
+    description: 'Published slides control the donation page impact slideshow.',
+    collection: 'donationSlides',
+    createLabel: 'Add Donation Slide',
+    idField: 'id',
+    fields: [
+      field('id', 'Slide ID', 'text', { help: 'Stable identifier, e.g. donation-books-for-learners.' }),
+      field('label', 'Slide Label'),
+      field('alt', 'Image Alt Text'),
+      field('image_file_id', 'Slide Image', 'image', { help: 'Upload the image used in the donation page slideshow.' }),
+      field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
+      field('sort_order', 'Sort Order', 'number'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['image_url', 'label', 'sort_order', 'status'],
+    columnLabels: { image_url: 'Image', sort_order: 'Order' },
+  },
+  siteCopy: {
+    title: 'Page Text',
+    description: 'Edit headings, paragraphs, legal text, and other important wording across the public website.',
+    collection: 'siteCopy',
+    createLabel: 'Add Page Text',
+    idField: 'id',
+    fields: [
+      field('id', 'Text ID', 'text', { help: 'Short unique name. Example: services_hero_title.' }),
+      field('key', 'Text Key', 'text', { help: 'Use the same value as the Text ID.' }),
+      field('label', 'Friendly Name'),
+      field('area', 'Website Area', 'select', { options: ['home', 'about', 'services', 'legal', 'bookshop', 'jobs', 'contact'] }),
+      field('value', 'Text', 'textarea'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['label', 'area', 'status'],
+  },
+  news: {
+    title: 'News and Updates',
+    description: 'News page content can be drafted, edited, published, or deleted here.',
+    collection: 'news',
+    createLabel: 'Write Post',
+    fields: [
+      field('title', 'Title'),
+      field('category', 'Category'),
+      field('summary', 'Summary', 'textarea'),
+      field('body', 'Intro / Fallback Body', 'textarea', { help: 'Shown before the sections, or used as the full article if no sections are added.' }),
+      field('sections', 'Article Sections', 'article-sections', { help: 'Add headings, body text, images, and captions for the full news article.' }),
+      field('image_file_id', 'Post Image', 'image', { help: 'Optional image shown on the public news page and in newsletter reuse.' }),
+      field('date', 'Display Date'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['image_url', 'title', 'category', 'date', 'status'],
+    columnLabels: { image_url: 'Image' },
+  },
+  gallery: {
+    title: 'Gallery',
+    description: 'Gallery entries shown on the public gallery route.',
+    collection: 'gallery',
+    createLabel: 'Add Gallery Item',
+    fields: [
+      field('title', 'Title'),
+      field('description', 'Description', 'textarea'),
+      field('image_file_id', 'Image', 'image'),
+      field('sort_order', 'Sort Order', 'number'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['image_url', 'title', 'sort_order', 'status'],
+    columnLabels: { image_url: 'Image', sort_order: 'Order' },
+  },
+  resources: {
+    title: 'Resources',
+    description: 'Downloadable or linked resources for the public resources route.',
+    collection: 'resources',
+    createLabel: 'Add Resource',
+    fields: [
+      field('title', 'Title'),
+      field('description', 'Description', 'textarea'),
+      field('url', 'URL'),
+      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+    ],
+    columns: ['title', 'description', 'url', 'status'],
+  },
+  messages: {
+    title: 'Contact Messages',
+    description: 'Messages from site, job, and bookshop forms.',
+    collection: 'messages',
+    createLabel: 'Log Message',
+    allowCreate: false,
+    emptyTitle: 'No Messages Yet',
+    emptyBody: 'Messages from the contact form, bookshop enquiries, and other public forms will appear here.',
+    fields: [
+      field('name', 'Name'),
+      field('email', 'Email'),
+      field('subject', 'Subject'),
+      field('service', 'Service'),
+      field('message', 'Message', 'textarea'),
+      field('status', 'Status', 'select', { options: ['new', 'read', 'replied', 'archived'] }),
+    ],
+    columns: ['ticket_reference', 'name', 'email', 'subject', 'status'],
+  },
+  orders: {
+    title: 'Bookshop Orders',
+    description: 'Bookshop order requests and order-status handling.',
+    collection: 'orders',
+    createLabel: '',        // no manual order creation from admin
+    allowCreate: false,
+    allowEdit: false,       // orders are view-only; use status actions only
+    statusOnly: true,       // only status changes and archiving allowed
+    statusOptions: ['received', 'shipped', 'complete', 'cancelled'],
+    requireCancelReason: true,
+    emptyTitle: 'No Bookshop Orders Yet',
+    emptyBody: 'Customer orders from the bookshop will appear here.',
+    fields: [],             // no edit form fields
+    columns: ['order_reference', 'customer_name', 'total_amount', 'status'],
+  },
+  newsletters: {
+    title: 'Newsletter Subscribers',
+    description: 'Newsletter subscribers from public and bookshop signups.',
+    collection: 'newsletters',
+    createLabel: 'Add Subscriber',
+    fields: [
+      field('email', 'Email'),
+      field('source', 'Source'),
+      field('status', 'Status', 'select', { options: ['active', 'unsubscribed'] }),
+    ],
+    columns: ['email', 'source', 'status'],
+  },
+  settings: {
+    title: 'Contact & Site Details',
+    description: 'Edit contact email, phone numbers, address, and basic details used across the public website.',
+    collection: 'settings',
+    createLabel: 'Add Contact Detail',
+    idField: 'key',   // use the key string as the update/delete identifier
+    fields: [
+      field('key', 'Detail Name', 'text', { help: 'Example: contact_email, main_phone, office_address.' }),
+      field('value', 'Value', 'textarea'),
+      field('public', 'Show on website', 'checkbox'),
+    ],
+    columns: ['key', 'value', 'public'],
+    columnLabels: { key: 'Detail', public: 'Visible' },
+  },
+  staff: {
+    title: 'Staff Accounts',
+    description: 'Create staff accounts and assign exactly the permissions each person should access.',
+    collection: 'staff',
+    createLabel: 'Create Staff Account',
+    fields: [
+      field('email', 'Email Address', 'email'),
+      field('password', 'Password', 'password', { help: 'Required for new staff. Leave blank when editing to keep the current password.' }),
+      field('first_name', 'First Name'),
+      field('last_name', 'Last Name'),
+      field('permissions', 'Permissions', 'permission-list', { options: PERMISSION_OPTIONS, groups: PERMISSION_GROUPS }),
+      field('status', 'Status', 'select', { options: ['active', 'inactive'] }),
+    ],
+    columns: ['full_name', 'email', 'role', 'status'],
+  },
+  admins: {
+    title: 'Admin Accounts',
+    description: 'Create and manage full admin accounts. Admin accounts are internal only and do not use public OTP verification.',
+    collection: 'admins',
+    createLabel: 'Create Admin Account',
+    fields: [
+      field('email', 'Email Address', 'email', { help: 'Use an official RealMindX admin email where possible.' }),
+      field('password', 'Temporary Password', 'password', { help: 'Required for new admins. Leave blank when editing to keep the current password.' }),
+      field('first_name', 'First Name'),
+      field('last_name', 'Last Name'),
+      field('status', 'Status', 'select', { options: ['active', 'inactive'] }),
+    ],
+    columns: ['full_name', 'email', 'role', 'status'],
+  },
+  auditLogs: {
+    title: 'Audit Log',
+    description: 'A protected record of admin and staff actions across the system. Only full admins can view this.',
+    collection: 'auditLogs',
+    createLabel: '',
+    allowCreate: false,
+    allowUpdate: false,
+    allowDelete: false,
+    readOnly: true,
+    note: false,
+    emptyTitle: 'No Audit Entries Yet',
+    emptyBody: 'Admin actions will appear here automatically once changes are made.',
+    fields: [],
+    columns: ['actor', 'action', 'entity_type', 'entity_id', 'ip_address'],
+    columnLabels: { entity_type: 'Area', entity_id: 'Record', ip_address: 'IP Address' },
+  },
+};
+
+const statusLabel = value => String(value || 'draft').replace(/_/g, ' ');
+
+const optionValue = option => (typeof option === 'object' ? option.value : option);
+const optionLabel = option => (typeof option === 'object' ? option.label : statusLabel(option));
+const columnLabel = (config, column) =>
+  config.columnLabels?.[column]
+  || column.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+
+const adminAssetUrl = value => {
+  if (!value || !String(value).startsWith('/uploads/')) return value;
+  try {
+    return new URL(value, API_BASE.replace(/\/api$/, '')).toString();
+  } catch {
+    return value;
+  }
+};
+
+const rowImageUrl = row => adminAssetUrl(row.image_url || row.image || row.logo_url || row.cover_url);
+
+const normalizeFormValue = (value, itemField) => {
+  if (itemField.type === 'number') return value === '' ? null : Number(value);
+  if (itemField.type === 'checkbox') return Boolean(value);
+  if (itemField.type === 'tags') return String(value || '').split(',').map(tag => tag.trim()).filter(Boolean);
+  if (itemField.type === 'image') return value ? Number(value) : null; // stored as file ID (number)
+  if (itemField.type === 'category-select') return value ? Number(value) : null;
+  if (itemField.type === 'permission-list') return expandPermissionsForSave(value);
+  if (itemField.type === 'article-sections') return Array.isArray(value) ? value : [];
+  return value;
+};
+
+const valueForInput = (value, itemField) => {
+  if (itemField.type === 'tags') return Array.isArray(value) ? value.join(', ') : value || '';
+  if (itemField.type === 'checkbox') return Boolean(value);
+  if (itemField.type === 'image') return value ?? ''; // stores file ID
+  if (itemField.type === 'category-select') return value ?? '';
+  if (itemField.type === 'permission-list') return Array.isArray(value) ? value : [];
+  if (itemField.type === 'article-sections') return Array.isArray(value) ? value : [];
+  return value ?? '';
+};
+
+const fieldPlaceholder = (itemField, config) => {
+  if (itemField.placeholder) return itemField.placeholder;
+  const name = itemField.name;
+  const byName = {
+    title: 'Clear public title, e.g. Teacher Development Workshop',
+    name: 'Full name or item name',
+    label: 'Short display label',
+    email: 'name@example.com',
+    password: 'Temporary secure password',
+    first_name: 'First name',
+    last_name: 'Last name',
+    key: 'Stable name, e.g. contact_email',
+    id: 'Stable ID, e.g. teacher-recruitment',
+    value: 'Enter the text or contact detail that should appear on the site',
+    description: 'Briefly explain what this item is for',
+    summary: 'One or two lines visitors will see',
+    body: 'Write the main content. Use blank lines for paragraphs.',
+    features: 'One feature per line',
+    price: 'Example: 55.00',
+    old_price: 'Optional previous price',
+    source: 'Supplier, publisher contact, or where this stock came from',
+    curriculum: 'Example: Cambridge Primary, Montessori, IB, WAEC, GES',
+    author: 'Author name, if applicable',
+    publisher: 'Publisher name, if applicable',
+    level: 'Example: Primary 4, JHS 1, SHS',
+    subject: 'Example: Mathematics, English, Science',
+    tags: 'Comma-separated, e.g. new,bestseller,primary',
+    headline: 'Main flyer headline',
+    accent: 'Gold-highlighted flyer text',
+    subline: 'Short flyer supporting text',
+    badge: 'Optional button or badge text',
+    order_reference: 'Leave blank for an automatic reference if unsure',
+    customer_name: 'Customer full name',
+    phone: '+233 XX XXX XXXX',
+    location: 'Delivery town or pickup location',
+    message: 'Full message or internal note',
+    url: 'https://... or /resources/...',
+    organisation: 'School, company, or organisation name',
+    employment_type: 'Example: Full-time, Part-time, Contract',
+    salary: 'Optional salary or range',
+    deadline: 'Example: 2026-06-30',
+    position: 'Role or job title',
+    initials: 'Two-letter fallback, e.g. RM',
+    sections: 'Add article sections with headings, paragraphs, images, and captions',
+  };
+  if (byName[name]) return byName[name];
+  return `Enter ${itemField.label.toLowerCase()}${config?.title ? ` for ${config.title.toLowerCase()}` : ''}`;
+};
+
+const readableCellValue = value => {
+  if (value == null || value === '') return '';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) {
+    if (!value.length) return '';
+    if (value.every(item => item == null || ['string', 'number', 'boolean'].includes(typeof item))) {
+      return value.map(readableCellValue).join(', ');
+    }
+    return `${value.length} managed item${value.length === 1 ? '' : 's'}`;
+  }
+  if (typeof value === 'object') {
+    return value.label || value.name || value.title || value.email || JSON.stringify(value);
+  }
+  return String(value);
+};
+
+const EmptySection = ({ title, body, action, onAction }) => (
+  <div style={{ textAlign: 'center', padding: '56px 24px' }}>
+    <div style={{ width: 54, height: 54, borderRadius: 12, background: 'var(--gray-100)', margin: '0 auto 14px', display: 'grid', placeItems: 'center', fontFamily: "'Montserrat', sans-serif", fontWeight: 900, color: 'var(--navy)' }}>RMX</div>
+    <h4 style={{ fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)', marginBottom: 8 }}>{title}</h4>
+    <p style={{ color: 'var(--gray-700)', maxWidth: 460, margin: '0 auto 18px', fontSize: '0.88rem' }}>{body}</p>
+    {action && <button className="btn btn-primary btn-sm" onClick={onAction}>{action}</button>}
+  </div>
+);
+
+const AdminSidebar = ({ active, setActive, open, setOpen, session }) => {
+  const visibleNav = NAV.filter(item => canAccessAdminItem(item, session));
+  const groups = visibleNav.reduce((acc, item) => {
+    acc[item.group] = [...(acc[item.group] || []), item];
+    return acc;
+  }, {});
+
+  return (
+    <aside className={`admin-sidebar${open ? ' open' : ''}`}>
+      <div className="admin-sidebar-logo">
+        <img src={logoWhite} alt="RealMindX Education" className="admin-sidebar-logo-img" />
+        <div>
+          <span className="admin-logo-tag">Admin</span>
+        </div>
+      </div>
+      <nav className="admin-nav">
+        {Object.entries(groups).map(([group, items]) => (
+          <div key={group} className="admin-nav-group">
+            <div className="admin-nav-group-label">{group}</div>
+            {items.map(item => (
+              <button
+                key={item.key}
+                className={`admin-nav-item${active === item.key ? ' active' : ''}`}
+                onClick={() => { setActive(item.key); setOpen(false); }}
+              >
+                <span className="ani-icon"><Icon name={item.icon} size={16} stroke={2} /></span>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <a href="/" className="admin-nav-item" style={{ textDecoration: 'none' }}><span className="ani-icon"><Icon name="arrow" size={16} stroke={2} /></span> View Site</a>
+      </div>
+    </aside>
+  );
+};
+
+const DashboardView = ({ content, setActive }) => {
+  const [liveSummary, setLiveSummary] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!isApiMode()) return;
+    api.adminDashboard()
+      .then(data => setLiveSummary(data.summary || null))
+      .catch(() => {});
+  }, []);
+
+  // In API mode use the live summary; in local mode derive from content arrays.
+  const s = liveSummary || {};
+  const stats = isApiMode() ? [
+    ['Total Users',           s.total_users            ?? 0, 'registered accounts',     'users'],
+    ['Job Applications',      s.total_job_applications ?? 0, `${s.pending_applications ?? 0} pending`, 'clipboard'],
+    ['New Orders',            s.new_orders             ?? 0, 'awaiting confirmation',    'package'],
+    ['New Messages',          s.new_contact_messages   ?? 0, 'need attention',           'message'],
+    ['Products',              s.total_products         ?? 0, 'in the bookshop',          'book'],
+    ['Newsletter Subscribers',s.newsletter_subscribers ?? 0, 'active subscriptions',     'mail'],
+  ] : [
+    ['Total Users', 142, 'seeded demo users', 'users'],
+    ['Job Applications', 38, `${(content.jobs||[]).length} active job records`, 'clipboard'],
+    ['New Orders', (content.orders||[]).filter(o => o.status === 'new').length, 'from bookshop', 'package'],
+    ['New Messages', (content.messages||[]).filter(m => m.status === 'new').length, 'need attention', 'message'],
+    ['Products', (content.products||[]).length, `${publicItems(content.products||[]).length} published`, 'book'],
+    ['Newsletter Subscribers', (content.newsletters||[]).length, 'managed list', 'mail'],
+  ];
+
+  const recentJobs   = (content.jobs   || []).slice(0, 5);
+  const recentOrders = (content.orders || []).slice(0, 5);
+
+  return (
+    <div>
+      <div className="admin-stats-row">
+        {stats.map(([label, value, note, icon]) => (
+          <button key={label} className="admin-stat" onClick={() => {
+            if (label === 'Products') setActive('products');
+            if (label === 'New Orders') setActive('orders');
+            if (label === 'New Messages') setActive('messages');
+            if (label === 'Newsletter Subscribers') setActive('newsletters');
+          }}>
+            <div className="admin-stat-icon asi-navy"><Icon name={icon} size={22} stroke={1.9} /></div>
+            <div className="admin-stat-info">
+              <div className="ast-value">{value}</div>
+              <div className="ast-label">{label}</div>
+              <div className="ast-change ast-up">{note}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="quick-actions-row">
+        {[
+          ['Post Job', 'jobs', 'briefcase'],
+          ['Add Product', 'products', 'book'],
+          ['Add Flyer', 'flyers', 'image'],
+          ['Write News', 'news', 'newspaper'],
+        ].map(([label, key, icon]) => (
+          <button key={label} className="quick-action-btn" onClick={() => setActive(key)}>
+            <div className="qab-icon"><Icon name={icon} size={20} stroke={2} /></div>
+            <div className="qab-label">{label}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="admin-grid-2">
+        <div className="admin-table-card">
+          <div className="atc-header"><h3>Recent Job Posts</h3><button className="btn btn-sm btn-outline-navy" onClick={() => setActive('jobs')}>Manage</button></div>
+          <MiniTable rows={recentJobs} columns={['title', 'organisation', 'status']} />
+        </div>
+        <div className="admin-table-card">
+          <div className="atc-header"><h3>Recent Orders</h3><button className="btn btn-sm btn-outline-navy" onClick={() => setActive('orders')}>Manage</button></div>
+          <MiniTable rows={recentOrders} columns={['order_reference', 'customer_name', 'status']} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MiniTable = ({ rows, columns }) => (
+  <table className="admin-table">
+    <thead><tr>{columns.map(col => <th key={col}>{col.replace(/_/g, ' ')}</th>)}</tr></thead>
+    <tbody>
+      {rows.map(row => (
+        <tr key={row.id}>{columns.map(col => <td key={col}>{String(row[col] ?? '')}</td>)}</tr>
+      ))}
+    </tbody>
+  </table>
+);
+
+// ---------- Image upload field ----------
+const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange }) => {
+  const [uploading, setUploading] = React.useState(false);
+  const [preview, setPreview] = React.useState(currentUrl || null);
+  const [error, setError] = React.useState('');
+  const inputRef = React.useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setError('');
+    try {
+      const { api } = await import('../../src/lib/apiClient.js');
+      const uploaded = await api.uploadFile(file, 'images');
+      setPreview(uploaded.url);
+      onChange(uploaded.id, uploaded.url);
+    } catch (err) {
+      setError(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {preview && (
+          <img src={preview} alt="preview"
+            style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--gray-200)' }} />
+        )}
+        <div>
+          <button type="button" className="btn btn-outline-navy btn-sm"
+            onClick={() => inputRef.current?.click()} disabled={uploading}>
+            {uploading ? 'Uploading...' : preview ? 'Replace image' : 'Upload image'}
+          </button>
+          {currentFileId && !preview && (
+              <p style={{ fontSize: '0.75rem', color: 'var(--gray-700)', marginTop: 4 }}>Selected uploaded image</p>
+          )}
+        </div>
+        <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+      </div>
+      <p className="admin-image-help">Tip: use 16:9 for hero, gallery, news, and flyers; 3:4 portrait for product covers; square or portrait for people. Where fit and position fields are available, use them to keep important details visible without editing the original file.</p>
+      {error && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: 4 }}>{error}</p>}
+    </div>
+  );
+};
+
+const ArticleSectionsField = ({ sections, onChange }) => {
+  const safeSections = Array.isArray(sections) ? sections : [];
+  const updateSection = (index, patch) => {
+    onChange(safeSections.map((section, currentIndex) => (
+      currentIndex === index ? { ...section, ...patch } : section
+    )));
+  };
+  const addSection = () => {
+    onChange([...safeSections, { heading: '', body: '', caption: '', image_file_id: '', image_url: '' }]);
+  };
+  const removeSection = index => {
+    onChange(safeSections.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  return (
+    <div className="article-sections-field">
+      {safeSections.map((section, index) => (
+        <section className="article-section-editor" key={`section-${index}`}>
+          <div className="article-section-editor-head">
+            <strong>Section {index + 1}</strong>
+            <button type="button" className="table-action-btn danger" onClick={() => removeSection(index)}>Remove</button>
+          </div>
+          <div className="admin-form-grid">
+            <label className="form-group">
+              <span className="form-label">Section Heading</span>
+              <input
+                className="form-input"
+                value={section.heading || ''}
+                onChange={event => updateSection(index, { heading: event.target.value })}
+                placeholder="Example: Why this programme matters"
+              />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Image Caption</span>
+              <input
+                className="form-input"
+                value={section.caption || ''}
+                onChange={event => updateSection(index, { caption: event.target.value })}
+                placeholder="Optional caption for this section image"
+              />
+            </label>
+            <label className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <span className="form-label">Section Body</span>
+              <textarea
+                className="form-textarea"
+                rows={5}
+                value={section.body || ''}
+                onChange={event => updateSection(index, { body: event.target.value })}
+                placeholder="Write this part of the article. Use blank lines for separate paragraphs."
+              />
+            </label>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <span className="form-label">Section Image</span>
+              <ImageUploadField
+                fieldName={`section_image_${index}`}
+                currentFileId={section.image_file_id || ''}
+                currentUrl={section.image_url || ''}
+                onChange={(fileId, fileUrl) => updateSection(index, { image_file_id: fileId, image_url: fileUrl })}
+              />
+            </div>
+          </div>
+        </section>
+      ))}
+      <button type="button" className="btn btn-outline-navy btn-sm" onClick={addSection}>
+        Add Article Section
+      </button>
+      <p className="admin-image-help">Readers will see the sections as one polished article, with natural spacing between sections and no divider lines.</p>
+    </div>
+  );
+};
+
+const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
+  const [form, setForm] = React.useState(() =>
+    config.fields.reduce((acc, itemField) => {
+      acc[itemField.name] = valueForInput(initialItem?.[itemField.name], itemField);
+      return acc;
+    }, {}),
+  );
+  // Track image preview URLs separately (not sent in payload, only the file ID is)
+  const [imageUrls, setImageUrls] = React.useState(() => {
+    const urls = {};
+    config.fields.forEach(f => {
+      if (f.type === 'image' && initialItem?.image_url) urls[f.name] = initialItem.image_url;
+    });
+    return urls;
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [categoryOptions, setCategoryOptions] = React.useState([]);
+
+  React.useEffect(() => {
+    if (!config.fields.some(itemField => itemField.type === 'category-select')) return;
+    let alive = true;
+    if (!isApiMode()) {
+      setCategoryOptions([]);
+      return;
+    }
+    api.adminList('categories')
+      .then(data => {
+        if (alive) setCategoryOptions(data.items || []);
+      })
+      .catch(() => {
+        if (alive) setCategoryOptions([]);
+      });
+    return () => { alive = false; };
+  }, [config.fields]);
+
+  const submit = async event => {
+    event.preventDefault();
+    const payload = config.fields.reduce((acc, itemField) => {
+      acc[itemField.name] = normalizeFormValue(form[itemField.name], itemField);
+      return acc;
+    }, {});
+
+    setSaving(true);
+    try {
+      if (initialItem) await (onUpdate ? onUpdate(initialItem.id, payload) : Promise.resolve());
+      else await (onCreate ? onCreate(payload) : Promise.resolve());
+      onCancel();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="admin-table-card" style={{ padding: 24, marginBottom: 20 }} onSubmit={submit}>
+      <h3 style={{ fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)', marginBottom: 18 }}>
+        {initialItem ? `Edit ${config.title}` : config.createLabel}
+      </h3>
+      <div className="admin-form-grid">
+        {config.fields.map(itemField => (
+          <div key={itemField.name} className="form-group" style={(itemField.type === 'textarea' || itemField.type === 'image' || itemField.type === 'permission-list' || itemField.type === 'article-sections') ? { gridColumn: '1 / -1' } : null}>
+            <label className="form-label">{itemField.label}</label>
+            {itemField.type === 'image' ? (
+              <ImageUploadField
+                fieldName={itemField.name}
+                currentFileId={form[itemField.name]}
+                currentUrl={imageUrls[itemField.name]}
+                onChange={(fileId, fileUrl) => {
+                  setForm(prev => ({ ...prev, [itemField.name]: fileId }));
+                  setImageUrls(prev => ({ ...prev, [itemField.name]: fileUrl }));
+                }}
+              />
+            ) : itemField.type === 'permission-list' ? (
+              <div className="permission-matrix">
+                {(itemField.groups || []).map(group => (
+                  <section className="permission-group-card" key={group.key}>
+                    <div className="permission-group-head">
+                      <span className="ani-icon"><Icon name={group.icon} size={15} stroke={2} /></span>
+                      <strong>{group.label}</strong>
+                    </div>
+                    <div className="permission-action-row">
+                      {group.actions.map(action => {
+                        const option = `${group.key}.${action}`;
+                        return (
+                          <label className="permission-action" key={option}>
+                            <input
+                              type="checkbox"
+                              checked={(form[itemField.name] || []).includes(option)}
+                              onChange={event => setForm(prev => {
+                                const current = prev[itemField.name] || [];
+                                return {
+                                  ...prev,
+                                  [itemField.name]: event.target.checked
+                                    ? [...new Set([...current, option])]
+                                    : current.filter(item => item !== option),
+                                };
+                              })}
+                            />
+                            <span>{statusLabel(action)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : itemField.type === 'article-sections' ? (
+              <ArticleSectionsField
+                sections={form[itemField.name]}
+                onChange={sections => setForm(prev => ({ ...prev, [itemField.name]: sections }))}
+              />
+            ) : itemField.type === 'textarea' ? (
+              <textarea
+                className="form-textarea"
+                rows={4}
+                placeholder={fieldPlaceholder(itemField, config)}
+                value={form[itemField.name]}
+                onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.value }))}
+              />
+            ) : (itemField.type === 'select' || itemField.type === 'category-select') ? (
+              <select
+                className="form-select"
+                value={form[itemField.name]}
+                onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.value }))}
+              >
+                {(itemField.type === 'category-select'
+                  ? [
+                      { value: '', label: categoryOptions.length ? 'Select a category, or type a new one below' : 'No categories yet - type a new one below' },
+                      ...categoryOptions.map(category => ({ value: category.id, label: category.name })),
+                    ]
+                  : itemField.options
+                ).map(option => (
+                  <option key={optionValue(option)} value={optionValue(option)}>
+                    {optionLabel(option)}
+                  </option>
+                ))}
+              </select>
+            ) : itemField.type === 'checkbox' ? (
+              <label className="permission-item" style={{ maxWidth: 240 }}>
+                <span className="perm-label">Visible publicly</span>
+                <span className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={form[itemField.name]}
+                    onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.checked }))}
+                  />
+                  <span className="toggle-slider" />
+                </span>
+              </label>
+            ) : (
+              <input
+                className="form-input"
+                type={itemField.type === 'number' ? 'number' : itemField.type === 'password' ? 'password' : itemField.type === 'email' ? 'email' : 'text'}
+                step={itemField.type === 'number' ? '0.01' : undefined}
+                placeholder={fieldPlaceholder(itemField, config)}
+                value={form[itemField.name]}
+                onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.value }))}
+              />
+            )}
+            {itemField.help && <p style={{ color: 'var(--gray-600)', fontSize: '0.75rem', marginTop: 4 }}>{itemField.help}</p>}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+        <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : (initialItem ? 'Save Changes' : config.createLabel)}</button>
+        <button className="btn btn-outline-navy" type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+};
+
+const ProductImportPanel = ({ onDone }) => {
+  const [catalogFile, setCatalogFile] = React.useState(null);
+  const [imagesZip, setImagesZip] = React.useState(null);
+  const [status, setStatus] = React.useState('');
+  const [importing, setImporting] = React.useState(false);
+
+  const submit = async event => {
+    event.preventDefault();
+    setStatus('');
+    if (!catalogFile) {
+      setStatus('Upload a CSV or XLSX catalogue first.');
+      return;
+    }
+    setImporting(true);
+    try {
+      const result = await api.adminImportProducts({ catalogFile, imagesZip });
+      setStatus(`Imported ${result.imported || 0}, updated ${result.updated || 0}. ${result.skipped?.length ? `${result.skipped.length} rows skipped.` : ''}`);
+      onDone?.();
+    } catch (err) {
+      setStatus(err.message || 'Import failed.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <form className="admin-reply-panel" onSubmit={submit}>
+      <div>
+        <p className="overline">Batch Product Import</p>
+        <h3>Upload books and stationery in one pass</h3>
+        <p>
+          Use columns such as name, category, curriculum, author, publisher, price, stock_status, quantity, subject, level, source, tags, and image_filename.
+          Put matching cover images in a ZIP using the exact same image_filename values. The importer creates missing categories automatically.
+        </p>
+      </div>
+      <div className="admin-form-grid">
+        <label className="form-group">
+          <span className="form-label">Catalogue CSV/XLSX</span>
+          <input className="form-input" type="file" accept=".csv,.xlsx" onChange={event => setCatalogFile(event.target.files?.[0] || null)} />
+        </label>
+        <label className="form-group">
+          <span className="form-label">Image ZIP</span>
+          <input className="form-input" type="file" accept=".zip" onChange={event => setImagesZip(event.target.files?.[0] || null)} />
+        </label>
+      </div>
+      {status && <p style={{ color: status.includes('failed') || status.includes('Upload') ? 'var(--danger)' : 'var(--navy)', fontWeight: 700 }}>{status}</p>}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button className="btn btn-primary btn-sm" disabled={importing}>{importing ? 'Importing...' : 'Import Products'}</button>
+        <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onDone?.()}>Close</button>
+      </div>
+    </form>
+  );
+};
+
+const NewsletterComposer = ({ onSent }) => {
+  const [form, setForm] = React.useState({
+    subject: '',
+    title: '',
+    preheader: '',
+    body: '',
+    cta_label: '',
+    cta_url: '',
+    image_file_id: '',
+  });
+  const [imageUrl, setImageUrl] = React.useState('');
+  const [status, setStatus] = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const set = key => event => setForm(prev => ({ ...prev, [key]: event.target.value }));
+
+  const submit = async event => {
+    event.preventDefault();
+    setStatus('');
+    if (!form.subject.trim() || !form.body.trim()) {
+      setStatus('Add a subject and message body before sending.');
+      return;
+    }
+    if (!isApiMode()) {
+      setStatus('Newsletter sending is available when the Flask API backend is enabled.');
+      return;
+    }
+    setSending(true);
+    try {
+      const result = await api.adminSendNewsletter({
+        ...form,
+        title: form.title || form.subject,
+        image_file_id: form.image_file_id ? Number(form.image_file_id) : null,
+      });
+      setStatus(result.message || 'Newsletter sent.');
+      setForm({ subject: '', title: '', preheader: '', body: '', cta_label: '', cta_url: '', image_file_id: '' });
+      setImageUrl('');
+      onSent?.();
+    } catch (err) {
+      setStatus(err.message || 'Newsletter could not be sent.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <form className="admin-reply-panel newsletter-composer" onSubmit={submit}>
+      <div>
+        <p className="overline">Newsletter Campaign</p>
+        <h3>Compose a branded RealMindX email</h3>
+        <p>Add an optional hero image, CTA, and message body. The email uses the same RealMindX branded template as system triggers.</p>
+      </div>
+      <div className="admin-form-grid">
+        <label className="form-group">
+          <span className="form-label">Subject</span>
+          <input className="form-input" value={form.subject} onChange={set('subject')} placeholder="June learning updates" />
+        </label>
+        <label className="form-group">
+          <span className="form-label">Email Title</span>
+          <input className="form-input" value={form.title} onChange={set('title')} placeholder="What's new at RealMindX" />
+        </label>
+        <label className="form-group">
+          <span className="form-label">Preheader</span>
+          <input className="form-input" value={form.preheader} onChange={set('preheader')} placeholder="A short inbox preview line" />
+        </label>
+        <label className="form-group">
+          <span className="form-label">CTA Label</span>
+          <input className="form-input" value={form.cta_label} onChange={set('cta_label')} placeholder="Read more" />
+        </label>
+        <label className="form-group">
+          <span className="form-label">CTA URL</span>
+          <input className="form-input" value={form.cta_url} onChange={set('cta_url')} placeholder="/news or https://..." />
+        </label>
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <span className="form-label">Hero Image</span>
+          <ImageUploadField
+            fieldName="newsletter_image_file_id"
+            currentFileId={form.image_file_id}
+            currentUrl={imageUrl}
+            onChange={(fileId, fileUrl) => {
+              setForm(prev => ({ ...prev, image_file_id: fileId }));
+              setImageUrl(fileUrl);
+            }}
+          />
+        </div>
+        <label className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <span className="form-label">Message Body</span>
+          <textarea className="form-textarea" rows={7} value={form.body} onChange={set('body')} placeholder="Write the newsletter body. Use blank lines for paragraphs." />
+        </label>
+      </div>
+      {status && <p style={{ color: status.includes('could not') || status.includes('Add ') ? 'var(--danger)' : 'var(--navy)', fontWeight: 700 }}>{status}</p>}
+      <button className="btn btn-primary btn-sm" disabled={sending}>{sending ? 'Sending...' : 'Send Newsletter'}</button>
+    </form>
+  );
+};
+
+// Inline order status selector — default is current status or 'received'
+const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
+  const [val, setVal] = React.useState(row.status || 'received');
+  const [reason, setReason] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [dirty, setDirty] = React.useState(false);
+
+  const handleChange = (e) => { setVal(e.target.value); setDirty(true); setReason(''); };
+
+  const save = async () => {
+    if (val === 'cancelled' && requireCancelReason && !reason.trim()) return;
+    setSaving(true);
+    const patch = { status: val };
+    if (val === 'cancelled' && reason.trim()) patch.cancel_reason = reason.trim();
+    await onSave(patch);
+    setSaving(false);
+    setDirty(false);
+  };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:4, minWidth:160 }}>
+      <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+        <select
+          className="form-select"
+          style={{ fontSize:'0.78rem', height:30, padding:'0 8px', flex:1 }}
+          value={val}
+          onChange={handleChange}
+        >
+          {options.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+        </select>
+        {dirty && (
+          <button className="btn btn-primary btn-sm" style={{ padding:'3px 10px', fontSize:'0.75rem', height:30 }} disabled={saving} onClick={save}>
+            {saving ? '…' : 'Save'}
+          </button>
+        )}
+      </div>
+      {val === 'cancelled' && dirty && (
+        <input
+          className="form-input"
+          style={{ fontSize:'0.78rem', height:28 }}
+          placeholder="Cancellation reason (required) *"
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+        />
+      )}
+    </div>
+  );
+};
+
+const ManagedTableView = ({ config, rows: rowsProp }) => {
+  const { content, fetchCollection, createItem, updateItem, deleteItem, togglePublish: apiToggle, loading, errors } = useAdminContent();
+  const [editing, setEditing] = React.useState(null);
+  const [creating, setCreating] = React.useState(false);
+  const [replying, setReplying] = React.useState(null);
+  const [replyText, setReplyText] = React.useState('');
+  const [replyError, setReplyError] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [localRows, setLocalRows] = React.useState(null);
+  const [showProductImport, setShowProductImport] = React.useState(false);
+
+  // In API mode: fetch on mount; in local mode: use rowsProp from parent.
+  React.useEffect(() => {
+    if (isApiMode()) {
+      fetchCollection(config.collection).then(() => {});
+    }
+  }, [config.collection, fetchCollection]);
+
+  // In API mode the hook owns the data; in local mode the parent passes rows.
+  const rows = isApiMode() ? (localRows || rowsProp || []) : (rowsProp || []);
+
+  // Subscribe to content updates from the hook (API mode).
+  React.useEffect(() => {
+    if (isApiMode() && content[config.collection]) {
+      setLocalRows(content[config.collection]);
+    }
+  }, [content, config.collection]);
+
+  const TABLE_PAGE_SIZE = 20;
+  const [tablePage, setTablePage] = React.useState(1);
+
+  // Reset to page 1 when search changes
+  React.useEffect(() => { setTablePage(1); }, [search]);
+
+  const filtered = rows.filter(row =>
+    !search.trim() || Object.values(row).join(' ').toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const totalTablePages = Math.max(1, Math.ceil(filtered.length / TABLE_PAGE_SIZE));
+  const paginatedRows = filtered.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE);
+
+  const handleCreate = async (payload) => {
+    await createItem(config.collection, payload);
+    setCreating(false);
+  };
+
+  const getItemId = (row) => config.idField ? row[config.idField] : row.id;
+
+  const handleUpdate = async (_rawId, payload) => {
+    // Editing state holds the full row, so use getItemId to get the correct key.
+    const id = editing ? getItemId(editing) : _rawId;
+    await updateItem(config.collection, id, payload);
+    setEditing(null);
+  };
+
+  const handleDelete = (row) => {
+    deleteItem(config.collection, getItemId(row));
+  };
+
+  const togglePublish = (row) => {
+    apiToggle(config.collection, row);
+  };
+
+  const handleReply = async () => {
+    if (!replying || !replyText.trim()) {
+      setReplyError('Write a reply before sending.');
+      return;
+    }
+    setReplyError('');
+    if (isApiMode()) {
+      await api.adminReplyMessage(replying.id, replyText.trim());
+      await fetchCollection(config.collection);
+    } else {
+      await updateItem(config.collection, getItemId(replying), { status: 'replied', reply: replyText.trim() });
+    }
+    setReplying(null);
+    setReplyText('');
+  };
+
+  const isLoading = isApiMode() && loading[config.collection];
+  const loadError = isApiMode() && errors?.[config.collection];
+  const canCreate = config.allowCreate !== false && Boolean(config.createLabel);
+  const canUpdate = config.allowCreate !== false && config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly;
+  const canDelete = config.allowDelete !== false && !config.readOnly;
+  const canReply = config.collection === 'messages' && !config.readOnly;
+  const canPublish = PUBLISHABLE_COLLECTIONS.has(config.collection) && !config.readOnly && !config.statusOnly;
+  const isStatusOnly = Boolean(config.statusOnly);          // orders: status + archive only
+  const isModerationOnly = Boolean(config.moderationOnly);  // reviews: approve/reject/delete
+  const hasActions = canUpdate || canDelete || canReply || canPublish || isStatusOnly || isModerationOnly;
+
+  // Status modal for orders
+  const [statusModal, setStatusModal] = React.useState(null); // { row }
+  const [statusChoice, setStatusChoice] = React.useState('');
+  const [cancelReason, setCancelReason] = React.useState('');
+  const [statusError, setStatusError] = React.useState('');
+
+  const openStatusModal = (row) => {
+    setStatusModal({ row });
+    setStatusChoice(row.status || '');
+    setCancelReason('');
+    setStatusError('');
+  };
+
+  const submitStatusChange = async () => {
+    if (!statusChoice) { setStatusError('Select a status.'); return; }
+    if (statusChoice === 'cancelled' && config.requireCancelReason && !cancelReason.trim()) {
+      setStatusError('A reason is required for cancellation.'); return;
+    }
+    const patch = { status: statusChoice };
+    if (statusChoice === 'cancelled' && cancelReason.trim()) patch.cancel_reason = cancelReason.trim();
+    await updateItem(config.collection, getItemId(statusModal.row), patch);
+    setStatusModal(null);
+  };
+
+  const handleArchive = (row) => {
+    updateItem(config.collection, getItemId(row), { archived: true, status: 'archived' });
+  };
+
+  // Moderation shortcut for reviews
+  const handleModerate = (row, decision) => {
+    updateItem(config.collection, getItemId(row), { status: decision });
+  };
+  const createAction = canCreate ? config.createLabel : '';
+  const closeFormModal = () => { setCreating(false); setEditing(null); };
+
+  React.useEffect(() => {
+    const modalOpen = creating || editing;
+    if (!modalOpen) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = event => {
+      if (event.key === 'Escape') closeFormModal();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [creating, editing]);
+
+  const renderCell = (row, column, isPrimary) => {
+    if (column === 'image_url' || column === 'image') {
+      const src = rowImageUrl(row);
+      return src ? (
+        <img className="admin-thumb" src={src} alt={row.title || row.label || row.name || 'Uploaded image'} />
+      ) : (
+        <span className="td-muted">{row.image_key ? 'Default image' : 'No image yet'}</span>
+      );
+    }
+
+    if (column === 'status') {
+      return (
+        <span className={`badge ${row[column] === 'published' || row[column] === 'active' || row[column] === 'new' ? 'badge-success' : 'badge-navy'}`}>
+          {statusLabel(row[column])}
+        </span>
+      );
+    }
+
+    const value = row[column];
+    return <span className={isPrimary ? 'td-primary' : ''}>{readableCellValue(value)}</span>;
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div>
+          <h2 className="admin-page-title">{config.title}</h2>
+          <p style={{ fontSize: '0.86rem', color: 'var(--gray-600)', marginTop: 4 }}>{config.description}</p>
+          {config.note !== false && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--gray-600)', marginTop: 6 }}>
+              {config.note || 'Changes saved here update the live website once published.'}
+            </p>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {config.collection === 'products' && isApiMode() && (
+            <>
+              <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setShowProductImport(value => !value)}>Batch Import</button>
+              {['csv', 'xlsx', 'pdf'].map(format => (
+                <a className="btn btn-outline-navy btn-sm" key={format} href={api.adminExportUrl('products', format)}>
+                  Export {format.toUpperCase()}
+                </a>
+              ))}
+            </>
+          )}
+          {canCreate && (
+            <button className="btn btn-primary btn-sm" onClick={() => { setCreating(true); setEditing(null); }}>{config.createLabel}</button>
+          )}
+        </div>
+      </div>
+
+      {config.collection === 'products' && showProductImport && (
+        <ProductImportPanel onDone={() => { setShowProductImport(false); fetchCollection(config.collection); }} />
+      )}
+
+      {config.collection === 'newsletters' && (
+        <NewsletterComposer onSent={() => fetchCollection(config.collection)} />
+      )}
+
+      {(creating || editing) && (
+        <div
+          className="admin-modal-backdrop"
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) closeFormModal();
+          }}
+        >
+          <div className="admin-modal-panel" role="dialog" aria-modal="true" aria-label={`${editing ? 'Edit' : 'Add'} ${config.title}`}>
+            <button className="admin-modal-close" type="button" onClick={closeFormModal}>
+              <Icon name="x" size={16} stroke={2.1} />
+              <span>Close</span>
+            </button>
+            <ManagedForm
+              config={config}
+              initialItem={editing}
+              onCancel={closeFormModal}
+              onCreate={handleCreate}
+              onUpdate={handleUpdate}
+            />
+          </div>
+        </div>
+      )}
+
+      {config.collection === 'messages' && replying && (
+        <div className="admin-reply-panel">
+          <div>
+            <p className="overline">{replying.ticket_reference || `RMX-${String(replying.id).padStart(6, '0')}`}</p>
+            <h3>Reply to {replying.name}</h3>
+            <p>{replying.email} - {replying.subject}</p>
+          </div>
+          <textarea
+            className="form-textarea"
+            value={replyText}
+            onChange={event => setReplyText(event.target.value)}
+            placeholder="Write the reply that should be emailed to this contact."
+            rows={5}
+          />
+          {replyError && <p className="form-error">{replyError}</p>}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary btn-sm" type="button" onClick={handleReply}>Send Reply</button>
+            <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => { setReplying(null); setReplyText(''); setReplyError(''); }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div className="admin-table-card">
+        <div className="atc-header">
+          <h3>{filtered.length} Record{filtered.length !== 1 ? 's' : ''}{filtered.length > TABLE_PAGE_SIZE ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
+          <div className="atc-search"><span>Search</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search records" /></div>
+        </div>
+        {loadError ? (
+          <EmptySection
+            title="This section could not load"
+            body="Please sign in again with an admin account. If it still fails, the account may not have permission for this section."
+            action="Open Admin Login"
+            onAction={() => { window.location.href = '/admin/login'; }}
+          />
+        ) : isLoading ? (
+          <EmptySection title={`Loading ${config.title}`} body="One moment while the latest records load." />
+        ) : filtered.length === 0 ? (
+          <EmptySection
+            title={config.emptyTitle || `No ${config.title} Yet`}
+            body={config.emptyBody || `Nothing has been added here yet. Use ${config.createLabel || 'the controls above'} to add content when you are ready.`}
+            action={createAction}
+            onAction={canCreate ? () => setCreating(true) : undefined}
+          />
+        ) : (
+          <table className="admin-table">
+            <thead>
+              <tr>
+                {config.columns.map(column => <th key={column}>{columnLabel(config, column)}</th>)}
+                <th>Updated</th>
+                {hasActions && <th>Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedRows.map(row => (
+                <tr key={row.id}>
+                  {config.columns.map(column => (
+                    <td key={column}>
+                      {renderCell(row, column, column === config.columns[0] || column === 'title' || column === 'name' || column === 'label')}
+                    </td>
+                  ))}
+                  <td style={{ fontSize: '0.76rem', color: 'var(--gray-600)' }}>{new Date(row.updated_at || row.created_at || Date.now()).toLocaleDateString()}</td>
+                  {hasActions && (
+                    <td>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {/* Standard edit/publish */}
+                        {canUpdate && <button className="table-action-btn" onClick={() => { setEditing(row); setCreating(false); }}>Edit</button>}
+                        {canReply && <button className="table-action-btn" onClick={() => { setReplying(row); setReplyText(''); setReplyError(''); setEditing(null); setCreating(false); }}>Reply</button>}
+                        {'status' in row && canPublish && <button className="table-action-btn" onClick={() => togglePublish(row)}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</button>}
+
+                        {/* Orders: inline status selector + archive */}
+                        {isStatusOnly && row.status !== 'archived' && (
+                          <OrderStatusSelector
+                            row={row}
+                            options={config.statusOptions || ['received','shipped','complete','cancelled']}
+                            requireCancelReason={config.requireCancelReason}
+                            onSave={(patch) => updateItem(config.collection, getItemId(row), patch)}
+                          />
+                        )}
+                        {isStatusOnly && row.status !== 'archived' && (
+                          <button className="table-action-btn" onClick={() => handleArchive(row)}>Archive</button>
+                        )}
+
+                        {/* Product reviews: moderation only */}
+                        {isModerationOnly && row.status !== 'approved' && (
+                          <button className="table-action-btn" style={{ background:'#e6f4ea', color:'#1a6e33' }} onClick={() => handleModerate(row, 'approved')}>Approve</button>
+                        )}
+                        {isModerationOnly && row.status !== 'rejected' && (
+                          <button className="table-action-btn" style={{ background:'#fdf0f0', color:'#a63030' }} onClick={() => handleModerate(row, 'rejected')}>Reject</button>
+                        )}
+
+                        {canDelete && <button className="table-action-btn danger" onClick={() => handleDelete(row)}>Delete</button>}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      {/* Table pagination */}
+      {totalTablePages > 1 && (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, padding:'18px 0 4px' }}>
+          <button className="btn btn-outline-navy btn-sm" disabled={tablePage === 1} onClick={() => setTablePage(p => p - 1)}>← Prev</button>
+          <span style={{ fontSize:'0.82rem', color:'var(--gray-600)' }}>Page {tablePage} of {totalTablePages}</span>
+          <button className="btn btn-outline-navy btn-sm" disabled={tablePage === totalTablePages} onClick={() => setTablePage(p => p + 1)}>Next →</button>
+        </div>
+      )}
+      </div>
+
+      {/* Order status modal */}
+      {statusModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'#fff', borderRadius:12, padding:32, width:'100%', maxWidth:440, boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Change Order Status</h3>
+            <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:20 }}>
+              Order: <strong>{statusModal.row.order_reference}</strong> — {statusModal.row.customer_name}
+            </p>
+            <div className="form-group" style={{ marginBottom:16 }}>
+              <label className="form-label">New Status</label>
+              <select className="form-select" value={statusChoice} onChange={e => setStatusChoice(e.target.value)}>
+                <option value="">— Select status —</option>
+                {(config.statusOptions || ['received','shipped','complete','cancelled']).map(s => (
+                  <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+            {statusChoice === 'cancelled' && (
+              <div className="form-group" style={{ marginBottom:16 }}>
+                <label className="form-label">Cancellation Reason *</label>
+                <textarea className="form-textarea" rows={3} value={cancelReason}
+                  onChange={e => setCancelReason(e.target.value)}
+                  placeholder="Reason for cancellation (required)…" />
+              </div>
+            )}
+            {statusError && <p style={{ color:'var(--danger)', fontSize:'0.8rem', marginBottom:12 }}>{statusError}</p>}
+            <div style={{ display:'flex', gap:10 }}>
+              <button className="btn btn-primary" onClick={submitStatusChange}>Save Status</button>
+              <button className="btn btn-outline-navy" onClick={() => setStatusModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ApplicationsView = ({ content }) => (
+  <ManagedTableView
+    config={{
+      title: 'Job Applications',
+      description: 'Applications submitted by users from the jobs portal appear here for review.',
+      collection: 'applications',
+      createLabel: '',
+      allowCreate: false,
+      note: false,
+      emptyTitle: 'No Applications Yet',
+      emptyBody: 'When users apply for jobs, their submissions will appear here for review, shortlisting, and status updates.',
+      fields: [
+        field('name', 'Applicant Name'),
+        field('email', 'Email'),
+        field('job', 'Job'),
+        field('status', 'Status', 'select', { options: ['pending', 'reviewed', 'shortlisted', 'accepted', 'rejected'] }),
+      ],
+      columns: ['name', 'email', 'job', 'status'],
+    }}
+    rows={content.applications || (isApiMode() ? [] : [
+      { id: 1, name: 'Kwame Mensah', email: 'kwame@gmail.com', job: 'Mathematics Teacher (JHS)', status: 'pending', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    ])}
+  />
+);
+
+const AlertsView = () => (
+  <div>
+    <h2 className="admin-page-title" style={{ marginBottom: 24 }}>Job Alerts</h2>
+    <EmptySection
+      title="No Job Alerts to Review Yet"
+      body="When users save alert preferences, they will appear here for monitoring. New job posts can then be matched against subject, location, level, and employment type."
+    />
+  </div>
+);
+
+// ─── Bulk adjuster widget ─────────────────────────────────────────────────────
+const BulkAdjuster = ({ title, description, onApply }) => {
+  const [adjType, setAdjType] = React.useState('percentage');
+  const [value, setValue] = React.useState('');
+  const [direction, setDirection] = React.useState('decrease');
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const apply = async () => {
+    const v = parseFloat(value);
+    if (!v || v <= 0) { setMsg('Enter a valid value greater than zero.'); return; }
+    setSaving(true); setMsg('');
+    try {
+      const result = await onApply(adjType, v, direction);
+      setMsg(result?.message || 'Done.');
+      setValue('');
+    } catch (err) {
+      setMsg(err?.message || 'Failed. Please try again.');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ background:'#f5f8fc', borderRadius:12, padding:'20px 24px', marginBottom:24 }}>
+      <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:6 }}>{title}</h3>
+      <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:16 }}>{description}</p>
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end' }}>
+        <div className="form-group" style={{ marginBottom:0, minWidth:130 }}>
+          <label className="form-label">Direction</label>
+          <select className="form-select" value={direction} onChange={e => setDirection(e.target.value)}>
+            <option value="decrease">Decrease / Discount</option>
+            <option value="increase">Increase</option>
+          </select>
+        </div>
+        <div className="form-group" style={{ marginBottom:0, minWidth:130 }}>
+          <label className="form-label">Type</label>
+          <select className="form-select" value={adjType} onChange={e => setAdjType(e.target.value)}>
+            <option value="percentage">Percentage (%)</option>
+            <option value="fixed">Fixed amount (GH₵)</option>
+          </select>
+        </div>
+        <div className="form-group" style={{ marginBottom:0, minWidth:100 }}>
+          <label className="form-label">Value</label>
+          <input className="form-input" type="number" min="0" step="0.01" value={value} onChange={e => setValue(e.target.value)} placeholder={adjType === 'percentage' ? 'e.g. 10' : 'e.g. 5'} />
+        </div>
+        <button className="btn btn-primary" style={{ marginBottom:2 }} disabled={saving || !isApiMode()} onClick={apply}>
+          {saving ? 'Applying…' : `Apply ${direction === 'decrease' ? 'Discount' : 'Increase'}`}
+        </button>
+      </div>
+      {msg && <p style={{ marginTop:10, fontSize:'0.82rem', color: msg.includes('Done') || msg.includes('Updated') ? 'var(--success)' : 'var(--danger)' }}>{msg}</p>}
+      {!isApiMode() && <p style={{ marginTop:8, fontSize:'0.78rem', color:'var(--gray-600)' }}>Connect the Flask backend to use this tool.</p>}
+    </div>
+  );
+};
+
+const PriceToolsView = () => (
+  <div>
+    <h2 className="admin-page-title" style={{ marginBottom:8 }}>Price &amp; Delivery Tools</h2>
+    <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginBottom:28 }}>
+      Apply a single discount or increase to all product prices or all delivery fees at once. Changes are permanent — make a note before applying.
+    </p>
+    <BulkAdjuster
+      title="Adjust All Product Prices"
+      description="Applies the adjustment to every active product in the bookshop. Useful for a site-wide sale or price correction."
+      onApply={(t, v, d) => api.bulkPriceAdjust(t, v, d)}
+    />
+    <BulkAdjuster
+      title="Adjust All Delivery Fees"
+      description="Applies the adjustment to every active delivery zone. Zones with a zero fee (e.g. 'Other — Contact Us') are skipped."
+      onApply={(t, v, d) => api.bulkDeliveryAdjust(t, v, d)}
+    />
+    <div style={{ background:'#fff3cd', border:'1px solid #ffc107', borderRadius:10, padding:'14px 18px', fontSize:'0.82rem', color:'#664d03' }}>
+      <strong>Tip:</strong> To give a specific product or category a discount, set its <em>Old Price</em> first (the original price), then lower its <em>Price</em>. The bookshop will show the crossed-out original and the sale price automatically.
+    </div>
+  </div>
+);
+
+const TeachersView = () => {
+  const [teachers, setTeachers] = React.useState(null);
+  const [search, setSearch] = React.useState('');
+  React.useEffect(() => {
+    if (!isApiMode()) return;
+    fetch('/api/admin/users', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { items: [] })
+      .then(data => setTeachers(data.items || []))
+      .catch(() => setTeachers([]));
+  }, []);
+  const filtered = (teachers || []).filter(t =>
+    !search.trim() || `${t.first_name} ${t.last_name} ${t.email}`.toLowerCase().includes(search.toLowerCase())
+  );
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, marginBottom:24, flexWrap:'wrap' }}>
+        <div>
+          <h2 className="admin-page-title">Registered Teachers</h2>
+          <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginTop:4 }}>
+            Teachers who have created accounts on the portal. Use the export buttons to download for records or mail-merge.
+          </p>
+        </div>
+        {isApiMode() && (
+          <div style={{ display:'flex', gap:10 }}>
+            <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl('users','csv')}>Export CSV</a>
+            <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl('users','xlsx')}>Export Excel</a>
+          </div>
+        )}
+      </div>
+      <div className="admin-table-card">
+        <div className="atc-header">
+          <h3>{filtered.length} Teacher{filtered.length !== 1 ? 's' : ''}</h3>
+          <div className="atc-search"><span>Search</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or email" />
+          </div>
+        </div>
+        {!isApiMode() ? (
+          <EmptySection title="API mode required" body="Connect the Flask backend to see registered teachers." />
+        ) : filtered.length === 0 ? (
+          <EmptySection title="No Registered Teachers Yet" body="Teachers who sign up on the portal will appear here." />
+        ) : (
+          <table className="admin-table">
+            <thead>
+              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Verified</th><th>Registered</th></tr>
+            </thead>
+            <tbody>
+              {filtered.map(t => (
+                <tr key={t.id}>
+                  <td className="td-primary">{[t.first_name, t.last_name].filter(Boolean).join(' ') || '—'}</td>
+                  <td>{t.email}</td>
+                  <td>{t.phone || '—'}</td>
+                  <td><span className={`badge ${t.is_verified ? 'badge-success' : 'badge-navy'}`}>{t.is_verified ? 'Yes' : 'Pending'}</span></td>
+                  <td style={{ fontSize:'0.76rem', color:'var(--gray-600)' }}>
+                    {t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const AdminPortalPage = () => {
+  const { content } = useAdminContent();
+  const [activeView, setActiveView] = React.useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [session, setSession] = React.useState(() => getDemoSession());
+  const [sessionChecked, setSessionChecked] = React.useState(!isApiMode());
+  const isAdminSession = ['admin', 'staff'].includes(session?.role);
+  const adminName = isAdminSession ? (session.firstName || 'Admin') : 'Admin';
+  const adminInitials = isAdminSession ? (session.initials || 'AD') : 'AD';
+
+  const canViewActive = React.useCallback((key, nextSession = session) => {
+    const item = NAV.find(entry => entry.key === key);
+    return !item || canAccessAdminItem(item, nextSession);
+  }, [session]);
+
+  React.useEffect(() => {
+    if (!isApiMode()) {
+      if (!session || !['admin', 'staff'].includes(session.role)) {
+        window.location.href = '/admin/login';
+      }
+      return undefined;
+    }
+
+    let cancelled = false;
+    api.me()
+      .then(({ user }) => {
+        if (cancelled) return;
+        const role = user?.role?.name || user?.role;
+        if (!user || !['admin', 'staff'].includes(role)) {
+          clearDemoSession();
+          window.location.href = '/admin/login';
+          return;
+        }
+        const freshSession = {
+          role,
+          email: user.email,
+          firstName: user.first_name || user.firstName || 'Admin',
+          lastName: user.last_name || user.lastName || '',
+          initials: user.initials || `${user.first_name?.[0] || 'A'}${user.last_name?.[0] || 'D'}`.toUpperCase(),
+          permissions: user.permissions || [],
+          directPermissions: user.direct_permissions || [],
+        };
+        saveDemoSession(freshSession);
+        setSession(freshSession);
+        setSessionChecked(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearDemoSession();
+        window.location.href = '/admin/login';
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (sessionChecked && !canViewActive(activeView)) {
+      setActiveView('dashboard');
+    }
+  }, [activeView, canViewActive, sessionChecked]);
+
+  React.useEffect(() => {
+    if (isApiMode() || sessionChecked) return;
+    if (!session || !['admin', 'staff'].includes(session.role)) {
+      window.location.href = '/admin/login';
+    }
+  }, [session, sessionChecked]);
+
+  if (!sessionChecked) {
+    return (
+      <div className="admin-portal-layout">
+        <main className="admin-main">
+          <EmptySection
+            title="Checking Admin Session"
+            body="Confirming your signed-in account before opening the admin console."
+          />
+        </main>
+      </div>
+    );
+  }
+
+  const view = activeView === 'dashboard'
+    ? <DashboardView content={content} setActive={setActiveView} />
+    : activeView === 'applications'
+      ? <ApplicationsView content={content} />
+      : activeView === 'alerts'
+        ? <AlertsView />
+        : activeView === 'priceTools'
+          ? <PriceToolsView />
+          : activeView === 'teachers'
+          ? <TeachersView />
+          : CONFIG[activeView]
+            ? <ManagedTableView config={CONFIG[activeView]} rows={content[CONFIG[activeView].collection] || []} />
+            : null;
+
+  return (
+    <div className="admin-portal-layout">
+      <AdminSidebar active={activeView} setActive={setActiveView} open={sidebarOpen} setOpen={setSidebarOpen} session={session} />
+      <main className="admin-main">
+        <div className="admin-topbar">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="mobile-menu-toggle"
+            style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer' }}
+          >
+            Menu
+          </button>
+          <div className="admin-topbar-right">
+            {!isApiMode() && (
+              <button className="table-action-btn" onClick={resetManagedContent}>Restore Local Demo Data</button>
+            )}
+            <div className="admin-user-chip">
+              <div className="admin-chip-avatar">{adminInitials}</div>
+              <span className="admin-chip-name">{adminName}</span>
+            </div>
+          </div>
+        </div>
+        {view}
+      </main>
+      <style>{`
+        .admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+        .admin-image-help { color: var(--gray-700); font-size: 0.74rem; line-height: 1.5; margin-top: 8px; max-width: 760px; }
+        .admin-stat { border: 0; text-align: left; cursor: pointer; }
+        .admin-thumb { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--gray-200); display: block; }
+        .td-muted { color: var(--gray-600); font-size: 0.78rem; font-weight: 700; }
+        .admin-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 3000;
+          background: rgba(1, 17, 38, 0.62);
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          padding: 28px 18px;
+          overflow-y: auto;
+        }
+        .admin-modal-panel {
+          width: min(1040px, 100%);
+          position: relative;
+          background: #fff;
+          border-radius: 12px;
+          box-shadow: 0 30px 90px rgba(1, 17, 38, 0.32);
+        }
+        .admin-modal-panel .admin-table-card {
+          margin: 0 !important;
+          border-radius: 12px;
+          box-shadow: none;
+        }
+        .admin-modal-close {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          z-index: 2;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border: 1px solid var(--gray-200);
+          background: #fff;
+          color: var(--navy);
+          border-radius: 999px;
+          padding: 8px 12px;
+          font-family: 'Montserrat', sans-serif;
+          font-weight: 800;
+          font-size: 0.74rem;
+          cursor: pointer;
+        }
+        @media (max-width: 768px) {
+          .mobile-menu-toggle { display: flex !important; }
+          .admin-form-grid { grid-template-columns: 1fr; }
+          .admin-modal-backdrop { padding: 12px; }
+          .admin-modal-close span { display: none; }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+export default AdminPortalPage;
+
