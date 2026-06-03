@@ -1580,10 +1580,10 @@ img, svg { display: block; max-width: 100%; }
   }
   .nav-inner { padding: 0 24px; }
   .nav-logo { height: 44px; }
-  .nav-links { display: none; }
-  .nav-cta { display: none; }
-  .hamburger { display: flex; }
-  .mobile-menu { display: flex; }
+  .nav-links { display: none !important; }
+  .nav-cta { display: none !important; }
+  .hamburger { display: flex !important; }
+  .mobile-menu { display: flex !important; }
 
   .hero {
     min-height: 100svh;
