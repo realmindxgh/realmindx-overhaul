@@ -1,14 +1,34 @@
 node_modules/
 dist/
+
+# Environment files (never commit secrets)
 .env
 .env.*
 !.env.example
+
+# Python
 venv/
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+
+# Local databases (use PostgreSQL in production)
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary debug files
+tmp-*.mjs
+tmp-*.js
+*.debug.js
+
+# Uploads (managed by the server, not git)
 realmindx-site/uploads/*
 !realmindx-site/uploads/.gitkeep
+
+# Logs
 *.log
+logs/
 screenshots/
 .local-pg/
