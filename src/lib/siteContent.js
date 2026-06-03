@@ -10,11 +10,11 @@ import {
   publicItems,
   useManagedContent,
 } from './managedContent.js';
-import bookshopImage from '../../realmindx-site/uploads/Redesign/hero/Books and Stationery (Hero).png';
-import homeTeachingImage from '../../realmindx-site/uploads/Redesign/hero/Home Teaching-1.jpg';
-import schoolStructuringImage from '../../realmindx-site/uploads/Redesign/hero/School Restructuring-3.jpg';
-import specialNeedsImage from '../../realmindx-site/uploads/Redesign/hero/Special Needs-4.jpg';
-import teacherRecruitmentImage from '../../realmindx-site/uploads/Redesign/hero/Teacher Recruitment (Services).jpg';
+const bookshopImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
+const homeTeachingImage = '/uploads/Redesign/hero/Home Teaching-1.jpg';
+const schoolStructuringImage = '/uploads/Redesign/hero/School Restructuring-3.jpg';
+const specialNeedsImage = '/uploads/Redesign/hero/Special Needs-4.jpg';
+const teacherRecruitmentImage = '/uploads/Redesign/hero/Teacher Recruitment (Services).jpg';
 
 const serviceImages = {
   recruitment: teacherRecruitmentImage,
