@@ -7,11 +7,13 @@ from uuid import uuid4
 
 from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, jsonify, request
+from markupsafe import escape
 import requests
 from sqlalchemy import or_
 
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
 from ..models import DeliveryZone, Order, OrderItem, Product, ProductCategory, ProductReview
 from ..security import require_turnstile
@@ -234,6 +236,16 @@ def create_order():
         "items": len(items),
     })
     db.session.commit()
+
+    # SMS confirmation — sent immediately after order is placed
+    if order.phone:
+        first = (order.customer_name or "").split()[0] or "there"
+        send_sms(
+            order.phone,
+            f"Hi {first}, your RealMindX Bookshop order {order.order_reference} "
+            f"has been received! We'll contact you within 24 hrs to confirm. "
+            f"Reply STOP to opt out."
+        )
 
     first_name = (order.customer_name or "").split()[0] or "there"
     delivery_info = (

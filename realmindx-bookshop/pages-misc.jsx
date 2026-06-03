@@ -175,7 +175,6 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
               : isLogin ? 'Enter your details to continue.' : 'It only takes a minute.'}
           </p>
           {message && <div className="bs-auth-notice success"><Icon name="check" size={16} /> {message}</div>}
-          {error && <div className="bs-auth-notice danger"><Icon name="shield" size={16} /> {error}</div>}
 
           {pendingVerificationEmail ? (
             <form onSubmit={verifyOtp}>

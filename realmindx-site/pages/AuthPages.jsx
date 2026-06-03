@@ -20,13 +20,14 @@ export const AdminLoginPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!email || !password) { setError('Please enter your email and password.'); return; }
+    if (!email || !password) { toast.error('Please enter your email and password.'); return; }
     setLoading(true);
     try {
       await signIn({ email, password, role: 'admin' });
       window.location.href = '/admin/dashboard';
     } catch (err) {
-      setError(err?.message || 'Invalid admin credentials for this local build.');
+      const msg = err?.message || 'Invalid admin credentials.';
+      setError(msg); toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -91,18 +92,6 @@ export const AdminLoginPage = () => {
             <h2>Sign In to Admin</h2>
             <p>Use your authorised admin credentials to continue.</p>
           </div>
-
-          {error && (
-            <div style={{
-              background: 'var(--danger-bg)', border: '1px solid #fca5a5', borderRadius: 8,
-              padding: '12px 16px', marginBottom: 20, fontSize: '0.88rem', color: '#991b1b',
-            }}>
-              <span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}>
-                <Icon name="warning" size={16} stroke={2} />
-              </span>
-              {error}
-            </div>
-          )}
 
           <form onSubmit={handleSubmit} noValidate>
             <div className="form-group">
@@ -392,19 +381,6 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
             }}>
               <span style={{ fontSize: '1.1rem', display: 'inline-flex' }}><Icon name="check" size={18} stroke={2.4} /></span>
               <span>{success}</span>
-            </div>
-          )}
-
-          {/* Error message */}
-          {error && (
-            <div style={{
-              background: 'var(--danger-bg)', border: '1px solid #fca5a5', borderRadius: 10,
-              padding: '12px 16px', marginBottom: 20, fontSize: '0.88rem', color: '#991b1b',
-            }}>
-              <span style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 }}>
-                <Icon name="warning" size={16} stroke={2} />
-              </span>
-              {error}
             </div>
           )}
 

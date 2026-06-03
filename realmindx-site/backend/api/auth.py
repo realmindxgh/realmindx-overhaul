@@ -4,6 +4,7 @@ import secrets
 
 from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, jsonify, request
+from markupsafe import escape
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
 from werkzeug.security import check_password_hash, generate_password_hash

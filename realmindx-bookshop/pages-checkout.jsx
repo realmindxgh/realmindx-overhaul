@@ -344,7 +344,6 @@ const CheckoutPage = ({ navigate }) => {
               </div>
 
               <div className="bs-summary-row bs-total" style={{ fontSize:22, borderTop:'1px solid var(--bs-border)', paddingTop:14, marginTop:0 }}><span>Total</span><span>{cedis(total)}</span></div>
-              {orderError && <div className="bs-field-error" style={{ marginTop:12 }}>{orderError}</div>}
               <TurnstileField className="bs-turnstile-wrap bs-checkout-turnstile" onVerify={setTurnstileToken} />
               <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}><Icon name="lock" size={17} /> {placing ? 'Placing order...' : `Pay ${cedis(total)} Now`}</button>
               <div className="bs-trust-badges">
