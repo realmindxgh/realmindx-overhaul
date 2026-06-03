@@ -97,4 +97,7 @@ def require_turnstile(payload):
         or payload.get("cf_turnstile_response")
     )
     if not verify_turnstile_token(token):
-        abort(400, description="CAPTCHA verification failed.")
+        from flask import jsonify as _jsonify
+        response = _jsonify(error="CAPTCHA verification failed. Please refresh the page and try again.")
+        response.status_code = 400
+        abort(response)

@@ -5,6 +5,7 @@ import logoWhite from '../assets/logo-white.png';
 import { DEMO_ACCOUNTS } from '../../src/lib/demoAccounts.js';
 import { resendVerificationOtp, signIn, signUp, requestPasswordReset, verifyEmailOtp } from '../../src/lib/authClient.js';
 import { TurnstileField } from '../../src/lib/TurnstileField.jsx';
+import toast from '../../src/lib/toast.js';
 
 /* ─────────────────────────────────────────────────────────────
    ADMIN LOGIN PAGE
@@ -217,6 +218,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
     };
     setError(message);
     setFieldErrors({ [field]: message });
+    toast.error(message);
     requestAnimationFrame(() => {
       const node = refs[field]?.current;
       if (!node) return;
@@ -262,7 +264,9 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
       setOtp('');
       setSuccess(result?.message || 'Account created. Enter the verification code sent to your email.');
     } catch (err) {
-      setError(err?.message || 'Could not create your account. Please try again.');
+      const msg = err?.message || 'Could not create your account. Please try again.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

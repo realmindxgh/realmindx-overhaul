@@ -5,6 +5,7 @@ import { submitMessage } from '../src/lib/managedContent.js';
 import { useSiteCopy } from '../src/lib/siteContent.js';
 import { resendVerificationOtp, signIn, signUp, verifyEmailOtp } from '../src/lib/authClient.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
+import globalToast from '../src/lib/toast.js';
 const bookshopHeroImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
 
 const AuthPage = ({ navigate, mode = 'login' }) => {
@@ -39,8 +40,10 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     };
   };
 
+  const setErr = (msg) => { setError(msg); if (msg) globalToast.error(msg); };
+
   const showTermsProblem = () => {
-    setError('Please agree to the Bookshop Terms of Service and Bookshop Privacy Policy before creating an account.');
+    setErr('Please agree to the Bookshop Terms of Service and Bookshop Privacy Policy before creating an account.');
     requestAnimationFrame(() => {
       termsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       termsRef.current?.focus?.({ preventScroll: true });
@@ -64,16 +67,16 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
         return;
       }
       if (form.password.length < 8) {
-        setError('Password must be at least 8 characters.');
+        setErr('Password must be at least 8 characters.');
         return;
       }
       if (form.password !== form.confirmPassword) {
-        setError('Passwords do not match.');
+        setErr('Passwords do not match.');
         return;
       }
       const { firstName, lastName } = fullNameParts();
       if (!firstName) {
-        setError('Enter your full name.');
+        setErr('Enter your full name.');
         return;
       }
       const result = await signUp({
@@ -94,7 +97,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
         setMessage('Enter the code we sent to your email before signing in.');
         return;
       }
-      setError(err?.message || (isLogin ? 'Could not sign in.' : 'Could not create your account.'));
+      setErr(err?.message || (isLogin ? 'Could not sign in.' : 'Could not create your account.'));
     } finally {
       setLoading(false);
     }
@@ -105,7 +108,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     setError('');
     setMessage('');
     if (otp.replace(/\D/g, '').length !== 6) {
-      setError('Enter the 6 digit verification code from your email.');
+      setErr('Enter the 6 digit verification code from your email.');
       return;
     }
     setLoading(true);
@@ -116,7 +119,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       setMessage(result?.message || 'Email verified. You can now sign in.');
       navigate('login');
     } catch (err) {
-      setError(err?.message || 'Could not verify that code.');
+      setErr(err?.message || 'Could not verify that code.');
     } finally {
       setLoading(false);
     }
@@ -130,7 +133,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       const result = await resendVerificationOtp(pendingVerificationEmail);
       setMessage(result?.message || 'A fresh code has been sent.');
     } catch (err) {
-      setError(err?.message || 'Could not resend the code.');
+      setErr(err?.message || 'Could not resend the code.');
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import { useCart } from './chrome.jsx';
 import { submitOrder } from '../src/lib/managedContent.js';
 import { isApiMode, api } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
+import globalToast from '../src/lib/toast.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 
 const CheckoutNudge = ({ navigate }) => !isLoggedIn() ? (
@@ -77,6 +78,16 @@ const CheckoutPage = ({ navigate }) => {
       .then(data => setDeliveryZones(data.items || []))
       .catch(() => {})
       .finally(() => setLoadingZones(false));
+  }, []);
+
+  // Nudge guests to create an account when they land on checkout
+  React.useEffect(() => {
+    if (!isLoggedIn()) {
+      const tid = setTimeout(() => {
+        globalToast.nudge('💡 Create an account to save your order history and check out faster next time.');
+      }, 1200);
+      return () => clearTimeout(tid);
+    }
   }, []);
 
   const selectedZone = deliveryZones.find(z => String(z.id) === selectedZoneId);
@@ -178,7 +189,9 @@ const CheckoutPage = ({ navigate }) => {
       // The confirmation step makes clear it is an enquiry, not a paid order.
       setStep(2);
     } catch (err) {
-      setOrderError(err?.message || 'Could not place the order. Please try again.');
+      const msg = err?.message || 'Could not place the order. Please try again.';
+      setOrderError(msg);
+      globalToast.error(msg);
     } finally {
       setPlacing(false);
     }
@@ -305,7 +318,7 @@ const CheckoutPage = ({ navigate }) => {
               <div className="bs-promo-row" style={{ marginBottom:4 }}>
                 <input placeholder="Promo code" value={promoInput} onChange={e => setPromoInput(e.target.value.toUpperCase())}
                   style={{ flex:1, height:44, border:'1.5px solid var(--bs-border)', borderRadius:'var(--bs-radius-sm)', padding:'0 14px', fontSize:14 }} />
-                <button className="bs-btn bs-btn-navy" style={{ padding:'0 18px', height:44 }} disabled={checkingPromo} onClick={applyPromo}>
+                <button className="bs-btn bs-btn-gold" style={{ padding:'0 20px', height:44, fontWeight:800, letterSpacing:'0.04em', flexShrink:0 }} disabled={checkingPromo} onClick={applyPromo}>
                   {checkingPromo ? '…' : 'Apply'}
                 </button>
               </div>

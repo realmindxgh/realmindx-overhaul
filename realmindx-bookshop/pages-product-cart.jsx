@@ -3,6 +3,7 @@ import { Icon, Stars, cedis, CoverPlaceholder, REVIEWS } from './shared.jsx';
 import { useCart, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
+import globalToast from '../src/lib/toast.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 
 const Accordion = ({ title, children, defaultOpen = false }) => {
@@ -207,6 +208,16 @@ const CartPage = ({ navigate }) => {
   const { detailed, subtotal, bulkDiscounts, bulkSaving, setQty, remove, count } = useCart();
   const delivery = subtotal > 0 ? 15 : 0;   // delivery fee shown on cart; exact fee is computed at checkout
   const total = subtotal - (bulkSaving || 0) + delivery;
+
+  // Nudge guests to sign up when they view their cart
+  React.useEffect(() => {
+    if (!isLoggedIn() && count > 0) {
+      const tid = setTimeout(() => {
+        globalToast.nudge('💡 Sign in to save your cart — items are lost when you close the browser.');
+      }, 1500);
+      return () => clearTimeout(tid);
+    }
+  }, []);
 
   if (count === 0) return (
     <div className="bs-container bs-fade-page">

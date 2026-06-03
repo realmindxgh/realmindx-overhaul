@@ -234,9 +234,13 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
       <div className={`bs-filter-sec${open.rating ? '' : ' collapsed'}`}>
         <button className="bs-filter-sec-head" onClick={() => toggle('rating')}>Rating <Icon name="chevDown" size={16} className="bs-chev" /></button>
         <div className="bs-filter-sec-body bs-rating-filter">
-          {[4,3,0].map(r => (
+          {[5,4,3,0].map(r => (
             <button key={r} type="button" className={`bs-rating-opt${filters.rating === r ? ' active' : ''}`} onClick={() => setFilters(f => ({ ...f, rating: r }))}>
-              {r > 0 ? <><Stars value={r} size={14} /><span>{r}+ stars</span></> : <span>Any rating</span>}
+              {r === 5
+                ? <><Stars value={5} size={14} /><span>5 stars only</span></>
+                : r > 0
+                  ? <><Stars value={r} size={14} /><span>{r}+ stars</span></>
+                  : <span>Any rating</span>}
             </button>
           ))}
         </div>
@@ -270,7 +274,7 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
   let list = books.filter(b =>
     (filters.cats.length === 0 || filters.cats.some(id => matchesCategory(b, id))) &&
     b.price >= filters.min && b.price <= filters.max &&
-    b.rating >= filters.rating &&
+    b.rating >= (filters.rating === 5 ? 4.5 : filters.rating) &&
     (!filters.inStock || b.stock)
   );
   if (sort === 'low') list = [...list].sort((a,b) => a.price - b.price);
