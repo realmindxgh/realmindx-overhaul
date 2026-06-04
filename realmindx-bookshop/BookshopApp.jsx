@@ -12,35 +12,41 @@ import { CatalogProvider } from './catalog.jsx';
 
 const GOLD_ACCENT = '#ffcc01';
 
+// On bookshop.realmindxgh.com paths are /products, /cart etc.
+// On realmindxgh.com they are /bookshop/products, /bookshop/cart etc.
+const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
+const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
+
 const routeFromPath = () => {
   if (typeof window === 'undefined') return { route: 'home', params: {} };
   const path = window.location.pathname.replace(/\/+$/, '');
-  if (path.endsWith('/bookshop/products')) return { route: 'shop', params: {} };
-  if (path.endsWith('/bookshop/cart')) return { route: 'cart', params: {} };
-  if (path.endsWith('/bookshop/checkout')) return { route: 'checkout', params: {} };
-  if (path.endsWith('/bookshop/track')) return { route: 'track', params: {} };
-  if (path.endsWith('/bookshop/login')) return { route: 'login', params: {} };
-  if (path.endsWith('/bookshop/signup')) return { route: 'signup', params: {} };
-  if (path.endsWith('/bookshop/contact')) return { route: 'contact', params: {} };
-  if (path.endsWith('/bookshop/about')) return { route: 'about', params: {} };
-  if (path.endsWith('/bookshop/privacy')) return { route: 'privacy', params: {} };
-  if (path.endsWith('/bookshop/terms')) return { route: 'terms', params: {} };
+  const p = ON_SUBDOMAIN ? path : path.replace('/bookshop', '');
+  if (p === '/products' || p.startsWith('/products/')) return { route: 'shop', params: {} };
+  if (p === '/cart')     return { route: 'cart',     params: {} };
+  if (p === '/checkout') return { route: 'checkout', params: {} };
+  if (p === '/track')    return { route: 'track',    params: {} };
+  if (p === '/login')    return { route: 'login',    params: {} };
+  if (p === '/signup')   return { route: 'signup',   params: {} };
+  if (p === '/contact')  return { route: 'contact',  params: {} };
+  if (p === '/about')    return { route: 'about',    params: {} };
+  if (p === '/privacy')  return { route: 'privacy',  params: {} };
+  if (p === '/terms')    return { route: 'terms',    params: {} };
   return { route: 'home', params: {} };
 };
 
 const pathForRoute = route => ({
-  home: '/bookshop',
-  shop: '/bookshop/products',
-  cart: '/bookshop/cart',
-  checkout: '/bookshop/checkout',
-  track: '/bookshop/track',
-  login: '/bookshop/login',
-  signup: '/bookshop/signup',
-  contact: '/bookshop/contact',
-  about: '/bookshop/about',
-  privacy: '/bookshop/privacy',
-  terms: '/bookshop/terms',
-}[route] || '/bookshop');
+  home:     `${PREFIX}/`,
+  shop:     `${PREFIX}/products`,
+  cart:     `${PREFIX}/cart`,
+  checkout: `${PREFIX}/checkout`,
+  track:    `${PREFIX}/track`,
+  login:    `${PREFIX}/login`,
+  signup:   `${PREFIX}/signup`,
+  contact:  `${PREFIX}/contact`,
+  about:    `${PREFIX}/about`,
+  privacy:  `${PREFIX}/privacy`,
+  terms:    `${PREFIX}/terms`,
+}[route] || `${PREFIX}/`);
 
 // Paystack confirmation page: shown when user returns from Paystack payment
 const PaystackReturnPage = ({ orderRef, navigate, clear }) => {
@@ -90,7 +96,7 @@ const App = () => {
 
   // Page titles + OG meta per bookshop route
   React.useEffect(() => {
-    const BASE = 'https://realmindxgh.com';
+    const BASE = ON_SUBDOMAIN ? 'https://bookshop.realmindxgh.com' : 'https://realmindxgh.com';
     const meta = {
       home:     { title: 'RealMindX Bookshop | Educational Books & Stationery Ghana', desc: 'Shop textbooks, curricula, stationery and learning materials. Fast delivery across Ghana. Wholesale pricing for schools.' },
       shop:     { title: 'Browse Educational Books & Textbooks | RealMindX Bookshop', desc: 'Find BECE, WASSCE, primary and JHS textbooks, curricula and stationery. In-stock items with delivery across Ghana.' },
@@ -107,7 +113,7 @@ const App = () => {
     };
     const m = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
     document.title = m.title;
-    const paths = { home:'/bookshop', shop:'/bookshop/products', product:'/bookshop/products', cart:'/bookshop/cart', checkout:'/bookshop/checkout', track:'/bookshop/track', login:'/bookshop/login', signup:'/bookshop/signup', contact:'/bookshop/contact', about:'/bookshop/about', privacy:'/bookshop/privacy', terms:'/bookshop/terms' };
+    const paths = { home:'/', shop:'/products', product:'/products', cart:'/cart', checkout:'/checkout', track:'/track', login:'/login', signup:'/signup', contact:'/contact', about:'/about', privacy:'/privacy', terms:'/terms' };
     const url = `${BASE}${paths[route] || '/bookshop'}`;
     const setM = (k, v) => { if (!v) return; let el = document.querySelector(`meta[name="${k}"]`) || document.querySelector(`meta[property="${k}"]`); if (!el) { el = document.createElement('meta'); el.setAttribute(k.startsWith('og:') ? 'property' : 'name', k); document.head.appendChild(el); } el.setAttribute('content', v); };
     if (m.desc) { setM('description', m.desc); setM('og:description', m.desc); setM('twitter:description', m.desc); }
