@@ -88,7 +88,7 @@ export const DEFAULT_SERVICES = [
     body: 'The RealMindX Bookshop stocks a wide range of textbooks, stationery, and learning materials at both wholesale and retail prices. We deliver across Accra and beyond, and offer pick-up options too.\n\nSchools and individuals are both welcome.',
     features: 'Textbooks for all grade levels\nStationery and classroom supplies\nWholesale pricing for bulk orders\nNationwide delivery\nIn-store pick-up available',
     primary_cta_label: 'Visit the Bookshop',
-    primary_cta_href: '/bookshop',
+    primary_cta_href: 'https://bookshop.realmindxgh.com',
     image_key: 'bookshop',
     badge: '',
     sort_order: 4,

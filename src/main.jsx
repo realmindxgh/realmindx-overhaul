@@ -467,7 +467,7 @@ const NotFoundPage = () => (
     eyebrow="404"
     title="Page Not Found"
     body="That address is not part of the current RealMindX route map."
-    actions={[{ label: 'Go Home', href: '/' }, { label: 'View Bookshop', href: '/bookshop', variant: 'btn-outline' }]}
+    actions={[{ label: 'Go Home', href: '/' }, { label: 'View Bookshop', href: 'https://bookshop.realmindxgh.com', variant: 'btn-outline' }]}
   />
 );
 
