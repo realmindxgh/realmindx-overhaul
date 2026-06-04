@@ -1165,10 +1165,10 @@ export const Footer = () => (
             comprehensive educational services provider.
           </p>
           <div className="socials">
-            <a href="#" aria-label="X"><SocialIcon name="x" /></a>
-            <a href="#" aria-label="Facebook"><SocialIcon name="facebook" /></a>
-            <a href="#" aria-label="Instagram"><SocialIcon name="instagram" /></a>
-            <a href="#" aria-label="YouTube"><SocialIcon name="youtube" /></a>
+            <a href="https://x.com/realmindxgh" target="_blank" rel="noopener" aria-label="X"><SocialIcon name="x" /></a>
+            <a href="https://web.facebook.com/profile.php?id=61566941171883" target="_blank" rel="noopener" aria-label="Facebook"><SocialIcon name="facebook" /></a>
+            <a href="https://www.instagram.com/realmindxgh/" target="_blank" rel="noopener" aria-label="Instagram"><SocialIcon name="instagram" /></a>
+            <a href="https://www.youtube.com/@realmindxgh" target="_blank" rel="noopener" aria-label="YouTube"><SocialIcon name="youtube" /></a>
             <a href="https://wa.link/q5rjtp" target="_blank" rel="noopener" aria-label="WhatsApp"><SocialIcon name="whatsapp" /></a>
           </div>
         </div>

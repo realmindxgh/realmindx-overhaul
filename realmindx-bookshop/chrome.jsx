@@ -254,10 +254,10 @@ const Footer = ({ navigate }) => (
           <div className="bs-footer-logo"><img src={logoWhite} alt="RealMindX Bookshop" /></div>
           <p className="bs-footer-tag">Learning materials for every Ghanaian student.</p>
           <div className="bs-footer-socials">
-            <a href="https://wa.link/q5rjtp" aria-label="WhatsApp"><Icon name="wa" size={17} /></a>
-            <a href="#" aria-label="Facebook"><Icon name="facebook" size={17} /></a>
-            <a href="#" aria-label="Instagram"><Icon name="instagram" size={17} /></a>
-            <a href="#" aria-label="X"><Icon name="x" size={17} /></a>
+            <a href="https://wa.link/q5rjtp" target="_blank" rel="noopener" aria-label="WhatsApp"><Icon name="wa" size={17} /></a>
+            <a href="https://web.facebook.com/profile.php?id=61566941171883" target="_blank" rel="noopener" aria-label="Facebook"><Icon name="facebook" size={17} /></a>
+            <a href="https://www.instagram.com/realmindxgh/" target="_blank" rel="noopener" aria-label="Instagram"><Icon name="instagram" size={17} /></a>
+            <a href="https://x.com/realmindxgh" target="_blank" rel="noopener" aria-label="X"><Icon name="x" size={17} /></a>
           </div>
         </div>
         <div>
@@ -282,19 +282,19 @@ const Footer = ({ navigate }) => (
         <div>
           <h4>Legal</h4>
           <div className="bs-footer-links">
-            <a href="/bookshop/privacy">Bookshop Privacy Policy</a>
-            <a href="/bookshop/terms">Bookshop Terms</a>
+            <a href="#" onClick={(e)=>{e.preventDefault();navigate('privacy');}}>Bookshop Privacy Policy</a>
+            <a href="#" onClick={(e)=>{e.preventDefault();navigate('terms');}}>Bookshop Terms</a>
             <a href="https://schoolms.realmindxgh.com/">SchoolMS</a>
-            <a href="/donate">Donate</a>
+            <a href="https://realmindxgh.com/donate">Donate</a>
           </div>
         </div>
       </div>
       <div className="bs-footer-bottom">
         &copy; {new Date().getFullYear()} RealMindX Education Limited. All rights reserved.
         <span style={{ margin: '0 10px', opacity: 0.4 }}>-</span>
-        <a href="/bookshop/privacy" style={{ color: 'rgba(255,255,255,0.5)' }}>Privacy Policy</a>
+        <a href="#" onClick={(e)=>{e.preventDefault();navigate('privacy');}} style={{ color: 'rgba(255,255,255,0.5)' }}>Privacy Policy</a>
         <span style={{ margin: '0 8px', opacity: 0.4 }}>-</span>
-        <a href="/bookshop/terms" style={{ color: 'rgba(255,255,255,0.5)' }}>Terms of Service</a>
+        <a href="#" onClick={(e)=>{e.preventDefault();navigate('terms');}} style={{ color: 'rgba(255,255,255,0.5)' }}>Terms of Service</a>
       </div>
     </div>
   </footer>
