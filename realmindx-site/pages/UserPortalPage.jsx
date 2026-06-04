@@ -1179,19 +1179,7 @@ const UserPortalPage = () => {
     setPendingAction(step.action);
   };
 
-  // Execute pending action after the target view has rendered
-  React.useEffect(() => {
-    if (!pendingAction) return;
-    const tid = setTimeout(() => {
-      if (pendingAction === 'edit-personal' || pendingAction === 'edit-teaching') {
-        openProfileEdit(pendingAction === 'edit-teaching' ? 'teaching' : 'personal');
-      }
-      setPendingAction(null);
-    }, 80);
-    return () => clearTimeout(tid);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAction]);
-
+  // openProfileEdit must be declared BEFORE the useEffect that calls it
   const openProfileEdit = (section = 'personal') => {
     setProfileError('');
     setProfileForm({
@@ -1207,6 +1195,20 @@ const UserPortalPage = () => {
     });
     setProfileEditSection(section);
   };
+
+  // Execute pending action after the target view has rendered
+  React.useEffect(() => {
+    if (!pendingAction) return;
+    const tid = setTimeout(() => {
+      if (pendingAction === 'edit-personal' || pendingAction === 'edit-teaching') {
+        openProfileEdit(pendingAction === 'edit-teaching' ? 'teaching' : 'personal');
+      }
+      setPendingAction(null);
+    }, 80);
+    return () => clearTimeout(tid);
+  // openProfileEdit is stable enough — excluding it avoids a circular update loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAction]);
 
   const saveProfileEdit = async event => {
     event.preventDefault();
