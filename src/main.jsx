@@ -566,9 +566,12 @@ const HashScroll = ({ children }) => {
 };
 
 const IdleGuard = () => {
+  const location = useLocation();
   const session = getDemoSession();
+  const isTeacherPortalSession = session?.role === 'user';
+  const isBookshopRoute = location.pathname.startsWith('/bookshop');
   const { countdown, keepAlive } = useIdleTimeout({
-    enabled: Boolean(session?.role),
+    enabled: isTeacherPortalSession && !isBookshopRoute,
     onTimeout: async () => {
       await signOut();
       window.location.href = '/login?reason=idle';

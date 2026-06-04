@@ -20,6 +20,11 @@ export function useIdleTimeout({ onTimeout, enabled = true }) {
   const intervalRef  = useRef(null);
   const secsRef      = useRef(WARN_SECS);
   const warningUpRef = useRef(false);
+  const onTimeoutRef = useRef(onTimeout);
+
+  useEffect(() => {
+    onTimeoutRef.current = onTimeout;
+  }, [onTimeout]);
 
   const clearAll = useCallback(() => {
     clearTimeout(idleRef.current);
@@ -38,12 +43,12 @@ export function useIdleTimeout({ onTimeout, enabled = true }) {
         clearAll();
         setCountdown(null);
         warningUpRef.current = false;
-        onTimeout();
+        onTimeoutRef.current?.();
       } else {
         setCountdown(secsRef.current);
       }
     }, 1000);
-  }, [clearAll, onTimeout]);
+  }, [clearAll]);
 
   // Reset the idle clock (and dismiss the warning if showing)
   const keepAlive = useCallback(() => {

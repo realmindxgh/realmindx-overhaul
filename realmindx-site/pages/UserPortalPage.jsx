@@ -177,14 +177,14 @@ const completionFromProfile = profile => {
 };
 
 /* â”€â”€ Profile completion checklist (new user) â”€â”€â”€â”€â”€â”€â”€ */
-const ProfileChecklist = ({ user }) => {
+const ProfileChecklist = ({ user, setActive }) => {
   const steps = [
-    { label: 'Email verified',          done: user.emailVerified,                    href: null,                 icon: 'mail' },
-    { label: 'Add your phone number',   done: !!user.phone,                          href: '?view=profile',      icon: 'phone' },
-    { label: 'Set teaching subject',    done: !!user.subject,                        href: '?view=profile',      icon: 'book' },
-    { label: 'Upload your CV',          done: user.hasCV,                            href: '?view=documents',    icon: 'file' },
-    { label: 'Add certificates',        done: user.hasCerts,                         href: '?view=documents',    icon: 'award' },
-    { label: 'Set job alert preferences', done: false,                               href: '?view=alerts',       icon: 'bell' },
+    { label: 'Email verified',            done: user.emailVerified, view: null,          icon: 'mail'     },
+    { label: 'Add your phone number',     done: !!user.phone,       view: 'profile',     icon: 'phone'    },
+    { label: 'Set teaching subject',      done: !!user.subject,     view: 'profile',     icon: 'book'     },
+    { label: 'Upload your CV',            done: user.hasCV,         view: 'documents',   icon: 'file'     },
+    { label: 'Add certificates',          done: user.hasCerts,      view: 'documents',   icon: 'award'    },
+    { label: 'Set job alert preferences', done: false,              view: 'alerts',      icon: 'bell'     },
   ];
   const doneCount = steps.filter(s => s.done).length;
 
@@ -217,10 +217,14 @@ const ProfileChecklist = ({ user }) => {
             <span style={{ flex: 1, fontSize: '0.85rem', color: s.done ? '#166534' : 'var(--navy)', fontWeight: s.done ? 400 : 600 }}>
               {s.label}
             </span>
-            {!s.done && s.href && (
-              <a href={s.href} style={{ fontSize: '0.75rem', color: 'var(--yellow-dark)', fontWeight: 700, textDecoration: 'none', fontFamily: "'Montserrat', sans-serif", letterSpacing: '0.04em' }}>
+            {!s.done && s.view && (
+              <button
+                type="button"
+                onClick={() => setActive?.(s.view)}
+                style={{ fontSize: '0.75rem', color: 'var(--yellow-dark)', fontWeight: 700, fontFamily: "'Montserrat', sans-serif", letterSpacing: '0.04em', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
                 ADD
-              </a>
+              </button>
             )}
           </div>
         ))}
@@ -369,7 +373,7 @@ const DashboardView = ({ user, setActive, applications = [], alerts = [], onPrev
     {/* Main grid */}
     {user.isNew ? (
       <div className="portal-grid-2">
-        <ProfileChecklist user={user} />
+        <ProfileChecklist user={user} setActive={setActive} />
         <div className="profile-section-card">
           <h3>Recommended Jobs</h3>
           <div style={{ textAlign: 'center', padding: '40px 16px' }}>

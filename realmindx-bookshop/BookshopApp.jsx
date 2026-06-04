@@ -1,9 +1,5 @@
 import React from 'react';
 import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, BottomNav } from './chrome.jsx';
-import { useIdleTimeout } from '../src/lib/useIdleTimeout.js';
-import { IdleWarning } from '../src/lib/IdleWarning.jsx';
-import { getDemoSession } from '../src/lib/demoAccounts.js';
-import { signOut } from '../src/lib/authClient.js';
 import { HomePage, ShopPage } from './pages-shop.jsx';
 import { ProductPage, CartPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
@@ -174,15 +170,6 @@ const App = () => {
     );
   }
 
-  const session = getDemoSession();
-  const { countdown: idleCountdown, keepAlive } = useIdleTimeout({
-    enabled: Boolean(session?.role),
-    onTimeout: async () => {
-      await signOut();
-      navigate('login');
-    },
-  });
-
   return (
     <div className="bs">
       <Navbar route={route} navigate={navigate} />
@@ -190,11 +177,6 @@ const App = () => {
       <Footer navigate={navigate} />
       <WhatsAppFab />
       <BottomNav route={route} navigate={navigate} />
-      <IdleWarning
-        countdown={idleCountdown}
-        onKeepAlive={keepAlive}
-        onLogout={async () => { await signOut(); navigate('login'); }}
-      />
     </div>
   );
 };

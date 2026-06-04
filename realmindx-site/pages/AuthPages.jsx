@@ -217,7 +217,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-    if (!email || !password) { setError('Please fill in all fields.'); return; }
+    if (!email || !password) { const m = 'Please enter your email and password.'; setError(m); toast.error(m); return; }
     setLoading(true);
     try {
       await signIn({ email, password, role: 'user' });
@@ -228,7 +228,9 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
         setSuccess('Enter the verification code sent to your email before signing in.');
         return;
       }
-      setError(err?.message || 'Invalid user credentials for this local build.');
+      const msg = err?.message || 'Incorrect email or password. Please try again.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
