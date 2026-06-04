@@ -91,6 +91,72 @@ const CartProvider = ({ children, navigate }) => {
   );
 };
 
+// ---------- User account pill (navbar) ----------
+const NavUserMenu = ({ navigate }) => {
+  const session = getDemoSession();
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  if (!session?.role) {
+    return (
+      <button className="bs-icon-btn" aria-label="Sign in" onClick={() => navigate('login')}>
+        <Icon name="user" size={21} />
+      </button>
+    );
+  }
+
+  const initials = session.initials || ((session.firstName?.[0] || '') + (session.lastName?.[0] || '')).toUpperCase() || 'ME';
+  const name = [session.firstName, session.lastName].filter(Boolean).join(' ') || session.email;
+
+  const handleSignOut = async () => {
+    setOpen(false);
+    const { signOut } = await import('../src/lib/authClient.js');
+    await signOut();
+    navigate('home');
+  };
+
+  return (
+    <div className="bs-user-pill" ref={ref}>
+      <button
+        className="bs-user-pill-btn"
+        onClick={() => setOpen(o => !o)}
+        aria-label={`Account menu for ${name}`}
+        aria-expanded={open}
+      >
+        <span className="bs-user-avatar">{initials}</span>
+        <span className="bs-user-name">{session.firstName || 'Account'}</span>
+        <Icon name="chevDown" size={13} />
+      </button>
+
+      {open && (
+        <div className="bs-user-dropdown">
+          <div className="bs-user-dd-header">
+            <span className="bs-user-dd-name">{name}</span>
+            <span className="bs-user-dd-email">{session.email}</span>
+          </div>
+          <div className="bs-user-dd-divider" />
+          <button className="bs-user-dd-item" onClick={() => { setOpen(false); navigate('track'); }}>
+            <Icon name="truck" size={16} /> My Orders
+          </button>
+          <button className="bs-user-dd-item" onClick={() => { setOpen(false); window.location.href = '/portal'; }}>
+            <Icon name="user" size={16} /> My RealMindX Profile
+          </button>
+          <div className="bs-user-dd-divider" />
+          <button className="bs-user-dd-item bs-user-dd-signout" onClick={handleSignOut}>
+            <Icon name="x" size={16} /> Sign Out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ---------- Navbar ----------
 const Navbar = ({ route, navigate }) => {
   const { count } = useCart();
@@ -144,9 +210,7 @@ const Navbar = ({ route, navigate }) => {
               </div>
             </div>
 
-            <button className="bs-icon-btn" aria-label="Account" onClick={() => navigate('login')}>
-              <Icon name="user" size={21} />
-            </button>
+            <NavUserMenu navigate={navigate} />
             <button className="bs-icon-btn" aria-label={`Cart, ${count} items`} onClick={() => navigate('cart')}>
               <Icon name="cart" size={21} />
               {count > 0 && <span className="bs-cart-badge">{count}</span>}

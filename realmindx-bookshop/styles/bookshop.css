@@ -622,6 +622,44 @@
   background: #1e3a6e; border-left: 3px solid var(--bs-gold-live);
 }
 
+/* ── Bookshop nav user pill ─────────────────────────────────── */
+.bs-user-pill { position: relative; }
+.bs-user-pill-btn {
+  display: flex; align-items: center; gap: 7px;
+  background: none; border: 1.5px solid rgba(255,255,255,.18);
+  border-radius: 999px; padding: 5px 12px 5px 5px;
+  cursor: pointer; color: var(--bs-text); transition: border-color .2s;
+}
+.bs-user-pill-btn:hover { border-color: var(--bs-gold); }
+.bs-user-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--bs-gold-live); color: var(--bs-navy);
+  font-size: 11px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.bs-user-name { font-size: 13px; font-weight: 700; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bs-user-dropdown {
+  position: absolute; top: calc(100% + 10px); right: 0;
+  background: #fff; border: 1px solid var(--bs-border);
+  border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.14);
+  min-width: 220px; z-index: 200; overflow: hidden;
+}
+.bs-user-dd-header { padding: 14px 16px 12px; }
+.bs-user-dd-name { display: block; font-size: 14px; font-weight: 800; color: var(--bs-navy); }
+.bs-user-dd-email { display: block; font-size: 12px; color: var(--bs-muted); margin-top: 2px; }
+.bs-user-dd-divider { border: none; border-top: 1px solid var(--bs-border); margin: 0; }
+.bs-user-dd-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 11px 16px; background: none; border: none;
+  font-size: 13.5px; font-weight: 600; color: var(--bs-text);
+  cursor: pointer; text-align: left; transition: background .15s;
+}
+.bs-user-dd-item:hover { background: var(--bs-off-white); }
+.bs-user-dd-signout { color: #b91c1c; }
+.bs-user-dd-signout:hover { background: #fef2f2; }
+@media (max-width: 520px) { .bs-user-name { display: none; } }
+
 /* Legal page sidebar (hide on small screens) */
 @media (max-width: 860px) {
   .bs-legal-sidebar { display: none; }
