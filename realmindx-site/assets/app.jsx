@@ -36,10 +36,15 @@ const ABOUT_NAV_ITEMS = [
   { label: 'Our Leadership Team', href: '/about#leadership' },
 ];
 
-const JOB_NAV_ITEMS = [
+const JOB_NAV_ITEMS_GUEST = [
   { label: 'Sign Up', href: '/register' },
   { label: 'Login', href: '/login' },
   { label: 'Job Posts', href: '/jobs' },
+];
+const JOB_NAV_ITEMS_AUTH = [
+  { label: 'Job Posts', href: '/jobs' },
+  { label: 'My Applications', href: '/portal?view=applications' },
+  { label: 'My Portal', href: '/portal' },
 ];
 
 const NAV_ITEMS = [
@@ -48,7 +53,7 @@ const NAV_ITEMS = [
   { label: 'Services', href: '/services', children: SERVICE_NAV_ITEMS },
   { label: 'Bookshop', href: 'https://bookshop.realmindxgh.com' },
   { label: 'News', href: '/news' },
-  { label: 'Jobs', href: '/jobs', children: JOB_NAV_ITEMS },
+  { label: 'Jobs', href: '/jobs', children: JOB_NAV_ITEMS_GUEST }, // overridden dynamically in Nav
   { label: 'Gallery', href: '/gallery' },
   { label: 'Contact', href: '/contact' },
 ];
@@ -155,6 +160,9 @@ export const Nav = ({ activePage, solid = false }) => {
   const [openMobileDropdown, setOpenMobileDropdown] = React.useState(null);
   const managedServices = usePublicServices();
   const currentPage = activePage || currentPageKey();
+  const session = getDemoSession();
+  const isLoggedIn = Boolean(session?.role);
+
   const navItems = React.useMemo(() => {
     const serviceChildren = managedServices.length
       ? managedServices.map(service => ({
@@ -162,10 +170,13 @@ export const Nav = ({ activePage, solid = false }) => {
           href: `/services#${service.id}`,
         }))
       : SERVICE_NAV_ITEMS;
-    return NAV_ITEMS.map(item =>
-      item.label === 'Services' ? { ...item, children: serviceChildren } : item
-    );
-  }, [managedServices]);
+    const jobChildren = isLoggedIn ? JOB_NAV_ITEMS_AUTH : JOB_NAV_ITEMS_GUEST;
+    return NAV_ITEMS.map(item => {
+      if (item.label === 'Services') return { ...item, children: serviceChildren };
+      if (item.label === 'Jobs')     return { ...item, children: jobChildren };
+      return item;
+    });
+  }, [managedServices, isLoggedIn]);
   const isActive = (item, index) => {
     if (index === 0) return currentPage === 'home';
     const key = pageKeyFromHref(item.href);
