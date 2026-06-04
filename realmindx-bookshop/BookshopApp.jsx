@@ -88,23 +88,31 @@ const App = () => {
     document.documentElement.style.setProperty('--bs-gold-live', GOLD_ACCENT);
   }, []);
 
-  // Page titles per bookshop route
+  // Page titles + OG meta per bookshop route
   React.useEffect(() => {
-    const titles = {
-      home:     'RealMindX Bookshop | Educational Books and Stationery',
-      shop:     'Browse Books | RealMindX Bookshop',
-      product:  'Product | RealMindX Bookshop',
-      cart:     'Your Cart | RealMindX Bookshop',
-      checkout: 'Checkout | RealMindX Bookshop',
-      track:    'Track Your Order | RealMindX Bookshop',
-      login:    'Sign In | RealMindX Bookshop',
-      signup:   'Create Account | RealMindX Bookshop',
-      contact:  'Contact Us | RealMindX Bookshop',
-      about:    'About the Bookshop | RealMindX',
-      privacy:  'Privacy Policy | RealMindX Bookshop',
-      terms:    'Terms and Conditions | RealMindX Bookshop',
+    const BASE = 'https://realmindxgh.com';
+    const meta = {
+      home:     { title: 'RealMindX Bookshop | Educational Books & Stationery Ghana', desc: 'Shop textbooks, curricula, stationery and learning materials. Fast delivery across Ghana. Wholesale pricing for schools.' },
+      shop:     { title: 'Browse Educational Books & Textbooks | RealMindX Bookshop', desc: 'Find BECE, WASSCE, primary and JHS textbooks, curricula and stationery. In-stock items with delivery across Ghana.' },
+      product:  { title: 'Product | RealMindX Bookshop', desc: 'Educational books and materials available at the RealMindX Bookshop, Accra, Ghana.' },
+      cart:     { title: 'Your Cart | RealMindX Bookshop', desc: '' },
+      checkout: { title: 'Checkout | RealMindX Bookshop', desc: '' },
+      track:    { title: 'Track Your Order | RealMindX Bookshop', desc: 'Track your RealMindX Bookshop order by reference number or email address.' },
+      login:    { title: 'Sign In | RealMindX Bookshop', desc: 'Sign in to your RealMindX account to track orders, save favourites, and check out faster.' },
+      signup:   { title: 'Create Account | RealMindX Bookshop', desc: 'Join the RealMindX Bookshop to track orders, save books, and enjoy a faster checkout experience.' },
+      contact:  { title: 'Contact the Bookshop | RealMindX', desc: 'Contact RealMindX Bookshop at Dome Pillar 2, Accra. Call +233 55 803 9190 or send a message.' },
+      about:    { title: 'About the Bookshop | RealMindX', desc: 'Learn about the RealMindX Bookshop — Ghana\'s educational books and stationery shop.' },
+      privacy:  { title: 'Privacy Policy | RealMindX Bookshop', desc: 'How the RealMindX Bookshop collects, uses, and protects your personal information.' },
+      terms:    { title: 'Terms and Conditions | RealMindX Bookshop', desc: 'Terms governing your use of the RealMindX Bookshop and any purchases you make.' },
     };
-    document.title = titles[route] || 'RealMindX Bookshop';
+    const m = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
+    document.title = m.title;
+    const paths = { home:'/bookshop', shop:'/bookshop/products', product:'/bookshop/products', cart:'/bookshop/cart', checkout:'/bookshop/checkout', track:'/bookshop/track', login:'/bookshop/login', signup:'/bookshop/signup', contact:'/bookshop/contact', about:'/bookshop/about', privacy:'/bookshop/privacy', terms:'/bookshop/terms' };
+    const url = `${BASE}${paths[route] || '/bookshop'}`;
+    const setM = (k, v) => { if (!v) return; let el = document.querySelector(`meta[name="${k}"]`) || document.querySelector(`meta[property="${k}"]`); if (!el) { el = document.createElement('meta'); el.setAttribute(k.startsWith('og:') ? 'property' : 'name', k); document.head.appendChild(el); } el.setAttribute('content', v); };
+    if (m.desc) { setM('description', m.desc); setM('og:description', m.desc); setM('twitter:description', m.desc); }
+    setM('og:title', m.title); setM('og:url', url); setM('og:image', `${BASE}/og-image.png`); setM('twitter:title', m.title);
+    let canon = document.querySelector('link[rel="canonical"]'); if (!canon) { canon = document.createElement('link'); canon.rel = 'canonical'; document.head.appendChild(canon); } canon.href = url;
   }, [route]);
 
   React.useEffect(() => {

@@ -473,39 +473,75 @@ const NotFoundPage = () => (
 
 const RegisterRoute = () => <UserLoginPage initialMode="register" />;
 
-// ── Per-route document titles ──────────────────────────────────
-const PAGE_TITLES = {
-  '/':                    'RealMindX Education | Ghana\'s Educational Services Provider',
-  '/about':               'About Us | RealMindX Education',
-  '/services':            'Our Services | RealMindX Education',
-  '/jobs':                'Teaching Jobs in Ghana | RealMindX',
-  '/contact':             'Contact Us | RealMindX Education',
-  '/news':                'News and Updates | RealMindX Education',
-  '/gallery':             'Gallery | RealMindX Education',
-  '/resources':           'Resources | RealMindX Education',
-  '/donate':              'Donate | Support Education in Ghana | RealMindX',
-  '/terms':               'Terms of Service | RealMindX Education',
-  '/privacy':             'Privacy Policy | RealMindX Education',
-  '/login':               'Sign In | RealMindX Education',
-  '/register':            'Create an Account | RealMindX Education',
-  '/signup':              'Create an Account | RealMindX Education',
-  '/portal':              'My Portal | RealMindX Education',
-  '/admin/login':         'Admin Sign In | RealMindX',
-  '/admin/dashboard':     'Admin Dashboard | RealMindX',
+// ── Per-route meta (title + description + OG) ─────────────────
+const BASE_URL = 'https://realmindxgh.com';
+const DEFAULT_IMG = `${BASE_URL}/og-image.png`;
+
+const PAGE_META = {
+  '/': {
+    title: "RealMindX Education | Ghana's Educational Services Provider",
+    desc: "Ghana's most comprehensive educational services provider — teacher recruitment, CPD, school transformation, bookshop, tutoring and more. Serving schools across Accra and beyond.",
+  },
+  '/about': {
+    title: 'About RealMindX Education | Ghana',
+    desc: 'Learn about RealMindX Education Limited — our mission, vision, leadership team and commitment to transforming education across Ghana.',
+  },
+  '/services': {
+    title: 'Educational Services | RealMindX Education Ghana',
+    desc: 'Teacher recruitment, professional development, school structuring, after-school tutoring, special education, home schooling support and more — all in one place.',
+  },
+  '/jobs': {
+    title: 'Teaching Jobs in Ghana | RealMindX Jobs Board',
+    desc: 'Browse teaching vacancies across Ghana. Apply for Mathematics, English, Science, ICT and other teaching positions at schools throughout Accra and beyond.',
+  },
+  '/contact': {
+    title: 'Contact RealMindX Education | Accra, Ghana',
+    desc: 'Get in touch with RealMindX Education Limited. Visit us at Dome Pillar 2, Accra, or call +233 55 803 9190.',
+  },
+  '/news': {
+    title: 'News and Updates | RealMindX Education',
+    desc: 'Latest news, announcements and updates from RealMindX Education Limited in Ghana.',
+  },
+  '/gallery': {
+    title: 'Gallery | RealMindX Education Ghana',
+    desc: 'Photos from RealMindX school visits, teacher training programmes, community outreach and educational events across Ghana.',
+  },
+  '/donate': {
+    title: 'Donate | Support Education in Ghana | RealMindX',
+    desc: 'Support quality education in Ghana. Your donation helps fund learning materials, teacher development, special education support, and after-school tutoring programmes.',
+  },
+  '/terms':   { title: 'Terms of Service | RealMindX Education', desc: 'Terms governing your use of the RealMindX Education platform, job portal, and services.' },
+  '/privacy': { title: 'Privacy Policy | RealMindX Education',   desc: 'How RealMindX Education Limited collects, uses, and protects your personal information.' },
+  '/login':   { title: 'Sign In | RealMindX Education', desc: 'Sign in to your RealMindX teacher portal to apply for jobs, manage applications, and track your career.' },
+  '/register':{ title: 'Create a Teacher Account | RealMindX', desc: 'Join thousands of teachers on the RealMindX platform. Create your profile, upload your CV, and apply for teaching positions across Ghana.' },
+};
+
+const setMeta = (name, content) => {
+  let el = document.querySelector(`meta[name="${name}"]`) || document.querySelector(`meta[property="${name}"]`);
+  if (!el) { el = document.createElement('meta'); el.setAttribute(name.startsWith('og:') || name.startsWith('twitter:') ? 'property' : 'name', name); document.head.appendChild(el); }
+  el.setAttribute('content', content);
 };
 
 const RouteTitle = () => {
   const location = useLocation();
   React.useEffect(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
-    // Bookshop pages handled by BookshopApp itself
-    if (path.startsWith('/bookshop')) return;
-    // Admin sub-pages
-    if (path.startsWith('/admin') && !PAGE_TITLES[path]) {
-      document.title = 'Admin | RealMindX';
-      return;
-    }
-    document.title = PAGE_TITLES[path] || 'RealMindX Education';
+    if (path.startsWith('/bookshop')) return; // handled by BookshopApp
+    if (path.startsWith('/admin')) { document.title = 'Admin | RealMindX'; return; }
+    const meta = PAGE_META[path] || { title: 'RealMindX Education', desc: "Ghana's educational services provider — teacher recruitment, bookshop, CPD, school transformation and more." };
+    document.title = meta.title;
+    const url = `${BASE_URL}${path}`;
+    setMeta('description', meta.desc);
+    setMeta('og:title', meta.title);
+    setMeta('og:description', meta.desc);
+    setMeta('og:url', url);
+    setMeta('og:image', DEFAULT_IMG);
+    setMeta('twitter:title', meta.title);
+    setMeta('twitter:description', meta.desc);
+    // Canonical
+    let canon = document.querySelector('link[rel="canonical"]');
+    if (!canon) { canon = document.createElement('link'); canon.rel = 'canonical'; document.head.appendChild(canon); }
+    canon.href = url;
   }, [location.pathname]);
   return null;
 };
