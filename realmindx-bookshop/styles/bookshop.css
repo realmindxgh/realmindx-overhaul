@@ -660,7 +660,37 @@
 .bs-user-dd-signout:hover { background: #fef2f2; }
 @media (max-width: 520px) { .bs-user-name { display: none; } }
 
-/* Legal page sidebar (hide on small screens) */
+/* ── Bookshop legal sidebar ──────────────────────────────────── */
+.bs-legal-sidebar p {
+  margin: 0 0 14px;
+  color: var(--bs-navy);
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.bs-legal-sidebar nav { display: grid; gap: 2px; }
+.bs-legal-sidebar button {
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
+  padding: 9px 12px;
+  background: transparent;
+  color: var(--bs-muted);
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.18s;
+}
+.bs-legal-sidebar button.active,
+.bs-legal-sidebar button:hover {
+  border-left-color: var(--bs-gold-live);
+  background: #eef2f8;
+  color: var(--bs-navy);
+  font-weight: 700;
+}
 @media (max-width: 860px) {
   .bs-legal-sidebar { display: none; }
   .bs-legal-grid { grid-template-columns: 1fr !important; }

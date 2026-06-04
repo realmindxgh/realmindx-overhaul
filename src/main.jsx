@@ -385,24 +385,17 @@ const LegalPageLayout = ({ nav, children, eyebrow, title, body, effectiveDate })
         </section>
 
         <section style={{ padding: '64px 0 96px' }}>
-          <div className="container" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '56px', alignItems: 'stretch' }}>
+          <div className="container legal-policy-grid">
 
             {/* Sidebar TOC */}
-            <aside style={{ position: 'sticky', top: 90, alignSelf: 'start' }} className="legal-sidebar">
-              <p style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--navy)', opacity: 0.5, marginBottom: 14 }}>Sections</p>
+            <aside className="legal-contents">
+              <p>Contents</p>
               <nav>
                 {nav.map(({ id, label }, i) => (
                   <button
                     key={id}
+                    className={active === id ? 'active' : ''}
                     onClick={() => scrollTo(id)}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left', background: 'none',
-                      border: 'none', padding: '7px 0 7px 12px', cursor: 'pointer',
-                      borderLeft: active === id ? '3px solid var(--gold)' : '3px solid transparent',
-                      fontSize: '0.82rem', fontWeight: active === id ? 700 : 500,
-                      color: active === id ? 'var(--navy)' : 'var(--gray-600, #555)',
-                      transition: 'all 0.2s',
-                    }}
                   >
                     <span style={{ opacity: 0.45, marginRight: 6, fontSize: '0.75rem' }}>{String(i + 1).padStart(2, '0')}</span>
                     {label}

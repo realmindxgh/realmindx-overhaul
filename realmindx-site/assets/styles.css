@@ -1726,12 +1726,6 @@ img, svg { display: block; max-width: 100%; }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Legal page sidebar ──────────────────────────────────────── */
-@media (max-width: 900px) {
-  .legal-sidebar { display: none; }
-  .legal-sidebar ~ div { grid-column: 1 / -1; }
-  .container:has(.legal-sidebar) { grid-template-columns: 1fr !important; }
-}
 
 /* ── Auth link buttons (inline text links inside paragraphs) ──── */
 .text-link-button {

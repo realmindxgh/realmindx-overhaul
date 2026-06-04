@@ -472,21 +472,15 @@ const BookshopLegalPage = ({ type = 'privacy' }) => {
         </div>
       </div>
       <div className="bs-container" style={{ paddingTop:48, paddingBottom:80 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'220px 1fr', gap:48 }} className="bs-legal-grid">
+        <div style={{ display:'grid', gridTemplateColumns:'220px minmax(0,1fr)', gap:48, alignItems:'start' }} className="bs-legal-grid">
           {/* Sidebar */}
-          <aside style={{ position:'sticky', top:80, alignSelf:'start' }} className="bs-legal-sidebar">
+          <aside style={{ position:'sticky', top:80 }} className="bs-legal-sidebar">
             <p style={{ fontSize:'0.7rem', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color:'var(--bs-navy)', opacity:0.5, marginBottom:12 }}>Sections</p>
             {sections.map(([heading], i) => (
-              <button key={i} onClick={() => scrollTo(`bs-section-${i}`)}
-                style={{
-                  display:'block', width:'100%', textAlign:'left', background:'none', border:'none',
-                  padding:'6px 0 6px 10px', cursor:'pointer', fontSize:'0.78rem',
-                  borderLeft: active === `bs-section-${i}` ? '2px solid var(--bs-gold)' : '2px solid transparent',
-                  fontWeight: active === `bs-section-${i}` ? 700 : 400,
-                  color: active === `bs-section-${i}` ? 'var(--bs-navy)' : 'var(--bs-muted)',
-                  transition:'all 0.2s',
-                }}>
-                <span style={{ opacity:0.4, marginRight:6 }}>{String(i+1).padStart(2,'0')}</span>{heading}
+              <button key={i}
+                className={active === `bs-section-${i}` ? 'active' : ''}
+                onClick={() => scrollTo(`bs-section-${i}`)}>
+                <span style={{ opacity:0.4, marginRight:6, fontSize:'0.72rem' }}>{String(i+1).padStart(2,'0')}</span>{heading}
               </button>
             ))}
           </aside>
