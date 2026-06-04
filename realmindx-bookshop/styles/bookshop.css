@@ -82,7 +82,7 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-logo-badge { width: 72px; height: 46px; border-radius: 8px; background: var(--bs-navy); display: inline-flex; align-items: center; justify-content: center; padding: 6px; box-shadow: 0 8px 18px rgba(20,54,112,.16); }
 /* New bookshop logo — image only, no text, transparent */
 .bs-logo-img { display: flex; align-items: center; background: none !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
-.bs-navbar-logo-img { height: 42px; width: auto; max-width: 200px; object-fit: contain; display: block; background: transparent; mix-blend-mode: multiply; }
+.bs-navbar-logo-img { height: 56px; width: auto; max-width: 260px; object-fit: contain; display: block; background: transparent; mix-blend-mode: multiply; }
 .bs-logo-badge img { width: 100%; height: 100%; object-fit: contain; }
 .bs-logo-mark { width: 38px; height: 38px; border-radius: 10px; background: var(--bs-navy); color: var(--bs-gold-live); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .bs-logo-word { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 19px; color: var(--bs-navy); letter-spacing: -.5px; line-height: 1; }
