@@ -585,12 +585,32 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     teaching: 'Edit Teaching Preferences',
     kin: 'Edit Next of Kin',
   };
+  // Helpers for comma-separated multi-select fields
+  const multiValues = (key) => (form[key] || '').split(',').map(s => s.trim()).filter(Boolean);
+  const toggleMulti = (key, value) => {
+    const cur = multiValues(key);
+    const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
+    setForm(prev => ({ ...prev, [key]: next.join(', ') }));
+  };
+
+  const SUBJECTS = [
+    'Mathematics','English Language','Integrated Science','Social Studies',
+    'Religious & Moral Education (RME)','Creative Arts','French','Ghanaian Language',
+    'Computing / ICT','History','Geography','Economics','Business Studies',
+    'Elective Mathematics','Physics','Chemistry','Biology / Life Science',
+    'Literature in English','Government / Civics','Agriculture Science',
+    'Technical Drawing','Visual Arts','Music','Physical Education (PE)',
+    'Home Economics / Management in Living','Early Childhood Education (ECCE)',
+    'Special Education / Inclusive Education','Career Technology','Accounting',
+    'Office Administration','Marketing','Textiles','Woodwork / Carpentry',
+    'Auto Mechanics / Auto Tech','Other',
+  ];
+  const LEVELS = ['Nursery / KG (ECCE)','Primary (1-6)','JHS (7-9)','SHS (10-12)','Technical / Vocational (TVET)','Tertiary / University','All Levels'];
+  const WORK_TYPES = ['Full Time','Part Time','Contract','Supply / Relief Teaching','Volunteer','Remote / Online','Locum'];
+  const CURRICULA = ['Ghana Education Service (GES)','Cambridge (IGCSE / A-Level)','International Baccalaureate (IB)','American / AP','Montessori','French / Francophone','Islamic / Arabic Studies','Other'];
+
   const fields = section === 'teaching'
-    ? [
-        ['teaching_subject', 'Teaching Subject', 'Example: Mathematics, English, Science'],
-        ['preferred_level', 'Preferred Level', 'Example: Primary, JHS, SHS'],
-        ['preferred_employment_type', 'Work Type Preferred', 'Example: Full-time, Part-time, Contract'],
-      ]
+    ? null // rendered separately below
     : section === 'kin'
       ? [
           ['next_of_kin_name', 'Full Name', 'Example: Ama Mensah'],
@@ -611,7 +631,67 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
         </button>
         <h3 style={{ fontFamily: "'Montserrat', sans-serif", marginBottom: 18, fontSize: '1.25rem', color: 'var(--navy)' }}>{titleMap[section] || 'Edit Profile'}</h3>
         <div className="profile-sections-grid">
-          {fields.map(([name, label, placeholder]) => (
+          {/* ── Teaching section: dropdowns + checkboxes ── */}
+          {section === 'teaching' && (<>
+            {/* Subject dropdown */}
+            <div className="form-group">
+              <label className="form-label">Teaching Subject</label>
+              <select className="form-input" value={form.teaching_subject || ''} onChange={e => setForm(p => ({ ...p, teaching_subject: e.target.value }))}>
+                <option value="">Select subject</option>
+                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            {/* Availability */}
+            <div className="form-group">
+              <label className="form-label">Availability</label>
+              <select className="form-input" value={form.preferred_employment_type || ''} onChange={e => setForm(p => ({ ...p, preferred_employment_type: e.target.value }))}>
+                <option value="">Select availability</option>
+                <option value="Immediately">Immediately Available</option>
+                <option value="1 Month">Within 1 Month</option>
+                <option value="3 Months">Within 3 Months</option>
+                <option value="After Current Term">After Current Term</option>
+              </select>
+            </div>
+            {/* Preferred Level checkboxes */}
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Preferred School Level <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
+              <div className="portal-checkbox-grid">
+                {LEVELS.map(lvl => (
+                  <label key={lvl} className="portal-checkbox-row">
+                    <input type="checkbox" checked={multiValues('preferred_level').includes(lvl)} onChange={() => toggleMulti('preferred_level', lvl)} />
+                    <span>{lvl}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            {/* Work Type checkboxes */}
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Work Type <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
+              <div className="portal-checkbox-grid">
+                {WORK_TYPES.map(wt => (
+                  <label key={wt} className="portal-checkbox-row">
+                    <input type="checkbox" checked={multiValues('work_type').includes(wt)} onChange={() => toggleMulti('work_type', wt)} />
+                    <span>{wt}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            {/* Curriculum checkboxes */}
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Curriculum Experience <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
+              <div className="portal-checkbox-grid">
+                {CURRICULA.map(c => (
+                  <label key={c} className="portal-checkbox-row">
+                    <input type="checkbox" checked={multiValues('curriculum').includes(c)} onChange={() => toggleMulti('curriculum', c)} />
+                    <span>{c}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </>)}
+
+          {/* ── All other sections: generic text inputs ── */}
+          {fields && fields.map(([name, label, placeholder]) => (
             <div className="form-group" key={name}>
               <label className="form-label">{label}</label>
               <input
@@ -729,7 +809,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
         ) : (
           <>
             <div style={{ background: 'var(--warning-bg)', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: '0.82rem', color: '#92400e' }}>
-              <Icon name="warning" size={15} stroke={2} /> Please upload at least your Degree Certificate or NTC license.
+              <Icon name="warning" size={15} stroke={2} /> Please upload your highest formal certificate or NTC license.
             </div>
             <div className="document-upload-zone">
               <div style={{ fontSize: '2rem', marginBottom: 8, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="award" size={34} stroke={1.7} /></div>
@@ -1264,10 +1344,15 @@ const UserPortalPage = () => {
             <h1 className="portal-page-title">{VIEW_TITLES[activeView]}</h1>
           </div>
           <div className="portal-topbar-actions">
-            <div className="topbar-icon-btn" title="Notifications">
+            <button
+              type="button"
+              className="topbar-icon-btn"
+              title="Job Alerts"
+              onClick={() => setActiveView('alerts')}
+            >
               <Icon name="bell" size={18} stroke={1.9} />
-              <span className="notif-dot" />
-            </div>
+              {alerts.length > 0 && <span className="notif-dot" />}
+            </button>
             <button
               type="button"
               className="portal-user-chip"
