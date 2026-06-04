@@ -2999,15 +2999,19 @@
 .auth-panel-brand p,
 .auth-panel-form h2 { color: #fff !important; }
 
-/* Bookshop — hero, mobile menu, auth form, footer */
+/* Bookshop — hero, mobile menu, auth form (NOT footer — it manages its own colours) */
 .bs-info-hero *,
 .bs-mobile-menu *,
-.bs-footer *,
 .bs-auth-form-wrap h2,
 .bs-auth-form-wrap p,
 .bs-auth-form-wrap .bs-sub,
 .bs-auth-brand h1,
 .bs-auth-brand p { color: #fff !important; }
+
+/* Footer hover states must win — boost with !important */
+.bs-footer-links a:hover,
+.bs-footer-contact a:hover { color: var(--bs-gold-live, #ffcc01) !important; }
+.bs-footer-bottom a:hover  { color: var(--bs-gold-live, #ffcc01) !important; }
 
 /* Gold eyebrows / labels always stay gold on dark backgrounds */
 .bs-info-hero .bs-eyebrow,
