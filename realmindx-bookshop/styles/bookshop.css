@@ -65,8 +65,10 @@
 .bs-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 13px 24px; border-radius: var(--bs-radius-sm); font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.3px; transition: all .25s var(--bs-ease); border: 1.5px solid transparent; white-space: nowrap; }
 .bs-btn-gold { background: var(--bs-gold-live); color: var(--bs-navy); }
 .bs-btn-gold:hover { background: var(--bs-gold-dark); transform: translateY(-2px); box-shadow: var(--bs-shadow-gold); }
-.bs-btn-navy { background: var(--bs-navy); color: #fff; }
-.bs-btn-navy:hover { background: var(--bs-navy-light); transform: translateY(-2px); box-shadow: var(--bs-shadow-md); }
+.bs-btn-navy,
+a.bs-btn-navy { background: var(--bs-navy); color: #fff !important; }
+.bs-btn-navy:hover,
+a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; transform: translateY(-2px); box-shadow: var(--bs-shadow-md); }
 .bs-btn-outline-navy { background: transparent; border-color: var(--bs-navy); color: var(--bs-navy); }
 .bs-btn-outline-navy:hover { background: var(--bs-navy); color: #fff; }
 .bs-btn-block { width: 100%; }
@@ -125,8 +127,9 @@
 .bs-mm-search input::placeholder { color: rgba(255,255,255,.6); }
 .bs-mm-search .bs-search-icn { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--bs-gold-live); }
 .bs-mm-links { margin-top: 36px; display: flex; flex-direction: column; gap: 4px; position: relative; z-index:1; }
-.bs-mm-links a { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 26px; color: #fff; padding: 12px 0; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.08); }
-.bs-mm-links a.active { color: var(--bs-gold-live); }
+.bs-mm-links a { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 26px; color: #fff; padding: 12px 0; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.08); transition: color .2s; }
+.bs-mm-links a.active,
+.bs-mm-links a:hover { color: var(--bs-gold-live); }
 .bs-mm-links a .bs-ci { opacity: .5; }
 .bs-mm-foot { margin-top: auto; position: relative; z-index:1; color: rgba(255,255,255,.6); font-size: 14px; }
 /* logo on dark nav overlay gets white text */
