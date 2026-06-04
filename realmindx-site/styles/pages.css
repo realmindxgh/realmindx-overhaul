@@ -2112,6 +2112,17 @@ input, textarea, select { font-family: inherit; }
   background: var(--off-white);
 }
 
+/* Flash highlight for checklist ADD actions */
+@keyframes portalHighlight {
+  0%   { box-shadow: 0 0 0 0 rgba(255,204,1,0.6);  border-color: var(--yellow); }
+  40%  { box-shadow: 0 0 0 8px rgba(255,204,1,0.2); border-color: var(--yellow); }
+  100% { box-shadow: 0 0 0 0 rgba(255,204,1,0);     border-color: transparent;  }
+}
+.portal-highlight-flash {
+  animation: portalHighlight 1.8s ease forwards;
+  border: 2px solid var(--yellow) !important;
+}
+
 .portal-sidebar {
   width: 260px;
   background: var(--navy);

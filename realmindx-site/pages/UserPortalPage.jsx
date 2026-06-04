@@ -4,6 +4,7 @@ import logoWhite from '../assets/logo-white.png';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
 import { signOut } from '../../src/lib/authClient.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
+import { useCropUpload } from '../../src/lib/useCropUpload.js';
 
 // CV Tutorial video card — YouTube URL is configurable via admin Site Settings (key: cv_tutorial_url)
 const CV_TUTORIAL_FALLBACK_URL = '';  // set a YouTube embed URL here once you have one, e.g. 'https://www.youtube.com/embed/XXXXXXXXXXX'
@@ -177,14 +178,14 @@ const completionFromProfile = profile => {
 };
 
 /* â”€â”€ Profile completion checklist (new user) â”€â”€â”€â”€â”€â”€â”€ */
-const ProfileChecklist = ({ user, setActive }) => {
+const ProfileChecklist = ({ user, setActive, onAction }) => {
   const steps = [
-    { label: 'Email verified',            done: user.emailVerified, view: null,          icon: 'mail'     },
-    { label: 'Add your phone number',     done: !!user.phone,       view: 'profile',     icon: 'phone'    },
-    { label: 'Set teaching subject',      done: !!user.subject,     view: 'profile',     icon: 'book'     },
-    { label: 'Upload your CV',            done: user.hasCV,         view: 'documents',   icon: 'file'     },
-    { label: 'Add certificates',          done: user.hasCerts,      view: 'documents',   icon: 'award'    },
-    { label: 'Set job alert preferences', done: false,              view: 'alerts',      icon: 'bell'     },
+    { label: 'Email verified',            done: user.emailVerified, view: null,          icon: 'mail',  action: null            },
+    { label: 'Add your phone number',     done: !!user.phone,       view: 'profile',     icon: 'phone', action: 'edit-personal' },
+    { label: 'Set teaching subject',      done: !!user.subject,     view: 'profile',     icon: 'book',  action: 'edit-teaching' },
+    { label: 'Upload your CV',            done: user.hasCV,         view: 'documents',   icon: 'file',  action: 'highlight-cv'  },
+    { label: 'Add certificates',          done: user.hasCerts,      view: 'documents',   icon: 'award', action: 'highlight-cert'},
+    { label: 'Set job alert preferences', done: false,              view: 'alerts',      icon: 'bell',  action: 'create-alert'  },
   ];
   const doneCount = steps.filter(s => s.done).length;
 
@@ -220,7 +221,7 @@ const ProfileChecklist = ({ user, setActive }) => {
             {!s.done && s.view && (
               <button
                 type="button"
-                onClick={() => setActive?.(s.view)}
+                onClick={() => onAction?.(s)}
                 style={{ fontSize: '0.75rem', color: 'var(--yellow-dark)', fontWeight: 700, fontFamily: "'Montserrat', sans-serif", letterSpacing: '0.04em', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
               >
                 ADD
@@ -312,7 +313,7 @@ const Sidebar = ({ active, setActive, user, sidebarOpen, setSidebarOpen, applica
 );
 
 /* â”€â”€ DASHBOARD VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const DashboardView = ({ user, setActive, applications = [], alerts = [], onPreviewAvatar }) => {
+const DashboardView = ({ user, setActive, onAction, applications = [], alerts = [], onPreviewAvatar }) => {
   const pendingCount = applications.filter(a => ['pending', 'reviewed', 'shortlisted'].includes(a.status)).length;
   const acceptedCount = applications.filter(a => a.status === 'accepted').length;
   const activeAlerts = alerts.filter(a => a.active !== false);
@@ -373,7 +374,7 @@ const DashboardView = ({ user, setActive, applications = [], alerts = [], onPrev
     {/* Main grid */}
     {user.isNew ? (
       <div className="portal-grid-2">
-        <ProfileChecklist user={user} setActive={setActive} />
+        <ProfileChecklist user={user} setActive={setActive} onAction={onAction} />
         <div className="profile-section-card">
           <h3>Recommended Jobs</h3>
           <div style={{ textAlign: 'center', padding: '40px 16px' }}>
@@ -456,6 +457,34 @@ const DashboardView = ({ user, setActive, applications = [], alerts = [], onPrev
 };
 
 /* â”€â”€ PROFILE VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Profile picture card with crop ─────────────────────── */
+const ProfilePictureCard = ({ user, onPreviewAvatar, onUploadAvatar, avatarUploading, uploadError }) => {
+  const { inputProps, cropModal } = useCropUpload({
+    aspectRatio: 1,
+    title: 'Crop Profile Picture',
+    onFile: (file) => onUploadAvatar?.(file),
+  });
+  return (
+    <div className="profile-section-card">
+      {cropModal}
+      <h3>Profile Picture</h3>
+      <div style={{ textAlign: 'center', padding: '24px 0' }}>
+        <button className="avatar-preview-button" type="button" onClick={onPreviewAvatar} aria-label="View profile picture"
+          style={{ width: 100, height: 100, borderRadius: '50%', background: 'var(--yellow)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: '2rem', color: 'var(--navy)', border: 0 }}>
+          {user.avatarUrl ? <img src={user.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} /> : user.initials}
+        </button>
+        <label className="document-upload-zone portal-upload-zone" style={{ marginTop: 0 }}>
+          <div style={{ fontSize: '1.5rem', marginBottom: 6, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="camera" size={26} stroke={1.8} /></div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)' }}>{avatarUploading ? 'Uploading photo...' : 'Click to upload a photo'}</p>
+          <p style={{ fontSize: '0.72rem', color: 'var(--gray-600)', marginTop: 4 }}>JPG, PNG · Crop after selecting</p>
+          <input type="file" accept="image/png,image/jpeg,image/webp" hidden {...inputProps} />
+        </label>
+        {uploadError && <p className="form-error" style={{ marginTop: 10 }}>{uploadError}</p>}
+      </div>
+    </div>
+  );
+};
+
 const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, avatarUploading, uploadError }) => (
   <div>
     {/* Profile header */}
@@ -545,21 +574,7 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, ava
       </div>
 
       {/* Profile picture slot */}
-      <div className="profile-section-card">
-        <h3>Profile Picture</h3>
-        <div style={{ textAlign: 'center', padding: '24px 0' }}>
-          <button className="avatar-preview-button" type="button" onClick={onPreviewAvatar} aria-label="View profile picture" style={{ width: 100, height: 100, borderRadius: '50%', background: 'var(--yellow)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: '2rem', color: 'var(--navy)', border: 0 }}>
-            {user.avatarUrl ? <img src={user.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} /> : user.initials}
-          </button>
-          <label className="document-upload-zone portal-upload-zone" style={{ marginTop: 0 }}>
-            <div style={{ fontSize: '1.5rem', marginBottom: 6, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="camera" size={26} stroke={1.8} /></div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)' }}>{avatarUploading ? 'Uploading photo...' : 'Click to upload a photo'}</p>
-            <p style={{ fontSize: '0.72rem', color: 'var(--gray-600)', marginTop: 4 }}>JPG, PNG up to 5MB</p>
-            <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => onUploadAvatar?.(event.target.files?.[0])} />
-          </label>
-          {uploadError && <p className="form-error" style={{ marginTop: 10 }}>{uploadError}</p>}
-        </div>
-      </div>
+      <ProfilePictureCard user={user} onPreviewAvatar={onPreviewAvatar} onUploadAvatar={onUploadAvatar} avatarUploading={avatarUploading} uploadError={uploadError} />
     </div>
   </div>
 );
@@ -630,7 +645,19 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
 };
 
 /* â”€â”€ DOCUMENTS VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError }) => (
+const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, highlight }) => {
+  const cvRef   = React.useRef(null);
+  const certRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!highlight) return;
+    const ref = highlight === 'cv' ? cvRef : certRef;
+    setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      ref.current?.classList.add('portal-highlight-flash');
+      setTimeout(() => ref.current?.classList.remove('portal-highlight-flash'), 2000);
+    }, 120);
+  }, [highlight]);
+  return (
   <div>
     <div style={{ marginBottom: 24 }}>
       <h2 className="portal-page-title">My Documents</h2>
@@ -644,7 +671,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError }) =
       <CvTutorialCard />
 
       {/* CV */}
-      <div className="profile-section-card">
+      <div className="profile-section-card" ref={cvRef}>
         <h3>Curriculum Vitae (CV)</h3>
         {user.hasCV ? (
           <div>
@@ -679,7 +706,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError }) =
       </div>
 
       {/* Certificates */}
-      <div className="profile-section-card">
+      <div className="profile-section-card" ref={certRef}>
         <h3>Certificates & Qualifications</h3>
         {user.hasCerts ? (
           <div>
@@ -733,9 +760,10 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError }) =
       </div>
     </div>
   </div>
-);
+  );
+};
 
-/* â”€â”€ APPLICATIONS VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── APPLICATIONS VIEW ─────────────────────────────────── */
 const ApplicationsView = ({ applications = [] }) => (
   <div>
     <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -956,6 +984,7 @@ const SettingsView = () => (
 /* â”€â”€ MAIN PORTAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const UserPortalPage = () => {
   const [activeView, setActiveView] = useState('dashboard');
+  const [pendingAction, setPendingAction] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [session, setSession] = React.useState(() => getDemoSession());
   const [sessionChecked, setSessionChecked] = React.useState(!isApiMode());
@@ -1144,6 +1173,25 @@ const UserPortalPage = () => {
     }
   };
 
+  // Checklist ADD handler: navigate to the right view then execute the specific action
+  const handleChecklistAction = (step) => {
+    setActiveView(step.view);
+    setPendingAction(step.action);
+  };
+
+  // Execute pending action after the target view has rendered
+  React.useEffect(() => {
+    if (!pendingAction) return;
+    const tid = setTimeout(() => {
+      if (pendingAction === 'edit-personal' || pendingAction === 'edit-teaching') {
+        openProfileEdit(pendingAction === 'edit-teaching' ? 'teaching' : 'personal');
+      }
+      setPendingAction(null);
+    }, 80);
+    return () => clearTimeout(tid);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAction]);
+
   const openProfileEdit = (section = 'personal') => {
     setProfileError('');
     setProfileForm({
@@ -1187,11 +1235,11 @@ const UserPortalPage = () => {
   const renderView = () => {
     switch (activeView) {
       case 'profile':      return <ProfileView      user={user} onPreviewAvatar={() => setAvatarPreview(true)} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} avatarUploading={avatarUploading} uploadError={uploadError} />;
-      case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} />;
+      case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} highlight={pendingAction === 'highlight-cv' ? 'cv' : pendingAction === 'highlight-cert' ? 'cert' : null} />;
       case 'applications': return <ApplicationsView applications={applications} />;
       case 'alerts':       return <AlertsView initialAlerts={alerts} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;
       case 'settings':     return <SettingsView />;
-      default:             return <DashboardView user={user} setActive={setActiveView} applications={applications} alerts={alerts} onPreviewAvatar={() => setAvatarPreview(true)} />;
+      default:             return <DashboardView user={user} setActive={setActiveView} onAction={handleChecklistAction} applications={applications} alerts={alerts} onPreviewAvatar={() => setAvatarPreview(true)} />;
     }
   };
 
