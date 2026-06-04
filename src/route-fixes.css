@@ -3008,10 +3008,10 @@
 .bs-auth-brand h1,
 .bs-auth-brand p { color: #fff !important; }
 
-/* Footer hover states must win — boost with !important */
+/* Footer hover gold — must beat any inherited colour */
 .bs-footer-links a:hover,
-.bs-footer-contact a:hover { color: var(--bs-gold-live, #ffcc01) !important; }
-.bs-footer-bottom a:hover  { color: var(--bs-gold-live, #ffcc01) !important; }
+.bs-footer-contact a:hover,
+.bs-footer-bottom a:hover { color: var(--bs-gold-live, #ffcc01) !important; }
 
 /* Gold eyebrows / labels always stay gold on dark backgrounds */
 .bs-info-hero .bs-eyebrow,
@@ -3020,10 +3020,6 @@
 .route-page-hero .overline,
 .services-policy-hero .overline { color: var(--bs-gold-live, #ffcc01) !important; }
 
-/* Preserve link and button colours inside dark sections */
-.bs-info-hero a,
-.bs-footer a,
-.page-hero a,
-.route-page-hero a { color: inherit; }
+/* Preserve CTA button colours inside dark sections */
 .bs-info-hero .bs-btn-gold,
 .page-hero .btn-primary { color: var(--bs-navy, #143670) !important; }
