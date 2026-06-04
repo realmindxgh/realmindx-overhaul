@@ -61,7 +61,8 @@ const ServicesPage = () => {
     scrollingRef.current = true;
     if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     setActiveService(id);
-    const top = el.getBoundingClientRect().top + window.scrollY - 94;
+    const navOffset = window.innerWidth <= 768 ? 74 : 94;
+    const top = el.getBoundingClientRect().top + window.scrollY - navOffset;
     window.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
     scrollTimerRef.current = setTimeout(() => {
       scrollingRef.current = false;

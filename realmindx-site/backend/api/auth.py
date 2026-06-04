@@ -46,16 +46,16 @@ def _send_verification_otp(user):
     body = (
         f"<p>Hello {escape(first_name)},</p>"
         "<p>Welcome to RealMindX! We&rsquo;re thrilled to have you join us. "
-        "To complete your account setup, use the code below &mdash; it&rsquo;s valid for 15 minutes.</p>"
+        "To complete your account setup, use the code below. It is valid for 15 minutes.</p>"
         '<div style="text-align:center;margin:28px 0;">'
         '<div style="display:inline-block;background:#f5f8fc;border:2px dashed #c8d5e8;'
         'border-radius:12px;padding:18px 36px;">'
         '<p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:2px;'
         'text-transform:uppercase;color:#6b80a0;">Your verification code</p>'
-        f'<p style="margin:0;font-size:38px;font-weight:900;letter-spacing:.22em;color:#0b1d38;">{escape(code)}</p>'
+        f'<p style="margin:0;font-size:38px;font-weight:900;letter-spacing:.22em;color:#143670;">{escape(code)}</p>'
         '</div></div>'
         "<p style='font-size:13px;color:#6b80a0;'>Didn&rsquo;t create a RealMindX account? "
-        "You can safely ignore this email &mdash; no action is needed.</p>"
+        "You can safely ignore this email. No action is needed.</p>"
     )
     send_email(OutboundEmail(
         to=user.email,
@@ -263,13 +263,13 @@ def request_password_reset():
                     "<p>We received a request to reset the password for your RealMindX account. "
                     "If this was you, click the button below to create a new password. "
                     "The link is valid for <strong>one hour</strong>.</p>"
-                    "<p>If you didn&rsquo;t request a password reset, you can safely ignore this email &mdash; "
-                    "your account remains secure and no changes have been made.</p>"
+                    "<p>If you did not request a password reset, you can safely ignore this email. "
+                    "Your account remains secure and no changes have been made.</p>"
                 ),
                 "Reset My Password",
                 reset_url,
-                eyebrow="RealMindX — Account Security",
-                preheader="Reset your password — this link expires in one hour.",
+                eyebrow="RealMindX Account Security",
+                preheader="Reset your password. This link expires in one hour.",
             ),
         ))
     return jsonify(message="If the email exists, reset instructions have been sent.")

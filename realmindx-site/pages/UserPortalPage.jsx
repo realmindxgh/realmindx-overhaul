@@ -926,7 +926,7 @@ const SettingsView = () => (
       </div>
       <div className="profile-section-card">
         <h3>Notification Preferences</h3>
-        {['Application status updates', 'New job matches', 'Newsletter and news', 'WhatsApp notifications'].map(p => (
+        {['Application status updates', 'New job matches', 'Newsletter and news'].map(p => (
           <div key={p} className="permission-item" style={{ marginBottom: 8 }}>
             <span className="perm-label">{p}</span>
             <label className="toggle-switch">

@@ -1333,11 +1333,11 @@ def _send_order_status_email(order, status, cancel_reason=""):
 
     status_messages = {
         "received": {
-            "subject": f"Your RealMindX Bookshop order is confirmed — {ref}",
+            "subject": f"Your RealMindX Bookshop order is confirmed: {ref}",
             "title": "Your order is confirmed!",
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
-                f"<p>Great news — your order <strong>{escape(ref)}</strong> has been confirmed and our team is getting it ready for you.</p>"
+                f"<p>Great news! Your order <strong>{escape(ref)}</strong> has been confirmed and our team is getting it ready for you.</p>"
                 f"<p>We&rsquo;ll be in touch to arrange delivery or let you know when it&rsquo;s ready for pickup at our Dome Pillar 2 shop.</p>"
                 f"<p>In the meantime, feel free to reach us on WhatsApp if you have any questions.</p>"
             ),
@@ -1345,18 +1345,18 @@ def _send_order_status_email(order, status, cancel_reason=""):
             "cta_url": "/bookshop/track",
         },
         "shipped": {
-            "subject": f"Your RealMindX order is on its way — {ref}",
+            "subject": f"Your RealMindX order is on its way: {ref}",
             "title": "Your order is on its way!",
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
-                f"<p>Good news — your order <strong>{escape(ref)}</strong> has been dispatched and is heading your way.</p>"
+                f"<p>Good news! Your order <strong>{escape(ref)}</strong> has been dispatched and is heading your way.</p>"
                 f"<p>Expected delivery is within 48 hours. Our team will contact you to coordinate handover if needed.</p>"
             ),
             "cta_label": "Track Your Order",
             "cta_url": "/bookshop/track",
         },
         "complete": {
-            "subject": f"Order delivered — thank you, {escape(first_name)}!",
+            "subject": f"Order delivered. Thank you, {escape(first_name)}!",
             "title": "Order delivered. Thank you!",
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
@@ -2283,4 +2283,40 @@ def bulk_delivery_adjust():
         else:
             delta = value
         if direction == "increase":
-            new_
+            new_fee = old_fee + delta
+        else:
+            new_fee = max(0, old_fee - delta)
+        z.fee = round(new_fee, 2)
+        count += 1
+    log_action("bulk_delivery_adjust", "delivery_zone", None, {
+        "type": adjustment_type, "value": value, "direction": direction, "count": count,
+    })
+    db.session.commit()
+    return jsonify(message=f"Updated {count} delivery zones.", count=count)
+
+
+@admin_bp.put("/settings/<string:key>")
+@login_required
+@permission_required("settings.edit")
+def upsert_setting(key):
+    payload = request.get_json(silent=True) or {}
+    row = SiteSetting.query.filter_by(key=key).first()
+    if not row:
+        row = SiteSetting(key=key)
+        db.session.add(row)
+    row.value = payload.get("value")
+    row.public = bool(payload.get("public", row.public))
+    log_action("upsert_setting", "site_setting", key)
+    db.session.commit()
+    return jsonify(key=row.key, value=row.value, public=row.public)
+
+
+@admin_bp.delete("/settings/<string:key>")
+@login_required
+@permission_required("settings.delete")
+def delete_setting(key):
+    row = SiteSetting.query.filter_by(key=key).first_or_404()
+    log_action("delete_setting", "site_setting", key)
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify(message="Setting deleted.")

@@ -84,6 +84,25 @@ const App = () => {
     document.documentElement.style.setProperty('--bs-gold-live', GOLD_ACCENT);
   }, []);
 
+  // Page titles per bookshop route
+  React.useEffect(() => {
+    const titles = {
+      home:     'RealMindX Bookshop | Educational Books and Stationery',
+      shop:     'Browse Books | RealMindX Bookshop',
+      product:  'Product | RealMindX Bookshop',
+      cart:     'Your Cart | RealMindX Bookshop',
+      checkout: 'Checkout | RealMindX Bookshop',
+      track:    'Track Your Order | RealMindX Bookshop',
+      login:    'Sign In | RealMindX Bookshop',
+      signup:   'Create Account | RealMindX Bookshop',
+      contact:  'Contact Us | RealMindX Bookshop',
+      about:    'About the Bookshop | RealMindX',
+      privacy:  'Privacy Policy | RealMindX Bookshop',
+      terms:    'Terms and Conditions | RealMindX Bookshop',
+    };
+    document.title = titles[route] || 'RealMindX Bookshop';
+  }, [route]);
+
   React.useEffect(() => {
     document.body.classList.add('bs-has-bottomnav');
     return () => { document.body.classList.remove('bs-has-bottomnav'); };

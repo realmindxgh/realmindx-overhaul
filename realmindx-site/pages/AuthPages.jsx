@@ -197,6 +197,9 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
   const confirmRef = React.useRef(null);
   const termsRef = React.useRef(null);
 
+  // Scroll to top whenever the form state changes (login/register/otp/forgot)
+  React.useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [mode, pendingVerificationEmail]);
+
   const showFieldProblem = (field, message) => {
     const refs = {
       firstName: firstNameRef,
@@ -274,13 +277,19 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
     }
     setLoading(true);
     try {
-      const result = await verifyEmailOtp({ email: pendingVerificationEmail, otp });
+      await verifyEmailOtp({ email: pendingVerificationEmail, otp });
       setPendingVerificationEmail('');
       setOtp('');
-      setMode('login');
-      setSuccess(result?.message || 'Email verified. You can now sign in.');
+      // Show success toast and auto-redirect to sign-in
+      toast.success('Email verified! You can now sign in.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => {
+        setMode('login');
+        toast.info('Sign in with the email and password you just chose.');
+      }, 1200);
     } catch (err) {
-      setError(err?.message || 'Could not verify the code.');
+      const msg = err?.message || 'Could not verify the code.';
+      setError(msg); toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -371,18 +380,6 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
 
         {/* Form panel */}
         <div className="auth-panel-form">
-
-          {/* Success message */}
-          {success && (
-            <div style={{
-              background: 'var(--success-bg)', border: '1px solid #86efac', borderRadius: 10,
-              padding: '16px 20px', marginBottom: 24, color: '#166534',
-              display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: '0.88rem', lineHeight: 1.6,
-            }}>
-              <span style={{ fontSize: '1.1rem', display: 'inline-flex' }}><Icon name="check" size={18} stroke={2.4} /></span>
-              <span>{success}</span>
-            </div>
-          )}
 
           {/* ── SIGN IN ── */}
           {pendingVerificationEmail && (

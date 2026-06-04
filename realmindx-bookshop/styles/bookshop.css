@@ -621,3 +621,9 @@
 .bs-toast.bs-toast-nudge {
   background: #1e3a6e; border-left: 3px solid var(--bs-gold-live);
 }
+
+/* Legal page sidebar (hide on small screens) */
+@media (max-width: 860px) {
+  .bs-legal-sidebar { display: none; }
+  .bs-legal-grid { grid-template-columns: 1fr !important; }
+}

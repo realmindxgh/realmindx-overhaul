@@ -68,9 +68,9 @@ def app_email_shell(
         cta = f"""
         <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px 0 8px;">
           <tr>
-            <td style="border-radius:8px;background:#f2bd00;">
+            <td style="border-radius:8px;background:#ffcc01;">
               <a href="{escape(cta_url, quote=True)}"
-                 style="display:inline-block;padding:14px 28px;color:#07162b;font-weight:800;
+                 style="display:inline-block;padding:14px 28px;color:#0a1e3d;font-weight:800;
                         font-family:Arial,Helvetica,sans-serif;font-size:15px;
                         text-decoration:none;letter-spacing:.02em;border-radius:8px;">
                 {escape(cta_label)} &rarr;
@@ -112,39 +112,42 @@ def app_email_shell(
     }}
   </style>
 </head>
-<body style="margin:0;padding:0;background:#dce5f0;font-family:Arial,Helvetica,sans-serif;">
+<body style="margin:0;padding:0;background:#eef2f8;font-family:Arial,Helvetica,sans-serif;">
   {preheader_block}
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
     <tr>
-      <td class="email-wrapper" style="padding:32px 16px;background:#dce5f0;">
+      <td class="email-wrapper" style="padding:32px 16px;background:#eef2f8;">
         <table role="presentation" class="email-card" width="100%" cellspacing="0" cellpadding="0"
                style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;
                       overflow:hidden;border:1px solid #c8d5e8;">
 
           <!-- HEADER -->
           <tr>
-            <td class="email-header" style="background:#0b1d38;padding:28px 32px;border-bottom:4px solid #f2bd00;">
+            <td class="email-header" style="background:#143670;padding:28px 32px;border-bottom:4px solid #ffcc01;">
 
-              <!-- Logo: text fallback (renders everywhere, no image blocking) -->
-              <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
+              <!-- Logo: image + text fallback -->
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:22px;">
                 <tr>
-                  <td style="background:#f2bd00;border-radius:6px;padding:6px 14px;">
-                    <span class="logo-text"
-                          style="font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:22px;
-                                 color:#0b1d38;letter-spacing:-0.5px;white-space:nowrap;">
-                      RealMindX
-                    </span>
+                  <td style="vertical-align:middle;">
+                    <img src="{base_url}/logo-white.png" alt="RealMindX" width="40" height="40"
+                         style="display:inline-block;width:40px;height:40px;border-radius:6px;
+                                background:#ffcc01;vertical-align:middle;" />
                   </td>
                   <td style="padding-left:10px;vertical-align:middle;">
-                    <span style="font-family:Arial,Helvetica,sans-serif;color:#f2bd00;font-size:10px;
-                                 font-weight:700;letter-spacing:2.5px;text-transform:uppercase;">
+                    <span class="logo-text"
+                          style="font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:22px;
+                                 color:#ffffff;letter-spacing:-0.5px;white-space:nowrap;">
+                      RealMindX
+                    </span>
+                    <span style="display:block;font-family:Arial,Helvetica,sans-serif;color:#ffcc01;
+                                 font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;">
                       Education
                     </span>
                   </td>
                 </tr>
               </table>
 
-              <p style="margin:0 0 6px;color:#f2bd00;font-family:Arial,Helvetica,sans-serif;
+              <p style="margin:0 0 6px;color:#ffcc01;font-family:Arial,Helvetica,sans-serif;
                          font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;">
                 {safe_eyebrow}
               </p>
@@ -177,7 +180,7 @@ def app_email_shell(
           <!-- FOOTER -->
           <tr>
             <td class="email-footer"
-                style="background:#0b1d38;padding:24px 32px;font-family:Arial,Helvetica,sans-serif;
+                style="background:#143670;padding:24px 32px;font-family:Arial,Helvetica,sans-serif;
                        font-size:13px;color:#93a8c8;line-height:1.7;">
               <p style="margin:0 0 6px;font-weight:800;color:#ffffff;font-size:14px;">
                 RealMindX Education Limited

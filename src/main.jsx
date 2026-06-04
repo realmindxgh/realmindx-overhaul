@@ -309,63 +309,157 @@ const NewsPage = () => {
 };
 
 const PRIVACY_SECTIONS = [
-  ['About This Policy', 'This Privacy Policy explains how RealMindX Education Limited ("RealMindX", "we", "our", or "us") collects, uses, stores, and protects personal information when you use our website, job portal, bookshop, and related services. By using our platform you agree to the practices described here. If you do not agree, please do not use our services.'],
-  ['Information We Collect', 'We collect information you provide directly — such as your name, email address, phone number, location, and professional details when you create an account, apply for a job, place a bookshop order, or contact us. We also collect profile files you upload (CVs, certificates, profile pictures), job alert preferences, and newsletter subscriptions. When you visit our site, our servers automatically log your IP address, browser type, pages visited, and referring URL for security and analytics purposes.'],
-  ['How We Use Your Information', 'We use your information to: create and manage your account; match you with relevant teaching job posts and send job alerts; process bookshop orders and arrange delivery or pickup; respond to enquiries and support requests; send transactional emails (order confirmations, verification codes, password resets); send newsletters you have subscribed to; improve our platform and services; detect and prevent fraud; and comply with legal obligations.'],
-  ['Information Sharing', 'We do not sell your personal information to third parties. We share information only where necessary: with school partners to facilitate job placements (with your consent when you apply); with payment processors (Paystack) to securely process bookshop orders; with email delivery providers (Resend) to send transactional and marketing emails; and with hosting and infrastructure providers who operate under confidentiality agreements. We may also disclose information where required by Ghanaian law or a court order.'],
-  ['Data Storage and Security', 'Your data is stored on secured servers. We use role-based access controls, encrypted passwords, HTTPS, and audit logging to protect your information. Uploaded documents (CVs, certificates) are stored as protected files accessible only to you and authorised staff. We retain your data for as long as your account is active or as required by law. You may request deletion of your account and data by contacting us at info@realmindxgh.com.'],
-  ['Your Rights', 'You have the right to: access the personal information we hold about you; correct inaccurate information; request deletion of your account and data; withdraw consent for marketing communications (unsubscribe at any time); and lodge a complaint with the relevant data protection authority. To exercise these rights, contact us at info@realmindxgh.com.'],
-  ['Cookies', 'We use session cookies to keep you signed in and to maintain CSRF protection. We do not use tracking cookies or third-party advertising cookies without your consent. You can disable cookies in your browser settings, though some features may not function correctly without them.'],
-  ['Children', 'Our platform is intended for users aged 18 and over. We do not knowingly collect personal information from children under 13. If you believe a child has provided us with personal information, please contact us immediately.'],
-  ['Changes to This Policy', 'We may update this Privacy Policy periodically. We will post the revised version on this page with an updated effective date. Continued use of our services after changes constitutes acceptance of the revised policy. For significant changes, we will notify registered users by email.'],
-  ['Contact Us', 'For any privacy-related questions or requests, please contact us at: privacy@realmindxgh.com — or by post: RealMindX Education Limited, Dome Pillar 2, Accra, Ghana.'],
+  ['Who We Are', 'RealMindX Education Limited operates the website at realmindxgh.com. We are an education company based in Ghana. This Privacy Policy explains how we collect, use, store, and protect your personal information when you use our website. For questions about this policy, contact us at info@realmindxgh.com.'],
+  ['Information We Collect', 'When you create an account we collect your name, email address, and password. When you apply for a job we collect your name, contact details, education history, employment history, and any supporting documents you upload. When you make a donation we collect your name, email, and payment reference. When you submit a contact form we collect your name, email, and message. When you subscribe to our newsletter we collect your email address. If you sign in using Google or Facebook, we receive your name and email address from those providers only. We do not receive your password or access your contacts or posts. When you visit our website we automatically collect your IP address, browser type, device information, pages visited, and time spent on pages through standard web server logs.'],
+  ['How We Use Your Information', 'We use the information we collect to operate and maintain the website and its features, to create and manage your account, to respond to your enquiries and support requests, to process job applications and communicate about their status, to process and acknowledge donations, to send you the newsletter if you have subscribed, to send you service and account-related communications, to detect and prevent fraud and unauthorised access, to comply with legal obligations under Ghanaian law, and to improve our services based on how the website is used. We do not sell your personal information to any third party. We do not use your personal information for advertising purposes on third-party platforms.'],
+  ['Who We Share Your Information With', 'We share information with trusted providers who help us operate the website. These include Resend for email delivery, Paystack for payment processing, Cloudflare for security and performance, and our hosting provider for server infrastructure. If you sign in with Google or Facebook, your use of those services is also subject to their respective privacy policies. We may disclose information if required by Ghanaian law, a court order, or a valid legal process. We will notify you of such requests where legally permitted. We do not share your information with any other party without your explicit consent.'],
+  ['Job Application Data', 'Information submitted as part of a job application is used solely for evaluating your suitability for the role and communicating with you about your application. We retain application data for a period of twelve months after the application process concludes, after which it is permanently deleted unless you are offered and accept a position. We do not share application data with third parties except where a specific role is managed in partnership with another organisation, in which case we will inform you at the time of application.'],
+  ['Donation Data', 'Payment processing for donations is handled entirely by Paystack. We do not store your card number or mobile money credentials. We retain a record of donation transactions including your name, email, amount, and Paystack reference for accounting and acknowledgement purposes. This data is retained for seven years in compliance with Ghanaian financial record-keeping requirements.'],
+  ['Data Retention', 'We retain account data for as long as your account is active. If you close your account we retain a minimal record for twelve months to handle any outstanding queries before permanent deletion. We retain newsletter subscription records until you unsubscribe. Contact form submissions are retained for twelve months. Audit logs recording admin actions are retained for twenty-four months.'],
+  ['Data Security', 'We implement appropriate technical and organisational measures to protect your personal information. These include encrypted HTTPS connections for all data in transit, HTTP-only session cookies with SameSite protection, hashed passwords using industry-standard algorithms, role-based access controls limiting who within RealMindX can access different categories of data, and rate limiting to prevent brute-force attacks. In the event of a data breach that affects your personal information, we will notify you and relevant authorities as required by applicable Ghanaian law.'],
+  ['Your Rights', 'You have the right to request access to the personal information we hold about you. You have the right to request correction of inaccurate information. You have the right to request deletion of your information subject to our legal obligations. You have the right to withdraw consent for communications such as the newsletter at any time. You have the right to request a copy of your data in a portable format. To exercise any of these rights, contact us at info@realmindxgh.com. We will respond within thirty days.'],
+  ['Cookies and Local Storage', 'We use session cookies to maintain your login state. We do not use third-party advertising cookies. We do not use tracking pixels. You may disable cookies in your browser settings but doing so will prevent you from remaining logged in.'],
+  ["Children's Privacy", 'Our website is not directed at children under the age of 13. We do not knowingly collect personal information from children under 13. If you believe a child under 13 has provided us with personal information, contact us at info@realmindxgh.com and we will delete it promptly.'],
+  ['Changes to This Policy', 'We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated effective date. We will notify registered users of significant changes by email.'],
+  ['Contact', 'RealMindX Education Limited, Dome Pillar 2, Accra, Ghana. Email: info@realmindxgh.com. Website: realmindxgh.com.'],
 ];
 
 const TERMS_SECTIONS = [
-  ['Agreement', 'These Terms of Service govern your use of the RealMindX Education Limited ("RealMindX") website, job portal, user portal, bookshop, and related services ("the Platform"). By accessing or using the Platform, you agree to be bound by these terms. If you do not agree, do not use the Platform.'],
-  ['Eligibility', 'You must be at least 18 years old to create an account. By registering, you confirm that you are 18 or over and that the information you provide is accurate and complete. RealMindX reserves the right to suspend or terminate accounts that violate these terms or provide false information.'],
-  ['Account Responsibilities', 'You are responsible for keeping your login credentials secure. You must not share your account or allow others to access it. You are responsible for all activity that occurs under your account. Notify us immediately at info@realmindxgh.com if you suspect unauthorised access.'],
-  ['Job Portal', 'The job portal connects teachers with schools across Ghana. Job listings are published in good faith by RealMindX or partner schools. Applying for a job through the Platform does not guarantee an interview, offer, or placement. RealMindX facilitates the process but is not a party to any employment contract between a teacher and a school. You must ensure that all information in your profile and applications is truthful and up to date.'],
-  ['Bookshop', 'Bookshop orders are requests subject to stock availability. Placing an order does not constitute a binding contract until RealMindX confirms availability and accepts payment. Prices are stated in Ghanaian Cedis (GH₵) and are subject to change without notice. Delivery fees are calculated at checkout based on your location. Customers are responsible for ensuring delivery details are accurate. Our return policy allows unused items in original condition to be returned within 7 days for exchange or store credit.'],
-  ['Intellectual Property', 'All content on the Platform — including text, images, logos, product descriptions, and code — is the property of RealMindX Education Limited or its licensors and is protected by Ghanaian and international copyright law. You may not reproduce, distribute, or create derivative works from Platform content without express written permission.'],
-  ['Prohibited Conduct', 'You must not: use the Platform for any unlawful purpose; upload malicious content or attempt to compromise system security; impersonate another person or entity; harvest other users\' personal data; submit false information or fraudulent orders; use automated tools to scrape or overload the Platform; or interfere with other users\' access to the Platform.'],
-  ['Limitation of Liability', 'RealMindX provides the Platform "as is" and makes no warranties regarding uptime, accuracy, or fitness for a particular purpose. To the fullest extent permitted by Ghanaian law, RealMindX shall not be liable for indirect, incidental, or consequential damages arising from your use of the Platform, including but not limited to loss of employment opportunity, loss of data, or loss of income.'],
-  ['Termination', 'RealMindX reserves the right to suspend or terminate your account at any time if you violate these Terms or engage in conduct harmful to the Platform, other users, or RealMindX. You may close your account at any time by contacting info@realmindxgh.com.'],
-  ['Governing Law', 'These Terms are governed by the laws of the Republic of Ghana. Any disputes arising from these Terms or your use of the Platform shall be subject to the exclusive jurisdiction of the courts of Ghana.'],
-  ['Changes to Terms', 'We may update these Terms periodically. Continued use of the Platform after changes are posted constitutes acceptance. We will notify registered users of significant changes by email.'],
-  ['Contact', 'Questions about these Terms? Contact us at: legal@realmindxgh.com — or: RealMindX Education Limited, Dome Pillar 2, Accra, Ghana.'],
+  ['Agreement to These Terms', 'By accessing or using the RealMindX Education Limited website at realmindxgh.com, you agree to be bound by these Terms of Service. If you do not agree to these terms, do not use the website. These terms apply to all visitors, registered users, job applicants, donors, and anyone who interacts with our services through this website. RealMindX Education Limited is a company registered in Ghana. References to "we", "us", or "RealMindX" in these terms refer to RealMindX Education Limited.'],
+  ['About RealMindX', 'RealMindX Education Limited is an education company providing digital tools, platforms, and services to support schools, teachers, students, and families across Ghana. Our website provides information about our services, career opportunities, donation options, news, and access to our various education technology products including SchoolMS.'],
+  ['User Accounts', 'Some features of the website require you to create an account. You must provide accurate, current, and complete information when registering. You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account. New accounts require email verification via a one-time code sent to the email address you provide. You may register and sign in using your Google or Facebook account. You must notify us immediately at info@realmindxgh.com if you become aware of any unauthorised access to your account. We reserve the right to suspend or terminate accounts that violate these terms, contain inaccurate information, or are used for fraudulent purposes. You may close your account at any time by contacting us.'],
+  ['Job Applications', 'Our website allows individuals to apply for positions at RealMindX Education Limited and partner schools. By submitting a job application you confirm that all information provided is truthful and accurate. We reserve the right to reject any application at our discretion. Submitting a fraudulent application may result in permanent disqualification from future opportunities. Application data is handled as described in our Privacy Policy. We do not guarantee employment to any applicant.'],
+  ['Donations', 'RealMindX accepts voluntary donations to support our education initiatives. All donations are processed through Paystack. Donations are voluntary and non-refundable except where required by Ghanaian consumer protection law or where a payment error has occurred. Donations do not confer any ownership interest, voting rights, or financial return. We will use donations in support of our stated educational mission. If a payment is taken but the donation is not recorded, contact us immediately at info@realmindxgh.com with your payment reference.'],
+  ['Services and Products', 'Information about our services and products on this website is provided for general information purposes. Service availability, features, and pricing may change. Detailed terms governing specific products such as SchoolMS are contained in the terms specific to those products.'],
+  ['Contact Form and Communications', 'When you submit a message through our contact form, we will use the information you provide to respond to your enquiry. We may also use your email address to send you updates about RealMindX if you have opted in to communications. You may unsubscribe from marketing emails at any time using the unsubscribe link in any email we send.'],
+  ['Newsletter', 'By subscribing to our newsletter you consent to receiving periodic updates about RealMindX news, products, and educational content. We will not share your email address with third parties for marketing purposes. You may unsubscribe at any time.'],
+  ['Intellectual Property', 'All content on this website including text, images, logos, software, and design is the intellectual property of RealMindX Education Limited or its licensors. You may not reproduce, distribute, modify, or create derivative works from any content on this website without our prior written consent. The RealMindX name and logo are trademarks of RealMindX Education Limited.'],
+  ['Disclaimer of Warranties', 'This website and all content, services, and features provided through it are offered on an as-is and as-available basis. To the fullest extent permitted by Ghanaian law, RealMindX makes no warranties, express or implied, regarding the accuracy, reliability, completeness, or fitness for purpose of any content or service on this website.'],
+  ['Limitation of Liability', 'To the fullest extent permitted by applicable Ghanaian law, RealMindX Education Limited is not liable for any indirect, incidental, special, or consequential loss or damage arising from your use of this website or any services described on it. Our total liability in connection with this website shall not exceed the amount you paid to us in the three months preceding the relevant claim, or GHS 100 where no payment was made.'],
+  ['Prohibited Conduct', 'You must not use this website to transmit harmful, abusive, defamatory, or illegal content. You must not attempt to gain unauthorised access to any part of the website or its underlying systems. You must not use automated tools to scrape or extract data from the website without our prior written consent. You must not impersonate any person or entity or misrepresent your affiliation with any organisation.'],
+  ['Changes to These Terms', 'We may update these terms from time to time. Changes will be posted on this page with an updated effective date. Your continued use of the website after changes are posted constitutes acceptance of the updated terms. For significant changes we will provide notice to registered users by email.'],
+  ['Governing Law', 'These terms are governed by the laws of Ghana. Any disputes arising from these terms or your use of this website shall be subject to the exclusive jurisdiction of the courts of Ghana.'],
+  ['Contact', 'RealMindX Education Limited, info@realmindxgh.com, realmindxgh.com, Dome Pillar 2, Accra, Ghana.'],
 ];
 
-const LegalPage = ({ type }) => {
-  const copy = useSiteCopy();
-  const privacy = type === 'privacy';
-  const title = privacy ? 'Privacy Policy' : 'Terms of Service';
-  const managedBody = privacy ? copy.privacy_body : copy.terms_body;
-  const body = privacy
-    ? 'How RealMindX Education Limited collects, uses, and protects your personal information.'
-    : 'The terms governing your use of the RealMindX platform, job portal, and services.';
-  const defaultSections = privacy ? PRIVACY_SECTIONS : TERMS_SECTIONS;
+// ── Shared Legal Page Layout (with sidebar table of contents) ──
+const LegalPageLayout = ({ nav, children, eyebrow, title, body, effectiveDate }) => {
+  const [active, setActive] = React.useState('');
+  const sectionRefs = React.useRef({});
+
+  React.useEffect(() => {
+    window.scrollTo(0, 0);
+    const handler = () => {
+      const offset = 100;
+      let found = '';
+      for (const { id } of nav) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top <= offset) found = id;
+      }
+      setActive(found || nav[0]?.id || '');
+    };
+    window.addEventListener('scroll', handler, { passive: true });
+    handler();
+    return () => window.removeEventListener('scroll', handler);
+  }, [nav]);
+
+  const scrollTo = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY - 90;
+    window.scrollTo({ top, behavior: 'smooth' });
+  };
 
   return (
-    <SiteInfoPage
-      activePage=""
+    <>
+      <Nav activePage="" />
+      <main>
+        <section className="page-hero route-page-hero">
+          <div className="container" style={{ position: 'relative', zIndex: 1 }}>
+            <p className="overline">{eyebrow}</p>
+            <h1>{title}</h1>
+            <p>{body}</p>
+            <p style={{ marginTop: 8, fontSize: '0.82rem', opacity: 0.7 }}>Effective {effectiveDate} · RealMindX Education Limited, Ghana</p>
+          </div>
+        </section>
+
+        <section style={{ padding: '64px 0 96px' }}>
+          <div className="container" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '56px', alignItems: 'start' }}>
+
+            {/* Sidebar TOC */}
+            <aside style={{ position: 'sticky', top: 90 }} className="legal-sidebar">
+              <p style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--navy)', opacity: 0.5, marginBottom: 14 }}>Sections</p>
+              <nav>
+                {nav.map(({ id, label }, i) => (
+                  <button
+                    key={id}
+                    onClick={() => scrollTo(id)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left', background: 'none',
+                      border: 'none', padding: '7px 0 7px 12px', cursor: 'pointer',
+                      borderLeft: active === id ? '3px solid var(--gold)' : '3px solid transparent',
+                      fontSize: '0.82rem', fontWeight: active === id ? 700 : 500,
+                      color: active === id ? 'var(--navy)' : 'var(--gray-600, #555)',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <span style={{ opacity: 0.45, marginRight: 6, fontSize: '0.75rem' }}>{String(i + 1).padStart(2, '0')}</span>
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            </aside>
+
+            {/* Content */}
+            <div>
+              {children}
+            </div>
+          </div>
+        </section>
+      </main>
+      <Footer />
+    </>
+  );
+};
+
+const LegalSection = ({ id, number, title, children }) => (
+  <section id={id} style={{ marginBottom: 48, scrollMarginTop: 100 }}>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 14 }}>
+      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--gold)', letterSpacing: '1px', flexShrink: 0 }}>{String(number).padStart(2, '0')}</span>
+      <h2 style={{ margin: 0, fontSize: 'clamp(1.1rem, 2vw, 1.35rem)', fontWeight: 900, color: 'var(--navy)' }}>{title}</h2>
+    </div>
+    <div style={{ paddingLeft: 36, color: 'var(--gray-700, #374151)', lineHeight: 1.8, fontSize: '0.95rem' }}>
+      {children}
+    </div>
+    <hr style={{ marginTop: 40, border: 'none', borderTop: '1px solid var(--border-light, #e5e7eb)' }} />
+  </section>
+);
+
+const LegalPage = ({ type }) => {
+  const privacy = type === 'privacy';
+  const sections = privacy ? PRIVACY_SECTIONS : TERMS_SECTIONS;
+  const nav = sections.map(([title], i) => ({
+    id: `section-${i + 1}`,
+    label: title,
+  }));
+
+  return (
+    <LegalPageLayout
+      nav={nav}
       eyebrow="RealMindX Legal"
-      title={title}
-      body={body}
-      actions={[{ label: 'Contact Us', href: '/contact' }, { label: 'Back to Homepage', href: '/', variant: 'btn-outline' }]}
+      title={privacy ? 'Privacy Policy' : 'Terms of Service'}
+      body={privacy
+        ? 'How RealMindX Education Limited collects, uses, and protects your personal information.'
+        : 'The terms governing your use of the RealMindX website, job portal, and related services.'}
+      effectiveDate="3 June 2026"
     >
-      <div className="site-info-copy">
-        <p className="site-info-date">Effective date: 2 June 2026 · RealMindX Education Limited, Ghana</p>
-        {managedBody
-          ? String(managedBody).split(/\n\s*\n/).filter(Boolean).map((p, i) => <p key={i}>{p}</p>)
-          : defaultSections.map(([heading, text]) => (
-            <section key={heading}>
-              <h2>{heading}</h2>
-              <p>{text}</p>
-            </section>
-          ))}
-      </div>
-    </SiteInfoPage>
+      {sections.map(([title, text], i) => (
+        <LegalSection key={title} id={`section-${i + 1}`} number={i + 1} title={title}>
+          {String(text).split('\n').filter(Boolean).map((para, j) => <p key={j} style={{ margin: '0 0 12px' }}>{para}</p>)}
+        </LegalSection>
+      ))}
+    </LegalPageLayout>
   );
 };
 
@@ -381,6 +475,43 @@ const NotFoundPage = () => (
 );
 
 const RegisterRoute = () => <UserLoginPage initialMode="register" />;
+
+// ── Per-route document titles ──────────────────────────────────
+const PAGE_TITLES = {
+  '/':                    'RealMindX Education | Ghana\'s Educational Services Provider',
+  '/about':               'About Us | RealMindX Education',
+  '/services':            'Our Services | RealMindX Education',
+  '/jobs':                'Teaching Jobs in Ghana | RealMindX',
+  '/contact':             'Contact Us | RealMindX Education',
+  '/news':                'News and Updates | RealMindX Education',
+  '/gallery':             'Gallery | RealMindX Education',
+  '/resources':           'Resources | RealMindX Education',
+  '/donate':              'Donate | Support Education in Ghana | RealMindX',
+  '/terms':               'Terms of Service | RealMindX Education',
+  '/privacy':             'Privacy Policy | RealMindX Education',
+  '/login':               'Sign In | RealMindX Education',
+  '/register':            'Create an Account | RealMindX Education',
+  '/signup':              'Create an Account | RealMindX Education',
+  '/portal':              'My Portal | RealMindX Education',
+  '/admin/login':         'Admin Sign In | RealMindX',
+  '/admin/dashboard':     'Admin Dashboard | RealMindX',
+};
+
+const RouteTitle = () => {
+  const location = useLocation();
+  React.useEffect(() => {
+    const path = location.pathname.replace(/\/$/, '') || '/';
+    // Bookshop pages handled by BookshopApp itself
+    if (path.startsWith('/bookshop')) return;
+    // Admin sub-pages
+    if (path.startsWith('/admin') && !PAGE_TITLES[path]) {
+      document.title = 'Admin | RealMindX';
+      return;
+    }
+    document.title = PAGE_TITLES[path] || 'RealMindX Education';
+  }, [location.pathname]);
+  return null;
+};
 
 const HashScroll = ({ children }) => {
   const location = useLocation();
@@ -403,6 +534,7 @@ const HashScroll = ({ children }) => {
 
 const AppRoutes = () => (
   <BrowserRouter>
+    <RouteTitle />
     <HashScroll>
       <Routes>
         <Route path="/" element={<HomePage />} />

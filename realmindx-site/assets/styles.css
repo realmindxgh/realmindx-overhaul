@@ -1726,6 +1726,30 @@ img, svg { display: block; max-width: 100%; }
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Legal page sidebar ──────────────────────────────────────── */
+@media (max-width: 900px) {
+  .legal-sidebar { display: none; }
+  .legal-sidebar ~ div { grid-column: 1 / -1; }
+  .container:has(.legal-sidebar) { grid-template-columns: 1fr !important; }
+}
+
+/* ── Auth link buttons (inline text links inside paragraphs) ──── */
+.text-link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  color: var(--gold);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.2s var(--ease);
+}
+.text-link-button:hover { color: var(--gold-dark, #e6aa00); }
+.text-link-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ── Global toast notifications ───────────────────────────────── */
 #rmx-toast-root {
   position: fixed;

@@ -254,7 +254,7 @@ def create_order():
         else f"Delivery to: {order.location or 'address on file'}"
     )
     items_list_html = "".join(
-        f"<p style='margin:4px 0;'>&bull; {escape(i.product_name)} &times; {i.quantity} &mdash; GH&#8373;{float(i.unit_price):,.2f}</p>"
+        f"<p style='margin:4px 0;'>&bull; {escape(i.product_name)} x{i.quantity} @ GH&#8373;{float(i.unit_price):,.2f}</p>"
         for i in order.items
     )
 
@@ -262,7 +262,7 @@ def create_order():
     send_email(OutboundEmail(
         to=email,
         from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"Your RealMindX Bookshop order is in — {order.order_reference}",
+        subject=f"Your RealMindX Bookshop order is in: {order.order_reference}",
         html=app_email_shell(
             "Your order has been placed!",
             f"""
@@ -293,7 +293,7 @@ def create_order():
             cta_label="Visit the Bookshop",
             cta_url=current_app.config.get("BOOKSHOP_URL", ""),
             eyebrow="RealMindX Bookshop",
-            preheader=f"Order {order.order_reference} received — we’ll be in touch within 24 hours.",
+            preheader=f"Order {order.order_reference} received. We will be in touch within 24 hours.",
         ),
     ))
 
@@ -301,7 +301,7 @@ def create_order():
     send_email(OutboundEmail(
         to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
         from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"New bookshop order {order.order_reference} — {order.customer_name}",
+        subject=f"New bookshop order {order.order_reference} from {order.customer_name}",
         html=app_email_shell(
             f"New order from {escape(order.customer_name)}",
             f"""
@@ -319,7 +319,7 @@ def create_order():
             """,
             cta_label="View in Admin Dashboard",
             cta_url=f"{current_app.config['BASE_URL']}/admin/dashboard",
-            eyebrow="RealMindX Internal — New Order Alert",
+            eyebrow="RealMindX Internal: New Order Alert",
         ),
     ))
     return jsonify(order=order_json(order)), 201

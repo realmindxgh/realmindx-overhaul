@@ -387,74 +387,112 @@ const InfoPage = ({ navigate }) => (
 );
 
 const BOOKSHOP_PRIVACY_SECTIONS = [
-  ['What We Collect', 'When you place an order, submit an enquiry, or contact RealMindX Bookshop, we collect the information you provide: your full name, email address, phone number, delivery address, and the items you order. If you pay through Paystack, payment is processed securely by Paystack and we receive only a payment reference — we never see or store your card details.'],
-  ['How We Use It', 'Your information is used to: confirm and process your order; arrange delivery or notify you when your order is ready for pickup; send you an order confirmation email; contact you if there is a question about your order or stock availability; and respond to your enquiries. We do not use your bookshop data for unrelated marketing without your consent.'],
-  ['Order Records', 'We keep records of bookshop orders for our operational and legal records. You may request a copy of your order history or ask us to delete your data by emailing bookshop@realmindxgh.com. Note that we may be required to retain certain transaction records for legal and accounting purposes.'],
-  ['Sharing Your Information', 'We do not sell your bookshop data. We share order details with our delivery partners only to the extent needed to fulfil your delivery. We use Resend to deliver email confirmations; Resend processes your email address in accordance with their own privacy policy.'],
-  ['Cookies', 'The bookshop uses session cookies to manage your cart and keep you signed in during checkout. No third-party advertising cookies are used in the bookshop.'],
-  ['Your Rights', 'You have the right to access, correct, or request deletion of your bookshop data. Contact us at bookshop@realmindxgh.com to exercise these rights.'],
-  ['Contact', 'RealMindX Bookshop · Dome Pillar 2, Accra, Ghana · bookshop@realmindxgh.com · +233 55 803 9190'],
+  ['Who We Are', 'The RealMindX Bookshop at new.realmindxgh.com/bookshop is operated by RealMindX Education Limited, an education company based in Ghana. This Privacy Policy explains how we collect, use, store, and protect your personal information when you shop with us. For questions about this policy, contact us at info@realmindxgh.com.'],
+  ['Information We Collect', 'If you register an account we collect your name, email address, and password. If you sign in with Google or Facebook we receive your name and email from those providers only. When you place an order we collect your full name, delivery address, phone number, email address, order history, products purchased, quantities, prices, and delivery method. All payment processing is handled by Paystack. We do not store your card number, CVV, or mobile money PIN. We receive and store a payment reference number and confirmation of payment status from Paystack. If you purchase without registering, we collect the same delivery and contact information linked to your order. If you contact us about an order or send an enquiry, we retain that communication. We collect standard web access data including IP address, browser type, device information, and pages viewed for security monitoring. If you submit a product review, we retain your review text with your account name and the date.'],
+  ['How We Use Your Information', 'We use the information we collect to process and fulfil your orders, to calculate and arrange delivery, to send you order confirmation, dispatch, and delivery notifications, to handle returns, refunds, and complaints, to manage your account and purchase history, to respond to your enquiries, to detect and prevent fraudulent orders, to send you bookshop updates and promotions if you have opted in, to comply with our legal obligations under Ghanaian law, and to improve the bookshop experience. We do not sell your personal information. We do not share your information with third-party advertisers.'],
+  ['Who We Share Your Information With', 'We share your name, delivery address, and phone number with the delivery agent responsible for your order. We use Resend to send transactional emails including order confirmations and delivery notifications. We use Arkesel to send SMS notifications about your order status. We use Paystack for payment processing. Your data is stored on servers provided by Hostinger. We may disclose information if required by Ghanaian law or a valid court order. We do not share your information with any other party without your explicit consent.'],
+  ['Order Data Retention', 'We retain order records including your personal and delivery details for seven years from the date of the order. This is required for financial record-keeping under Ghanaian law. After seven years, order records are permanently deleted. If you have a registered account and close it, your order history is retained for the seven-year period regardless of account closure. Guest checkout information is retained for the same seven-year period linked to the order record.'],
+  ['Account Data Retention', 'If you have a registered account, your account data is retained for as long as the account is active. If you close your account, your personal account information is deleted within thirty days. Order history associated with your account is retained for the seven-year period described above.'],
+  ['Marketing Communications', 'If you opt in to marketing communications during checkout or account registration, we may send you updates about new arrivals, promotions, and special offers. You may unsubscribe at any time by clicking the unsubscribe link in any marketing email or by contacting us at info@realmindxgh.com. Unsubscribing from marketing does not affect transactional emails such as order confirmations.'],
+  ['Data Security', 'We protect your information using HTTPS encryption for all data in transit, HTTP-only and SameSite session cookies, hashed passwords, and Paystack\'s PCI-compliant payment infrastructure for all card and mobile money transactions. In the event of a data breach affecting your personal information, we will notify you and relevant authorities as required by applicable Ghanaian law.'],
+  ['Your Rights', 'You have the right to request a copy of the personal information we hold about you, to request correction of inaccurate information, to request deletion of your personal information subject to our legal obligation to retain financial records, to withdraw consent for marketing communications at any time, and to request your data in a portable format. To exercise any of these rights, contact us at info@realmindxgh.com. We will respond within thirty days.'],
+  ['Cookies', 'We use a session cookie to maintain your login state and shopping cart between pages. This cookie is essential to the operation of the bookshop. We do not use third-party tracking cookies or advertising cookies.'],
+  ["Children's Privacy", 'The RealMindX Bookshop is not directed at children under the age of 13. Parents and guardians may purchase on behalf of children. If you believe a child under 13 has independently provided us with personal information, contact us at info@realmindxgh.com and we will delete it promptly.'],
+  ['Changes to This Policy', 'We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated effective date. For significant changes we will notify registered customers by email.'],
+  ['Contact', 'RealMindX Bookshop, RealMindX Education Limited, info@realmindxgh.com, +233 55 803 9190, Dome Pillar 2, Accra, Ghana.'],
 ];
 
 const BOOKSHOP_TERMS_SECTIONS = [
-  ['Placing an Order', 'By placing an order through the RealMindX Bookshop, you are making an offer to purchase the selected items. Your order is an enquiry/request until RealMindX confirms availability, accepts your payment, and sends an order confirmation email. We reserve the right to decline or cancel orders if items are out of stock, if there is an error in pricing, or if we suspect fraudulent activity.'],
-  ['Pricing and Payment', 'All prices are displayed in Ghanaian Cedis (GH₵) and include applicable taxes. Prices are subject to change without notice. Payment is processed securely via Paystack. For orders above a certain value, or for schools and retailers, a pro-forma invoice may be issued before payment. RealMindX is not responsible for exchange rate differences for international cards.'],
-  ['Delivery', 'We offer home delivery across Ghana and free pickup from our Dome Pillar 2, Accra shop. Delivery fees are calculated at checkout based on your location. Estimated delivery is within 48 hours for Greater Accra and 3–5 business days for other regions. Delivery times are estimates and not guarantees. RealMindX is not liable for delays caused by circumstances outside our control.'],
-  ['Pickup Orders', 'For pickup orders, you will be notified by phone or email when your order is ready. Uncollected orders may be cancelled and refunded after 14 days. Please bring your order reference number when collecting.'],
-  ['Returns and Exchanges', 'Unused items in their original condition may be returned within 7 days of delivery or pickup for an exchange or store credit. We do not offer cash refunds except where items are damaged, incorrect, or significantly not as described. To initiate a return, contact us on WhatsApp or email bookshop@realmindxgh.com within 7 days.'],
-  ['Damaged or Incorrect Items', 'If you receive a damaged or incorrect item, contact us immediately (within 48 hours of receipt) and we will arrange a replacement or refund at no extra cost to you. Photos of the damaged item may be requested.'],
-  ['Bulk and Wholesale Orders', 'For bulk orders (10 or more copies of the same title), a bulk discount may apply at checkout. School and institutional orders may be subject to a separate quotation process. Contact us at bookshop@realmindxgh.com or WhatsApp for custom school supply arrangements.'],
-  ['Intellectual Property', 'All products sold in the RealMindX Bookshop are original, legally sourced, and authorised for sale in Ghana. Copying, scanning, or reproducing purchased books without authorisation is a violation of copyright law.'],
-  ['Limitation of Liability', 'RealMindX is not liable for indirect or consequential losses arising from the purchase of products, including but not limited to exam results or academic outcomes. Our liability is limited to the value of the specific order in question.'],
-  ['Governing Law', 'These Bookshop Terms are governed by the laws of the Republic of Ghana.'],
-  ['Contact', 'Questions? Reach us at bookshop@realmindxgh.com, call +233 55 803 9190, or WhatsApp us.'],
+  ['Agreement', 'These Terms and Conditions govern your use of the RealMindX Bookshop and any purchases you make through it. By using the bookshop or placing an order, you agree to these terms. The bookshop is operated by RealMindX Education Limited, a company registered in Ghana. References to "we", "us", "our", or "the bookshop" refer to RealMindX Education Limited operating the RealMindX Bookshop.'],
+  ['Products', 'We sell educational books, textbooks, stationery, and learning materials primarily for the Ghanaian curriculum. We make every reasonable effort to ensure product information is accurate. Images of products are representative. Actual product appearance including cover editions may vary where a publisher has released an updated edition. We reserve the right to limit quantities, correct pricing errors, and withdraw any product from sale at any time without notice.'],
+  ['Pricing', 'All prices are displayed in Ghana Cedis inclusive of applicable taxes. Delivery fees are additional and calculated at checkout. Prices are subject to change without notice. The price you pay is the price confirmed at the time you complete checkout.'],
+  ['Orders', 'An order is placed when you complete checkout and receive an order reference number. Acceptance occurs when we confirm your order is being processed. You will receive an order confirmation email from bookshop@send.realmindxgh.com after successful payment. We reserve the right to cancel any order due to stock unavailability, pricing errors, suspected fraud, or inability to process payment. If we cancel your order after payment has been taken, you will receive a full refund. You may cancel your order before it has been dispatched by contacting us immediately at info@realmindxgh.com or +233 55 803 9190. Once an order has been dispatched it cannot be cancelled and the return policy applies.'],
+  ['Payment', 'All payments are processed securely through Paystack. We accept mobile money and debit or credit cards. We do not store your card number or mobile money credentials. Payment is required in full before an order is processed. If a payment fails but your account has been debited, contact us immediately with your bank reference and we will investigate and resolve within three working days.'],
+  ['Delivery', 'We deliver to addresses across Ghana. Delivery fees are calculated at checkout based on your location zone. Delivery is typically completed within 48 hours of order confirmation for Accra and selected urban areas. Free pickup is available at our location at Dome Pillar 2, Accra. When your order is ready for pickup we will notify you by SMS and email. Orders not collected within seven days of the pickup notification will be returned to stock and a refund issued. Once your order is handed to the delivery agent or collected by you, responsibility for the items passes to you.'],
+  ['Returns and Refunds', 'If you receive an item that is damaged or different from what you ordered, contact us within 48 hours of delivery at info@realmindxgh.com with your order reference and photographs of the issue. We will arrange a replacement or full refund at no additional cost to you. We do not accept returns for change of mind on physical books and educational materials unless the item is sealed and unused. Return delivery costs are the responsibility of the buyer. Approved refunds are processed back to your original payment method through Paystack within five working days.'],
+  ['Stock Availability', 'Products are sold subject to availability. If an item in your order becomes unavailable after you have placed the order and paid, we will contact you to offer a substitution or full refund for the unavailable item. The remainder of your order will be fulfilled as normal.'],
+  ['User Accounts', 'You may purchase as a guest or with a registered account. A registered account allows you to track orders, view order history, and receive personalised updates. Your bookshop account and main site account share the same login credentials.'],
+  ['Product Reviews', 'Registered users may submit product reviews. Reviews must be honest, relevant to the product, and free from offensive, defamatory, or misleading content. We reserve the right to remove reviews that violate these standards or that appear to be fraudulent. We do not remove legitimate negative reviews.'],
+  ['Intellectual Property', 'All content on the bookshop website including text, images, product descriptions, logos, and design is the intellectual property of RealMindX Education Limited or its suppliers. You may not reproduce bookshop content without our prior written consent.'],
+  ['Limitation of Liability', 'To the fullest extent permitted by Ghanaian law, our liability for any claim arising from a bookshop purchase is limited to the value of the specific item or items in dispute. We are not liable for indirect losses, loss of data, loss of profit, or consequential damages arising from your use of the bookshop or any purchase made through it.'],
+  ['Contact', 'RealMindX Bookshop, RealMindX Education Limited, info@realmindxgh.com, +233 55 803 9190, Dome Pillar 2, Accra, Ghana. Monday to Friday 7am to 5pm, Saturday 10am to 2pm.'],
 ];
 
 const BookshopLegalPage = ({ type = 'privacy' }) => {
-  const copy = useSiteCopy();
   const privacy = type === 'privacy';
-  const title = privacy ? 'Bookshop Privacy Policy' : 'Bookshop Terms of Service';
-  const managedBody = privacy ? copy.bookshop_privacy_body : copy.bookshop_terms_body;
-  const defaultSections = privacy ? BOOKSHOP_PRIVACY_SECTIONS : BOOKSHOP_TERMS_SECTIONS;
-  const paragraphs = managedBody ? String(managedBody).split(/\n\s*\n/).filter(Boolean) : null;
+  const title = privacy ? 'Bookshop Privacy Policy' : 'Bookshop Terms and Conditions';
+  const sections = privacy ? BOOKSHOP_PRIVACY_SECTIONS : BOOKSHOP_TERMS_SECTIONS;
+  const [active, setActive] = React.useState('');
+
+  React.useEffect(() => {
+    window.scrollTo(0, 0);
+    const handler = () => {
+      let found = '';
+      for (let i = 0; i < sections.length; i++) {
+        const el = document.getElementById(`bs-section-${i}`);
+        if (el && el.getBoundingClientRect().top <= 100) found = `bs-section-${i}`;
+      }
+      setActive(found || 'bs-section-0');
+    };
+    window.addEventListener('scroll', handler, { passive: true });
+    handler();
+    return () => window.removeEventListener('scroll', handler);
+  }, [sections.length]);
+
+  const scrollTo = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
+  };
 
   return (
     <div className="bs-fade-page">
       <div className="bs-info-hero">
         <div className="bs-container">
-          <span className="bs-eyebrow">RealMindX Bookshop — Legal</span>
+          <span className="bs-eyebrow">RealMindX Bookshop Legal</span>
           <h1 className="bs-h1">{title}</h1>
+          <p className="bs-sub" style={{ marginTop:8 }}>Effective 3 June 2026 · RealMindX Education Limited, Ghana</p>
         </div>
       </div>
-      <div className="bs-container">
-        <div className="bs-info-layout">
+      <div className="bs-container" style={{ paddingTop:48, paddingBottom:80 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'220px 1fr', gap:48, alignItems:'start' }} className="bs-legal-grid">
+          {/* Sidebar */}
+          <aside style={{ position:'sticky', top:80 }} className="bs-legal-sidebar">
+            <p style={{ fontSize:'0.7rem', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color:'var(--bs-navy)', opacity:0.5, marginBottom:12 }}>Sections</p>
+            {sections.map(([heading], i) => (
+              <button key={i} onClick={() => scrollTo(`bs-section-${i}`)}
+                style={{
+                  display:'block', width:'100%', textAlign:'left', background:'none', border:'none',
+                  padding:'6px 0 6px 10px', cursor:'pointer', fontSize:'0.78rem',
+                  borderLeft: active === `bs-section-${i}` ? '2px solid var(--bs-gold)' : '2px solid transparent',
+                  fontWeight: active === `bs-section-${i}` ? 700 : 400,
+                  color: active === `bs-section-${i}` ? 'var(--bs-navy)' : 'var(--bs-muted)',
+                  transition:'all 0.2s',
+                }}>
+                <span style={{ opacity:0.4, marginRight:6 }}>{String(i+1).padStart(2,'0')}</span>{heading}
+              </button>
+            ))}
+          </aside>
+
+          {/* Content */}
           <article>
-            <p style={{ fontSize:'0.78rem', color:'var(--bs-muted)', marginBottom:28 }}>
-              Effective date: 2 June 2026 · RealMindX Education Limited, Dome Pillar 2, Accra, Ghana
-            </p>
-            {paragraphs
-              ? paragraphs.map((p, i) => <p key={i} style={{ marginBottom:16 }}>{p}</p>)
-              : defaultSections.map(([heading, text]) => (
-                <div key={heading} style={{ marginBottom:28 }}>
-                  <h2 className="bs-h3" style={{ marginBottom:8 }}>{heading}</h2>
-                  <p className="bs-muted">{text}</p>
+            {sections.map(([heading, text], i) => (
+              <section key={i} id={`bs-section-${i}`} style={{ marginBottom:44, scrollMarginTop:90 }}>
+                <div style={{ display:'flex', alignItems:'baseline', gap:12, marginBottom:12 }}>
+                  <span style={{ fontSize:'0.7rem', fontWeight:800, color:'var(--bs-gold)', letterSpacing:'1px', flexShrink:0 }}>{String(i+1).padStart(2,'0')}</span>
+                  <h2 className="bs-h3" style={{ margin:0 }}>{heading}</h2>
                 </div>
-              ))
-            }
-            <div style={{ display:'flex', gap:12, marginTop:40, flexWrap:'wrap' }}>
-              <a href="/bookshop" className="bs-btn bs-btn-navy">← Back to Bookshop</a>
+                <div style={{ paddingLeft:28 }}>
+                  {text.split('\n').filter(Boolean).map((p, j) => <p key={j} className="bs-muted" style={{ marginBottom:10, lineHeight:1.75 }}>{p}</p>)}
+                </div>
+                <hr style={{ marginTop:36, border:'none', borderTop:'1px solid var(--bs-border)' }} />
+              </section>
+            ))}
+            <div style={{ display:'flex', gap:12, marginTop:32, flexWrap:'wrap' }}>
+              <a href="/bookshop" className="bs-btn bs-btn-navy">Back to Bookshop</a>
               <a href="/contact" className="bs-btn bs-btn-outline-navy">Contact Us</a>
             </div>
           </article>
-          <aside className="bs-info-sidebar">
-            <h4>Bookshop Legal</h4>
-            <div style={{ display:'flex', flexDirection:'column', gap:10, marginTop:8 }}>
-              <a href="/bookshop/privacy" style={{ color:'var(--bs-navy)', fontSize:'0.88rem' }}>Bookshop Privacy Policy</a>
-              <a href="/bookshop/terms" style={{ color:'var(--bs-navy)', fontSize:'0.88rem' }}>Bookshop Terms of Service</a>
-              <a href="/privacy" style={{ color:'var(--bs-muted)', fontSize:'0.85rem' }}>Main Site Privacy Policy</a>
-              <a href="/terms" style={{ color:'var(--bs-muted)', fontSize:'0.85rem' }}>Main Site Terms</a>
-            </div>
-          </aside>
         </div>
       </div>
     </div>
