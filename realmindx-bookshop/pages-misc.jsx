@@ -162,6 +162,13 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
             ? 'Sign in to track orders, save books for later, and check out faster. Your RealMindX teacher or portal account works here too.'
             : 'Create an account to track orders, save favourites, and enjoy a faster checkout. Already have a RealMindX account? Use the same login.'}
         </p>
+        <div className="bs-auth-illo" style={{ display: bookshopHeroImage ? undefined : 'none' }}>
+          <img
+            src={bookshopHeroImage}
+            alt="RealMindX Bookshop"
+            onError={e => { e.target.closest('.bs-auth-illo').style.display = 'none'; }}
+          />
+        </div>
         <div className="bs-auth-trust">
           {[
             ['truck', 'Delivery within 48 hours, nationwide'],
@@ -173,13 +180,6 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
               {text}
             </div>
           ))}
-        </div>
-        <div className="bs-auth-illo" style={{ display: bookshopHeroImage ? undefined : 'none' }}>
-          <img
-            src={bookshopHeroImage}
-            alt="Books and stationery from the RealMindX Bookshop"
-            onError={e => { e.target.closest('.bs-auth-illo').style.display = 'none'; }}
-          />
         </div>
       </div>
 
