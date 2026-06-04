@@ -2974,3 +2974,52 @@
     aspect-ratio: 16 / 10;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   UNIVERSAL: force white text on every navy / dark background.
+   Covers both main site and bookshop so nothing ever renders
+   as black-on-navy regardless of inheritance order.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Main site — page heroes and dark sections */
+.page-hero h1,
+.page-hero h2,
+.page-hero p,
+.page-hero .overline,
+.page-hero .hero-breadcrumb,
+.route-page-hero h1,
+.route-page-hero h2,
+.route-page-hero p,
+.route-page-hero .overline,
+.services-policy-hero h1,
+.services-policy-hero h2,
+.services-policy-hero p,
+.auth-panel-brand h1,
+.auth-panel-brand h2,
+.auth-panel-brand p,
+.auth-panel-form h2 { color: #fff !important; }
+
+/* Bookshop — hero, mobile menu, auth form, footer */
+.bs-info-hero *,
+.bs-mobile-menu *,
+.bs-footer *,
+.bs-auth-form-wrap h2,
+.bs-auth-form-wrap p,
+.bs-auth-form-wrap .bs-sub,
+.bs-auth-brand h1,
+.bs-auth-brand p { color: #fff !important; }
+
+/* Gold eyebrows / labels always stay gold on dark backgrounds */
+.bs-info-hero .bs-eyebrow,
+.bs-auth-brand .bs-eyebrow,
+.page-hero .overline,
+.route-page-hero .overline,
+.services-policy-hero .overline { color: var(--bs-gold-live, #ffcc01) !important; }
+
+/* Preserve link and button colours inside dark sections */
+.bs-info-hero a,
+.bs-footer a,
+.page-hero a,
+.route-page-hero a { color: inherit; }
+.bs-info-hero .bs-btn-gold,
+.page-hero .btn-primary { color: var(--bs-navy, #143670) !important; }

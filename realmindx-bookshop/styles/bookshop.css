@@ -564,7 +564,12 @@
 .bs-info-hero { background: var(--bs-navy); color: #fff; padding: 64px 0; position: relative; overflow: hidden; }
 .bs-info-hero::before { content:''; position:absolute; inset:0; background-image: radial-gradient(rgba(255,255,255,.06) 1px, transparent 1px); background-size: 26px 26px; }
 .bs-info-hero .bs-container { position: relative; }
-.bs-info-hero .bs-eyebrow { color: var(--bs-gold-live); }
+.bs-info-hero .bs-eyebrow { color: var(--bs-gold-live) !important; }
+.bs-info-hero h1,
+.bs-info-hero .bs-h1,
+.bs-info-hero .bs-h2,
+.bs-info-hero p,
+.bs-info-hero .bs-sub { color: #fff !important; }
 .bs-info-hero h1 { font-size: clamp(32px,5vw,52px); margin-top: 14px; max-width: 16ch; }
 .bs-info-layout { display: grid; grid-template-columns: 1fr 300px; gap: 56px; padding: 56px 0 72px; align-items: start; }
 @media (max-width: 900px) { .bs-info-layout { grid-template-columns: 1fr; } }
