@@ -26,6 +26,8 @@ tmp-*.js
 # Uploads (managed by the server, not git)
 realmindx-site/uploads/*
 !realmindx-site/uploads/.gitkeep
+!realmindx-site/uploads/Redesign/
+!realmindx-site/uploads/Redesign/**
 
 # Logs
 *.log
