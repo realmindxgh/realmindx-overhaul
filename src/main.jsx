@@ -23,6 +23,10 @@ import { API_BASE, api, isApiMode } from './lib/apiClient.js';
 import BookshopApp from '../realmindx-bookshop/BookshopApp.jsx';
 import DonatePage from '../realmindx-site/pages/DonatePage.jsx';
 import { publicItems, useManagedContent } from './lib/managedContent.js';
+import { useIdleTimeout } from './lib/useIdleTimeout.js';
+import { IdleWarning } from './lib/IdleWarning.jsx';
+import { getDemoSession } from './lib/demoAccounts.js';
+import { signOut } from './lib/authClient.js';
 
 
 const SiteInfoPage = ({ activePage = '', eyebrow = 'RealMindX', title, body, actions = [], cards = [], children }) => (
@@ -525,9 +529,28 @@ const HashScroll = ({ children }) => {
   return children;
 };
 
+const IdleGuard = () => {
+  const session = getDemoSession();
+  const { countdown, keepAlive } = useIdleTimeout({
+    enabled: Boolean(session?.role),
+    onTimeout: async () => {
+      await signOut();
+      window.location.href = '/login?reason=idle';
+    },
+  });
+  return (
+    <IdleWarning
+      countdown={countdown}
+      onKeepAlive={keepAlive}
+      onLogout={async () => { await signOut(); window.location.href = '/login'; }}
+    />
+  );
+};
+
 const AppRoutes = () => (
   <BrowserRouter>
     <RouteTitle />
+    <IdleGuard />
     <HashScroll>
       <Routes>
         <Route path="/" element={<HomePage />} />
