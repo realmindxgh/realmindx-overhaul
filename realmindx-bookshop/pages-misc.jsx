@@ -156,12 +156,6 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     <div className="bs-auth bs-fade-page">
       <div className="bs-auth-brand">
         <span className="bs-eyebrow">RealMindX Bookshop</span>
-        <h1 className="bs-h1">{isLogin ? 'Welcome back to the shop.' : 'Join the RealMindX Bookshop.'}</h1>
-        <p>
-          {isLogin
-            ? 'Sign in to track orders, save books for later, and check out faster. Your RealMindX teacher or portal account works here too.'
-            : 'Create an account to track orders, save favourites, and enjoy a faster checkout. Already have a RealMindX account? Use the same login.'}
-        </p>
         <div className="bs-auth-illo" style={{ display: bookshopHeroImage ? undefined : 'none' }}>
           <img
             src={bookshopHeroImage}
@@ -169,6 +163,12 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
             onError={e => { e.target.closest('.bs-auth-illo').style.display = 'none'; }}
           />
         </div>
+        <h1 className="bs-h1">{isLogin ? 'Welcome back to the shop.' : 'Join the RealMindX Bookshop.'}</h1>
+        <p>
+          {isLogin
+            ? 'Sign in to track orders, save books for later, and check out faster. Your RealMindX teacher or portal account works here too.'
+            : 'Create an account to track orders, save favourites, and enjoy a faster checkout. Already have a RealMindX account? Use the same login.'}
+        </p>
         <div className="bs-auth-trust">
           {[
             ['truck', 'Delivery within 48 hours, nationwide'],

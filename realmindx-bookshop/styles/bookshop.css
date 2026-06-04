@@ -527,11 +527,11 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-auth-trust { margin-top: 36px; display: flex; flex-direction: column; gap: 16px; }
 .bs-auth-trust-row { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--bs-text); }
 .bs-tc { width: 30px; height: 30px; border-radius: 50%; background: var(--bs-gold-live); color: var(--bs-navy); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.bs-auth-illo { margin-top: 40px; display: flex; align-items: center; justify-content: center; }
+.bs-auth-illo { margin-top: 24px; margin-bottom: 28px; display: flex; align-items: center; justify-content: center; }
 .bs-auth-illo img {
   width: 72%; max-width: 260px; height: auto;
   object-fit: contain; display: block;
-  mix-blend-mode: multiply;  /* removes white background on white panel */
+  mix-blend-mode: multiply;
 }
 .bs-auth-form-wrap { background: var(--bs-navy); color: #fff; padding: 64px 56px 56px; display: flex; flex-direction: column; justify-content: flex-start; position: relative; overflow: hidden; }
 .bs-auth-form-wrap::before { content:''; position:absolute; inset:0; background-image: radial-gradient(rgba(255,255,255,.06) 1px, transparent 1px); background-size: 26px 26px; }
