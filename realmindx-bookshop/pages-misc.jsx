@@ -202,17 +202,17 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
               </div>
             </form>
           ) : (
-            <form onSubmit={submit}>
+            <form onSubmit={submit} noValidate>
 
           {!isLogin && (
             <div className="bs-field">
               <label>Full Name</label>
-              <input placeholder="Ama Mensah" value={form.fullName} onChange={set('fullName')} required />
+              <input placeholder="Ama Mensah" value={form.fullName} onChange={set('fullName')} />
             </div>
           )}
           <div className="bs-field">
             <label>Email</label>
-            <input type="email" placeholder="you@email.com" value={form.email} onChange={set('email')} autoComplete="email" required />
+            <input type="email" placeholder="you@email.com" value={form.email} onChange={set('email')} autoComplete="email" />
           </div>
           {!isLogin && (
             <div className="bs-field">
@@ -222,12 +222,12 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
           )}
           <div className="bs-field">
             <label>Password</label>
-            <input type="password" placeholder="Minimum 8 characters" value={form.password} onChange={set('password')} autoComplete={isLogin ? 'current-password' : 'new-password'} required />
+            <input type="password" placeholder="Minimum 8 characters" value={form.password} onChange={set('password')} autoComplete={isLogin ? 'current-password' : 'new-password'} />
           </div>
           {!isLogin && (
             <div className="bs-field">
               <label>Confirm Password</label>
-              <input type="password" placeholder="Repeat password" value={form.confirmPassword} onChange={set('confirmPassword')} autoComplete="new-password" required />
+              <input type="password" placeholder="Repeat password" value={form.confirmPassword} onChange={set('confirmPassword')} autoComplete="new-password" />
             </div>
           )}
 
@@ -245,7 +245,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
           ) : (
             <>
             <label className="bs-checkbox-line" ref={termsRef} tabIndex={-1}>
-              <input type="checkbox" checked={form.acceptedTerms} onChange={set('acceptedTerms')} required />
+              <input type="checkbox" checked={form.acceptedTerms} onChange={set('acceptedTerms')} />
               <span className="bs-cbox"><Icon name="check" size={12} /></span>
               <span>I agree to the <a className="bs-link-gold" href="/bookshop/terms">Bookshop Terms of Service</a> and <a className="bs-link-gold" href="/bookshop/privacy">Bookshop Privacy Policy</a>.</span>
             </label>
