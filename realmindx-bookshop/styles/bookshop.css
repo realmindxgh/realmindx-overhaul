@@ -692,7 +692,7 @@
 .bs-legal-sidebar button.active,
 .bs-legal-sidebar button:hover {
   border-left-color: var(--bs-gold-live);
-  background: #eef2f8;
+  background: #fffbeb;
   color: var(--bs-navy);
   font-weight: 700;
 }

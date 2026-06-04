@@ -1605,7 +1605,7 @@
 .legal-contents button.active,
 .legal-contents button:hover {
   border-left-color: var(--yellow);
-  background: #e6ebf4;
+  background: #fffbeb;
   color: var(--navy);
   font-weight: 800;
 }
