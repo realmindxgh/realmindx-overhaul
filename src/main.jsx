@@ -583,7 +583,14 @@ const IdleGuard = () => {
   );
 };
 
-const AppRoutes = () => (
+// If served from bookshop.realmindxgh.com, show only the bookshop
+const isBookshopSubdomain =
+  typeof window !== 'undefined' &&
+  window.location.hostname.startsWith('bookshop.');
+
+const AppRoutes = () => {
+  if (isBookshopSubdomain) return <BookshopApp />;
+  return (
   <BrowserRouter>
     <RouteTitle />
     <IdleGuard />
@@ -638,7 +645,8 @@ const AppRoutes = () => (
       </Routes>
     </HashScroll>
   </BrowserRouter>
-);
+  );
+};
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
