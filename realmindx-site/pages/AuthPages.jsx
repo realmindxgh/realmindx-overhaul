@@ -183,6 +183,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileKey, setTurnstileKey] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const firstNameRef = React.useRef(null);
@@ -255,6 +256,8 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
       toast.error(msg);
     } finally {
       setLoading(false);
+      setTurnstileToken('');
+      setTurnstileKey(k => k + 1);
     }
   };
 
@@ -587,7 +590,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   </span>
                 </label>
                 {fieldErrors.terms && <p className="form-error form-error-inline">{fieldErrors.terms}</p>}
-                <TurnstileField className="turnstile-slot" onVerify={setTurnstileToken} />
+                <TurnstileField key={turnstileKey} className="turnstile-slot" onVerify={setTurnstileToken} />
 
                 <button
                   type="submit"

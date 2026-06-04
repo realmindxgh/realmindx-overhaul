@@ -540,7 +540,7 @@
 .bs-auth-alt .bs-link-gold { color: var(--bs-gold-live) !important; font-weight: 900; }
 .bs-checkbox-line { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; color: rgba(255,255,255,.75); margin-bottom: 22px; cursor: pointer; }
 .bs-checkbox-line input { display: none; }
-.bs-checkbox-line .bs-cbox { border-color: rgba(255,255,255,.3); }
+.bs-checkbox-line .bs-cbox { border-color: rgba(255,255,255,.3); color: transparent; }
 .bs-checkbox-line input:checked + .bs-cbox { background: var(--bs-gold-live); border-color: var(--bs-gold-live); color: var(--bs-navy); }
 
 /* ============================================================ CONTACT ============================================================ */

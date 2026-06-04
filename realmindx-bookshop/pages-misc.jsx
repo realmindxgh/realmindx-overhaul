@@ -11,6 +11,7 @@ const bookshopHeroImage = '/uploads/Redesign/hero/Books and Stationery (Hero).pn
 const AuthPage = ({ navigate, mode = 'login' }) => {
   const isLogin = mode === 'login';
   const { toast } = useCart();
+  const [turnstileKey, setTurnstileKey] = React.useState(0);
   const [form, setForm] = React.useState({
     fullName: '',
     email: '',
@@ -98,9 +99,20 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
         setMessage('Enter the code we sent to your email before signing in.');
         return;
       }
-      setErr(err?.message || (isLogin ? 'Could not sign in.' : 'Could not create your account.'));
+      // Email already exists — switch to sign-in with helpful message
+      const msg = err?.message || '';
+      if (!isLogin && (err?.status === 409 || msg.toLowerCase().includes('already exists'))) {
+        globalToast.info('You already have a RealMindX account. Sign in with your existing password.');
+        setMessage('You already have a RealMindX account. Sign in below.');
+        navigate('login');
+        return;
+      }
+      setErr(msg || (isLogin ? 'Could not sign in.' : 'Could not create your account.'));
     } finally {
       setLoading(false);
+      // Reset Turnstile — tokens are single-use; remount forces a fresh token
+      setTurnstileToken('');
+      setTurnstileKey(k => k + 1);
     }
   };
 
@@ -147,8 +159,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
         <h1 className="bs-h1">{isLogin ? 'Welcome back to the shop.' : 'Join the RealMindX Bookshop.'}</h1>
         <p>
           {isLogin
-            ? 'Sign in to track orders, save books for later, and check out faster.'
-            : 'Create an account to track orders, save favourites, and enjoy a faster checkout.'}
+            ? 'Sign in to track orders, save books for later, and check out faster. Your RealMindX teacher or portal account works here too.'
+            : 'Create an account to track orders, save favourites, and enjoy a faster checkout. Already have a RealMindX account? Use the same login.'}
         </p>
         <div className="bs-auth-trust">
           {[
@@ -249,7 +261,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
               <span className="bs-cbox"><Icon name="check" size={12} /></span>
               <span>I agree to the <a className="bs-link-gold" href="/bookshop/terms">Bookshop Terms of Service</a> and <a className="bs-link-gold" href="/bookshop/privacy">Bookshop Privacy Policy</a>.</span>
             </label>
-            <TurnstileField className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
+            <TurnstileField key={turnstileKey} className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
             </>
           )}
 
