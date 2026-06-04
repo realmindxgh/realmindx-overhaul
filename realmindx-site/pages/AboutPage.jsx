@@ -92,10 +92,12 @@ const AboutPage = () => {
               <div className="small">Founded</div>
             </div>
             <div className="about-img-main">
-              <img src={aboutMain} alt="RealMindX team working with a school" />
+              <img src={aboutMain} alt="RealMindX team working with a school"
+                onError={e => { e.target.closest('.about-img-main').style.display = 'none'; }} />
             </div>
             <div className="about-img-accent">
-              <img src={aboutAccent} alt="RealMindX school support session" />
+              <img src={aboutAccent} alt="RealMindX school support session"
+                onError={e => { e.target.closest('.about-img-accent').style.display = 'none'; }} />
             </div>
           </div>
         </div>

@@ -91,6 +91,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       setPendingVerificationEmail(form.email);
       setOtp('');
       setMessage(result?.message || 'Account created. Enter the code sent to your email.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       if (err?.data?.requires_verification) {
         setPendingVerificationEmail(err.data.email || form.email);
@@ -161,8 +162,12 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
             </div>
           ))}
         </div>
-        <div className="bs-auth-illo">
-          <img src={bookshopHeroImage} alt="Books and stationery from the RealMindX Bookshop" />
+        <div className="bs-auth-illo" style={{ display: bookshopHeroImage ? undefined : 'none' }}>
+          <img
+            src={bookshopHeroImage}
+            alt="Books and stationery from the RealMindX Bookshop"
+            onError={e => { e.target.closest('.bs-auth-illo').style.display = 'none'; }}
+          />
         </div>
       </div>
 

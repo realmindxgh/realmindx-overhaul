@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Icon } from '../assets/components.jsx';
 import { Nav, Footer } from '../components/NavFooter';
 import logoWhite from '../assets/logo-white.png';
-import { DEMO_ACCOUNTS } from '../../src/lib/demoAccounts.js';
 import { resendVerificationOtp, signIn, signUp, requestPasswordReset, verifyEmailOtp } from '../../src/lib/authClient.js';
 import { TurnstileField } from '../../src/lib/TurnstileField.jsx';
 import toast from '../../src/lib/toast.js';
@@ -150,11 +149,6 @@ export const AdminLoginPage = () => {
               restricted to authorised personnel. Unauthorised access attempts are recorded.
               If you need admin access, contact the system administrator.
             </p>
-            <div className="demo-credentials">
-              <strong>Local test account</strong>
-              <span>{DEMO_ACCOUNTS.admin.email}</span>
-              <span>{DEMO_ACCOUNTS.admin.password}</span>
-            </div>
           </div>
 
           <p style={{ textAlign: 'center', marginTop: 24, fontSize: '0.82rem', color: 'var(--gray-600)' }}>
@@ -496,11 +490,6 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   {loading ? 'Signing in...' : 'Sign In'}
                 </button>
               </form>
-              <div className="demo-credentials">
-                <strong>Local test account</strong>
-                <span>{DEMO_ACCOUNTS.user.email}</span>
-                <span>{DEMO_ACCOUNTS.user.password}</span>
-              </div>
               <p className="auth-switch-copy">
                 New to RealMindX? <a href="/register">Create an Account</a>
               </p>
