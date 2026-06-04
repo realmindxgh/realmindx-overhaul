@@ -12,13 +12,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const IDLE_MS   = 10 * 60 * 1000;  // 10 minutes before warning appears
 const WARN_SECS = 5 * 60;          // 5-minute countdown once warning shows
+const WARN_MS   = WARN_SECS * 1000;
 const EVENTS    = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
 
 export function useIdleTimeout({ onTimeout, enabled = true }) {
   const [countdown, setCountdown]   = useState(null); // null = hidden, number = secs left
   const idleRef      = useRef(null);
   const intervalRef  = useRef(null);
-  const secsRef      = useRef(WARN_SECS);
+  const timeoutRef   = useRef(null);
+  const deadlineRef  = useRef(0);
   const warningUpRef = useRef(false);
   const onTimeoutRef = useRef(onTimeout);
 
@@ -29,26 +31,36 @@ export function useIdleTimeout({ onTimeout, enabled = true }) {
   const clearAll = useCallback(() => {
     clearTimeout(idleRef.current);
     clearInterval(intervalRef.current);
+    clearTimeout(timeoutRef.current);
     idleRef.current = null;
     intervalRef.current = null;
+    timeoutRef.current = null;
   }, []);
 
-  const startCountdown = useCallback(() => {
-    warningUpRef.current = true;
-    secsRef.current = WARN_SECS;
-    setCountdown(WARN_SECS);
-    intervalRef.current = setInterval(() => {
-      secsRef.current -= 1;
-      if (secsRef.current <= 0) {
-        clearAll();
-        setCountdown(null);
-        warningUpRef.current = false;
-        onTimeoutRef.current?.();
-      } else {
-        setCountdown(secsRef.current);
-      }
-    }, 1000);
+  const finishTimeout = useCallback(() => {
+    clearAll();
+    setCountdown(null);
+    warningUpRef.current = false;
+    onTimeoutRef.current?.();
   }, [clearAll]);
+
+  const syncCountdown = useCallback(() => {
+    const remaining = Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000));
+    if (remaining <= 0) {
+      finishTimeout();
+      return;
+    }
+    setCountdown(current => (current === remaining ? current : remaining));
+  }, [finishTimeout]);
+
+  const startCountdown = useCallback(() => {
+    clearAll();
+    warningUpRef.current = true;
+    deadlineRef.current = Date.now() + WARN_MS;
+    setCountdown(WARN_SECS);
+    intervalRef.current = setInterval(syncCountdown, 250);
+    timeoutRef.current = setTimeout(finishTimeout, WARN_MS + 250);
+  }, [clearAll, finishTimeout, syncCountdown]);
 
   // Reset the idle clock (and dismiss the warning if showing)
   const keepAlive = useCallback(() => {
