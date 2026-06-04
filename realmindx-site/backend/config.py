@@ -39,7 +39,9 @@ class Config:
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
 
     WTF_CSRF_TIME_LIMIT = int(os.getenv("WTF_CSRF_TIME_LIMIT", "3600"))
-    # Trust CSRF tokens from all RealMindX domains and subdomains
+    # REST API routes are already protected by CORS + session auth.
+    # Disable automatic CSRF checking — the API has no HTML form POST targets.
+    WTF_CSRF_CHECK_DEFAULT = False
     WTF_CSRF_TRUSTED_ORIGINS = [
         "https://realmindxgh.com",
         "https://www.realmindxgh.com",
