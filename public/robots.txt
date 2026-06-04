@@ -1,4 +1,9 @@
 User-agent: *
 Allow: /
 
+# Keep portals and admin private
+Disallow: /portal
+Disallow: /admin
+Disallow: /admin/
+
 Sitemap: https://realmindxgh.com/sitemap.xml
