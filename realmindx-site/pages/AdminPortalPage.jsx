@@ -5,6 +5,7 @@ import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
 import { API_BASE, api, isApiMode } from '../../src/lib/apiClient.js';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
 import logoWhite from '../assets/logo-white.png';
+import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
@@ -14,8 +15,7 @@ const NAV = [
   { key: 'productReviews', label: 'Product Reviews', group: 'Bookshop', icon: 'award' },
   { key: 'categories', label: 'Categories', group: 'Bookshop', icon: 'package' },
   { key: 'flyers', label: 'Flyers', group: 'Bookshop', icon: 'image' },
-  { key: 'promoCodes', label: 'Promo Codes', group: 'Bookshop', icon: 'spark' },
-  { key: 'priceTools', label: 'Price & Delivery Tools', group: 'Bookshop', icon: 'money' },
+  { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
   { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
   { key: 'services', label: 'Services', group: 'Content', icon: 'consulting' },
   { key: 'partners', label: 'Partners', group: 'Content', icon: 'users' },
@@ -175,7 +175,7 @@ const CONFIG = {
       field('publisher', 'Publisher'),
       field('level', 'Level', 'text', { help: 'e.g. JHS 1, SHS, Primary 4' }),
       field('subject', 'Subject'),
-      field('image_file_id', 'Product Image', 'image', { help: 'Upload a portrait book-cover image. A 3:4 ratio keeps product cards and search results tidy.' }),
+      field('image_file_id', 'Product Image', 'image', { help: 'Upload a portrait book-cover image.', aspectRatio: 3/4, cropTitle: 'Crop Product Cover (3:4)' }),
       field('tags', 'Tags', 'tags', { help: 'Comma-separated: popular,new,sale' }),
       field('featured', 'Featured', 'checkbox'),
       field('is_active', 'Published / Visible', 'checkbox'),
@@ -229,7 +229,7 @@ const CONFIG = {
       field('subline', 'Subline', 'textarea'),
       field('badge', 'Badge / CTA Label', 'text', { help: 'Leave blank if the flyer image already includes the call to action.' }),
       field('sort_order', 'Order', 'number', { help: 'Lower numbers appear first.' }),
-      field('image_file_id', 'Hero Image', 'image', { help: 'Use a wide banner where possible. Fit and position controls below help crop the image without hiding important text.' }),
+      field('image_file_id', 'Hero Image', 'image', { help: 'Wide banner for the bookshop hero carousel.', aspectRatio: 16/6, cropTitle: 'Crop Flyer / Hero Banner (16:6)' }),
       field('show_overlay', 'Dark / Stripe Overlay', 'checkbox'),
       field('image_fit', 'Image Fit', 'select', { options: ['cover', 'contain'] }),
       field('image_position', 'Image Position', 'select', { options: ['center', 'top', 'bottom', 'left', 'right'] }),
@@ -273,7 +273,7 @@ const CONFIG = {
       field('secondary_cta_label', 'Secondary CTA Label'),
       field('secondary_cta_href', 'Secondary CTA Link'),
       field('icon', 'Service Icon', 'select', { options: SERVICE_ICON_OPTIONS }),
-      field('image_file_id', 'Service Image', 'image', { help: 'Upload the image to show on the services page.' }),
+      field('image_file_id', 'Service Image', 'image', { help: 'Upload the image to show on the services page.', aspectRatio: 16/9, cropTitle: 'Crop Service Image (16:9)' }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('badge', 'Badge'),
       field('sort_order', 'Sort Order', 'number'),
@@ -292,7 +292,7 @@ const CONFIG = {
       field('id', 'Anchor ID', 'text', { help: 'Stable identifier, e.g. bright-minds-school.' }),
       field('name', 'Partner Name'),
       field('icon', 'Fallback Icon', 'select', { options: PARTNER_ICON_OPTIONS }),
-      field('image_file_id', 'Logo Image', 'image', { help: 'Upload a transparent or white-background logo when available.' }),
+      field('image_file_id', 'Logo Image', 'image', { help: 'Upload a transparent or white-background logo.', aspectRatio: 1, cropTitle: 'Crop Partner Logo (square)' }),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
     ],
@@ -311,7 +311,7 @@ const CONFIG = {
       field('position', 'Position / Role'),
       field('bio', 'Short Bio', 'textarea'),
       field('initials', 'Fallback Initials', 'text', { help: 'Shown only if no profile photo is uploaded.' }),
-      field('image_file_id', 'Profile Photo', 'image', { help: 'Upload a square or portrait team photo.' }),
+      field('image_file_id', 'Profile Photo', 'image', { help: 'Upload a square or portrait team photo.', aspectRatio: 3/4, cropTitle: 'Crop Profile Photo (3:4)' }),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
     ],
@@ -328,7 +328,7 @@ const CONFIG = {
       field('id', 'Slide ID', 'text', { help: 'Stable identifier, e.g. homepage-teacher-recruitment.' }),
       field('label', 'Admin Label'),
       field('alt', 'Image Alt Text'),
-      field('image_file_id', 'Hero Image', 'image', { help: 'Upload the image used in the homepage hero slideshow.' }),
+      field('image_file_id', 'Hero Image', 'image', { help: 'Upload the image used in the homepage hero slideshow.', aspectRatio: 16/7, cropTitle: 'Crop Homepage Hero (16:7)' }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
@@ -346,7 +346,7 @@ const CONFIG = {
       field('id', 'Slide ID', 'text', { help: 'Stable identifier, e.g. donation-books-for-learners.' }),
       field('label', 'Slide Label'),
       field('alt', 'Image Alt Text'),
-      field('image_file_id', 'Slide Image', 'image', { help: 'Upload the image used in the donation page slideshow.' }),
+      field('image_file_id', 'Slide Image', 'image', { help: 'Upload the image used in the donation page slideshow.', aspectRatio: 16/7, cropTitle: 'Crop Donation Slide (16:7)' }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
@@ -381,7 +381,7 @@ const CONFIG = {
       field('summary', 'Summary', 'textarea'),
       field('body', 'Intro / Fallback Body', 'textarea', { help: 'Shown before the sections, or used as the full article if no sections are added.' }),
       field('sections', 'Article Sections', 'article-sections', { help: 'Add headings, body text, images, and captions for the full news article.' }),
-      field('image_file_id', 'Post Image', 'image', { help: 'Optional image shown on the public news page and in newsletter reuse.' }),
+      field('image_file_id', 'Post Image', 'image', { help: 'Optional image shown on the public news page.', aspectRatio: 16/9, cropTitle: 'Crop News Image (16:9)' }),
       field('date', 'Display Date'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
     ],
@@ -396,7 +396,7 @@ const CONFIG = {
     fields: [
       field('title', 'Title'),
       field('description', 'Description', 'textarea'),
-      field('image_file_id', 'Image', 'image'),
+      field('image_file_id', 'Image', 'image', { aspectRatio: 4/3, cropTitle: 'Crop Gallery Image (4:3)' }),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
     ],
@@ -765,20 +765,32 @@ const MiniTable = ({ rows, columns }) => (
   </table>
 );
 
-// ---------- Image upload field ----------
-const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange }) => {
+// ---------- Image upload field (with crop) ----------
+const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspectRatio, cropTitle }) => {
   const [uploading, setUploading] = React.useState(false);
-  const [preview, setPreview] = React.useState(currentUrl || null);
-  const [error, setError] = React.useState('');
+  const [preview, setPreview]     = React.useState(currentUrl || null);
+  const [cropSrc, setCropSrc]     = React.useState(null);
+  const [error, setError]         = React.useState('');
   const inputRef = React.useRef(null);
 
-  const handleFile = async (e) => {
+  // Step 1: file selected → open crop modal
+  const handleSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
+    const reader = new FileReader();
+    reader.onload = (ev) => setCropSrc(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  // Step 2: crop confirmed → upload
+  const handleCrop = async (croppedFile, dataUrl) => {
+    setCropSrc(null);
+    setPreview(dataUrl);
     setUploading(true); setError('');
     try {
       const { api } = await import('../../src/lib/apiClient.js');
-      const uploaded = await api.uploadFile(file, 'images');
+      const uploaded = await api.uploadFile(croppedFile, 'images');
       setPreview(uploaded.url);
       onChange(uploaded.id, uploaded.url);
     } catch (err) {
@@ -790,6 +802,15 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange }) =>
 
   return (
     <div>
+      {cropSrc && (
+        <ImageCropModal
+          src={cropSrc}
+          aspectRatio={aspectRatio || 16 / 9}
+          title={cropTitle || 'Crop Image'}
+          onCrop={handleCrop}
+          onCancel={() => setCropSrc(null)}
+        />
+      )}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         {preview && (
           <img src={preview} alt="preview"
@@ -801,12 +822,12 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange }) =>
             {uploading ? 'Uploading...' : preview ? 'Replace image' : 'Upload image'}
           </button>
           {currentFileId && !preview && (
-              <p style={{ fontSize: '0.75rem', color: 'var(--gray-700)', marginTop: 4 }}>Selected uploaded image</p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--gray-700)', marginTop: 4 }}>Existing image on file</p>
           )}
         </div>
-        <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
+        <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleSelect} />
       </div>
-      <p className="admin-image-help">Tip: use 16:9 for hero, gallery, news, and flyers; 3:4 portrait for product covers; square or portrait for people. Where fit and position fields are available, use them to keep important details visible without editing the original file.</p>
+      <p className="admin-image-help">Crop ratio: {aspectRatio ? `${aspectRatio.toFixed(2)}:1` : '16:9 default'} · Drag to reposition · Scroll to zoom after selecting.</p>
       {error && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: 4 }}>{error}</p>}
     </div>
   );
@@ -869,6 +890,8 @@ const ArticleSectionsField = ({ sections, onChange }) => {
                 fieldName={`section_image_${index}`}
                 currentFileId={section.image_file_id || ''}
                 currentUrl={section.image_url || ''}
+                aspectRatio={16/9}
+                cropTitle="Crop Article Section Image (16:9)"
                 onChange={(fileId, fileUrl) => updateSection(index, { image_file_id: fileId, image_url: fileUrl })}
               />
             </div>
@@ -949,6 +972,8 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
                 fieldName={itemField.name}
                 currentFileId={form[itemField.name]}
                 currentUrl={imageUrls[itemField.name]}
+                aspectRatio={itemField.aspectRatio}
+                cropTitle={itemField.cropTitle}
                 onChange={(fileId, fileUrl) => {
                   setForm(prev => ({ ...prev, [itemField.name]: fileId }));
                   setImageUrls(prev => ({ ...prev, [itemField.name]: fileUrl }));
@@ -1709,27 +1734,51 @@ const BulkAdjuster = ({ title, description, onApply }) => {
   );
 };
 
-const PriceToolsView = () => (
-  <div>
-    <h2 className="admin-page-title" style={{ marginBottom:8 }}>Price &amp; Delivery Tools</h2>
-    <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginBottom:28 }}>
-      Apply a single discount or increase to all product prices or all delivery fees at once. Changes are permanent — make a note before applying.
-    </p>
-    <BulkAdjuster
-      title="Adjust All Product Prices"
-      description="Applies the adjustment to every active product in the bookshop. Useful for a site-wide sale or price correction."
-      onApply={(t, v, d) => api.bulkPriceAdjust(t, v, d)}
-    />
-    <BulkAdjuster
-      title="Adjust All Delivery Fees"
-      description="Applies the adjustment to every active delivery zone. Zones with a zero fee (e.g. 'Other — Contact Us') are skipped."
-      onApply={(t, v, d) => api.bulkDeliveryAdjust(t, v, d)}
-    />
-    <div style={{ background:'#fff3cd', border:'1px solid #ffc107', borderRadius:10, padding:'14px 18px', fontSize:'0.82rem', color:'#664d03' }}>
-      <strong>Tip:</strong> To give a specific product or category a discount, set its <em>Old Price</em> first (the original price), then lower its <em>Price</em>. The bookshop will show the crossed-out original and the sale price automatically.
+const PriceAdjustmentView = ({ content }) => {
+  const [tab, setTab] = React.useState('promo');
+  const tabStyle = (t) => ({
+    padding: '9px 22px', borderRadius: 8, fontFamily: 'Montserrat,sans-serif',
+    fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', border: 'none',
+    background: tab === t ? 'var(--navy)' : 'transparent',
+    color: tab === t ? '#fff' : 'var(--gray-600)',
+    transition: 'all .2s',
+  });
+  return (
+    <div>
+      <h2 className="admin-page-title" style={{ marginBottom: 16 }}>Price Adjustment</h2>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 6, background: 'var(--gray-50)', border: '1px solid var(--gray-100)', borderRadius: 10, padding: 5, marginBottom: 28, width: 'fit-content' }}>
+        <button style={tabStyle('promo')} onClick={() => setTab('promo')}>Promo Codes</button>
+        <button style={tabStyle('bulk')} onClick={() => setTab('bulk')}>Bulk Adjustments</button>
+      </div>
+
+      {tab === 'promo' && (
+        <ManagedTableView config={CONFIG['promoCodes']} rows={content[CONFIG['promoCodes'].collection] || []} />
+      )}
+
+      {tab === 'bulk' && (
+        <div>
+          <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginBottom:28 }}>
+            Apply a single discount or increase to all product prices or delivery fees at once. Changes are permanent.
+          </p>
+          <BulkAdjuster
+            title="Adjust All Product Prices"
+            description="Applies the adjustment to every active product in the bookshop. Useful for a site-wide sale or price correction."
+            onApply={(t, v, d) => api.bulkPriceAdjust(t, v, d)}
+          />
+          <BulkAdjuster
+            title="Adjust All Delivery Fees"
+            description="Applies the adjustment to every active delivery zone. Zones with zero fee are skipped."
+            onApply={(t, v, d) => api.bulkDeliveryAdjust(t, v, d)}
+          />
+          <div style={{ background:'#fff3cd', border:'1px solid #ffc107', borderRadius:10, padding:'14px 18px', fontSize:'0.82rem', color:'#664d03', marginTop:24 }}>
+            <strong>Tip:</strong> To discount a specific product, set its <em>Old Price</em> (original), then lower its <em>Price</em>. The bookshop shows the crossed-out original automatically.
+          </div>
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 const TeachersView = () => {
   const [teachers, setTeachers] = React.useState(null);
@@ -1884,8 +1933,8 @@ const AdminPortalPage = () => {
       ? <ApplicationsView content={content} />
       : activeView === 'alerts'
         ? <AlertsView />
-        : activeView === 'priceTools'
-          ? <PriceToolsView />
+        : activeView === 'priceAdjustment' || activeView === 'promoCodes' || activeView === 'priceTools'
+          ? <PriceAdjustmentView content={content} />
           : activeView === 'teachers'
           ? <TeachersView />
           : CONFIG[activeView]
