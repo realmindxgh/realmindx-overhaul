@@ -111,7 +111,7 @@ const App = () => {
     const url = `${BASE}${paths[route] || '/bookshop'}`;
     const setM = (k, v) => { if (!v) return; let el = document.querySelector(`meta[name="${k}"]`) || document.querySelector(`meta[property="${k}"]`); if (!el) { el = document.createElement('meta'); el.setAttribute(k.startsWith('og:') ? 'property' : 'name', k); document.head.appendChild(el); } el.setAttribute('content', v); };
     if (m.desc) { setM('description', m.desc); setM('og:description', m.desc); setM('twitter:description', m.desc); }
-    setM('og:title', m.title); setM('og:url', url); setM('og:image', `${BASE}/og-image.png`); setM('twitter:title', m.title);
+    setM('og:title', m.title); setM('og:url', url); setM('og:image', `${BASE}/og-image-bookshop.png`); setM('og:site_name', 'RealMindX Bookshop'); setM('twitter:title', m.title); setM('twitter:image', `${BASE}/og-image-bookshop.png`);
     let canon = document.querySelector('link[rel="canonical"]'); if (!canon) { canon = document.createElement('link'); canon.rel = 'canonical'; document.head.appendChild(canon); } canon.href = url;
   }, [route]);
 

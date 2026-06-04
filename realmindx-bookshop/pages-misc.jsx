@@ -6,7 +6,7 @@ import { useSiteCopy } from '../src/lib/siteContent.js';
 import { resendVerificationOtp, signIn, signUp, verifyEmailOtp } from '../src/lib/authClient.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
-const bookshopHeroImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
+const bookshopHeroImage = '/bookshop-og.png';
 
 const AuthPage = ({ navigate, mode = 'login' }) => {
   const isLogin = mode === 'login';

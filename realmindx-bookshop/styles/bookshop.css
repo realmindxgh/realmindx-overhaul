@@ -80,6 +80,9 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-nav-inner { width: 100%; max-width: 1320px; margin: 0 auto; padding: 0 28px; display: flex; align-items: center; gap: 22px; }
 .bs-logo { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
 .bs-logo-badge { width: 72px; height: 46px; border-radius: 8px; background: var(--bs-navy); display: inline-flex; align-items: center; justify-content: center; padding: 6px; box-shadow: 0 8px 18px rgba(20,54,112,.16); }
+/* New bookshop logo — image only, no text */
+.bs-logo-img { display: flex; align-items: center; }
+.bs-navbar-logo-img { height: 46px; width: auto; max-width: 220px; object-fit: contain; display: block; image-rendering: -webkit-optimize-contrast; }
 .bs-logo-badge img { width: 100%; height: 100%; object-fit: contain; }
 .bs-logo-mark { width: 38px; height: 38px; border-radius: 10px; background: var(--bs-navy); color: var(--bs-gold-live); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .bs-logo-word { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 19px; color: var(--bs-navy); letter-spacing: -.5px; line-height: 1; }
@@ -524,8 +527,8 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-auth-trust { margin-top: 36px; display: flex; flex-direction: column; gap: 16px; }
 .bs-auth-trust-row { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--bs-text); }
 .bs-tc { width: 30px; height: 30px; border-radius: 50%; background: var(--bs-gold-live); color: var(--bs-navy); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.bs-auth-illo { margin-top: 40px; aspect-ratio: 16/8; border-radius: var(--bs-radius-md); position: relative; overflow: hidden; background: var(--bs-off-white); }
-.bs-auth-illo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bs-auth-illo { margin-top: 48px; display: flex; align-items: center; justify-content: center; }
+.bs-auth-illo img { width: 90%; max-width: 340px; height: auto; object-fit: contain; display: block; filter: drop-shadow(0 12px 32px rgba(20,54,112,.18)); }
 .bs-auth-form-wrap { background: var(--bs-navy); color: #fff; padding: 64px 56px 56px; display: flex; flex-direction: column; justify-content: flex-start; position: relative; overflow: hidden; }
 .bs-auth-form-wrap::before { content:''; position:absolute; inset:0; background-image: radial-gradient(rgba(255,255,255,.06) 1px, transparent 1px); background-size: 26px 26px; }
 .bs-auth-form { position: relative; z-index: 1; width: 100%; max-width: 400px; margin: 0 auto; }

@@ -1,5 +1,6 @@
 import React from 'react';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
+const bookshopLogo = '/bookshop-logo.png';
 
 // ---------- Icons (24x24 stroke) ----------
 const Icon = ({ name, size = 24, stroke = 1.8, className = '' }) => {
@@ -68,9 +69,9 @@ const BrainMark = ({ size = 22 }) => (
 );
 
 const Logo = ({ onClick }) => (
-  <a className="bs-logo" href="#home" onClick={onClick} aria-label="RealMindX Bookshop home">
-    <span className="bs-logo-badge"><img src={logoWhite} alt="" /></span>
-    <span className="bs-logo-word">Bookshop<span className="bs-logo-shop">REALMINDX</span></span>
+  <a className="bs-logo bs-logo-img" href="#home" onClick={onClick} aria-label="RealMindX Bookshop home">
+    <img src={bookshopLogo} alt="RealMindX Bookshop" className="bs-navbar-logo-img"
+      onError={e => { e.target.style.display='none'; }} />
   </a>
 );
 
