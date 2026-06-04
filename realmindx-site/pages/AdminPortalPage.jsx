@@ -176,10 +176,10 @@ const CONFIG = {
       field('level', 'Level', 'text', { help: 'e.g. JHS 1, SHS, Primary 4' }),
       field('subject', 'Subject'),
       field('image_file_id', 'Product Image', 'image', { aspectRatio: 3/4, cropTitle: 'Crop Product Cover (3:4)', guide: [
-        '📐 Ideal ratio: 3:4 (portrait) — like a standard book cover.',
-        '🎯 Crop tip: centre the title and author text. Avoid cutting off the spine or bottom barcode area.',
-        '🖼 Minimum recommended size: 600 × 800 px. Higher resolution looks sharper in the product detail view.',
-        '✅ After cropping, the image fills the product card and detail page uniformly regardless of the original file dimensions.',
+        { icon: 'target',   text: 'Ideal ratio: 3:4 portrait, matching the proportions of a standard book cover.' },
+        { icon: 'image',    text: 'Crop tip: centre the title and author name. Do not cut off the spine or barcode area at the bottom.' },
+        { icon: 'camera',   text: 'Minimum size: 600 x 800 px. Higher resolution is sharper in the product detail view.' },
+        { icon: 'check',    text: 'After cropping, the image fills product cards and the detail page uniformly, regardless of the original file dimensions.' },
       ] }),
       field('tags', 'Tags', 'tags', { help: 'Comma-separated: popular,new,sale' }),
       field('featured', 'Featured', 'checkbox'),
@@ -235,10 +235,10 @@ const CONFIG = {
       field('badge', 'Badge / CTA Label', 'text', { help: 'Leave blank if the flyer image already includes the call to action.' }),
       field('sort_order', 'Order', 'number', { help: 'Lower numbers appear first.' }),
       field('image_file_id', 'Hero Image', 'image', { aspectRatio: 16/6, cropTitle: 'Crop Flyer / Hero Banner (16:6)', guide: [
-        '📐 Ideal ratio: 16:6 — wide landscape banner used in the bookshop homepage carousel.',
-        '🎯 Crop tip: keep important text and focal points within the centre 60% of the frame. Edges may be clipped on smaller screens.',
-        '🖼 Minimum recommended size: 1280 × 480 px. Use a high-contrast image — the headline text overlays this.',
-        '✅ Flyers rotate automatically in the hero. Upload at least 3 for a good scrolling experience.',
+        { icon: 'target',   text: 'Ideal ratio: 16:6. This is a wide landscape banner used in the bookshop homepage carousel.' },
+        { icon: 'image',    text: 'Crop tip: keep important text and focal points within the centre 60% of the frame. Edges can be clipped on smaller screens.' },
+        { icon: 'camera',   text: 'Minimum size: 1280 x 480 px. Use a high-contrast image because the headline text is overlaid on this.' },
+        { icon: 'check',    text: 'Flyers rotate automatically in the hero section. Upload at least 3 for a good scrolling experience.' },
       ] }),
       field('show_overlay', 'Dark / Stripe Overlay', 'checkbox'),
       field('image_fit', 'Image Fit', 'select', { options: ['cover', 'contain'] }),
@@ -284,10 +284,10 @@ const CONFIG = {
       field('secondary_cta_href', 'Secondary CTA Link'),
       field('icon', 'Service Icon', 'select', { options: SERVICE_ICON_OPTIONS }),
       field('image_file_id', 'Service Image', 'image', { aspectRatio: 16/9, cropTitle: 'Crop Service Image (16:9)', guide: [
-        '📐 Ideal ratio: 16:9 — standard widescreen used on the services detail page.',
-        '🎯 Crop tip: use a real photo of the service in action — a teacher in a classroom, students studying, or a school setting. Avoid generic stock photos.',
-        '🖼 Minimum recommended size: 1200 × 675 px.',
-        '✅ This image appears alongside the service description and feature list. Pick something that immediately communicates what the service is about.',
+        { icon: 'target',   text: 'Ideal ratio: 16:9. This is the standard widescreen format used on the services detail page.' },
+        { icon: 'image',    text: 'Crop tip: use a real photo showing the service in action. A teacher in a classroom, students studying, or a school setting works well. Avoid generic stock photos.' },
+        { icon: 'camera',   text: 'Minimum size: 1200 x 675 px.' },
+        { icon: 'check',    text: 'This image appears alongside the service description and feature list. Pick one that immediately communicates what the service delivers.' },
       ] }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('badge', 'Badge'),
@@ -308,10 +308,10 @@ const CONFIG = {
       field('name', 'Partner Name'),
       field('icon', 'Fallback Icon', 'select', { options: PARTNER_ICON_OPTIONS }),
       field('image_file_id', 'Logo Image', 'image', { aspectRatio: 1, cropTitle: 'Crop Partner Logo (square)', guide: [
-        '📐 Ideal ratio: 1:1 square — partner logos are displayed in a uniform grid.',
-        '🎯 Crop tip: centre the logo mark with equal padding on all sides. Avoid cropping into the wordmark.',
-        '🖼 Best format: PNG with a transparent background, or white background if transparent is unavailable. Minimum 300 × 300 px.',
-        '✅ Logos appear in the scrolling partner marquee on the homepage. Keep the crop tight so small logos stay legible.',
+        { icon: 'target',   text: 'Ideal ratio: 1:1 square. Partner logos are displayed in a uniform grid.' },
+        { icon: 'image',    text: 'Crop tip: centre the logo mark with equal padding on all sides. Avoid cropping into the wordmark or tagline.' },
+        { icon: 'camera',   text: 'Best format: PNG with a transparent background. If transparent is unavailable, use white. Minimum 300 x 300 px.' },
+        { icon: 'check',    text: 'Logos appear in the scrolling partner marquee on the homepage. Keep the crop tight so the logo stays legible at small sizes.' },
       ] }),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
@@ -332,10 +332,10 @@ const CONFIG = {
       field('bio', 'Short Bio', 'textarea'),
       field('initials', 'Fallback Initials', 'text', { help: 'Shown only if no profile photo is uploaded.' }),
       field('image_file_id', 'Profile Photo', 'image', { aspectRatio: 3/4, cropTitle: 'Crop Profile Photo (3:4)', guide: [
-        '📐 Ideal ratio: 3:4 portrait — used in the Leadership Team section on the About page.',
-        '🎯 Crop tip: frame from the shoulders up. Leave a small margin above the head. Good lighting and a neutral or branded background works best.',
-        '🖼 Minimum recommended size: 400 × 533 px. Smiling, professional headshots build trust.',
-        '✅ If no photo is provided, the system displays the person\'s initials as a fallback. A photo always looks better.',
+        { icon: 'target',   text: 'Ideal ratio: 3:4 portrait. Used in the Leadership Team section on the About page.' },
+        { icon: 'image',    text: 'Crop tip: frame from the shoulders up with a small margin above the head. Good lighting and a neutral or branded background works best.' },
+        { icon: 'camera',   text: 'Minimum size: 400 x 533 px. Smiling, professional headshots build trust with visitors.' },
+        { icon: 'check',    text: 'If no photo is provided, the system displays the initials as a fallback. A photo always looks more professional.' },
       ] }),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
@@ -354,10 +354,10 @@ const CONFIG = {
       field('label', 'Admin Label'),
       field('alt', 'Image Alt Text'),
       field('image_file_id', 'Hero Image', 'image', { aspectRatio: 16/7, cropTitle: 'Crop Homepage Hero (16:7)', guide: [
-        '📐 Ideal ratio: 16:7 — ultra-wide cinematic banner for the homepage hero slideshow.',
-        '🎯 Crop tip: the headline text overlays the left half of the image. Keep your focal point (a classroom, a student, a teacher) on the right half. Avoid busy patterns in the centre.',
-        '🖼 Minimum recommended size: 1400 × 612 px. High-resolution landscape photos of RealMindX in action work best.',
-        '✅ Up to 5 slides cycle automatically. Each slide should tell a different story — recruitment, bookshop, tutoring, school support, community.',
+        { icon: 'target',   text: 'Ideal ratio: 16:7. This is an ultra-wide cinematic banner used in the homepage hero slideshow.' },
+        { icon: 'image',    text: 'Crop tip: the headline text overlays the left half of the image. Keep the focal point (a classroom, a student, a teacher) on the right half. Avoid busy patterns in the centre.' },
+        { icon: 'camera',   text: 'Minimum size: 1400 x 612 px. High-resolution landscape photos of RealMindX in action work best.' },
+        { icon: 'check',    text: 'Up to 5 slides cycle automatically. Each slide should tell a different story: recruitment, bookshop, tutoring, school support, community.' },
       ] }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('sort_order', 'Sort Order', 'number'),
@@ -377,10 +377,10 @@ const CONFIG = {
       field('label', 'Slide Label'),
       field('alt', 'Image Alt Text'),
       field('image_file_id', 'Slide Image', 'image', { aspectRatio: 16/7, cropTitle: 'Crop Donation Slide (16:7)', guide: [
-        '📐 Ideal ratio: 16:7 — wide slide for the donation page impact gallery.',
-        '🎯 Crop tip: use real, emotional photos from the field — students in class, teachers at CPD sessions, school transformations. Authenticity drives donations.',
-        '🖼 Minimum recommended size: 1400 × 612 px. Avoid watermarked stock photos; real photos from RealMindX activities are far more compelling.',
-        '✅ These slides sit above the donation form and build trust. Aim for 5–8 diverse, impactful images.',
+        { icon: 'target',   text: 'Ideal ratio: 16:7. Wide slide used in the donation page impact gallery.' },
+        { icon: 'image',    text: 'Crop tip: use real, emotional photos from the field. Students in class, teachers at CPD sessions, and school transformations are ideal. Authenticity drives donations.' },
+        { icon: 'camera',   text: 'Minimum size: 1400 x 612 px. Avoid watermarked stock photos. Real photos from RealMindX activities are far more compelling.' },
+        { icon: 'check',    text: 'These slides sit above the donation form and build trust. Aim for 5 to 8 diverse, impactful images.' },
       ] }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('sort_order', 'Sort Order', 'number'),
@@ -417,10 +417,10 @@ const CONFIG = {
       field('body', 'Intro / Fallback Body', 'textarea', { help: 'Shown before the sections, or used as the full article if no sections are added.' }),
       field('sections', 'Article Sections', 'article-sections', { help: 'Add headings, body text, images, and captions for the full news article.' }),
       field('image_file_id', 'Post Image', 'image', { aspectRatio: 16/9, cropTitle: 'Crop News Image (16:9)', guide: [
-        '📐 Ideal ratio: 16:9 — standard widescreen used on news cards and article header.',
-        '🎯 Crop tip: pick an image that visually summarises the story. Events: show attendees. Announcements: use the relevant product/person/location.',
-        '🖼 Minimum recommended size: 1200 × 675 px. A good header image is the biggest driver of people clicking through to read an article.',
-        '✅ This image also appears in newsletters when the post is reused. Make it eye-catching at small sizes.',
+        { icon: 'target',   text: 'Ideal ratio: 16:9. Standard widescreen format used on news cards and the article header.' },
+        { icon: 'image',    text: 'Crop tip: pick an image that visually summarises the story. For events, show attendees. For announcements, use the relevant product, person, or location.' },
+        { icon: 'camera',   text: 'Minimum size: 1200 x 675 px. A strong header image is the biggest driver of people clicking through to read the article.' },
+        { icon: 'check',    text: 'This image also appears in newsletters when the post is reused. Make it recognisable and eye-catching at small sizes.' },
       ] }),
       field('date', 'Display Date'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
@@ -437,10 +437,10 @@ const CONFIG = {
       field('title', 'Title'),
       field('description', 'Description', 'textarea'),
       field('image_file_id', 'Image', 'image', { aspectRatio: 4/3, cropTitle: 'Crop Gallery Image (4:3)', guide: [
-        '📐 Ideal ratio: 4:3 — standard photo format used in the public gallery grid.',
-        '🎯 Crop tip: keep the main subject centred. Avoid blurry or overexposed shots — the gallery is public-facing and reflects the brand.',
-        '🖼 Minimum recommended size: 800 × 600 px. Landscape photos of RealMindX events, classroom visits, and community activities work best.',
-        '✅ The gallery is often the first place potential school partners look to understand the quality and scale of RealMindX\'s work. Choose impactful photos.',
+        { icon: 'target',   text: 'Ideal ratio: 4:3. Standard photo format used in the public gallery grid.' },
+        { icon: 'image',    text: 'Crop tip: keep the main subject centred. Avoid blurry or overexposed shots. The gallery is public-facing and directly reflects the brand.' },
+        { icon: 'camera',   text: 'Minimum size: 800 x 600 px. Landscape photos from RealMindX events, classroom visits, and community activities work best.' },
+        { icon: 'check',    text: 'The gallery is often the first place potential school partners look to assess the quality and scale of RealMindX work. Choose impactful, well-lit photos.' },
       ] }),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
@@ -874,7 +874,12 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
       </div>
       {guide && (
         <div className="admin-image-guide">
-          {guide.map((line, i) => <p key={i}>{line}</p>)}
+          {guide.map((item, i) => (
+            <div key={i} className="admin-ig-row">
+              <span className="admin-ig-icon"><Icon name={item.icon} size={14} stroke={2} /></span>
+              <span>{item.text}</span>
+            </div>
+          ))}
         </div>
       )}
       {error && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: 4 }}>{error}</p>}
@@ -942,9 +947,9 @@ const ArticleSectionsField = ({ sections, onChange }) => {
                 aspectRatio={16/9}
                 cropTitle="Crop Article Section Image (16:9)"
                 guide={[
-                  '📐 Ideal ratio: 16:9 — used inline within the article body.',
-                  '🎯 Crop tip: pick an image directly relevant to this section\'s heading and text. Inline images should illustrate, not decorate.',
-                  '🖼 Minimum recommended size: 900 × 506 px. Add a caption below the image for context.',
+                  { icon: 'target',   text: 'Ideal ratio: 16:9. Used inline within the article body.' },
+                  { icon: 'image',    text: 'Crop tip: pick an image directly relevant to this section\'s heading and text. Inline images should illustrate the content, not just decorate it.' },
+                  { icon: 'camera',   text: 'Minimum size: 900 x 506 px. Add a caption in the field below the image to give readers context.' },
                 ]}
                 onChange={(fileId, fileUrl) => updateSection(index, { image_file_id: fileId, image_url: fileUrl })}
               />
@@ -1669,12 +1674,12 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
           <div style={{ background:'#fff', borderRadius:12, padding:32, width:'100%', maxWidth:440, boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
             <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Change Order Status</h3>
             <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:20 }}>
-              Order: <strong>{statusModal.row.order_reference}</strong> — {statusModal.row.customer_name}
+              Order: <strong>{statusModal.row.order_reference}</strong> for {statusModal.row.customer_name}
             </p>
             <div className="form-group" style={{ marginBottom:16 }}>
               <label className="form-label">New Status</label>
               <select className="form-select" value={statusChoice} onChange={e => setStatusChoice(e.target.value)}>
-                <option value="">— Select status —</option>
+                <option value="">Select status</option>
                 {(config.statusOptions || ['received','shipped','complete','cancelled']).map(s => (
                   <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>
                 ))}
@@ -2023,9 +2028,9 @@ const AdminPortalPage = () => {
       <style>{`
         .admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
         .admin-image-help { color: var(--gray-700); font-size: 0.74rem; line-height: 1.5; margin-top: 8px; max-width: 760px; }
-        .admin-image-guide { background: #f0f4fa; border-left: 3px solid var(--navy); border-radius: 0 8px 8px 0; padding: 12px 16px; margin-top: 12px; max-width: 680px; }
-        .admin-image-guide p { margin: 0 0 6px; font-size: 0.78rem; color: var(--navy); line-height: 1.55; }
-        .admin-image-guide p:last-child { margin-bottom: 0; }
+        .admin-image-guide { background: #f0f4fa; border-left: 3px solid var(--navy); border-radius: 0 8px 8px 0; padding: 12px 16px; margin-top: 12px; max-width: 680px; display: flex; flex-direction: column; gap: 8px; }
+        .admin-ig-row { display: flex; align-items: flex-start; gap: 9px; font-size: 0.78rem; color: #1a2a40; line-height: 1.55; }
+        .admin-ig-icon { flex-shrink: 0; color: var(--navy); margin-top: 1px; opacity: 0.75; }
         .admin-stat { border: 0; text-align: left; cursor: pointer; }
         .admin-thumb { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--gray-200); display: block; }
         .td-muted { color: var(--gray-600); font-size: 0.78rem; font-weight: 700; }

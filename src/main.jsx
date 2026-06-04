@@ -480,15 +480,15 @@ const DEFAULT_IMG = `${BASE_URL}/og-image.png`;
 const PAGE_META = {
   '/': {
     title: "RealMindX Education | Ghana's Educational Services Provider",
-    desc: "Ghana's most comprehensive educational services provider — teacher recruitment, CPD, school transformation, bookshop, tutoring and more. Serving schools across Accra and beyond.",
+    desc: "Ghana's most comprehensive educational services provider: teacher recruitment, CPD, school transformation, bookshop, tutoring and more. Serving schools across Accra and beyond.",
   },
   '/about': {
     title: 'About RealMindX Education | Ghana',
-    desc: 'Learn about RealMindX Education Limited — our mission, vision, leadership team and commitment to transforming education across Ghana.',
+    desc: 'Learn about RealMindX Education Limited: our mission, vision, leadership team and commitment to transforming education across Ghana.',
   },
   '/services': {
     title: 'Educational Services | RealMindX Education Ghana',
-    desc: 'Teacher recruitment, professional development, school structuring, after-school tutoring, special education, home schooling support and more — all in one place.',
+    desc: 'Teacher recruitment, professional development, school structuring, after-school tutoring, special education, home schooling support and more. All in one place.',
   },
   '/jobs': {
     title: 'Teaching Jobs in Ghana | RealMindX Jobs Board',
@@ -528,7 +528,7 @@ const RouteTitle = () => {
     const path = location.pathname.replace(/\/$/, '') || '/';
     if (path.startsWith('/bookshop')) return; // handled by BookshopApp
     if (path.startsWith('/admin')) { document.title = 'Admin | RealMindX'; return; }
-    const meta = PAGE_META[path] || { title: 'RealMindX Education', desc: "Ghana's educational services provider — teacher recruitment, bookshop, CPD, school transformation and more." };
+    const meta = PAGE_META[path] || { title: 'RealMindX Education', desc: "Ghana's educational services provider: teacher recruitment, bookshop, CPD, school transformation and more." };
     document.title = meta.title;
     const url = `${BASE_URL}${path}`;
     setMeta('description', meta.desc);
