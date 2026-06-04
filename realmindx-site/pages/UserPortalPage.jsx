@@ -984,7 +984,7 @@ const SettingsView = () => (
 /* â”€â”€ MAIN PORTAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const UserPortalPage = () => {
   const [activeView, setActiveView] = useState('dashboard');
-  const [pendingAction, setPendingAction] = useState(null);
+  const pendingActionRef = React.useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [session, setSession] = React.useState(() => getDemoSession());
   const [sessionChecked, setSessionChecked] = React.useState(!isApiMode());
@@ -1173,13 +1173,7 @@ const UserPortalPage = () => {
     }
   };
 
-  // Checklist ADD handler: navigate to the right view then execute the specific action
-  const handleChecklistAction = (step) => {
-    setActiveView(step.view);
-    setPendingAction(step.action);
-  };
-
-  // openProfileEdit must be declared BEFORE the useEffect that calls it
+  // openProfileEdit must be declared BEFORE the checklist handler that calls it
   const openProfileEdit = (section = 'personal') => {
     setProfileError('');
     setProfileForm({
@@ -1196,19 +1190,18 @@ const UserPortalPage = () => {
     setProfileEditSection(section);
   };
 
-  // Execute pending action after the target view has rendered
-  React.useEffect(() => {
-    if (!pendingAction) return;
-    const tid = setTimeout(() => {
-      if (pendingAction === 'edit-personal' || pendingAction === 'edit-teaching') {
-        openProfileEdit(pendingAction === 'edit-teaching' ? 'teaching' : 'personal');
-      }
-      setPendingAction(null);
+  // Checklist ADD handler: navigate then execute the action after a short delay
+  const handleChecklistAction = (step) => {
+    pendingActionRef.current = step.action;
+    setActiveView(step.view);
+    // Run the action on the next tick so the new view has mounted
+    setTimeout(() => {
+      const action = pendingActionRef.current;
+      pendingActionRef.current = null;
+      if (action === 'edit-personal') openProfileEdit('personal');
+      if (action === 'edit-teaching') openProfileEdit('teaching');
     }, 80);
-    return () => clearTimeout(tid);
-  // openProfileEdit is stable enough — excluding it avoids a circular update loop
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAction]);
+  };
 
   const saveProfileEdit = async event => {
     event.preventDefault();
@@ -1237,7 +1230,7 @@ const UserPortalPage = () => {
   const renderView = () => {
     switch (activeView) {
       case 'profile':      return <ProfileView      user={user} onPreviewAvatar={() => setAvatarPreview(true)} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} avatarUploading={avatarUploading} uploadError={uploadError} />;
-      case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} highlight={pendingAction === 'highlight-cv' ? 'cv' : pendingAction === 'highlight-cert' ? 'cert' : null} />;
+      case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} highlight={pendingActionRef.current === 'highlight-cv' ? 'cv' : pendingActionRef.current === 'highlight-cert' ? 'cert' : null} />;
       case 'applications': return <ApplicationsView applications={applications} />;
       case 'alerts':       return <AlertsView initialAlerts={alerts} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;
       case 'settings':     return <SettingsView />;
