@@ -12,7 +12,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 
-const FRAME = 320; // crop frame long edge in CSS px
+const FRAME = 520; // crop frame long edge in CSS px
 
 export default function ImageCropModal({
   src,
@@ -35,7 +35,7 @@ export default function ImageCropModal({
   const CW = aspectRatio >= 1 ? FRAME : Math.round(FRAME * aspectRatio);
   const CH = aspectRatio >= 1 ? Math.round(FRAME / aspectRatio) : FRAME;
   // Canvas size (crop frame + padding)
-  const PAD = 60;
+  const PAD = 40;
   const VW = CW + PAD * 2;
   const VH = CH + PAD * 2;
   const cropX = PAD;
@@ -164,23 +164,40 @@ export default function ImageCropModal({
   }, [scale, minSc, clamp]);
   const onTouchEnd = () => { drag.current.on = false; };
 
-  // ── Export crop ──────────────────────────────────────────────────
+  // ── Export crop at FULL source resolution ────────────────────────
+  // Map the crop frame back to native image pixels so no quality is lost.
   const applyCrop = () => {
     const img = imgRef.current;
     if (!img) return;
+
+    // Image position in canvas space
+    const dw = img.naturalWidth  * scale;
+    const dh = img.naturalHeight * scale;
+    const ix = (VW - dw) / 2 + offset.x;
+    const iy = (VH - dh) / 2 + offset.y;
+
+    // Convert crop frame to source image coordinates (pixels in the original file)
+    const srcX = (cropX - ix) / scale;
+    const srcY = (cropY - iy) / scale;
+    const srcW = CW / scale;
+    const srcH = CH / scale;
+
+    // Output at the true source resolution — preserves every pixel from the original
+    const outW = Math.round(srcW);
+    const outH = Math.round(srcH);
+
     const out = document.createElement('canvas');
-    out.width  = CW * 2; // 2× for retina
-    out.height = CH * 2;
+    out.width  = outW;
+    out.height = outH;
     const ctx = out.getContext('2d');
-    const dw = img.naturalWidth  * scale * 2;
-    const dh = img.naturalHeight * scale * 2;
-    const ix = (VW - img.naturalWidth  * scale) / 2 + offset.x;
-    const iy = (VH - img.naturalHeight * scale) / 2 + offset.y;
-    ctx.drawImage(img, (ix - cropX) * 2, (iy - cropY) * 2, dw, dh);
-    const dataUrl = out.toDataURL('image/jpeg', 0.92);
+    ctx.imageSmoothingEnabled  = true;
+    ctx.imageSmoothingQuality  = 'high';
+    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
+
+    const dataUrl = out.toDataURL('image/jpeg', 0.95);
     out.toBlob(blob => {
       onCrop(new File([blob], 'cropped.jpg', { type: 'image/jpeg' }), dataUrl);
-    }, 'image/jpeg', 0.92);
+    }, 'image/jpeg', 0.95);
   };
 
   return (
@@ -190,13 +207,13 @@ export default function ImageCropModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 16, backdropFilter: 'blur(6px)',
     }}>
-      <div style={{ background: '#fff', borderRadius: 18, padding: '24px 20px 20px', maxWidth: VW + 40, width: '100%' }}>
+      <div style={{ background: '#fff', borderRadius: 18, padding: '24px 24px 20px', maxWidth: `min(${VW + 80}px, 95vw)`, width: '100%' }}>
         <h3 style={{ margin: '0 0 4px', fontFamily: 'Montserrat,sans-serif', fontWeight: 900, fontSize: 17, color: '#143670' }}>{title}</h3>
         <p style={{ margin: '0 0 14px', fontSize: 12.5, color: '#6b7a99' }}>Drag to reposition · Scroll or pinch to zoom</p>
 
         <canvas
           ref={canvasRef} width={VW} height={VH}
-          style={{ display: 'block', borderRadius: 10, cursor: 'grab', touchAction: 'none', width: '100%', maxWidth: VW }}
+          style={{ display: 'block', borderRadius: 10, cursor: 'grab', touchAction: 'none', width: '100%' }}
           onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
           onWheel={onWheel}
           onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
