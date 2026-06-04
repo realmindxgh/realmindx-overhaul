@@ -39,6 +39,13 @@ class Config:
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
 
     WTF_CSRF_TIME_LIMIT = int(os.getenv("WTF_CSRF_TIME_LIMIT", "3600"))
+    # Trust CSRF tokens from all RealMindX domains and subdomains
+    WTF_CSRF_TRUSTED_ORIGINS = [
+        "https://realmindxgh.com",
+        "https://www.realmindxgh.com",
+        "https://bookshop.realmindxgh.com",
+        "https://new.realmindxgh.com",
+    ]
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
 
     UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", str(BASE_DIR / "uploads"))
@@ -65,6 +72,10 @@ class Config:
     MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
 
     TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "")
+
+    # Arkesel SMS (Ghana) — set these when ready; SMS is silently skipped if blank
+    ARKESEL_API_KEY   = os.getenv("ARKESEL_API_KEY", "")
+    ARKESEL_SENDER_ID = os.getenv("ARKESEL_SENDER_ID", "RealMindX")
 
     # OAuth social login
     GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
