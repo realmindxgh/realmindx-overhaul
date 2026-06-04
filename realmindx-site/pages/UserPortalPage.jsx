@@ -4,7 +4,7 @@ import logoWhite from '../assets/logo-white.png';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
 import { signOut } from '../../src/lib/authClient.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
-import { useCropUpload } from '../../src/lib/useCropUpload.js';
+import { useCropUpload } from '../../src/lib/useCropUpload.jsx';
 
 // CV Tutorial video card — YouTube URL is configurable via admin Site Settings (key: cv_tutorial_url)
 const CV_TUTORIAL_FALLBACK_URL = '';  // set a YouTube embed URL here once you have one, e.g. 'https://www.youtube.com/embed/XXXXXXXXXXX'
