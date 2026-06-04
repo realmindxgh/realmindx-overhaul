@@ -385,10 +385,10 @@ const LegalPageLayout = ({ nav, children, eyebrow, title, body, effectiveDate })
         </section>
 
         <section style={{ padding: '64px 0 96px' }}>
-          <div className="container" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '56px', alignItems: 'start' }}>
+          <div className="container" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '56px', alignItems: 'stretch' }}>
 
             {/* Sidebar TOC */}
-            <aside style={{ position: 'sticky', top: 90 }} className="legal-sidebar">
+            <aside style={{ position: 'sticky', top: 90, alignSelf: 'start' }} className="legal-sidebar">
               <p style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--navy)', opacity: 0.5, marginBottom: 14 }}>Sections</p>
               <nav>
                 {nav.map(({ id, label }, i) => (

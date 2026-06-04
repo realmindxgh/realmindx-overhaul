@@ -472,9 +472,9 @@ const BookshopLegalPage = ({ type = 'privacy' }) => {
         </div>
       </div>
       <div className="bs-container" style={{ paddingTop:48, paddingBottom:80 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'220px 1fr', gap:48, alignItems:'start' }} className="bs-legal-grid">
+        <div style={{ display:'grid', gridTemplateColumns:'220px 1fr', gap:48 }} className="bs-legal-grid">
           {/* Sidebar */}
-          <aside style={{ position:'sticky', top:80 }} className="bs-legal-sidebar">
+          <aside style={{ position:'sticky', top:80, alignSelf:'start' }} className="bs-legal-sidebar">
             <p style={{ fontSize:'0.7rem', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color:'var(--bs-navy)', opacity:0.5, marginBottom:12 }}>Sections</p>
             {sections.map(([heading], i) => (
               <button key={i} onClick={() => scrollTo(`bs-section-${i}`)}
