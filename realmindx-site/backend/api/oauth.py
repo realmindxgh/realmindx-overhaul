@@ -17,10 +17,11 @@ Environment variables required per provider (add to realmindx-site/.env):
 """
 
 import os
+import secrets
 from datetime import datetime, timezone
 
 from authlib.integrations.flask_client import OAuth
-from flask import Blueprint, current_app, redirect, session, url_for
+from flask import Blueprint, current_app, redirect, request, session, url_for
 from flask_login import login_user
 
 from ..extensions import db
@@ -28,6 +29,16 @@ from ..models import AuthIdentity, Role, User, UserProfile
 
 oauth_bp = Blueprint("oauth", __name__)
 oauth = OAuth()
+
+SAFE_NEXT_PREFIXES = (
+    "/portal",
+    "/bookshop",
+    "/cart",
+    "/checkout",
+    "/login",
+    "/register",
+    "/signup",
+)
 
 
 def _base_url():
@@ -37,6 +48,24 @@ def _base_url():
 
 def _callback_url(provider):
     return f"{_base_url()}/api/auth/{provider}/callback"
+
+
+def _safe_next(default="/portal"):
+    raw = request.args.get("next") or session.pop("oauth_next", None) or default
+    if not isinstance(raw, str):
+        return default
+    raw = raw.strip() or default
+    if not raw.startswith("/") or raw.startswith("//"):
+        return default
+    if raw == "/" or raw.startswith(SAFE_NEXT_PREFIXES):
+        return raw
+    return default
+
+
+def _remember_next(default="/portal"):
+    next_path = _safe_next(default)
+    session["oauth_next"] = next_path
+    return next_path
 
 
 def init_oauth(app):
@@ -100,6 +129,7 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
             role=role,
             is_verified=True,   # social login implies verified email
         )
+        user.set_password(secrets.token_urlsafe(48))
         db.session.add(user)
         db.session.flush()
         db.session.add(UserProfile(user_id=user.id))
@@ -115,11 +145,11 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
     return user
 
 
-def _login_and_redirect(user, frontend_path="/portal"):
+def _login_and_redirect(user, frontend_path=None):
     login_user(user, remember=True)
     user.last_login_at = datetime.now(timezone.utc)
     db.session.commit()
-    return redirect(f"{_base_url()}{frontend_path}")
+    return redirect(f"{_base_url()}{frontend_path or _safe_next('/portal')}")
 
 
 def _provider_not_configured(provider):
@@ -178,21 +208,27 @@ def apple_callback():
 def google_login():
     if not current_app.config.get("GOOGLE_CLIENT_ID"):
         return _provider_not_configured("google")
+    _remember_next("/portal")
     return oauth.google.authorize_redirect(_callback_url("google"))
 
 
 @oauth_bp.get("/auth/google/callback")
 def google_callback():
-    token = oauth.google.authorize_access_token()
-    info = token.get("userinfo") or oauth.google.userinfo()
-    user = _get_or_create_user(
-        provider="google",
-        provider_user_id=info["sub"],
-        email=info.get("email", ""),
-        first_name=info.get("given_name", ""),
-        last_name=info.get("family_name", ""),
-    )
-    return _login_and_redirect(user)
+    try:
+        token = oauth.google.authorize_access_token()
+        info = token.get("userinfo") or oauth.google.userinfo()
+        user = _get_or_create_user(
+            provider="google",
+            provider_user_id=info["sub"],
+            email=info.get("email", ""),
+            first_name=info.get("given_name", ""),
+            last_name=info.get("family_name", ""),
+        )
+        return _login_and_redirect(user)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Google OAuth callback failed")
+        return redirect(f"{_base_url()}/login?error=google_failed")
 
 
 # â”€â”€ Microsoft â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -201,21 +237,27 @@ def google_callback():
 def microsoft_login():
     if not current_app.config.get("MICROSOFT_CLIENT_ID"):
         return _provider_not_configured("microsoft")
+    _remember_next("/portal")
     return oauth.microsoft.authorize_redirect(_callback_url("microsoft"))
 
 
 @oauth_bp.get("/auth/microsoft/callback")
 def microsoft_callback():
-    token = oauth.microsoft.authorize_access_token()
-    info = token.get("userinfo") or {}
-    user = _get_or_create_user(
-        provider="microsoft",
-        provider_user_id=info.get("sub") or info.get("oid", ""),
-        email=info.get("email") or info.get("preferred_username", ""),
-        first_name=info.get("given_name", ""),
-        last_name=info.get("family_name", ""),
-    )
-    return _login_and_redirect(user)
+    try:
+        token = oauth.microsoft.authorize_access_token()
+        info = token.get("userinfo") or {}
+        user = _get_or_create_user(
+            provider="microsoft",
+            provider_user_id=info.get("sub") or info.get("oid", ""),
+            email=info.get("email") or info.get("preferred_username", ""),
+            first_name=info.get("given_name", ""),
+            last_name=info.get("family_name", ""),
+        )
+        return _login_and_redirect(user)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Microsoft OAuth callback failed")
+        return redirect(f"{_base_url()}/login?error=microsoft_failed")
 
 
 # â”€â”€ Facebook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -224,19 +266,25 @@ def microsoft_callback():
 def facebook_login():
     if not current_app.config.get("FACEBOOK_APP_ID"):
         return _provider_not_configured("facebook")
+    _remember_next("/portal")
     return oauth.facebook.authorize_redirect(_callback_url("facebook"))
 
 
 @oauth_bp.get("/auth/facebook/callback")
 def facebook_callback():
-    oauth.facebook.authorize_access_token()
-    resp = oauth.facebook.get("me?fields=id,name,email,first_name,last_name")
-    info = resp.json()
-    user = _get_or_create_user(
-        provider="facebook",
-        provider_user_id=info["id"],
-        email=info.get("email", ""),
-        first_name=info.get("first_name", ""),
-        last_name=info.get("last_name", ""),
-    )
-    return _login_and_redirect(user)
+    try:
+        oauth.facebook.authorize_access_token()
+        resp = oauth.facebook.get("me?fields=id,name,email,first_name,last_name")
+        info = resp.json()
+        user = _get_or_create_user(
+            provider="facebook",
+            provider_user_id=info["id"],
+            email=info.get("email", ""),
+            first_name=info.get("first_name", ""),
+            last_name=info.get("last_name", ""),
+        )
+        return _login_and_redirect(user)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Facebook OAuth callback failed")
+        return redirect(f"{_base_url()}/login?error=facebook_failed")

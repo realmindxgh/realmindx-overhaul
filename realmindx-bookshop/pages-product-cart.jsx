@@ -3,7 +3,7 @@ import { Icon, Stars, cedis, CoverPlaceholder, REVIEWS } from './shared.jsx';
 import { useCart, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
-import globalToast from '../src/lib/toast.js';
+import { setBookshopAuthReturn } from './authReturn.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 
 const Accordion = ({ title, children, defaultOpen = false }) => {
@@ -192,14 +192,14 @@ const ProductPage = ({ navigate, bookId }) => {
   );
 };
 
-const AccountNudge = ({ navigate, msg }) => (
+const AuthReturnActions = ({ navigate, route = 'cart' }) => (
   !isLoggedIn() ? (
-    <div className="bs-account-nudge">
-      <Icon name="user" size={15} />
-      <span>{msg}</span>
-      <button className="bs-nudge-btn" onClick={() => navigate('login')}>Sign in</button>
-      <span style={{ opacity:.5 }}>·</span>
-      <button className="bs-nudge-btn" onClick={() => navigate('signup')}>Create account</button>
+    <div className="bs-auth-return-actions">
+      <p>Want your cart and order history saved?</p>
+      <div>
+        <button type="button" onClick={() => { setBookshopAuthReturn(route); navigate('login'); }}>Sign in</button>
+        <button type="button" onClick={() => { setBookshopAuthReturn(route); navigate('signup'); }}>Create account</button>
+      </div>
     </div>
   ) : null
 );
@@ -208,16 +208,6 @@ const CartPage = ({ navigate }) => {
   const { detailed, subtotal, bulkDiscounts, bulkSaving, setQty, remove, count } = useCart();
   const delivery = subtotal > 0 ? 15 : 0;   // delivery fee shown on cart; exact fee is computed at checkout
   const total = subtotal - (bulkSaving || 0) + delivery;
-
-  // Nudge guests to sign up when they view their cart
-  React.useEffect(() => {
-    if (!isLoggedIn() && count > 0) {
-      const tid = setTimeout(() => {
-        globalToast.nudge('💡 Sign in to save your cart — items are lost when you close the browser.');
-      }, 1500);
-      return () => clearTimeout(tid);
-    }
-  }, []);
 
   if (count === 0) return (
     <div className="bs-container bs-fade-page">
@@ -232,7 +222,6 @@ const CartPage = ({ navigate }) => {
 
   return (
     <div className="bs-container-narrow bs-fade-page" style={{ maxWidth: 980 }}>
-      <AccountNudge navigate={navigate} msg="Sign in to save your cart and access your order history." />
       <div className="bs-breadcrumb">
         <a href="#" onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span><span className="bs-cur">Cart</span>
       </div>
@@ -278,6 +267,7 @@ const CartPage = ({ navigate }) => {
           </p>
           <div className="bs-summary-row bs-total"><span>Total</span><span>{cedis(total)}</span></div>
           <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:18 }} onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
+          <AuthReturnActions navigate={navigate} route="cart" />
           <div className="bs-secure-note"><Icon name="lock" size={14} /> Secure checkout powered by Paystack</div>
         </aside>
       </div>

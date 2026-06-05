@@ -6,11 +6,11 @@ import { useSiteCopy } from '../src/lib/siteContent.js';
 import { resendVerificationOtp, signIn, signUp, verifyEmailOtp } from '../src/lib/authClient.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
+import { consumeBookshopAuthReturn } from './authReturn.js';
 const bookshopHeroImage = '/bookshop-og.png';
 
 const AuthPage = ({ navigate, mode = 'login' }) => {
   const isLogin = mode === 'login';
-  const { toast } = useCart();
   const [turnstileKey, setTurnstileKey] = React.useState(0);
   const [form, setForm] = React.useState({
     fullName: '',
@@ -24,10 +24,13 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const [pendingVerificationEmail, setPendingVerificationEmail] = React.useState('');
   const [otp, setOtp] = React.useState('');
-  const [message, setMessage] = React.useState('');
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const termsRef = React.useRef(null);
+  const fullNameRef = React.useRef(null);
+  const passwordRef = React.useRef(null);
+  const confirmRef = React.useRef(null);
+  const otpRef = React.useRef(null);
   const set = key => event => {
     const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
     setForm(prev => ({ ...prev, [key]: value }));
@@ -41,7 +44,16 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     };
   };
 
-  const setErr = (msg) => { setError(msg); if (msg) globalToast.error(msg); };
+  const setErr = (msg, ref) => {
+    setError(msg);
+    if (msg) globalToast.error(msg);
+    if (ref?.current) {
+      requestAnimationFrame(() => {
+        ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        ref.current.focus?.({ preventScroll: true });
+      });
+    }
+  };
 
   const showTermsProblem = () => {
     setErr('Please agree to the Bookshop Terms of Service and Bookshop Privacy Policy before creating an account.');
@@ -54,13 +66,12 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
   const submit = async (event) => {
     event.preventDefault();
     setError('');
-    setMessage('');
     setLoading(true);
     try {
       if (isLogin) {
         await signIn({ email: form.email, password: form.password, role: 'user', remember: form.remember });
-        toast('Signed in to the bookshop');
-        navigate('home');
+        globalToast.success('Signed in to the bookshop.');
+        navigate(consumeBookshopAuthReturn('home'));
         return;
       }
       if (!form.acceptedTerms) {
@@ -68,16 +79,16 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
         return;
       }
       if (form.password.length < 8) {
-        setErr('Password must be at least 8 characters.');
+        setErr('Password must be at least 8 characters.', passwordRef);
         return;
       }
       if (form.password !== form.confirmPassword) {
-        setErr('Passwords do not match.');
+        setErr('Passwords do not match.', confirmRef);
         return;
       }
       const { firstName, lastName } = fullNameParts();
       if (!firstName) {
-        setErr('Enter your full name.');
+        setErr('Enter your full name.', fullNameRef);
         return;
       }
       const result = await signUp({
@@ -91,19 +102,18 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       });
       setPendingVerificationEmail(form.email);
       setOtp('');
-      setMessage(result?.message || 'Account created. Enter the code sent to your email.');
+      globalToast.success(result?.message || 'Account created. Enter the code sent to your email.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       if (err?.data?.requires_verification) {
         setPendingVerificationEmail(err.data.email || form.email);
-        setMessage('Enter the code we sent to your email before signing in.');
+        globalToast.info('Enter the code we sent to your email before signing in.');
         return;
       }
       // Email already exists — switch to sign-in with helpful message
       const msg = err?.message || '';
       if (!isLogin && (err?.status === 409 || msg.toLowerCase().includes('already exists'))) {
         globalToast.info('You already have a RealMindX account. Sign in with your existing password.');
-        setMessage('You already have a RealMindX account. Sign in below.');
         navigate('login');
         return;
       }
@@ -119,9 +129,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
   const verifyOtp = async event => {
     event.preventDefault();
     setError('');
-    setMessage('');
     if (otp.replace(/\D/g, '').length !== 6) {
-      setErr('Enter the 6 digit verification code from your email.');
+      setErr('Enter the 6 digit verification code from your email.', otpRef);
       return;
     }
     setLoading(true);
@@ -129,7 +138,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       const result = await verifyEmailOtp({ email: pendingVerificationEmail, otp });
       setPendingVerificationEmail('');
       setOtp('');
-      setMessage(result?.message || 'Email verified. You can now sign in.');
+      globalToast.success(result?.message || 'Email verified. You can now sign in.');
       navigate('login');
     } catch (err) {
       setErr(err?.message || 'Could not verify that code.');
@@ -144,7 +153,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     setLoading(true);
     try {
       const result = await resendVerificationOtp(pendingVerificationEmail);
-      setMessage(result?.message || 'A fresh code has been sent.');
+      globalToast.success(result?.message || 'A fresh code has been sent.');
     } catch (err) {
       setErr(err?.message || 'Could not resend the code.');
     } finally {
@@ -191,8 +200,6 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
               ? `Enter the 6 digit code sent to ${pendingVerificationEmail}.`
               : isLogin ? 'Enter your details to continue.' : 'It only takes a minute.'}
           </p>
-          {message && <div className="bs-auth-notice success"><Icon name="check" size={16} /> {message}</div>}
-
           {pendingVerificationEmail ? (
             <form onSubmit={verifyOtp}>
               <div className="bs-field">
@@ -201,6 +208,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
                   inputMode="numeric"
                   maxLength={6}
                   placeholder="123456"
+                  ref={otpRef}
                   value={otp}
                   onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
                   required
@@ -219,7 +227,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
           {!isLogin && (
             <div className="bs-field">
               <label>Full Name</label>
-              <input placeholder="Ama Mensah" value={form.fullName} onChange={set('fullName')} />
+              <input ref={fullNameRef} placeholder="Ama Mensah" value={form.fullName} onChange={set('fullName')} />
             </div>
           )}
           <div className="bs-field">
@@ -234,12 +242,12 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
           )}
           <div className="bs-field">
             <label>Password</label>
-            <input type="password" placeholder="Minimum 8 characters" value={form.password} onChange={set('password')} autoComplete={isLogin ? 'current-password' : 'new-password'} />
+            <input ref={passwordRef} type="password" placeholder="Minimum 8 characters" value={form.password} onChange={set('password')} autoComplete={isLogin ? 'current-password' : 'new-password'} />
           </div>
           {!isLogin && (
             <div className="bs-field">
               <label>Confirm Password</label>
-              <input type="password" placeholder="Repeat password" value={form.confirmPassword} onChange={set('confirmPassword')} autoComplete="new-password" />
+              <input ref={confirmRef} type="password" placeholder="Repeat password" value={form.confirmPassword} onChange={set('confirmPassword')} autoComplete="new-password" />
             </div>
           )}
 
@@ -250,7 +258,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
                 <span className="bs-cbox"><Icon name="check" size={12} /></span>
                 Remember me
               </label>
-              <a href="#" className="bs-link-gold" onClick={(event) => { event.preventDefault(); toast('Reset link sent'); }}>
+              <a href="#" className="bs-link-gold" onClick={(event) => { event.preventDefault(); globalToast.info('Reset link sent.'); }}>
                 Forgot password?
               </a>
             </div>

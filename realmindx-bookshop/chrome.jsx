@@ -2,26 +2,37 @@
 import { Icon, Stars, cedis, CoverPlaceholder, Logo } from './shared.jsx';
 import { useCatalog } from './catalog.jsx';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
+import { getDemoSession } from '../src/lib/demoAccounts.js';
 
 // ---------- Cart store (context) ----------
 const CartCtx = React.createContext(null);
 const useCart = () => React.useContext(CartCtx);
 
-import { getDemoSession } from '../src/lib/demoAccounts.js';
-import { isApiMode } from '../src/lib/apiClient.js';
+const CART_STORAGE_KEY = 'rmx.bookshop.cart.v1';
 
-const isLoggedIn = () => {
-  const s = getDemoSession();
-  return Boolean(s?.role);
+const readSavedCart = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed)
+      ? parsed
+        .map(item => ({ id: item.id, qty: Math.max(1, Number(item.qty || 1)) }))
+        .filter(item => item.id !== undefined && item.id !== null)
+      : [];
+  } catch {
+    return [];
+  }
 };
-
-// Nudge toast: shown once per session after adding to cart when not logged in
-let nudgeShown = false;
 
 const CartProvider = ({ children, navigate }) => {
   const { books } = useCatalog();
-  const [items, setItems] = React.useState([]);
+  const [items, setItems] = React.useState(readSavedCart);
   const [toasts, setToasts] = React.useState([]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+  }, [items]);
 
   const toast = (msg) => {
     const id = Math.random().toString(36).slice(2);
@@ -36,18 +47,6 @@ const CartProvider = ({ children, navigate }) => {
     });
     const b = books.find(x => x.id === bookId);
     toast(`Added "${b ? b.title : 'item'}" to cart`);
-    // Subtle account nudge — shown once per session when not signed in
-    if (!nudgeShown && !isLoggedIn()) {
-      nudgeShown = true;
-      setTimeout(() => {
-        setToasts(t => [...t, {
-          id: '__nudge__',
-          msg: '💡 Sign in to save your cart and access your order history.',
-          isNudge: true,
-        }]);
-        setTimeout(() => setToasts(t => t.filter(x => x.id !== '__nudge__')), 5000);
-      }, 1400);
-    }
   };
   const setQty = (bookId, qty) => setItems(prev => prev.map(i => i.id === bookId ? { ...i, qty: Math.max(1, qty) } : i));
   const remove = (bookId) => setItems(prev => prev.filter(i => i.id !== bookId));
@@ -93,7 +92,7 @@ const CartProvider = ({ children, navigate }) => {
 
 // ---------- User account pill (navbar) ----------
 const NavUserMenu = ({ navigate }) => {
-  const session = getDemoSession();
+  const [session, setSession] = React.useState(() => getDemoSession());
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -101,6 +100,15 @@ const NavUserMenu = ({ navigate }) => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, []);
+  React.useEffect(() => {
+    const refresh = () => setSession(getDemoSession());
+    window.addEventListener('rmx-session-sync', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('rmx-session-sync', refresh);
+      window.removeEventListener('storage', refresh);
+    };
   }, []);
 
   if (!session?.role) {

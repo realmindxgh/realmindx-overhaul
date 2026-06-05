@@ -158,9 +158,9 @@ export const Nav = ({ activePage, solid = false }) => {
   const [open, setOpen] = React.useState(false);
   const [activeDropdown, setActiveDropdown] = React.useState(null);
   const [openMobileDropdown, setOpenMobileDropdown] = React.useState(null);
+  const [session, setSession] = React.useState(() => getDemoSession());
   const managedServices = usePublicServices();
   const currentPage = activePage || currentPageKey();
-  const session = getDemoSession();
   const isLoggedIn = Boolean(session?.role);
 
   const navItems = React.useMemo(() => {
@@ -190,6 +190,15 @@ export const Nav = ({ activePage, solid = false }) => {
   }, []);
   React.useEffect(() => { document.body.style.overflow = open ? 'hidden' : ''; }, [open]);
   React.useEffect(() => { if (!open) setOpenMobileDropdown(null); }, [open]);
+  React.useEffect(() => {
+    const refresh = () => setSession(getDemoSession());
+    window.addEventListener('rmx-session-sync', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('rmx-session-sync', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
   React.useEffect(() => {
     const onDocumentClick = (event) => {
       if (!event.target.closest('.nav-dropdown')) setActiveDropdown(null);
@@ -529,6 +538,7 @@ const Services = () => {
     if (!strip || !trackRef.current || serviceItems.length <= 1) return undefined;
     measureLoop();
     let frame = 0;
+    const mobileQuery = window.matchMedia('(max-width: 860px)');
     const handleResize = () => measureLoop();
     window.addEventListener('resize', handleResize);
 
@@ -537,8 +547,8 @@ const Services = () => {
       const delta = Math.min(80, timestamp - lastFrameRef.current);
       lastFrameRef.current = timestamp;
       const isPaused = strip.matches(':hover') || strip.matches(':focus-within') || Date.now() < pauseUntilRef.current;
-      if (!isPaused && loopWidthRef.current) {
-        offsetRef.current += 4 * (delta / 1000);
+      if (!isPaused && loopWidthRef.current && !mobileQuery.matches) {
+        offsetRef.current += 46 * (delta / 1000);
         wrapOffset();
         applyTransform();
       }
@@ -552,6 +562,24 @@ const Services = () => {
       lastFrameRef.current = 0;
     };
   }, [applyTransform, measureLoop, serviceItems.length, wrapOffset]);
+
+  React.useEffect(() => {
+    if (serviceItems.length <= 1) return undefined;
+    const mobileQuery = window.matchMedia('(max-width: 860px)');
+    let timer = 0;
+    const refresh = () => {
+      window.clearInterval(timer);
+      if (mobileQuery.matches) {
+        timer = window.setInterval(() => scrollServices(1, 1), 2000);
+      }
+    };
+    refresh();
+    mobileQuery.addEventListener('change', refresh);
+    return () => {
+      window.clearInterval(timer);
+      mobileQuery.removeEventListener('change', refresh);
+    };
+  }, [scrollServices, serviceItems.length]);
 
   React.useEffect(() => {
     if (!selectedService) return undefined;
@@ -762,7 +790,7 @@ const Testimonials = () => {
       <div className="testimonials-inner">
         <Reveal className="testimonials-head">
           <span className="label-eyebrow">Client Voices</span>
-          <h2 className="h2">What schools are saying</h2>
+          <h2 className="h2">What clients are saying</h2>
         </Reveal>
 
         <div className="testimonial-card-wrap">

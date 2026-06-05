@@ -4,16 +4,16 @@ import { useCart } from './chrome.jsx';
 import { submitOrder } from '../src/lib/managedContent.js';
 import { isApiMode, api } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
-import globalToast from '../src/lib/toast.js';
+import { setBookshopAuthReturn } from './authReturn.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 
-const CheckoutNudge = ({ navigate }) => !isLoggedIn() ? (
-  <div className="bs-account-nudge">
-    <Icon name="user" size={15} />
-    <span>Sign in for saved addresses and order history.</span>
-    <button className="bs-nudge-btn" onClick={() => navigate('login')}>Sign in</button>
-    <span style={{ opacity:.5 }}>·</span>
-    <button className="bs-nudge-btn" onClick={() => navigate('signup')}>Create account</button>
+const AuthReturnActions = ({ navigate }) => !isLoggedIn() ? (
+  <div className="bs-auth-return-actions">
+    <p>Sign in or create an account to save this order for later tracking.</p>
+    <div>
+      <button type="button" onClick={() => { setBookshopAuthReturn('checkout'); navigate('login'); }}>Sign in</button>
+      <button type="button" onClick={() => { setBookshopAuthReturn('checkout'); navigate('signup'); }}>Create account</button>
+    </div>
   </div>
 ) : null;
 import TurnstileField from '../src/lib/TurnstileField.jsx';
@@ -65,6 +65,11 @@ const CheckoutPage = ({ navigate }) => {
   const [placing, setPlacing] = React.useState(false);
   const [orderError, setOrderError] = React.useState('');
   const [turnstileToken, setTurnstileToken] = React.useState('');
+  const nameRef = React.useRef(null);
+  const phoneRef = React.useRef(null);
+  const emailRef = React.useRef(null);
+  const zoneRef = React.useRef(null);
+  const addressRef = React.useRef(null);
 
   // Delivery zones — fetched from API in API mode, fallback to fixed fee
   const [deliveryZones, setDeliveryZones] = React.useState([]);
@@ -78,16 +83,6 @@ const CheckoutPage = ({ navigate }) => {
       .then(data => setDeliveryZones(data.items || []))
       .catch(() => {})
       .finally(() => setLoadingZones(false));
-  }, []);
-
-  // Nudge guests to create an account when they land on checkout
-  React.useEffect(() => {
-    if (!isLoggedIn()) {
-      const tid = setTimeout(() => {
-        globalToast.nudge('💡 Create an account to save your order history and check out faster next time.');
-      }, 1200);
-      return () => clearTimeout(tid);
-    }
   }, []);
 
   const selectedZone = deliveryZones.find(z => String(z.id) === selectedZoneId);
@@ -191,7 +186,6 @@ const CheckoutPage = ({ navigate }) => {
     } catch (err) {
       const msg = err?.message || 'Could not place the order. Please try again.';
       setOrderError(msg);
-      globalToast.error(msg);
     } finally {
       setPlacing(false);
     }
@@ -213,6 +207,17 @@ const CheckoutPage = ({ navigate }) => {
     if (method === 'delivery' && isApiMode() && deliveryZones.length > 0 && !selectedZoneId) e.address = 'Please select your delivery area first.';
     else if (method === 'delivery' && !form.address.trim()) e.address = 'Required for delivery';
     setErrors(e);
+    const first = Object.keys(e)[0];
+    if (first) {
+      const ref = first === 'address' && isApiMode() && deliveryZones.length > 0 && !selectedZoneId
+        ? zoneRef
+        : { name: nameRef, phone: phoneRef, email: emailRef, address: addressRef }[first];
+      requestAnimationFrame(() => {
+        const node = ref?.current;
+        node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        node?.focus?.({ preventScroll: true });
+      });
+    }
     return Object.keys(e).length === 0;
   };
   const set = (k) => (ev) => setForm(f => ({ ...f, [k]: ev.target.value }));
@@ -250,7 +255,6 @@ const CheckoutPage = ({ navigate }) => {
 
   return (
     <div className="bs-container bs-fade-page">
-      <CheckoutNudge navigate={navigate} />
       <StepBar step={step} />
       <div className="bs-checkout-layout">
         <div>
@@ -260,10 +264,10 @@ const CheckoutPage = ({ navigate }) => {
             <div className="bs-form-card">
               <h3 className="bs-h3">Delivery details</h3>
               <div className="bs-field-row">
-                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name</label><input value={form.name} onChange={set('name')} placeholder="Ama Mensah" />{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
-                <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number</label><input value={form.phone} onChange={set('phone')} placeholder="+233 ..." />{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
+                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name</label><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" />{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
+                <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number</label><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." />{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
               </div>
-              <div className={`bs-field${errors.email?' err':''}`}><label>Email</label><input value={form.email} onChange={set('email')} placeholder="you@email.com" />{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
+              <div className={`bs-field${errors.email?' err':''}`}><label>Email</label><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" />{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
 
               <label className="bs-field" style={{ marginBottom:8 }}><span style={{ fontFamily:'Montserrat', fontWeight:600, fontSize:13, color:'var(--bs-navy)', display:'block', marginBottom:7 }}>Delivery Method</span></label>
               <div className={`bs-radio-card${method==='delivery'?' sel':''}`} onClick={() => setMethod('delivery')}>
@@ -279,7 +283,7 @@ const CheckoutPage = ({ navigate }) => {
                 {isApiMode() && deliveryZones.length > 0 && (
                   <div className="bs-field" style={{ marginTop:18 }}>
                     <label>Delivery Area *</label>
-                    <select className="bs-field" style={{ height:48, borderRadius:'var(--bs-radius-sm)', border:'1.5px solid var(--bs-border)', padding:'0 15px', fontSize:15, color:'var(--bs-text)', background:'#fff' }}
+                    <select ref={zoneRef} aria-invalid={Boolean(errors.address && !selectedZoneId)} className="bs-field" style={{ height:48, borderRadius:'var(--bs-radius-sm)', border:'1.5px solid var(--bs-border)', padding:'0 15px', fontSize:15, color:'var(--bs-text)', background:'#fff' }}
                       value={selectedZoneId} onChange={e => setSelectedZoneId(e.target.value)}>
                       <option value="">— Select your area —</option>
                       {deliveryZones.map(z => (
@@ -293,11 +297,12 @@ const CheckoutPage = ({ navigate }) => {
                     )}
                   </div>
                 )}
-                <div className={`bs-field${errors.address?' err':''}`} style={{ marginTop:18 }}><label>Delivery Address</label><textarea value={form.address} onChange={set('address')} placeholder="House number, street, landmark..." />{errors.address && <div className="bs-field-error">{errors.address}</div>}</div>
+                <div className={`bs-field${errors.address?' err':''}`} style={{ marginTop:18 }}><label>Delivery Address</label><textarea ref={addressRef} aria-invalid={Boolean(errors.address)} value={form.address} onChange={set('address')} placeholder="House number, street, landmark..." />{errors.address && <div className="bs-field-error">{errors.address}</div>}</div>
                 <div className="bs-field"><label>City / Region</label><input value={form.city} onChange={set('city')} placeholder="Accra, Greater Accra" /></div>
               </>}
 
               <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:10 }} onClick={() => { if (validate()) setStep(1); }}>Continue to Payment <Icon name="arrow" size={16} /></button>
+              <AuthReturnActions navigate={navigate} />
             </div>
           )}
 
@@ -325,9 +330,9 @@ const CheckoutPage = ({ navigate }) => {
               {promoError && <p style={{ fontSize:12, color:'var(--bs-error)', marginBottom:10 }}>{promoError}</p>}
               {appliedPromo && (
                 <div style={{ background:'#e6f4ea', border:'1px solid #b7dfbf', borderRadius:8, padding:'10px 14px', marginBottom:10, fontSize:13 }}>
-                  ✓ <strong>{appliedPromo.code}</strong> applied —{' '}
+                  <strong>{appliedPromo.code}</strong> applied:{' '}
                   {appliedPromo.description || `${appliedPromo.discount_value}${appliedPromo.discount_type === 'percentage' ? '%' : ' GH₵'} off ${appliedPromo.applies_to}`}
-                  <button onClick={() => setAppliedPromo(null)} style={{ marginLeft:10, fontSize:11, color:'#888', background:'none', border:'none', cursor:'pointer' }}>✕ Remove</button>
+                  <button onClick={() => setAppliedPromo(null)} style={{ marginLeft:10, fontSize:11, color:'#888', background:'none', border:'none', cursor:'pointer' }}>Remove</button>
                 </div>
               )}
 
@@ -345,7 +350,9 @@ const CheckoutPage = ({ navigate }) => {
 
               <div className="bs-summary-row bs-total" style={{ fontSize:22, borderTop:'1px solid var(--bs-border)', paddingTop:14, marginTop:0 }}><span>Total</span><span>{cedis(total)}</span></div>
               <TurnstileField className="bs-turnstile-wrap bs-checkout-turnstile" onVerify={setTurnstileToken} />
+              {orderError && <p className="bs-track-error" role="alert" style={{ marginTop:14 }}>{orderError}</p>}
               <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}><Icon name="lock" size={17} /> {placing ? 'Placing order...' : `Pay ${cedis(total)} Now`}</button>
+              <AuthReturnActions navigate={navigate} />
               <div className="bs-trust-badges">
                 <span className="bs-trust-badge"><Icon name="lock" size={14} /> 256-bit SSL</span>
                 <span className="bs-trust-badge"><Icon name="shield" size={14} /> Buyer protection</span>
@@ -362,17 +369,103 @@ const CheckoutPage = ({ navigate }) => {
   );
 };
 
-const TRACK_STEPS = [
-  { label:'Order Placed',     time:'12 May 2026, 9:14 AM', icon:'check' },
-  { label:'Processing',       time:'12 May 2026, 11:40 AM', icon:'box' },
-  { label:'Out for Delivery', time:'Expected today, by 5 PM', icon:'truck' },
-  { label:'Delivered',        time:'Pending', icon:'home' },
-];
+const formatOrderDate = (value) => {
+  if (!value) return 'Pending';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Pending';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+};
+
+const statusRank = {
+  new: 1,
+  received: 1,
+  confirmed: 2,
+  processing: 2,
+  ready: 3,
+  out_for_delivery: 3,
+  dispatched: 3,
+  delivered: 4,
+  completed: 4,
+};
+
+const trackingTimeline = (order) => {
+  const status = String(order?.status || 'new').toLowerCase();
+  const payment = String(order?.payment_status || 'unpaid').toLowerCase();
+  const paid = payment === 'paid';
+  const method = String(order?.delivery_method || '').toLowerCase();
+  const deliveryLabel = method === 'pickup' ? 'Ready for Pickup' : 'Out for Delivery';
+  const rank = statusRank[status] || (paid ? 2 : 1);
+  const current = status === 'cancelled' ? 1 : Math.max(rank, paid ? 2 : 1);
+
+  return {
+    current,
+    steps: [
+      { label:'Order Received', time:formatOrderDate(order?.created_at), icon:'check' },
+      {
+        label: paid ? 'Payment Confirmed' : 'Payment Pending',
+        time: paid ? formatOrderDate(order?.paid_at || order?.updated_at) : 'Awaiting payment confirmation',
+        icon:'lock',
+      },
+      {
+        label:'Processing',
+        time: current >= 2 ? formatOrderDate(order?.updated_at || order?.created_at) : 'Pending',
+        icon:'box',
+      },
+      {
+        label: deliveryLabel,
+        time: current >= 3 ? formatOrderDate(order?.updated_at) : 'Pending',
+        icon: method === 'pickup' ? 'home' : 'truck',
+      },
+      {
+        label: status === 'cancelled' ? 'Cancelled' : 'Delivered',
+        time: current >= 4 || status === 'cancelled' ? formatOrderDate(order?.updated_at) : 'Pending',
+        icon: status === 'cancelled' ? 'close' : 'home',
+      },
+    ],
+  };
+};
 
 const TrackPage = ({ navigate }) => {
   const [query, setQuery] = React.useState('');
-  const [result, setResult] = React.useState(false);
-  const current = 2;
+  const [orders, setOrders] = React.useState([]);
+  const [searched, setSearched] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const inputRef = React.useRef(null);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const trimmed = query.trim();
+    setError('');
+    setSearched(false);
+    setOrders([]);
+    if (!trimmed) {
+      setError('Enter your order reference or checkout email.');
+      inputRef.current?.focus();
+      return;
+    }
+    if (!isApiMode()) {
+      setError('Live order tracking is available on the deployed bookshop.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await api.trackOrders(trimmed);
+      setOrders(data.items || []);
+      setSearched(true);
+    } catch (err) {
+      setError(err?.message || 'Could not track that order.');
+      inputRef.current?.focus();
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="bs-container bs-fade-page">
@@ -382,40 +475,56 @@ const TrackPage = ({ navigate }) => {
           <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Track your order</h1>
           <p className="bs-muted" style={{ marginTop:10 }}>Enter your Order ID or the email used at checkout.</p>
         </div>
-        <form className="bs-track-input-row" onSubmit={(e) => { e.preventDefault(); setResult(true); }}>
-          <input placeholder="e.g. RMX-204815 or you@email.com" value={query} onChange={e => setQuery(e.target.value)} />
-          <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit">Track</button>
+        <form className="bs-track-input-row" onSubmit={submit}>
+          <input ref={inputRef} placeholder="e.g. RMX-204815 or you@email.com" value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
+          <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading}>
+            {loading ? 'Checking...' : 'Track'}
+          </button>
         </form>
+        {error && <p className="bs-track-error">{error}</p>}
 
-        {result && (
+        {searched && orders.length === 0 && (
+          <div className="bs-empty-state" style={{ marginTop:28, padding:'34px 22px' }}>
+            <div className="bs-empty-icon"><Icon name="search" size={30} /></div>
+            <h2 className="bs-h3">No matching order found.</h2>
+            <p>Check the order reference or use the email address from checkout.</p>
+          </div>
+        )}
+
+        {orders.map(order => {
+          const timeline = trackingTimeline(order);
+          return (
           <div className="bs-fade-page" style={{ marginTop:32 }}>
-            <div className="bs-summary-card" style={{ position:'static' }}>
+            <div className="bs-summary-card bs-track-card" style={{ position:'static' }}>
               <div style={{ display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:8 }}>
-                <div><div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Order</div><div style={{ fontFamily:'JetBrains Mono', fontSize:16, color:'var(--bs-navy)', marginTop:4 }}>{query.startsWith('RMX') ? query : 'RMX-204815'}</div></div>
-                <div style={{ textAlign:'right' }}><div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Placed</div><div style={{ marginTop:4, fontSize:14 }}>12 May 2026</div></div>
+                <div><div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Order</div><div style={{ fontFamily:'JetBrains Mono', fontSize:16, color:'var(--bs-navy)', marginTop:4 }}>{order.order_reference}</div></div>
+                <div style={{ textAlign:'right' }}><div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Placed</div><div style={{ marginTop:4, fontSize:14 }}>{formatOrderDate(order.created_at)}</div></div>
               </div>
               <div className="bs-divider" />
               <div style={{ marginBottom:8 }}>
-                {['2 x Integrated Science for JHS 1','1 x BECE Past Questions: Mathematics'].map((it,i) => (
-                  <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', fontSize:14 }}><span>{it}</span></div>
+                {(order.items || []).map((it,i) => (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', fontSize:14 }}>
+                    <span>{it.quantity} x {it.product_name}</span>
+                    <span>{cedis(Number(it.unit_price || 0) * Number(it.quantity || 1))}</span>
+                  </div>
                 ))}
               </div>
               <div className="bs-divider" />
               <div className="bs-timeline" style={{ marginTop:18 }}>
-                {TRACK_STEPS.map((s, i) => (
-                  <div className={`bs-tl-step${i < current ? ' done' : ''}${i === current ? ' current' : ''}`} key={i}>
-                    <div className="bs-tl-marker"><div className="bs-tl-dot"><Icon name={i <= current ? s.icon : 'clock'} size={16} /></div><div className="bs-tl-line" /></div>
+                {timeline.steps.map((s, i) => (
+                  <div className={`bs-tl-step${i < timeline.current ? ' done' : ''}${i === timeline.current ? ' current' : ''}`} key={s.label}>
+                    <div className="bs-tl-marker"><div className="bs-tl-dot"><Icon name={i <= timeline.current ? s.icon : 'clock'} size={16} /></div><div className="bs-tl-line" /></div>
                     <div className="bs-tl-body"><div className="bs-tl-title">{s.label}</div><div className="bs-tl-time">{s.time}</div></div>
                   </div>
                 ))}
               </div>
               <div style={{ background:'var(--bs-off-white)', borderRadius:12, padding:'16px 18px', display:'flex', alignItems:'center', gap:12 }}>
                 <Icon name="truck" size={22} className="bs-ci" style={{ color:'var(--bs-navy)' }} />
-                <div><div style={{ fontFamily:'Montserrat', fontWeight:700, fontSize:14, color:'var(--bs-navy)' }}>Estimated delivery: Today, by 5:00 PM</div><div className="bs-muted" style={{ fontSize:13 }}>Questions? <a href="https://wa.link/q5rjtp" style={{ color:'var(--bs-navy)', textDecoration:'underline' }}>Contact support</a></div></div>
+                <div><div style={{ fontFamily:'Montserrat', fontWeight:700, fontSize:14, color:'var(--bs-navy)' }}>{order.delivery_method === 'pickup' ? 'Pickup at Dome Pillar 2, Accra' : order.location || order.delivery_zone_name || 'Delivery details on file'}</div><div className="bs-muted" style={{ fontSize:13 }}>Questions? <a href="https://wa.link/q5rjtp" style={{ color:'var(--bs-navy)', textDecoration:'underline' }}>Contact support</a></div></div>
               </div>
             </div>
           </div>
-        )}
+        );})}
       </div>
     </div>
   );

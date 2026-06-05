@@ -5,6 +5,7 @@ import { ProductPage, CartPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
 import { AuthPage, ContactPage, InfoPage, BookshopLegalPage } from './pages-misc.jsx';
 import { CatalogProvider } from './catalog.jsx';
+import { syncSessionFromApi } from '../src/lib/authClient.js';
 
 const GOLD_ACCENT = '#ffcc01';
 
@@ -89,6 +90,14 @@ const App = () => {
   React.useEffect(() => {
     document.documentElement.style.setProperty('--bs-gold-live', GOLD_ACCENT);
   }, []);
+
+  React.useEffect(() => {
+    let alive = true;
+    syncSessionFromApi().then(() => {
+      if (alive) window.dispatchEvent(new Event('rmx-session-sync'));
+    });
+    return () => { alive = false; };
+  }, [route]);
 
   // Page titles + OG meta per bookshop route
   React.useEffect(() => {

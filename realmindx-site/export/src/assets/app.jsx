@@ -316,7 +316,7 @@ const Testimonials = () => {
       <div className="testimonials-inner">
         <Reveal className="testimonials-head">
           <span className="label-eyebrow">Client Voices</span>
-          <h2 className="h2">What schools are saying</h2>
+          <h2 className="h2">What clients are saying</h2>
         </Reveal>
 
         <div className="testimonial-card-wrap">

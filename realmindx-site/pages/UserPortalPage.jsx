@@ -34,7 +34,9 @@ const CvTutorialCard = () => {
   return (
     <div className="profile-section-card" style={{ gridColumn: '1 / -1', background: 'linear-gradient(135deg, var(--navy), var(--navy-light))', color: '#fff', position: 'relative' }}>
       <button onClick={() => setDismissed(true)}
-        style={{ position:'absolute', top:12, right:14, background:'none', border:'none', color:'rgba(255,255,255,0.6)', cursor:'pointer', fontSize:18 }} aria-label="Dismiss">✕</button>
+        style={{ position:'absolute', top:12, right:14, background:'none', border:'none', color:'rgba(255,255,255,0.6)', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center' }} aria-label="Dismiss">
+        <Icon name="x" size={18} stroke={2.4} />
+      </button>
       <div style={{ display:'flex', gap:24, alignItems:'flex-start', flexWrap:'wrap' }}>
         <div style={{ flex:'1 1 280px' }}>
           <p style={{ fontFamily:"'Montserrat',sans-serif", fontWeight:800, fontSize:'0.7rem', letterSpacing:2, textTransform:'uppercase', color:'var(--yellow)', marginBottom:8 }}>

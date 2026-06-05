@@ -35,6 +35,22 @@ const toSession = (user = {}, roleHint = 'user') => {
   };
 };
 
+export const syncSessionFromApi = async () => {
+  if (!isApiMode()) return getDemoSession();
+  try {
+    const { user } = await api.me();
+    if (!user) {
+      clearDemoSession();
+      return null;
+    }
+    const session = toSession(user, user?.role?.name || user?.role || 'user');
+    saveDemoSession(session);
+    return session;
+  } catch {
+    return getDemoSession();
+  }
+};
+
 const invalidCredentials = (role) => {
   const err = new Error(
     role === 'admin'

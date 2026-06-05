@@ -1,12 +1,13 @@
 /**
- * Global toast notifications — DOM-based, works anywhere without React context.
- * Usage:  import toast from './toast.js';
- *         toast.error('Something went wrong');
- *         toast.success('Saved!');
- *         toast.info('FYI...');
+ * Global toast notifications. DOM-based, works anywhere without React context.
  */
 
-const ICONS = { error: '⚠', success: '✓', info: 'ℹ', nudge: '💡' };
+const ICONS = {
+  success: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M7 12.5l3.1 3.1L17.5 8"/></svg>',
+  error: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 7v6"/><path d="M12 17h.01"/></svg>',
+  info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 11v6"/><path d="M12 7h.01"/></svg>',
+  nudge: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v5"/><path d="M9 16h6"/></svg>',
+};
 
 function ensureContainer() {
   let c = document.getElementById('rmx-toast-root');
@@ -23,13 +24,22 @@ function ensureContainer() {
 export function showToast(msg, type = 'info', duration = 3500) {
   if (typeof document === 'undefined') return () => {};
   const container = ensureContainer();
+  const safeType = ICONS[type] ? type : 'info';
   const el = document.createElement('div');
-  el.className = `rmx-toast rmx-toast-${type}`;
+  el.className = `rmx-toast rmx-toast-${safeType}`;
   el.setAttribute('role', 'alert');
-  el.innerHTML = `<span class="rmx-toast-icon">${ICONS[type] || ICONS.info}</span><span class="rmx-toast-msg">${msg}</span>`;
+
+  const icon = document.createElement('span');
+  icon.className = 'rmx-toast-icon';
+  icon.innerHTML = ICONS[safeType];
+
+  const text = document.createElement('span');
+  text.className = 'rmx-toast-msg';
+  text.textContent = String(msg || '');
+
+  el.append(icon, text);
   container.appendChild(el);
 
-  // Two rAF trick so the initial opacity:0 state is painted before the transition
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('rmx-toast-in')));
 
   const dismiss = () => {
@@ -43,9 +53,10 @@ export function showToast(msg, type = 'info', duration = 3500) {
 }
 
 const toast = {
-  error:   (msg, dur) => showToast(msg, 'error',   dur ?? 4000),
+  error: (msg, dur) => showToast(msg, 'error', dur ?? 4000),
   success: (msg, dur) => showToast(msg, 'success', dur ?? 3000),
-  info:    (msg, dur) => showToast(msg, 'info',    dur ?? 3500),
-  nudge:   (msg, dur) => showToast(msg, 'nudge',   dur ?? 5000),
+  info: (msg, dur) => showToast(msg, 'info', dur ?? 3500),
+  nudge: (msg, dur) => showToast(msg, 'nudge', dur ?? 5000),
 };
+
 export default toast;

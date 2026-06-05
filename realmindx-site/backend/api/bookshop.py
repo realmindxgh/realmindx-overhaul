@@ -183,6 +183,37 @@ def list_delivery_zones():
     return jsonify(items=[delivery_zone_json(zone) for zone in zones])
 
 
+def order_tracking_json(order):
+    payload = order_json(order)
+    payload["created_at"] = order.created_at.isoformat() if order.created_at else None
+    payload["updated_at"] = order.updated_at.isoformat() if order.updated_at else None
+    payload["paid_at"] = order.paid_at.isoformat() if order.paid_at else None
+    return payload
+
+
+@bookshop_bp.get("/orders/track")
+@limiter.limit("20/minute")
+def track_orders():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    if not query:
+        return jsonify(error="Enter your order reference or checkout email."), 400
+
+    orders_query = Order.query
+    if re.fullmatch(r"RMX-[A-Za-z0-9-]+", query):
+        orders_query = orders_query.filter(Order.order_reference.ilike(query.upper()))
+    elif "@" in query:
+        try:
+            email = clean_email(query)
+        except ValueError:
+            return jsonify(error="Enter a valid order reference or checkout email."), 400
+        orders_query = orders_query.filter_by(email=email)
+    else:
+        return jsonify(error="Enter a valid RMX order reference or checkout email."), 400
+
+    orders = orders_query.order_by(Order.created_at.desc()).limit(5).all()
+    return jsonify(items=[order_tracking_json(order) for order in orders])
+
+
 @bookshop_bp.post("/orders")
 @limiter.limit("8/hour")
 def create_order():

@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from html import escape
+from uuid import uuid4
 
 from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, jsonify, request
+import requests
 
 from ..default_content import (
     DEFAULT_DONATION_SLIDES,
@@ -234,6 +237,59 @@ def newsletter():
         )
     )
     return jsonify(status=status, message="Newsletter subscription saved.")
+
+
+@public_bp.post("/donations/paystack/initialize")
+@limiter.limit("8/hour")
+def initialize_donation_paystack():
+    payload = request.get_json(silent=True) or {}
+    secret_key = current_app.config.get("PAYSTACK_SECRET_KEY")
+    if not secret_key:
+        return jsonify(error="Paystack is not configured for this environment."), 503
+    try:
+        email = clean_email(payload.get("email"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return jsonify(error="Full name is required."), 400
+    try:
+        amount = Decimal(str(payload.get("amount") or "0"))
+    except Exception:
+        return jsonify(error="Enter a valid donation amount."), 400
+    if amount < Decimal("1"):
+        return jsonify(error="Enter an amount of at least GHS 1."), 400
+
+    reference = f"RMX-DON-{uuid4().hex[:12].upper()}"
+    base_url = (current_app.config.get("BASE_URL") or request.host_url.rstrip("/")).rstrip("/")
+    callback_url = payload.get("callback_url") or f"{base_url}/donate"
+    try:
+        response = requests.post(
+            "https://api.paystack.co/transaction/initialize",
+            headers={"Authorization": f"Bearer {secret_key}", "Content-Type": "application/json"},
+            json={
+                "email": email,
+                "amount": int(amount * 100),
+                "reference": reference,
+                "callback_url": callback_url,
+                "metadata": {
+                    "donor_name": name,
+                    "phone": (payload.get("phone") or "").strip(),
+                    "organisation": (payload.get("organisation") or "").strip(),
+                    "contribution_type": (payload.get("type") or "Donation").strip(),
+                    "support_area": (payload.get("area") or "General").strip(),
+                    "message": (payload.get("message") or "").strip(),
+                    "source": "donation_page",
+                },
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json().get("data") or {}
+    except requests.RequestException:
+        current_app.logger.exception("Paystack donation initialization failed for %s", email)
+        return jsonify(error="Could not open Paystack. Please try again or use WhatsApp."), 502
+    return jsonify(payment=data, reference=reference)
 
 
 @public_bp.post("/promo-codes/validate")

@@ -26,7 +26,7 @@ import { publicItems, useManagedContent } from './lib/managedContent.js';
 import { useIdleTimeout } from './lib/useIdleTimeout.js';
 import { IdleWarning } from './lib/IdleWarning.jsx';
 import { getDemoSession } from './lib/demoAccounts.js';
-import { signOut } from './lib/authClient.js';
+import { signOut, syncSessionFromApi } from './lib/authClient.js';
 
 
 const SiteInfoPage = ({ activePage = '', eyebrow = 'RealMindX', title, body, actions = [], cards = [], children }) => (
@@ -586,6 +586,18 @@ const IdleGuard = () => {
   );
 };
 
+const SessionBridge = () => {
+  const location = useLocation();
+  React.useEffect(() => {
+    let alive = true;
+    syncSessionFromApi().then(() => {
+      if (alive) window.dispatchEvent(new Event('rmx-session-sync'));
+    });
+    return () => { alive = false; };
+  }, [location.pathname]);
+  return null;
+};
+
 // If served from bookshop.realmindxgh.com, show only the bookshop
 const isBookshopSubdomain =
   typeof window !== 'undefined' &&
@@ -596,6 +608,7 @@ const AppRoutes = () => {
   return (
   <BrowserRouter>
     <RouteTitle />
+    <SessionBridge />
     <IdleGuard />
     <HashScroll>
       <Routes>

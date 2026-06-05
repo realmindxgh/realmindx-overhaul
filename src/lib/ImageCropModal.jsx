@@ -227,7 +227,7 @@ export default function ImageCropModal({
             border: 'none', borderRadius: 9, fontFamily: 'Montserrat,sans-serif',
             fontWeight: 800, fontSize: 14, cursor: 'pointer',
           }}>
-            ✓ Apply Crop
+            Apply Crop
           </button>
           <button onClick={onCancel} style={{
             padding: '12px 18px', background: 'none', color: '#6b7a99',

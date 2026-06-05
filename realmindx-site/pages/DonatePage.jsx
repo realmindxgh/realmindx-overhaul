@@ -3,6 +3,7 @@ import { Nav, Footer } from '../components/NavFooter';
 import { Icon } from '../assets/components.jsx';
 import { submitMessage } from '../../src/lib/managedContent.js';
 import { useDonationSlides } from '../../src/lib/siteContent.js';
+import { api, isApiMode } from '../../src/lib/apiClient.js';
 
 const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
 
@@ -105,12 +106,50 @@ const DonateForm = () => {
   const [loading, setLoading] = useState(false);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const nameRef = useRef(null);
+  const emailRef = useRef(null);
+  const amountRef = useRef(null);
 
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reference') || params.get('trxref') || params.get('status') === 'paid') {
+      setSent(true);
+    }
+  }, []);
+
+  const set = (k) => (e) => {
+    setForm(f => ({ ...f, [k]: e.target.value }));
+    setFieldErrors(prev => ({ ...prev, [k]: undefined }));
+  };
 
   const isMonetary = MONETARY_TYPES.includes(form.type);
   // Show Paystack button only for GHS monetary contributions with an amount
-  const canPayNow = isMonetary && form.currency === 'GHS' && parseFloat(form.amount) >= 1 && PAYSTACK_PUBLIC_KEY;
+  const canPayNow = isMonetary && form.currency === 'GHS' && parseFloat(form.amount) >= 1 && (PAYSTACK_PUBLIC_KEY || isApiMode());
+
+  const focusProblem = (field, message) => {
+    const refs = { name: nameRef, email: emailRef, amount: amountRef };
+    setError('');
+    setFieldErrors({ [field]: message });
+    requestAnimationFrame(() => {
+      const node = refs[field]?.current;
+      node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      node?.focus?.({ preventScroll: true });
+    });
+  };
+
+  const validateIdentity = () => {
+    if (!form.name.trim()) {
+      focusProblem('name', 'Enter your full name.');
+      return false;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) {
+      focusProblem('email', 'Enter a valid email address.');
+      return false;
+    }
+    return true;
+  };
 
   const buildMessage = () => [
     form.organisation && `Organisation: ${form.organisation}`,
@@ -124,7 +163,7 @@ const DonateForm = () => {
   // Submit enquiry only (no payment)
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.email) { setError('Name and email are required.'); return; }
+    if (!validateIdentity()) return;
     setLoading(true); setError('');
     try {
       await submitMessage({
@@ -143,11 +182,24 @@ const DonateForm = () => {
 
   // Pay via Paystack popup (GHS only)
   const handlePaystack = async () => {
-    if (!form.name || !form.email) { setError('Enter your name and email first.'); return; }
+    if (!validateIdentity()) return;
     const amt = parseFloat(form.amount);
-    if (!amt || amt < 1) { setError('Enter an amount of at least 1 to proceed.'); return; }
+    if (!amt || amt < 1) { focusProblem('amount', 'Enter an amount of at least GHS 1.'); return; }
     setPaying(true); setError('');
     try {
+      if (isApiMode()) {
+        const callbackUrl = `${window.location.origin}/donate?status=paid`;
+        const data = await api.initDonationPayment({
+          ...form,
+          amount: amt,
+          callback_url: callbackUrl,
+        });
+        const authUrl = data?.payment?.authorization_url;
+        if (!authUrl) throw new Error('Paystack did not return a checkout link.');
+        window.location.href = authUrl;
+        return;
+      }
+      if (!PAYSTACK_PUBLIC_KEY) throw new Error('Paystack is not configured.');
       await loadPaystack();
       const handler = window.PaystackPop.setup({
         key: PAYSTACK_PUBLIC_KEY,
@@ -177,7 +229,7 @@ const DonateForm = () => {
       });
       handler.openIframe();
     } catch (err) {
-      setError('Could not open Paystack. Use the form below or WhatsApp.');
+      setError(err?.message || 'Could not open Paystack. Please try again or use WhatsApp.');
       setPaying(false);
     }
   };
@@ -205,11 +257,13 @@ const DonateForm = () => {
       <div className="donate-form-grid">
         <div className="form-group">
           <label className="form-label">Full Name *</label>
-          <input className="form-input" value={form.name} onChange={set('name')} placeholder="Your name" required />
+          <input ref={nameRef} className="form-input" aria-invalid={Boolean(fieldErrors.name)} value={form.name} onChange={set('name')} placeholder="Your name" required />
+          {fieldErrors.name && <p className="form-error">{fieldErrors.name}</p>}
         </div>
         <div className="form-group">
           <label className="form-label">Email Address *</label>
-          <input className="form-input" type="email" value={form.email} onChange={set('email')} placeholder="you@email.com" required />
+          <input ref={emailRef} className="form-input" aria-invalid={Boolean(fieldErrors.email)} type="email" value={form.email} onChange={set('email')} placeholder="you@email.com" required />
+          {fieldErrors.email && <p className="form-error">{fieldErrors.email}</p>}
         </div>
         <div className="form-group">
           <label className="form-label">Phone Number</label>
@@ -253,7 +307,10 @@ const DonateForm = () => {
             <div className="form-group">
               <label className="form-label">Amount</label>
               <input className="form-input" type="number" min="1" value={form.amount}
+                ref={amountRef}
+                aria-invalid={Boolean(fieldErrors.amount)}
                 onChange={set('amount')} placeholder="e.g. 200" />
+              {fieldErrors.amount && <p className="form-error">{fieldErrors.amount}</p>}
               {form.currency === 'GHS' && (
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:8 }}>
                   {[50,100,200,500,1000].map(a => (
@@ -263,7 +320,10 @@ const DonateForm = () => {
                         background: String(form.amount) === String(a) ? 'var(--navy)' : 'transparent',
                         color: String(form.amount) === String(a) ? '#fff' : 'var(--navy)',
                         fontFamily:'Montserrat,sans-serif', fontWeight:700, fontSize:12, cursor:'pointer' }}
-                      onClick={() => setForm(f => ({ ...f, amount: String(a) }))}>
+                      onClick={() => {
+                        setForm(f => ({ ...f, amount: String(a) }));
+                        setFieldErrors(prev => ({ ...prev, amount: undefined }));
+                      }}>
                       GH {a}
                     </button>
                   ))}
@@ -282,28 +342,22 @@ const DonateForm = () => {
 
       {error && <p style={{ color:'var(--danger)', fontSize:'0.85rem', marginTop:8 }}>{error}</p>}
 
-      <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginTop:22, alignItems:'center' }}>
+      <div className="donate-actions">
         {/* Pay via Paystack - only for GHS monetary */}
         {canPayNow && (
-          <button className="btn btn-primary btn-lg" type="button" disabled={paying || loading}
+          <button className="btn btn-primary btn-lg donate-paystack-btn" type="button" disabled={paying || loading}
             onClick={handlePaystack}>
             <Icon name="lock" size={15} />
             {paying ? 'Opening...' : `Donate GHS ${form.amount} via Paystack`}
           </button>
         )}
         {/* Submit enquiry - always available */}
-        <button className="btn btn-outline btn-lg" type="submit" disabled={loading || paying}
+        <button className="btn btn-outline btn-lg donate-enquiry-btn" type="submit" disabled={loading || paying}
           style={!canPayNow ? { background:'var(--navy)', color:'#fff', borderColor:'var(--navy)' } : {}}>
           {loading ? 'Sending...' : (isMonetary && form.currency !== 'GHS') ? "Submit - We'll Follow Up" : 'Submit Enquiry'}
         </button>
         {/* WhatsApp button */}
-        <a href="https://wa.link/q5rjtp" target="_blank" rel="noreferrer"
-           style={{ display:'inline-flex', alignItems:'center', gap:9, padding:'13px 22px',
-             borderRadius:8, background:'#25D366', color:'#fff', fontFamily:'Montserrat,sans-serif',
-             fontWeight:700, fontSize:14, textDecoration:'none', letterSpacing:0.3,
-             transition:'background 0.2s' }}
-           onMouseOver={e=>e.currentTarget.style.background='#1da851'}
-           onMouseOut={e=>e.currentTarget.style.background='#25D366'}>
+        <a className="donate-whatsapp-btn" href="https://wa.link/q5rjtp" target="_blank" rel="noreferrer">
           {/* Full WhatsApp logo */}
           <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
             <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
