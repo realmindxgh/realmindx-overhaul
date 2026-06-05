@@ -301,8 +301,10 @@ img, svg { display: block; max-width: 100%; }
   justify-content: flex-start;
   gap: 4px;
   width: min(360px, calc(100vw - 28px));
+  /* height shrinks to content; max-height prevents overflow on tiny screens */
+  height: auto;
   max-height: calc(100svh - 104px);
-  padding: 12px;
+  padding: 12px 12px 10px;  /* no extra bottom padding */
   border: 1px solid rgba(255,204,1,0.22);
   border-radius: 8px;
   box-shadow: 0 24px 60px rgba(0,0,0,0.28);

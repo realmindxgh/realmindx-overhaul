@@ -3399,6 +3399,41 @@ input, textarea, select { font-family: inherit; }
 }
 
 /* How section */
+/* ── Donate action buttons ──────────────────────────────── */
+.donate-actions {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 20px;
+}
+.donate-paystack-btn { flex: 1 1 200px; }
+.donate-enquiry-btn  { flex: 1 1 160px; }
+.donate-whatsapp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: #25D366;
+  color: #fff;
+  border-radius: var(--r-sm);
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: 14px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.donate-whatsapp-btn:hover { background: #1db954; }
+@media (max-width: 560px) {
+  .donate-actions { flex-direction: column; }
+  .donate-paystack-btn,
+  .donate-enquiry-btn,
+  .donate-whatsapp-btn { width: 100%; justify-content: center; }
+}
+
 .donate-how-section {
   margin-top: 48px;
   padding: 32px 40px;
