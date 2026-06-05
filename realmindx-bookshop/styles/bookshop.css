@@ -3,6 +3,15 @@
    ============================================================ */
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Arimo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
+/* Define critical variables on :root so fixed/portal elements outside .bs can use them */
+:root {
+  --bs-navy:       #143670;
+  --bs-navy-dark:  #0d2550;
+  --bs-gold-live:  #ffcc01;
+  --bs-success:    #16a34a;
+  --bs-error:      #dc2626;
+}
+
 .bs {
   --bs-navy:       #143670;
   --bs-navy-dark:  #0d2550;
@@ -629,8 +638,23 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-lightbox-close { position: absolute; top: 24px; right: 24px; width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; }
 .bs-toast-wrap { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 1300; display: flex; flex-direction: column; gap: 10px; align-items: center; pointer-events: none; }
 @media (max-width: 768px) { .bs-toast-wrap { bottom: calc(var(--bs-bottomnav-h) + 76px); } }
-.bs-toast { background: var(--bs-navy); color: #fff; padding: 13px 20px; border-radius: var(--bs-radius-sm); box-shadow: var(--bs-shadow-lg); display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; animation: bsToastIn .3s; max-width: 90vw; }
-.bs-toast .bs-tc { color: var(--bs-gold-live); flex-shrink: 0; }
+.bs-toast {
+  background: #143670 !important;
+  color: #fff !important;
+  padding: 13px 20px;
+  border-radius: var(--bs-radius-sm);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.12);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  animation: bsToastIn .3s;
+  max-width: min(90vw, 420px);
+  pointer-events: auto;
+}
+.bs-toast .bs-tc { color: var(--bs-gold-live) !important; flex-shrink: 0; }
 @keyframes bsToastIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 .bs-reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s, transform .6s; }
 .bs-reveal.in { opacity: 1; transform: translateY(0); }
@@ -655,7 +679,8 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 
 /* Nudge toast variant */
 .bs-toast.bs-toast-nudge {
-  background: #1e3a6e; border-left: 3px solid var(--bs-gold-live);
+  background: #1e3a6e !important;
+  border-left: 3px solid #ffcc01;
 }
 
 /* ── Bookshop nav user pill ─────────────────────────────────── */
