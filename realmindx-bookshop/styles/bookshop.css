@@ -5,11 +5,12 @@
 
 /* Define critical variables on :root so fixed/portal elements outside .bs can use them */
 :root {
-  --bs-navy:       #143670;
-  --bs-navy-dark:  #0d2550;
-  --bs-gold-live:  #ffcc01;
-  --bs-success:    #16a34a;
-  --bs-error:      #dc2626;
+  --bs-navy:        #143670;
+  --bs-navy-dark:   #0d2550;
+  --bs-gold-live:   #ffcc01;
+  --bs-success:     #16a34a;
+  --bs-error:       #dc2626;
+  --bs-bottomnav-h: 64px;   /* needed for toast positioning outside .bs scope */
 }
 
 .bs {
@@ -354,11 +355,40 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
   .bs-newsletter { padding: 40px 0; }
   .bs-newsletter h2 { font-size: clamp(22px, 6vw, 30px); }
 
-  /* ── Product cards: 2 col on mobile ─────────────────────── */
-  .bs-product-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
-  .bs-pcard-title { font-size: 13px; }
-  .bs-pcard-price { font-size: 15px; }
-  .bs-add-btn { width: 32px; height: 32px; }
+  /* ── Product cards: horizontal list on mobile ───────────── */
+  .bs-product-grid { grid-template-columns: 1fr !important; gap: 10px !important; }
+
+  /* Flip card to horizontal: image left, details right */
+  .bs-pcard { flex-direction: row !important; height: 120px; overflow: hidden; }
+  .bs-pcard-cover {
+    width: 86px !important;
+    min-width: 86px;
+    aspect-ratio: unset !important;
+    height: 100%;
+    flex-shrink: 0;
+    border-radius: var(--bs-radius-md) 0 0 var(--bs-radius-md);
+  }
+  .bs-pcard-body {
+    padding: 10px 12px !important;
+    gap: 3px !important;
+    overflow: hidden;
+    justify-content: center;
+    flex: 1;
+    min-width: 0;
+  }
+  .bs-pcard-stock { font-size: 10px; }
+  .bs-pcard-title { font-size: 13px; -webkit-line-clamp: 2; }
+  .bs-pcard-desc { display: none; }   /* hide desc on mobile to keep card compact */
+  .bs-pcard-meta { display: none; }
+  .bs-pcard-price { font-size: 14px; }
+  .bs-pcard-foot {
+    flex-direction: row !important;
+    align-items: center;
+    margin-top: 4px;
+    gap: 8px;
+  }
+  .bs-add-btn { width: 30px !important; height: 30px !important; flex-shrink: 0; }
+  .bs-cover-badge { font-size: 9px; padding: 3px 6px; }
 
   /* ── Marquee / promo band ────────────────────────────────── */
   .bs-promo-band-inner { flex-wrap: wrap; gap: 12px; justify-content: center; text-align: center; }
