@@ -2267,9 +2267,13 @@ input, textarea, select { font-family: inherit; }
   font-weight: 800;
 }
 
+.portal-sidebar-nav { flex: 1; }
+
 .portal-sidebar-footer {
   padding: 16px 12px;
   border-top: 1px solid rgba(255,255,255,0.06);
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .portal-main {
@@ -3089,43 +3093,122 @@ input, textarea, select { font-family: inherit; }
 }
 
 @media (max-width: 768px) {
+  /* ── Portal & Admin sidebar ──────────────────────────── */
   .portal-sidebar, .admin-sidebar {
     transform: translateX(-100%);
     width: 260px;
+    overflow-y: auto;
+  }
+  .portal-sidebar.open, .admin-sidebar.open { transform: translateX(0); }
+
+  /* Pin Sign Out / Back to RealMindX always at bottom */
+  .portal-sidebar { display: flex; flex-direction: column; }
+  .portal-sidebar-nav { flex: 1; }
+  .portal-sidebar-footer { margin-top: auto; }
+
+  /* Hamburger button */
+  .mobile-menu-toggle {
+    display: flex !important;
+    background: none;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    align-items: center;
+    flex-shrink: 0;
   }
 
-  .portal-sidebar.open, .admin-sidebar.open {
-    transform: translateX(0);
-  }
-
+  /* Main content area */
   .portal-main, .admin-main {
     margin-left: 0;
-    padding: 20px 16px;
+    padding: 16px 14px 80px;
+    overflow-x: hidden;
   }
 
+  /* Topbar */
+  .portal-topbar { margin-bottom: 20px; }
+  .portal-page-title { font-size: 1.2rem; }
+
+  /* ── Portal cards & grids ────────────────────────────── */
   .welcome-card { grid-template-columns: 1fr; }
   .welcome-image-side { display: none; }
   .portal-grid-2 { grid-template-columns: 1fr; }
   .profile-sections-grid { grid-template-columns: 1fr; }
   .admin-grid-2 { grid-template-columns: 1fr; }
   .quick-actions-row { grid-template-columns: repeat(2, 1fr); }
+  .portal-stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .admin-stats-row { grid-template-columns: repeat(2, 1fr); }
+
+  /* Profile header card: stack on mobile */
+  .profile-header-card {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 24px 20px;
+    gap: 16px;
+  }
+  .profile-header-info h2 { font-size: 1.15rem; }
+  .completion-bar-wrap { width: 100%; }
+
+  /* Section cards: prevent horizontal overflow */
+  .profile-section-card { overflow-x: hidden; }
+  .document-row { flex-wrap: wrap; gap: 8px; }
+  .doc-actions { width: 100%; display: flex; gap: 8px; }
+
+  /* Checkbox grid: 1 col on small screens */
+  .portal-checkbox-grid { grid-template-columns: 1fr; }
+
+  /* Admin form */
+  .admin-form-grid { grid-template-columns: 1fr !important; }
+  .admin-table { font-size: 0.78rem; }
+  .admin-table td, .admin-table th { padding: 8px 10px; }
+
+  /* ── Jobs page ───────────────────────────────────────── */
   .jobs-layout { grid-template-columns: 1fr; }
   .jobs-filters { position: static; }
+
+  /* ── Auth pages ──────────────────────────────────────── */
   .auth-layout { grid-template-columns: 1fr; }
   .auth-panel-brand { display: none; }
-  .auth-panel-form { padding: 48px 28px; }
+  .auth-panel-form { padding: 36px 22px; }
+
+  /* ── Contact page ────────────────────────────────────── */
   .contact-layout { grid-template-columns: 1fr; }
+
+  /* ── Services page ───────────────────────────────────── */
   .service-section-inner { grid-template-columns: 1fr; direction: ltr !important; }
   .services-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* ── About page ──────────────────────────────────────── */
   .why-grid { grid-template-columns: repeat(2, 1fr); }
   .team-grid { grid-template-columns: repeat(2, 1fr); }
   .about-intro-grid { grid-template-columns: 1fr; }
   .mvg-grid { grid-template-columns: 1fr; }
   .mvg-card:first-child { grid-template-columns: 1fr; }
   .stats-bar-inner { grid-template-columns: repeat(2, 1fr); }
+
+  /* ── Forms ───────────────────────────────────────────── */
   .form-row { grid-template-columns: 1fr; }
   .social-login-grid { grid-template-columns: 1fr; }
+
+  /* ── Footer ──────────────────────────────────────────── */
   .footer-grid { grid-template-columns: 1fr; }
+
+  /* ── Global overflow guard ───────────────────────────── */
+  .portal-layout, .portal-main, .admin-portal-layout {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+}
+
+/* Extra small screens (< 400px) */
+@media (max-width: 400px) {
+  .portal-stats-grid { grid-template-columns: 1fr; }
+  .quick-actions-row { grid-template-columns: 1fr; }
+  .services-grid { grid-template-columns: 1fr; }
+  .why-grid { grid-template-columns: 1fr; }
+  .team-grid { grid-template-columns: 1fr; }
+  .stats-bar-inner { grid-template-columns: 1fr; }
+  .hero-cta-row .btn { flex: 1 1 100%; }
 }
 
 /* ============================================================

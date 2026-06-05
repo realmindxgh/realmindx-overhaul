@@ -276,7 +276,7 @@ const Sidebar = ({ active, setActive, user, sidebarOpen, setSidebarOpen, applica
       </div>
 
       {/* Nav */}
-      <nav className="portal-nav">
+      <nav className="portal-nav portal-sidebar-nav">
         {['Main', 'Jobs', 'Account'].map(group => (
           <div key={group} className="portal-nav-section">
             <div className="portal-nav-label">{group}</div>
@@ -1336,7 +1336,6 @@ const UserPortalPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer' }}
               className="mobile-menu-toggle"
             >
               <Icon name="menu" size={18} stroke={2.2} />
