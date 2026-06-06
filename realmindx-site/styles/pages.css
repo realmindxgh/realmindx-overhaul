@@ -143,17 +143,17 @@ input, textarea, select { font-family: inherit; }
   color: var(--navy);
   border-color: var(--gray-200);
 }
-.btn-outline-navy:hover {
+.btn-outline-navy:not(:disabled):hover {
   border-color: var(--navy);
-  background: var(--navy);
-  color: var(--white);
+  background: rgba(20,54,112,0.07);
+  color: var(--navy);
 }
 
 .btn-navy {
   background: var(--navy);
   color: var(--white);
 }
-.btn-navy:hover {
+.btn-navy:not(:disabled):hover {
   background: var(--navy-hover);
   transform: translateY(-1px);
 }
