@@ -25,7 +25,7 @@ def upgrade():
     op.execute(
         """
         UPDATE contact_messages
-        SET ticket_reference = 'RMX-' || printf('%06d', id)
+        SET ticket_reference = 'RMX-' || LPAD(id::text, 6, '0')
         WHERE ticket_reference IS NULL
         """
     )
