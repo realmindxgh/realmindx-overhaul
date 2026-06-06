@@ -50,6 +50,8 @@ const ImpactSlideshow = () => {
 
   const slide = slides[idx] || slides[0];
 
+  if (!slide) return <div className="donate-slideshow donate-slideshow--empty" />;
+
   return (
     <div className="donate-slideshow">
       <div className="donate-slide" key={slide?.id || idx}>

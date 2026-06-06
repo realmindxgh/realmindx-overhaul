@@ -268,7 +268,7 @@ const usePublicCollection = (collection, loader, fallback) => {
   }, [loader]);
 
   const localItems = localContent[collection]?.length ? localContent[collection] : fallback;
-  return isApiMode() && apiItems !== null ? apiItems : localItems;
+  return isApiMode() ? (apiItems ?? []) : localItems;
 };
 
 export const useHomeHeroSlides = () => {
