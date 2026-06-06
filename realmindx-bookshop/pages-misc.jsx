@@ -649,16 +649,18 @@ const OrderDetailModal = ({ order, onClose }) => {
 
 const MiniOrderCard = ({ order, onOpen }) => {
   const itemCount = (order.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+  const meta = STATUS_META[order.status] || { label: order.status || 'Unknown', color: '#6b7b8e' };
   return (
-    <div className="bs-mini-order-card" onClick={() => onOpen(order)} role="button" tabIndex={0}
+    <div className="bs-mini-order-card" style={{ '--badge-color': meta.color }}
+      onClick={() => onOpen(order)} role="button" tabIndex={0}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onOpen(order); }}>
-      <div className="bs-moc-left">
+      <div className="bs-moc-top">
         <div className="bs-moc-ref">{order.order_reference}</div>
-        <div className="bs-moc-meta">{fmtDate(order.created_at)} · {itemCount} item{itemCount !== 1 ? 's' : ''}</div>
-      </div>
-      <div className="bs-moc-right">
-        <div className="bs-moc-total">{cedis(order.total_amount || 0)}</div>
         <OrderStatusBadge status={order.status} />
+      </div>
+      <div className="bs-moc-bottom">
+        <span className="bs-moc-meta">{fmtDate(order.created_at)} · {itemCount} item{itemCount !== 1 ? 's' : ''}</span>
+        <span className="bs-moc-total">{cedis(order.total_amount || 0)}</span>
       </div>
     </div>
   );
@@ -735,7 +737,7 @@ const AccountPage = ({ navigate }) => {
 
   React.useEffect(() => {
     if (!session?.role || !isApiMode()) { setLoading(false); return; }
-    api.fetchMyOrders('per_page=5&sort=newest').then(data => {
+    api.fetchMyOrders('per_page=4&sort=newest').then(data => {
       setOrders(data.items || []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [session?.role]);
@@ -763,18 +765,21 @@ const AccountPage = ({ navigate }) => {
 
   return (
     <div className="bs-fade-page">
-      {/* Hero */}
+      {/* Hero — white card with logo */}
       <div className="bs-account-hero">
         <div className="bs-container">
-          <div className="bs-account-hero-inner">
-            <div className="bs-account-avatar-lg">
-              {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : initials}
+          <div className="bs-account-hero-card">
+            <div className="bs-account-hero-user">
+              <div className="bs-account-avatar-lg">
+                {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : initials}
+              </div>
+              <div>
+                <p className="bs-eyebrow" style={{ color: 'var(--bs-gold-on-light)', marginBottom: 6 }}>Your Account</p>
+                <h1 className="bs-h1" style={{ margin: 0, fontSize: 'clamp(22px,3.5vw,32px)', color: 'var(--bs-navy)' }}>{displayName}</h1>
+                <p className="bs-muted" style={{ marginTop: 6 }}>{session.email}</p>
+              </div>
             </div>
-            <div>
-              <p className="bs-eyebrow" style={{ color: 'var(--bs-gold)', marginBottom: 6 }}>Your Account</p>
-              <h1 className="bs-h1" style={{ margin: 0, fontSize: 'clamp(26px,4vw,38px)' }}>{displayName}</h1>
-              <p className="bs-muted" style={{ marginTop: 6, color: 'rgba(255,255,255,0.65)' }}>{session.email}</p>
-            </div>
+            <img src="/bookshop-logo.png" alt="RealMindX Bookshop" className="bs-account-hero-logo" />
           </div>
         </div>
       </div>
@@ -808,8 +813,8 @@ const AccountPage = ({ navigate }) => {
             </div>
           </aside>
 
-          {/* Main content */}
-          <div className="bs-account-main">
+          {/* Main panels: billing left, orders right */}
+          <div className="bs-account-panels">
 
             {/* Billing & contact */}
             <section className="bs-account-section">
@@ -825,19 +830,17 @@ const AccountPage = ({ navigate }) => {
                   <span className="bs-billing-label">Email Address</span>
                   <span className="bs-billing-val">{session.email}</span>
                 </div>
-                {session.phone && (
-                  <div className="bs-billing-item">
-                    <span className="bs-billing-label">Phone</span>
-                    <span className="bs-billing-val">{session.phone}</span>
-                  </div>
-                )}
+                <div className="bs-billing-item">
+                  <span className="bs-billing-label">Phone</span>
+                  <span className="bs-billing-val">{session.phone || <em style={{ color: 'var(--bs-muted)', fontStyle: 'italic' }}>Not set</em>}</span>
+                </div>
               </div>
               <p className="bs-muted" style={{ marginTop: 14, fontSize: '0.82rem' }}>
                 To update your details, contact us at <a href="mailto:bookshop@realmindxgh.com" style={{ color: 'var(--bs-gold-on-light)' }}>bookshop@realmindxgh.com</a>.
               </p>
             </section>
 
-            {/* Recent orders */}
+            {/* Recent orders — 2×2 grid */}
             <section className="bs-account-section">
               <div className="bs-section-head-row" style={{ marginBottom: 20 }}>
                 <h2 className="bs-h3" style={{ margin: 0, fontSize: '1.1rem' }}>
@@ -851,8 +854,8 @@ const AccountPage = ({ navigate }) => {
               </div>
 
               {loading ? (
-                <div className="bs-mini-orders">
-                  {[1,2,3].map(i => <div key={i} className="bs-skeleton bs-skeleton-order" />)}
+                <div className="bs-mini-orders-grid">
+                  {[1,2,3,4].map(i => <div key={i} className="bs-skeleton bs-skeleton-order" />)}
                 </div>
               ) : orders.length === 0 ? (
                 <div className="bs-account-empty">
@@ -860,18 +863,10 @@ const AccountPage = ({ navigate }) => {
                   <p>No orders yet. <button className="bs-link-gold" onClick={() => navigate('shop')}>Start shopping</button></p>
                 </div>
               ) : (
-                <div className="bs-mini-orders">
+                <div className="bs-mini-orders-grid">
                   {orders.map(order => (
                     <MiniOrderCard key={order.id} order={order} onOpen={setModalOrder} />
                   ))}
-                </div>
-              )}
-
-              {!loading && orders.length > 0 && (
-                <div style={{ marginTop: 20 }}>
-                  <button className="bs-btn bs-btn-navy" onClick={() => navigate('orders')}>
-                    <Icon name="truck" size={15} /> View All Orders
-                  </button>
                 </div>
               )}
             </section>
@@ -975,7 +970,7 @@ const OrdersPage = ({ navigate }) => {
             <input
               className="bs-orders-search"
               type="search"
-              placeholder="Search by order reference…"
+              placeholder="Search by reference, book title or product…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               aria-label="Search orders"

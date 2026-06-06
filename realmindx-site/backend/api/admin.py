@@ -636,8 +636,67 @@ def update_application_status(application_id):
 @login_required
 @admin_required
 def users():
-    rows = User.query.order_by(User.created_at.desc()).limit(200).all()
+    # Return only regular-user accounts (i.e. teachers); admin/staff excluded.
+    rows = (
+        User.query
+        .join(User.role)
+        .filter(Role.name == "user")
+        .order_by(User.created_at.desc())
+        .limit(500)
+        .all()
+    )
     return jsonify(items=[user_json(user) for user in rows])
+
+
+@admin_bp.patch("/users/<int:user_id>")
+@login_required
+@admin_required
+def update_user(user_id):
+    """Toggle a regular-user account active / inactive."""
+    user = db.get_or_404(User, user_id)
+    # Safety: only allow toggling regular users, not admins / staff.
+    if user.role and user.role.name in ("admin", "staff"):
+        return jsonify(error="Cannot modify admin or staff accounts via this endpoint."), 403
+    payload = request.get_json(silent=True) or {}
+    if "status" in payload:
+        user.is_active = payload["status"] == "active"
+        db.session.commit()
+        log_action("toggle_user_active", "user", user.id, {"status": payload["status"]})
+    return jsonify(user_json(user))
+
+
+@admin_bp.get("/users/<int:user_id>")
+@login_required
+@admin_required
+def get_user(user_id):
+    """Return a single teacher's full profile data for the admin detail modal."""
+    user = db.get_or_404(User, user_id)
+    data = user_json(user)
+    profile = getattr(user, "profile", None)
+    if profile:
+        def _file_url(file_id):
+            if not file_id:
+                return None
+            f = db.session.get(UploadedFile, file_id)
+            if not f:
+                return None
+            return f"/uploads/{f.visibility}/{f.category}/{f.stored_filename}"
+
+        data["profile"] = {
+            "location": profile.location,
+            "teaching_subject": profile.teaching_subject,
+            "preferred_level": profile.preferred_level,
+            "preferred_employment_type": profile.preferred_employment_type,
+            "available_from": profile.available_from,
+            "curriculum_experience": profile.curriculum_experience,
+            "bio": profile.bio,
+            "cv_url": _file_url(profile.cv_file_id),
+            "certificate_url": _file_url(profile.certificate_file_id),
+            "next_of_kin_name": profile.next_of_kin_name,
+            "next_of_kin_phone": profile.next_of_kin_phone,
+            "next_of_kin_relationship": profile.next_of_kin_relationship,
+        }
+    return jsonify(data)
 
 
 @admin_bp.post("/uploads")

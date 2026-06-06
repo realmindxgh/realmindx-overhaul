@@ -1417,9 +1417,17 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
 
   const labelForRow = (row) => row.name || row.label || row.title || row.email || row.order_reference || 'this record';
 
-  const handleDelete = async (row) => {
+  const [confirmModal, setConfirmModal] = React.useState(null); // { row }
+
+  const handleDelete = (row) => {
+    setConfirmModal({ row });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmModal) return;
+    const row = confirmModal.row;
     const label = labelForRow(row);
-    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    setConfirmModal(null);
     setActionStatus(null);
     try {
       await deleteItem(config.collection, getItemId(row));
@@ -1753,6 +1761,25 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
           </div>
         </div>
       )}
+
+      {/* Confirm delete modal — replaces window.confirm */}
+      {confirmModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
+          <div style={{ background:'#fff', borderRadius:16, padding:'36px 32px', width:'100%', maxWidth:420, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
+            <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2', border:'2px solid #fca5a5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', fontSize:26, color:'#dc2626' }}>⚠</div>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', textAlign:'center', marginBottom:10, fontSize:'1.1rem' }}>
+              Permanently delete?
+            </h3>
+            <p style={{ fontSize:'0.875rem', color:'var(--gray-600)', textAlign:'center', marginBottom:28, lineHeight:1.6 }}>
+              <strong style={{ color:'var(--navy)' }}>{labelForRow(confirmModal.row)}</strong> will be removed and cannot be recovered.
+            </p>
+            <div style={{ display:'flex', gap:12 }}>
+              <button className="btn btn-outline-navy" style={{ flex:1 }} onClick={() => setConfirmModal(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex:1, background:'#dc2626', borderColor:'#dc2626' }} onClick={executeDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1895,23 +1922,60 @@ const PriceAdjustmentView = ({ content }) => {
 const TeachersView = () => {
   const [teachers, setTeachers] = React.useState(null);
   const [search, setSearch] = React.useState('');
-  React.useEffect(() => {
+  const [detail, setDetail] = React.useState(null); // full profile object for the modal
+  const [detailLoading, setDetailLoading] = React.useState(false);
+  const [toggling, setToggling] = React.useState(null); // user id currently being toggled
+
+  const reload = React.useCallback(() => {
     if (!isApiMode()) return;
     fetch('/api/admin/users', { credentials: 'include' })
       .then(r => r.ok ? r.json() : { items: [] })
       .then(data => setTeachers(data.items || []))
       .catch(() => setTeachers([]));
   }, []);
-  const filtered = (teachers || []).filter(t =>
-    !search.trim() || `${t.first_name} ${t.last_name} ${t.email}`.toLowerCase().includes(search.toLowerCase())
-  );
+
+  React.useEffect(() => { reload(); }, [reload]);
+
+  // Only regular users (role === 'user') — admins/staff are filtered out server-side too,
+  // but this guards against any future changes.
+  const filtered = (teachers || [])
+    .filter(t => t.role === 'user' || !t.role)
+    .filter(t => !search.trim() || `${t.first_name} ${t.last_name} ${t.email}`.toLowerCase().includes(search.toLowerCase()));
+
+  const openDetail = async (t) => {
+    setDetailLoading(true);
+    setDetail({ ...t, _loading: true });
+    try {
+      const r = await fetch(`/api/admin/users/${t.id}`, { credentials: 'include' });
+      const data = r.ok ? await r.json() : t;
+      setDetail(data);
+    } catch { setDetail(t); }
+    finally { setDetailLoading(false); }
+  };
+
+  const toggleActive = async (t) => {
+    setToggling(t.id);
+    try {
+      const newStatus = t.is_active ? 'inactive' : 'active';
+      await fetch(`/api/admin/users/${t.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setTeachers(prev => prev.map(u => u.id === t.id ? { ...u, is_active: !t.is_active } : u));
+      if (detail && detail.id === t.id) setDetail(d => ({ ...d, is_active: !t.is_active }));
+    } catch { /* noop */ }
+    finally { setToggling(null); }
+  };
+
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, marginBottom:24, flexWrap:'wrap' }}>
         <div>
           <h2 className="admin-page-title">Registered Teachers</h2>
           <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginTop:4 }}>
-            Teachers who have created accounts on the portal. Use the export buttons to download for records or mail-merge.
+            Only teacher accounts are shown. Admin and staff accounts are excluded. Use the export buttons for records.
           </p>
         </div>
         {isApiMode() && (
@@ -1930,29 +1994,176 @@ const TeachersView = () => {
         </div>
         {!isApiMode() ? (
           <EmptySection title="API mode required" body="Connect the Flask backend to see registered teachers." />
+        ) : teachers === null ? (
+          <EmptySection title="Loading…" body="" />
         ) : filtered.length === 0 ? (
           <EmptySection title="No Registered Teachers Yet" body="Teachers who sign up on the portal will appear here." />
         ) : (
-          <table className="admin-table">
-            <thead>
-              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Verified</th><th>Registered</th></tr>
-            </thead>
-            <tbody>
-              {filtered.map(t => (
-                <tr key={t.id}>
-                  <td className="td-primary">{[t.first_name, t.last_name].filter(Boolean).join(' ') || '—'}</td>
-                  <td>{t.email}</td>
-                  <td>{t.phone || '—'}</td>
-                  <td><span className={`badge ${t.is_verified ? 'badge-success' : 'badge-navy'}`}>{t.is_verified ? 'Yes' : 'Pending'}</span></td>
-                  <td style={{ fontSize:'0.76rem', color:'var(--gray-600)' }}>
-                    {t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Email</th><th>Phone</th>
+                  <th>Verified</th><th>Status</th><th>Registered</th><th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(t => (
+                  <tr key={t.id} style={{ opacity: t.is_active === false ? 0.55 : 1 }}>
+                    <td className="td-primary">{[t.first_name, t.last_name].filter(Boolean).join(' ') || '—'}</td>
+                    <td>{t.email}</td>
+                    <td>{t.phone || '—'}</td>
+                    <td><span className={`badge ${t.is_verified ? 'badge-success' : 'badge-navy'}`}>{t.is_verified ? 'Verified' : 'Pending'}</span></td>
+                    <td>
+                      <span className={`badge ${t.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
+                        {t.is_active !== false ? 'Active' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td style={{ fontSize:'0.76rem', color:'var(--gray-600)', whiteSpace:'nowrap' }}>
+                      {t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}
+                    </td>
+                    <td>
+                      <div style={{ display:'flex', gap:6 }}>
+                        <button className="table-action-btn" onClick={() => openDetail(t)}>View Profile</button>
+                        <button
+                          className="table-action-btn"
+                          style={{ background: t.is_active !== false ? '#fff8e1' : '#f0fdf4', color: t.is_active !== false ? '#92400e' : '#166534' }}
+                          disabled={toggling === t.id}
+                          onClick={() => toggleActive(t)}
+                        >
+                          {toggling === t.id ? '…' : t.is_active !== false ? 'Disable' : 'Enable'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+
+      {/* Teacher detail modal */}
+      {detail && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'40px 20px', overflowY:'auto' }}>
+          <div style={{ background:'#fff', borderRadius:16, padding:0, width:'100%', maxWidth:600, boxShadow:'0 24px 72px rgba(0,0,0,0.28)', overflow:'hidden' }}>
+            {/* Modal header */}
+            <div style={{ background:'var(--navy)', padding:'24px 28px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                {detail.profile_picture_url ? (
+                  <img src={detail.profile_picture_url} alt="" style={{ width:52, height:52, borderRadius:'50%', objectFit:'cover', border:'2px solid rgba(255,255,255,0.3)' }} />
+                ) : (
+                  <div style={{ width:52, height:52, borderRadius:'50%', background:'var(--yellow)', color:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:18 }}>
+                    {([detail.first_name?.[0], detail.last_name?.[0]].filter(Boolean).join('').toUpperCase()) || 'T'}
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontFamily:"'Montserrat',sans-serif", fontWeight:800, color:'#fff', fontSize:'1.05rem' }}>
+                    {[detail.first_name, detail.last_name].filter(Boolean).join(' ') || 'Unknown'}
+                  </div>
+                  <div style={{ fontSize:'0.82rem', color:'rgba(255,255,255,0.7)', marginTop:2 }}>{detail.email}</div>
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <span className={`badge ${detail.is_active !== false ? 'badge-success' : 'badge-danger'}`} style={{ fontSize:'0.72rem' }}>
+                  {detail.is_active !== false ? 'Active' : 'Disabled'}
+                </span>
+                <button onClick={() => setDetail(null)} style={{ background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', width:32, height:32, borderRadius:'50%', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+              </div>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ padding:'24px 28px' }}>
+              {detailLoading ? (
+                <p style={{ color:'var(--gray-600)', textAlign:'center', padding:'20px 0' }}>Loading profile…</p>
+              ) : (
+                <>
+                  {/* Contact info */}
+                  <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Contact</h4>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', marginBottom:24 }}>
+                    {[['Email', detail.email], ['Phone', detail.phone || 'Not set'], ['Registered', detail.created_at ? new Date(detail.created_at).toLocaleDateString() : '—'], ['Verified', detail.is_verified ? 'Yes ✓' : 'Pending']].map(([k, v]) => (
+                      <div key={k}>
+                        <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>
+                        <div style={{ fontSize:'0.875rem', color:'var(--navy)' }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Profile details */}
+                  {detail.profile && (
+                    <>
+                      <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Teaching Profile</h4>
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', marginBottom:20 }}>
+                        {[
+                          ['Subject', detail.profile.teaching_subject],
+                          ['Level', detail.profile.preferred_level],
+                          ['Employment Type', detail.profile.preferred_employment_type],
+                          ['Available From', detail.profile.available_from],
+                          ['Location', detail.profile.location],
+                          ['Curriculum Experience', detail.profile.curriculum_experience],
+                        ].filter(([, v]) => v).map(([k, v]) => (
+                          <div key={k}>
+                            <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>
+                            <div style={{ fontSize:'0.875rem', color:'var(--navy)' }}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {detail.profile.bio && (
+                        <div style={{ marginBottom:20 }}>
+                          <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:6 }}>Bio</div>
+                          <p style={{ fontSize:'0.875rem', color:'var(--navy)', lineHeight:1.6, margin:0 }}>{detail.profile.bio}</p>
+                        </div>
+                      )}
+                      {/* Documents */}
+                      {(detail.profile.cv_url || detail.profile.certificate_url) && (
+                        <div style={{ marginBottom:20 }}>
+                          <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Documents</h4>
+                          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                            {detail.profile.cv_url && (
+                              <a href={detail.profile.cv_url} target="_blank" rel="noopener noreferrer" className="btn btn-outline-navy btn-sm">📄 View CV</a>
+                            )}
+                            {detail.profile.certificate_url && (
+                              <a href={detail.profile.certificate_url} target="_blank" rel="noopener noreferrer" className="btn btn-outline-navy btn-sm">🎓 View Certificate</a>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Next of kin */}
+                      {detail.profile.next_of_kin_name && (
+                        <div style={{ marginBottom:20 }}>
+                          <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Next of Kin</h4>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px' }}>
+                            {[['Name', detail.profile.next_of_kin_name], ['Phone', detail.profile.next_of_kin_phone], ['Relationship', detail.profile.next_of_kin_relationship]].filter(([, v]) => v).map(([k, v]) => (
+                              <div key={k}>
+                                <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>
+                                <div style={{ fontSize:'0.875rem', color:'var(--navy)' }}>{v}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {!detail.profile && <p style={{ color:'var(--gray-600)', fontSize:'0.85rem' }}>No additional profile information submitted yet.</p>}
+                </>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{ padding:'16px 28px', borderTop:'1px solid var(--border)', display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button
+                className="btn btn-outline-navy btn-sm"
+                style={detail.is_active !== false ? { color:'#92400e', borderColor:'#d97706' } : { color:'#166534', borderColor:'#16a34a' }}
+                disabled={toggling === detail.id}
+                onClick={() => toggleActive(detail)}
+              >
+                {toggling === detail.id ? 'Saving…' : detail.is_active !== false ? 'Disable Account' : 'Enable Account'}
+              </button>
+              <button className="btn btn-outline-navy btn-sm" onClick={() => setDetail(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

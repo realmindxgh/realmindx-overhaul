@@ -1073,30 +1073,38 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 
 /* ============================================================ ACCOUNT PAGE ============================================================ */
 .bs-account-hero {
-  background: linear-gradient(135deg, var(--bs-navy-dark) 0%, var(--bs-navy-light) 100%);
-  padding: 52px 0 48px;
-  position: relative;
-  overflow: hidden;
+  background: var(--bs-off-white);
+  padding: 28px 0 24px;
+  border-bottom: 1px solid var(--bs-border);
 }
-.bs-account-hero::before {
-  content: '';
-  position: absolute; inset: 0;
-  background-image: radial-gradient(rgba(255,204,1,.06) 1px, transparent 1px);
-  background-size: 24px 24px;
-  pointer-events: none;
+.bs-account-hero-card {
+  background: #fff;
+  border: 1px solid var(--bs-border);
+  border-radius: var(--bs-radius-lg);
+  padding: 24px 32px;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  box-shadow: var(--bs-shadow-sm);
+  position: relative; overflow: hidden;
 }
-.bs-account-hero-inner {
-  display: flex; align-items: center; gap: 28px; position: relative;
+.bs-account-hero-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(90deg, var(--bs-navy) 0%, var(--bs-gold-live) 100%);
 }
+.bs-account-hero-user { display: flex; align-items: center; gap: 22px; }
+.bs-account-hero-logo { height: 52px; opacity: 0.15; flex-shrink: 0; }
 .bs-account-avatar-lg {
-  width: 80px; height: 80px; border-radius: 50%;
+  width: 72px; height: 72px; border-radius: 50%;
   background: var(--bs-gold-live); color: var(--bs-navy);
   display: flex; align-items: center; justify-content: center;
-  font-family: 'Montserrat', sans-serif; font-weight: 900; font-size: 24px;
-  flex-shrink: 0; border: 3px solid rgba(255,255,255,.25);
+  font-family: 'Montserrat', sans-serif; font-weight: 900; font-size: 22px;
+  flex-shrink: 0; border: 3px solid var(--bs-border);
   overflow: hidden;
 }
 .bs-account-avatar-lg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (max-width: 600px) {
+  .bs-account-hero-logo { display: none; }
+  .bs-account-hero-card { padding: 18px 20px; }
+}
 
 .bs-account-layout { display: grid; grid-template-columns: 220px 1fr; gap: 36px; align-items: start; }
 @media (max-width: 900px) { .bs-account-layout { grid-template-columns: 1fr; } }
@@ -1125,32 +1133,46 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-account-nav-signout { color: var(--bs-error); }
 .bs-account-nav-signout:hover { background: #fff1f1; }
 
+/* Two-column panel grid: billing (left) + orders (right), equal height */
+.bs-account-panels {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+}
+.bs-account-panels .bs-account-section { margin-bottom: 0; }
+@media (max-width: 800px) { .bs-account-panels { grid-template-columns: 1fr; } }
+
+/* 2×2 mini-order grid inside the orders panel */
+.bs-mini-orders-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 500px) { .bs-mini-orders-grid { grid-template-columns: 1fr; } }
+
 /* Account sections */
 .bs-account-section {
   background: #fff; border: 1px solid var(--bs-border); border-radius: var(--bs-radius-md);
   padding: 28px; box-shadow: var(--bs-shadow-sm); margin-bottom: 24px;
 }
 
-/* Billing grid */
-.bs-billing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px 24px; }
+/* Billing grid — stacks to 1 column when panel is narrowed */
+.bs-billing-grid { display: flex; flex-direction: column; gap: 18px; }
 .bs-billing-item { display: flex; flex-direction: column; gap: 4px; }
 .bs-billing-label { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--bs-muted); }
 .bs-billing-val { font-size: 15px; color: var(--bs-text); font-weight: 500; }
 
-/* Mini order cards (account overview) */
+/* Mini order cards (account overview) — used inside bs-mini-orders-grid */
 .bs-mini-orders { display: flex; flex-direction: column; gap: 10px; }
 .bs-mini-order-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 14px 18px; border-radius: var(--bs-radius-sm);
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 16px; border-radius: var(--bs-radius-sm);
   border: 1px solid var(--bs-border);
+  border-left: 3px solid var(--badge-color, var(--bs-navy));
   background: var(--bs-off-white);
   cursor: pointer; transition: border-color .2s, box-shadow .2s;
 }
 .bs-mini-order-card:hover { border-color: var(--bs-navy); box-shadow: var(--bs-shadow-sm); background: #fff; }
-.bs-moc-ref { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; color: var(--bs-navy); }
-.bs-moc-meta { font-size: 12px; color: var(--bs-muted); margin-top: 2px; }
+.bs-moc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.bs-moc-ref { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 13px; color: var(--bs-navy); }
+.bs-moc-meta { font-size: 11.5px; color: var(--bs-muted); }
+.bs-moc-bottom { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .bs-moc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
-.bs-moc-total { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 15px; color: var(--bs-navy); }
+.bs-moc-total { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 14px; color: var(--bs-navy); }
 
 .bs-account-empty {
   display: flex; flex-direction: column; align-items: center; gap: 10px;

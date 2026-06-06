@@ -19,6 +19,8 @@ def user_json(user):
         "permissions": sorted(set(direct_permissions + role_permissions)),
         "direct_permissions": direct_permissions,
         "is_verified": user.is_verified,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
 

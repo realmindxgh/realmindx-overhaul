@@ -237,7 +237,14 @@ def my_orders():
         or_(Order.email == current_user.email, Order.user_id == current_user.id)
     )
     if q:
-        query = query.filter(Order.order_reference.ilike(f"%{q}%"))
+        like = f"%{q}%"
+        item_match = db.session.query(OrderItem.order_id).filter(OrderItem.product_name.ilike(like))
+        query = query.filter(
+            or_(
+                Order.order_reference.ilike(like),
+                Order.id.in_(item_match),
+            )
+        )
     if status_filter:
         query = query.filter(Order.status == status_filter)
     if sort == "oldest":
