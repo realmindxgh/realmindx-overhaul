@@ -3,7 +3,7 @@ from flask_login import current_user, login_required
 
 from ..audit import audit
 from ..extensions import db
-from ..models import UploadedFile, UserProfile
+from ..models import JobAlertPreference, UploadedFile, UserProfile
 from ..upload_utils import save_upload
 
 profile_bp = Blueprint("profile", __name__)
@@ -33,6 +33,34 @@ def profile_json(profile):
         "next_of_kin_phone": profile.next_of_kin_phone,
         "next_of_kin_relationship": profile.next_of_kin_relationship,
     }
+
+
+def _sync_profile_to_alert_preference(profile):
+    """Bridge UserProfile → JobAlertPreference on first profile save.
+
+    dispatch_job_alerts() in admin.py queries JobAlertPreference, NOT
+    UserProfile.  Without this bridge, a user who sets their teaching subject
+    and location in their profile never receives any job alerts, because no
+    JobAlertPreference row exists for them.
+
+    We only INSERT — never UPDATE — so a user who has already manually
+    customised their alert preference keeps their customisation.
+    """
+    if not profile.teaching_subject:
+        return  # nothing meaningful to match on yet
+    existing = JobAlertPreference.query.filter_by(user_id=profile.user_id).first()
+    if existing:
+        return  # respect any customisation the user has already made
+    pref = JobAlertPreference(
+        user_id=profile.user_id,
+        subject=profile.teaching_subject,
+        location=profile.location,
+        preferred_level=profile.preferred_level,
+        employment_type=profile.preferred_employment_type,
+        alert_by_email=True,
+        frequency="instant",
+    )
+    db.session.add(pref)
 
 
 def get_or_create_profile():
@@ -71,6 +99,7 @@ def update_profile():
             setattr(profile, field, payload[field])
     if "phone" in payload:
         current_user.phone = payload["phone"]
+    _sync_profile_to_alert_preference(profile)
     audit("profile_updated", "user_profile", current_user.id, {"email": current_user.email})
     db.session.commit()
     return jsonify(profile=profile_json(profile))

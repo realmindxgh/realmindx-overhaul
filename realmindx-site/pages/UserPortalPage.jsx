@@ -975,14 +975,16 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
         <div>
           <h2 className="portal-page-title">Job Alerts</h2>
           <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem', marginTop: 4 }}>
-            Your profile preferences already generate automatic alerts. Create an additional alert here if you want to be notified about a <strong>different subject, location, or role type</strong> beyond your profile.
+            We email you instantly when a new teaching role matches your saved preferences. Your alert is set up automatically the first time you save your profile — edit it any time.
           </p>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={openForm}>New Alert</button>
+        <button className="btn btn-primary btn-sm" onClick={openForm}>
+          {alerts.length === 0 ? 'Set Up Alert' : 'Edit Alert'}
+        </button>
       </div>
 
       {alerts.length === 0 ? (
-        <EmptyAlerts onAdd={() => setShowForm(true)} />
+        <EmptyAlerts onAdd={openForm} />
       ) : (
         <div>
           {alerts.map(alert => (
@@ -1000,11 +1002,7 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
                   {alert.location} - {alert.employmentType} - {alert.frequency}
                 </div>
               </div>
-              <label className="toggle-switch" title={alert.active ? 'Disable' : 'Enable'}>
-                <input type="checkbox" checked={alert.active} onChange={() => toggleAlert(alert.id)} />
-                <span className="toggle-slider" />
-              </label>
-              <button className="btn btn-sm btn-outline-navy">Edit</button>
+              <button className="btn btn-sm btn-outline-navy" onClick={openForm}>Edit</button>
             </div>
           ))}
         </div>
@@ -1017,9 +1015,9 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
               <Icon name="x" size={16} stroke={2.1} />
               <span>Close</span>
             </button>
-            <h3 style={{ fontFamily: "'Montserrat', sans-serif", marginBottom: 8, fontSize: '1.25rem', color: 'var(--navy)' }}>Create Additional Alert</h3>
+            <h3 style={{ fontFamily: "'Montserrat', sans-serif", marginBottom: 8, fontSize: '1.25rem', color: 'var(--navy)' }}>Job Alert Preferences</h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', marginBottom: 20, lineHeight: 1.6 }}>
-              Pre-filled from your profile. Only change the fields that should be <em>different</em> from your main preferences — e.g. a second subject or a different location.
+              Pre-filled from your profile. We will email you when a posted role matches these criteria. Adjust and save to update.
             </p>
             <div className="profile-sections-grid">
               <div className="form-group">
