@@ -48,7 +48,7 @@ const CvTutorialCard = () => {
       <div style={{ display:'flex', gap:24, alignItems:'flex-start', flexWrap:'wrap' }}>
         <div style={{ flex:'1 1 280px' }}>
           <p style={{ fontFamily:"'Montserrat',sans-serif", fontWeight:800, fontSize:'0.7rem', letterSpacing:2, textTransform:'uppercase', color:'var(--yellow)', marginBottom:8 }}>
-            CV Guide — RealMindX
+            CV Guide by RealMindX
           </p>
           <h3 style={{ color:'#fff', fontFamily:"'Montserrat',sans-serif", fontWeight:800, fontSize:'1.1rem', marginBottom:10 }}>
             How to Write a Standout Teaching CV
@@ -1000,7 +1000,7 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
         <div>
           <h2 className="portal-page-title">Job Alerts</h2>
           <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem', marginTop: 4 }}>
-            We email you instantly when a new teaching role matches your saved preferences. Your alert is set up automatically the first time you save your profile — edit it any time.
+            We email you instantly when a new teaching role matches your saved preferences. Your alert is set up automatically the first time you save your profile. You can edit it any time.
           </p>
         </div>
         <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={openForm}>

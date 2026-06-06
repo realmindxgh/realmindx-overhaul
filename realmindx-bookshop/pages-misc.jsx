@@ -534,7 +534,7 @@ const BookshopLegalPage = ({ type = 'privacy' }) => {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const fmtDate = (iso) => {
-  if (!iso) return '—';
+  if (!iso) return 'N/A';
   try {
     return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   } catch { return iso; }

@@ -21,7 +21,7 @@ from ..default_content import (
     DEFAULT_SERVICES,
     DEFAULT_SITE_COPY,
 )
-from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db
 from ..models import (
     AuditLog,
@@ -1430,7 +1430,7 @@ def export_applications():
         y -= 28
         pdf.setFont("Helvetica", 8)
         for a in rows:
-            name = f"{a.user.first_name or ''} {a.user.last_name or ''}".strip() if a.user else "—"
+            name = f"{a.user.first_name or ''} {a.user.last_name or ''}".strip() if a.user else "Unknown"
             email = a.user.email if a.user else ""
             line = f"{a.id}. {a.job.title if a.job else '?'} | {name} | {email} | {a.status}"
             pdf.drawString(40, y, line[:135])
@@ -1963,8 +1963,28 @@ def delete_resource(resource_id):
 @login_required
 @permission_required("messages.view")
 def list_messages():
-    rows = ContactMessage.query.order_by(ContactMessage.created_at.desc()).limit(200).all()
-    return jsonify(items=[{"id": r.id, "ticket_reference": _ticket_reference(r.id), "name": r.name, "email": r.email, "subject": r.subject, "service": r.source, "status": r.status, "message": r.message, "date": r.created_at.strftime("%d %b %Y"), "created_at": r.created_at.isoformat()} for r in rows])
+    status_filter = request.args.get("status")
+    source_filter = request.args.get("source")
+    q = ContactMessage.query
+    if status_filter:
+        q = q.filter(ContactMessage.status == status_filter)
+    if source_filter:
+        q = q.filter(ContactMessage.source == source_filter)
+    rows = q.order_by(ContactMessage.created_at.desc()).limit(500).all()
+    return jsonify(items=[{
+        "id": r.id,
+        "ticket_reference": r.ticket_reference or _ticket_reference(r.id),
+        "name": r.name,
+        "email": r.email,
+        "phone": r.phone or "",
+        "subject": r.subject,
+        "service": r.source,
+        "status": r.status,
+        "message": r.message,
+        "notes": r.notes or "",
+        "date": r.created_at.strftime("%d %b %Y"),
+        "created_at": r.created_at.isoformat(),
+    } for r in rows])
 
 
 @admin_bp.put("/messages/<int:message_id>")
@@ -1975,9 +1995,11 @@ def update_message(message_id):
     payload = request.get_json(silent=True) or {}
     if "status" in payload:
         row.status = payload["status"]
+    if "notes" in payload:
+        row.notes = (payload["notes"] or "").strip() or None
     log_action("update_message", "contact_message", row.id, {"status": row.status})
     db.session.commit()
-    return jsonify(id=row.id, status=row.status)
+    return jsonify(id=row.id, status=row.status, notes=row.notes)
 
 
 @admin_bp.post("/messages/<int:message_id>/reply")
@@ -1989,13 +2011,16 @@ def reply_to_message(message_id):
     reply_body = (payload.get("message") or "").strip()
     if not reply_body:
         return jsonify(error="Reply message is required."), 400
-    ticket_reference = _ticket_reference(row.id)
+    ticket_reference = row.ticket_reference or _ticket_reference(row.id)
+    is_bookshop = (row.source or "").lower() == "bookshop"
+    _shell = bookshop_email_shell if is_bookshop else app_email_shell
+    _eyebrow = "RealMindX Bookshop" if is_bookshop else "RealMindX Education"
     send_email(
         OutboundEmail(
             to=row.email,
             subject=f"Re: [{ticket_reference}] {row.subject}",
-            html=app_email_shell(
-                f"RealMindX reply: {ticket_reference}",
+            html=_shell(
+                f"Reply: {ticket_reference}",
                 (
                     f"<p>Hello {escape(row.name.split()[0] if row.name else 'there')},</p>"
                     f"<p>{escape(reply_body).replace(chr(10), '<br>')}</p>"
@@ -2003,6 +2028,8 @@ def reply_to_message(message_id):
                     f"<p style=\"font-size:13px;color:#5b667a;\"><strong>Your original message:</strong><br>"
                     f"{escape(row.message).replace(chr(10), '<br>')}</p>"
                 ),
+                eyebrow=_eyebrow,
+                preheader=f"A reply to your enquiry ref {ticket_reference}.",
             ),
         )
     )

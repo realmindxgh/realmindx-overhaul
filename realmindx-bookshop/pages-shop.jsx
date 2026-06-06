@@ -334,7 +334,7 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
     const extras = [];
     if (filters.inStock)             extras.push('in stock only');
     if (filters.rating >= 4)         extras.push(`${filters.rating}+ stars`);
-    return extras.length ? `${base} — ${extras.join(', ')}` : base;
+    return extras.length ? `${base}: ${extras.join(', ')}` : base;
   }, [filters, categories]);
 
   // ── Top picks: highest-rated in-stock books NOT in current filter ──

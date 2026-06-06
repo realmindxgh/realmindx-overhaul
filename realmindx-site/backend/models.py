@@ -388,6 +388,7 @@ class ContactMessage(TimestampMixin, db.Model):
     __tablename__ = "contact_messages"
 
     id = db.Column(db.Integer, primary_key=True)
+    ticket_reference = db.Column(db.String(20), nullable=True, unique=True, index=True)
     name = db.Column(db.String(160), nullable=False)
     email = db.Column(db.String(255), nullable=False)
     phone = db.Column(db.String(40), nullable=True)
@@ -395,6 +396,8 @@ class ContactMessage(TimestampMixin, db.Model):
     message = db.Column(db.Text, nullable=False)
     source = db.Column(db.String(80), default="site", nullable=False)
     status = db.Column(db.String(30), default="new", nullable=False, index=True)
+    assigned_to = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
 
 
 class SiteSetting(TimestampMixin, db.Model):

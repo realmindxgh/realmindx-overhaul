@@ -285,10 +285,10 @@ const CheckoutPage = ({ navigate }) => {
                     <label>Delivery Area *</label>
                     <select ref={zoneRef} aria-invalid={Boolean(errors.address && !selectedZoneId)} className="bs-field" style={{ height:48, borderRadius:'var(--bs-radius-sm)', border:'1.5px solid var(--bs-border)', padding:'0 15px', fontSize:15, color:'var(--bs-text)', background:'#fff' }}
                       value={selectedZoneId} onChange={e => setSelectedZoneId(e.target.value)}>
-                      <option value="">— Select your area —</option>
+                      <option value="">Select your area</option>
                       {deliveryZones.map(z => (
                         <option key={z.id} value={String(z.id)}>
-                          {z.name} {Number(z.fee) > 0 ? `— ${cedis(Number(z.fee))}` : '— Contact for quote'}
+                          {z.name} {Number(z.fee) > 0 ? `(${cedis(Number(z.fee))})` : '(Contact for quote)'}
                         </option>
                       ))}
                     </select>
@@ -342,7 +342,7 @@ const CheckoutPage = ({ navigate }) => {
                 {(bulkSaving || 0) > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Bulk Purchase Discount</span><span>-{cedis(bulkSaving)}</span></div>}
                 {promoProductDiscount > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Promo ({appliedPromo.code}) on products</span><span>-{cedis(promoProductDiscount)}</span></div>}
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:15 }}>
-                  <span>Delivery {selectedZone ? `(${selectedZone.name.split('—')[0].trim()})` : ''}</span>
+                  <span>Delivery {selectedZone ? `(${selectedZone.name})` : ''}</span>
                   <span>{method === 'pickup' ? 'Free' : cedis(deliveryFee)}</span>
                 </div>
                 {promoDeliveryDiscount > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Delivery discount ({appliedPromo.code})</span><span>-{cedis(promoDeliveryDiscount)}</span></div>}

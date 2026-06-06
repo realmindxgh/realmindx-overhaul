@@ -13,7 +13,7 @@ import requests
 from sqlalchemy import or_
 
 from ..audit import audit
-from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..email_service import OutboundEmail, bookshop_email_shell, send_email
 from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
 from ..models import DeliveryZone, Order, OrderItem, Product, ProductCategory, ProductReview
@@ -343,7 +343,7 @@ def create_order():
         to=email,
         from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
         subject=f"Your RealMindX Bookshop order is in: {order.order_reference}",
-        html=app_email_shell(
+        html=bookshop_email_shell(
             "Your order has been placed!",
             f"""
             <p>Hello {escape(first_name)},</p>
@@ -382,7 +382,7 @@ def create_order():
         to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
         from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
         subject=f"New bookshop order {order.order_reference} from {order.customer_name}",
-        html=app_email_shell(
+        html=bookshop_email_shell(
             f"New order from {escape(order.customer_name)}",
             f"""
             <p>A new order has been placed via the RealMindX Bookshop.</p>
@@ -500,7 +500,7 @@ def bulk_order():
             to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
             from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
             subject="New RealMindX bulk order enquiry",
-            html=app_email_shell("Bulk order enquiry", f"<p><strong>{name}</strong> ({email}) requested:</p><p>{details}</p>"),
+            html=bookshop_email_shell("Bulk order enquiry", f"<p><strong>{name}</strong> ({email}) requested:</p><p>{details}</p>"),
         )
     )
     audit("bulk_order_enquiry", "bulk_order", None, {"name": name, "email": email}, actor_email=email)

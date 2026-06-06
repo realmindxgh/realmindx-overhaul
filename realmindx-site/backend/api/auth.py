@@ -63,8 +63,8 @@ def _send_verification_otp(user):
         html=app_email_shell(
             "Verify your account",
             body,
-            eyebrow="RealMindX — Account Security",
-            preheader=f"Your code is {code} — expires in 15 minutes.",
+            eyebrow="RealMindX Account Security",
+            preheader=f"Your verification code is {code}. It expires in 15 minutes.",
         ),
     ))
 

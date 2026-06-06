@@ -346,7 +346,7 @@ const ContactPage = () => {
             {settings.contact_map_embed && (
               <div className="contact-map-card">
                 <iframe
-                  title={`${settings.contact_address} — map`}
+                  title={`${settings.contact_address} map`}
                   src={settings.contact_map_embed}
                   loading="lazy"
                   allowFullScreen

@@ -39,16 +39,12 @@ def app_email_shell(
     footer_note=None,
 ):
     """
-    Responsive, branded email shell.
-    - Mobile-first: single-column, readable at 320 px
-    - Brand: navy #0b1d38, gold accent #f2bd00
-    - Logo: text-based so it renders in all email clients without image-blocking issues
-    - Warm, professional tone in content; template adds no copy
+    Responsive, branded email shell for RealMindX main site and teacher/jobs emails.
+    Navy #143670 header with RealMindX logo, gold #ffcc01 accent.
     """
     base_url = current_app.config["BASE_URL"].rstrip("/")
     bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop")
 
-    # Resolve CTA URL to absolute
     if cta_url and not cta_url.startswith(("http://", "https://")):
         cta_url = f"{base_url}/{cta_url.lstrip('/')}"
 
@@ -58,7 +54,7 @@ def app_email_shell(
         hero = f"""
         <tr>
           <td style="padding:0;">
-            <img src="{escape(abs_hero, quote=True)}" alt="" width="680"
+            <img src="{escape(abs_hero, quote=True)}" alt="" width="640"
                  style="display:block;width:100%;max-height:280px;object-fit:cover;" />
           </td>
         </tr>"""
@@ -70,10 +66,10 @@ def app_email_shell(
           <tr>
             <td style="border-radius:8px;background:#ffcc01;">
               <a href="{escape(cta_url, quote=True)}"
-                 style="display:inline-block;padding:14px 28px;color:#0a1e3d;font-weight:800;
+                 style="display:inline-block;padding:14px 32px;color:#143670;font-weight:800;
                         font-family:Arial,Helvetica,sans-serif;font-size:15px;
                         text-decoration:none;letter-spacing:.02em;border-radius:8px;">
-                {escape(cta_label)} &rarr;
+                {escape(cta_label)}
               </a>
             </td>
           </tr>
@@ -108,7 +104,6 @@ def app_email_shell(
       .email-header{{padding:24px 20px!important}}
       .email-body{{padding:24px 20px 20px!important;font-size:15px!important}}
       .email-footer{{padding:20px!important}}
-      .logo-text{{font-size:20px!important}}
     }}
   </style>
 </head>
@@ -121,32 +116,32 @@ def app_email_shell(
                style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;
                       overflow:hidden;border:1px solid #c8d5e8;">
 
-          <!-- HEADER -->
+          <!-- HEADER: navy with logo -->
           <tr>
-            <td class="email-header" style="background:#143670;padding:28px 32px;border-bottom:4px solid #ffcc01;">
-
-              <!-- Logo: image + text fallback -->
-              <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:22px;">
+            <td class="email-header"
+                style="background:#143670;padding:28px 32px 24px;border-bottom:4px solid #ffcc01;">
+              <!-- Logo row -->
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
                 <tr>
                   <td style="vertical-align:middle;">
-                    <img src="{base_url}/logo-white.png" alt="RealMindX" width="40" height="40"
-                         style="display:inline-block;width:40px;height:40px;border-radius:6px;
-                                background:#ffcc01;vertical-align:middle;" />
+                    <img src="{base_url}/logo-white.png" alt="RealMindX" width="44" height="44"
+                         style="display:inline-block;width:44px;height:44px;border-radius:8px;
+                                background:#ffcc01;padding:4px;vertical-align:middle;" />
                   </td>
-                  <td style="padding-left:10px;vertical-align:middle;">
-                    <span class="logo-text"
-                          style="font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:22px;
-                                 color:#ffffff;letter-spacing:-0.5px;white-space:nowrap;">
+                  <td style="padding-left:12px;vertical-align:middle;">
+                    <span style="font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:22px;
+                                 color:#ffffff;letter-spacing:-0.5px;display:block;line-height:1.1;">
                       RealMindX
                     </span>
-                    <span style="display:block;font-family:Arial,Helvetica,sans-serif;color:#ffcc01;
-                                 font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;">
+                    <span style="font-family:Arial,Helvetica,sans-serif;color:#ffcc01;
+                                 font-size:10px;font-weight:700;letter-spacing:2.5px;
+                                 text-transform:uppercase;display:block;margin-top:2px;">
                       Education
                     </span>
                   </td>
                 </tr>
               </table>
-
+              <!-- Eyebrow + title -->
               <p style="margin:0 0 6px;color:#ffcc01;font-family:Arial,Helvetica,sans-serif;
                          font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;">
                 {safe_eyebrow}
@@ -188,7 +183,7 @@ def app_email_shell(
               <p style="margin:0 0 12px;">
                 Dome Pillar 2, Accra, Ghana &nbsp;&bull;&nbsp;
                 <a href="mailto:info@realmindxgh.com"
-                   style="color:#f2bd00;text-decoration:none;">info@realmindxgh.com</a>
+                   style="color:#ffcc01;text-decoration:none;">info@realmindxgh.com</a>
                 &nbsp;&bull;&nbsp;
                 <a href="tel:+233558039190" style="color:#93a8c8;text-decoration:none;">
                   +233 55 803 9190
@@ -200,6 +195,175 @@ def app_email_shell(
                 <a href="{bookshop_url}" style="color:#c8d5e8;text-decoration:none;">Bookshop</a>
                 &nbsp;&middot;&nbsp;
                 <a href="https://schoolms.realmindxgh.com/" style="color:#c8d5e8;text-decoration:none;">SchoolMS</a>
+                &nbsp;&middot;&nbsp;
+                <a href="https://web.facebook.com/profile.php?id=61566941171883" style="color:#c8d5e8;text-decoration:none;">Facebook</a>
+                &nbsp;&middot;&nbsp;
+                <a href="https://www.instagram.com/realmindxgh/" style="color:#c8d5e8;text-decoration:none;">Instagram</a>
+              </p>
+              {footer_note_html}
+            </td>
+          </tr>
+
+        </table>
+
+        <!-- Sub-footer -->
+        <p style="text-align:center;margin:16px 0 0;font-family:Arial,Helvetica,sans-serif;
+                   font-size:11px;color:#7a8fa8;">
+          &copy; {__import__('datetime').date.today().year} RealMindX Education Limited. All rights reserved.
+        </p>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+def bookshop_email_shell(
+    title,
+    body_html,
+    cta_label=None,
+    cta_url=None,
+    *,
+    eyebrow="RealMindX Bookshop",
+    preheader="",
+    footer_note=None,
+):
+    """
+    Responsive, branded email shell for RealMindX Bookshop emails.
+    White logo band at top (bookshop-logo.png renders without blend-mode issues),
+    navy #143670 title band, gold #ffcc01 accent — works in all email clients.
+    """
+    base_url = current_app.config["BASE_URL"].rstrip("/")
+    bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop")
+
+    if cta_url and not cta_url.startswith(("http://", "https://")):
+        cta_url = f"{bookshop_url.rstrip('/')}/{cta_url.lstrip('/')}"
+
+    cta = ""
+    if cta_label and cta_url:
+        cta = f"""
+        <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px 0 8px;">
+          <tr>
+            <td style="border-radius:8px;background:#ffcc01;">
+              <a href="{escape(cta_url, quote=True)}"
+                 style="display:inline-block;padding:14px 32px;color:#143670;font-weight:800;
+                        font-family:Arial,Helvetica,sans-serif;font-size:15px;
+                        text-decoration:none;letter-spacing:.02em;border-radius:8px;">
+                {escape(cta_label)}
+              </a>
+            </td>
+          </tr>
+        </table>"""
+
+    preheader_block = (
+        f'<div style="display:none;max-height:0;overflow:hidden;font-size:1px;color:#ffffff;'
+        f'line-height:1px;max-height:0px;opacity:0;">{escape(preheader)}&nbsp;</div>'
+        if preheader else ""
+    )
+
+    footer_note_html = (
+        f'<p style="margin:14px 0 0;color:#93a8c8;font-size:12px;">{escape(footer_note)}</p>'
+        if footer_note else ""
+    )
+
+    safe_eyebrow = escape(eyebrow)
+    safe_title = escape(title)
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>{safe_title}</title>
+  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+  <style>
+    @media only screen and (max-width:600px){{
+      .email-wrapper{{padding:12px 8px!important}}
+      .email-card{{border-radius:12px!important}}
+      .bs-logo-band{{padding:16px 20px!important}}
+      .bs-logo-band img{{height:40px!important}}
+      .bs-title-band{{padding:20px!important}}
+      .email-body{{padding:24px 20px 20px!important;font-size:15px!important}}
+      .email-footer{{padding:20px!important}}
+    }}
+  </style>
+</head>
+<body style="margin:0;padding:0;background:#eef2f8;font-family:Arial,Helvetica,sans-serif;">
+  {preheader_block}
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+    <tr>
+      <td class="email-wrapper" style="padding:32px 16px;background:#eef2f8;">
+        <table role="presentation" class="email-card" width="100%" cellspacing="0" cellpadding="0"
+               style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;
+                      overflow:hidden;border:1px solid #c8d5e8;">
+
+          <!-- LOGO BAND: white background so logo renders cleanly in all email clients -->
+          <tr>
+            <td class="bs-logo-band"
+                style="background:#ffffff;padding:20px 32px;border-bottom:3px solid #143670;">
+              <img src="{base_url}/bookshop-logo.png" alt="RealMindX Bookshop" height="52"
+                   style="display:block;height:52px;max-width:280px;border:0;outline:none;" />
+            </td>
+          </tr>
+
+          <!-- TITLE BAND: navy -->
+          <tr>
+            <td class="bs-title-band"
+                style="background:#143670;padding:24px 32px;border-bottom:4px solid #ffcc01;">
+              <p style="margin:0 0 6px;color:#ffcc01;font-family:Arial,Helvetica,sans-serif;
+                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;">
+                {safe_eyebrow}
+              </p>
+              <h1 style="margin:0;color:#ffffff;font-family:Arial,Helvetica,sans-serif;
+                          font-size:24px;line-height:1.25;font-weight:900;">
+                {safe_title}
+              </h1>
+            </td>
+          </tr>
+
+          <!-- BODY -->
+          <tr>
+            <td class="email-body"
+                style="padding:32px 32px 28px;color:#1a2a40;font-family:Arial,Helvetica,sans-serif;
+                       font-size:16px;line-height:1.75;">
+              {body_html}
+              {cta}
+            </td>
+          </tr>
+
+          <!-- DIVIDER -->
+          <tr>
+            <td style="padding:0 32px;">
+              <hr style="border:none;border-top:1px solid #dce5f0;margin:0;" />
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td class="email-footer"
+                style="background:#143670;padding:24px 32px;font-family:Arial,Helvetica,sans-serif;
+                       font-size:13px;color:#93a8c8;line-height:1.7;">
+              <p style="margin:0 0 6px;font-weight:800;color:#ffffff;font-size:14px;">
+                RealMindX Bookshop
+              </p>
+              <p style="margin:0 0 4px;color:#c8d5e8;font-size:12px;">
+                Part of RealMindX Education Limited
+              </p>
+              <p style="margin:0 0 12px;">
+                Dome Pillar 2, Accra, Ghana &nbsp;&bull;&nbsp;
+                <a href="mailto:info@realmindxgh.com"
+                   style="color:#ffcc01;text-decoration:none;">info@realmindxgh.com</a>
+                &nbsp;&bull;&nbsp;
+                <a href="tel:+233558039190" style="color:#93a8c8;text-decoration:none;">
+                  +233 55 803 9190
+                </a>
+              </p>
+              <p style="margin:0;">
+                <a href="{bookshop_url}" style="color:#c8d5e8;text-decoration:none;">Bookshop</a>
+                &nbsp;&middot;&nbsp;
+                <a href="{base_url}" style="color:#c8d5e8;text-decoration:none;">Main Site</a>
                 &nbsp;&middot;&nbsp;
                 <a href="https://web.facebook.com/profile.php?id=61566941171883" style="color:#c8d5e8;text-decoration:none;">Facebook</a>
                 &nbsp;&middot;&nbsp;
@@ -248,7 +412,6 @@ def send_email(message: OutboundEmail):
             return {"provider": "resend", "status": "sent", "id": response.json().get("id")}
         except Exception as exc:
             current_app.logger.warning("Resend delivery failed (%s): %s -> %s", exc, message.subject, message.to)
-            # Fall through to SMTP or disabled path below
 
     mail_server = current_app.config.get("MAIL_SERVER")
     mail_username = current_app.config.get("MAIL_USERNAME")

@@ -27,7 +27,7 @@ const NAV = [
   { key: 'news', label: 'News', group: 'Content', icon: 'newspaper' },
   { key: 'gallery', label: 'Gallery', group: 'Content', icon: 'image' },
   { key: 'resources', label: 'Resources', group: 'Content', icon: 'file' },
-  { key: 'messages', label: 'Messages', group: 'Comms', icon: 'message' },
+  { key: 'messages', label: 'Tickets', group: 'Comms', icon: 'message' },
   { key: 'newsletters', label: 'Newsletters', group: 'Comms', icon: 'mail' },
   { key: 'alerts', label: 'Job Alerts', group: 'Comms', icon: 'bell' },
   { key: 'settings', label: 'Contact & Site Details', group: 'System', icon: 'settings' },
@@ -463,22 +463,24 @@ const CONFIG = {
     columns: ['title', 'description', 'url', 'status'],
   },
   messages: {
-    title: 'Contact Messages',
-    description: 'Messages from site, job, and bookshop forms.',
+    title: 'Tickets',
+    description: 'All enquiries and contact submissions across the main site and bookshop.',
     collection: 'messages',
-    createLabel: 'Log Message',
+    createLabel: '',
     allowCreate: false,
-    emptyTitle: 'No Messages Yet',
-    emptyBody: 'Messages from the contact form, bookshop enquiries, and other public forms will appear here.',
+    emptyTitle: 'No Tickets Yet',
+    emptyBody: 'Contact form submissions and bookshop enquiries will appear here once received.',
     fields: [
       field('name', 'Name'),
       field('email', 'Email'),
+      field('phone', 'Phone'),
       field('subject', 'Subject'),
-      field('service', 'Service'),
+      field('service', 'Source'),
       field('message', 'Message', 'textarea'),
-      field('status', 'Status', 'select', { options: ['new', 'read', 'replied', 'archived'] }),
+      field('status', 'Status', 'select', { options: ['new', 'read', 'replied', 'resolved', 'archived'] }),
+      field('notes', 'Admin Notes', 'textarea', { help: 'Internal notes. Not visible to the customer.' }),
     ],
-    columns: ['ticket_reference', 'name', 'email', 'subject', 'status'],
+    columns: ['ticket_reference', 'name', 'email', 'subject', 'service', 'status'],
   },
   orders: {
     title: 'Bookshop Orders',
@@ -746,14 +748,14 @@ const DashboardView = ({ content, setActive }) => {
     ['Total Users',           s.total_users            ?? 0, 'registered accounts',     'users'],
     ['Job Applications',      s.total_job_applications ?? 0, `${s.pending_applications ?? 0} pending`, 'clipboard'],
     ['New Orders',            s.new_orders             ?? 0, 'awaiting confirmation',    'package'],
-    ['New Messages',          s.new_contact_messages   ?? 0, 'need attention',           'message'],
+    ['New Tickets',           s.new_contact_messages   ?? 0, 'need attention',           'message'],
     ['Products',              s.total_products         ?? 0, 'in the bookshop',          'book'],
     ['Newsletter Subscribers',s.newsletter_subscribers ?? 0, 'active subscriptions',     'mail'],
   ] : [
     ['Total Users', 142, 'seeded demo users', 'users'],
     ['Job Applications', 38, `${(content.jobs||[]).length} active job records`, 'clipboard'],
     ['New Orders', (content.orders||[]).filter(o => o.status === 'new').length, 'from bookshop', 'package'],
-    ['New Messages', (content.messages||[]).filter(m => m.status === 'new').length, 'need attention', 'message'],
+    ['New Tickets', (content.messages||[]).filter(m => m.status === 'new').length, 'need attention', 'message'],
     ['Products', (content.products||[]).length, `${publicItems(content.products||[]).length} published`, 'book'],
     ['Newsletter Subscribers', (content.newsletters||[]).length, 'managed list', 'mail'],
   ];
@@ -768,7 +770,7 @@ const DashboardView = ({ content, setActive }) => {
           <button key={label} className="admin-stat" onClick={() => {
             if (label === 'Products') setActive('products');
             if (label === 'New Orders') setActive('orders');
-            if (label === 'New Messages') setActive('messages');
+            if (label === 'New Tickets') setActive('messages');
             if (label === 'Newsletter Subscribers') setActive('newsletters');
           }}>
             <div className="admin-stat-icon asi-navy"><Icon name={icon} size={22} stroke={1.9} /></div>
@@ -2080,9 +2082,9 @@ const TeachersView = () => {
               <tbody>
                 {filtered.map(t => (
                   <tr key={t.id} style={{ opacity: t.is_active === false ? 0.55 : 1 }}>
-                    <td className="td-primary">{[t.first_name, t.last_name].filter(Boolean).join(' ') || '—'}</td>
+                    <td className="td-primary">{[t.first_name, t.last_name].filter(Boolean).join(' ') || 'Unknown'}</td>
                     <td>{t.email}</td>
-                    <td>{t.phone || '—'}</td>
+                    <td>{t.phone || 'N/A'}</td>
                     <td><span className={`badge ${t.is_verified ? 'badge-success' : 'badge-navy'}`}>{t.is_verified ? 'Verified' : 'Pending'}</span></td>
                     <td>
                       <span className={`badge ${t.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
@@ -2090,7 +2092,7 @@ const TeachersView = () => {
                       </span>
                     </td>
                     <td style={{ fontSize:'0.76rem', color:'var(--gray-600)', whiteSpace:'nowrap' }}>
-                      {t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}
+                      {t.created_at ? new Date(t.created_at).toLocaleDateString() : 'N/A'}
                     </td>
                     <td>
                       <div style={{ display:'flex', gap:6 }}>
@@ -2151,7 +2153,7 @@ const TeachersView = () => {
                   {/* Contact info */}
                   <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Contact</h4>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', marginBottom:24 }}>
-                    {[['Email', detail.email], ['Phone', detail.phone || 'Not set'], ['Registered', detail.created_at ? new Date(detail.created_at).toLocaleDateString() : '—'], ['Verified', detail.is_verified ? 'Yes ✓' : 'Pending']].map(([k, v]) => (
+                    {[['Email', detail.email], ['Phone', detail.phone || 'Not set'], ['Registered', detail.created_at ? new Date(detail.created_at).toLocaleDateString() : 'N/A'], ['Verified', detail.is_verified ? 'Yes ✓' : 'Pending']].map(([k, v]) => (
                       <div key={k}>
                         <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>
                         <div style={{ fontSize:'0.875rem', color:'var(--navy)' }}>{v}</div>

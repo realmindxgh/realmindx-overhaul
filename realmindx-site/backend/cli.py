@@ -185,7 +185,7 @@ def register_cli(app):
             db.session.add(DeliveryZone(
                 name=town,
                 fee=0,
-                description=f"Greater Accra — {town}. Set delivery fee in Admin → Delivery Zones.",
+                description=f"Greater Accra: {town}. Set delivery fee in Admin under Delivery Zones.",
                 sort_order=i + 1,
                 is_active=True,
             ))

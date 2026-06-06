@@ -16,7 +16,7 @@ from ..default_content import (
     DEFAULT_SITE_COPY,
 )
 from ..audit import audit
-from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
 from ..models import ContactMessage, Flyer, GalleryItem, News, NewsletterSubscriber, Resource, SiteSetting, UploadedFile
 from ..security import require_turnstile
@@ -160,6 +160,7 @@ def contact():
     if not name or not message:
         return jsonify(error="Name and message are required."), 400
 
+    is_bookshop = (payload.get("source") or "").lower() == "bookshop"
     contact_message = ContactMessage(
         name=name,
         email=email,
@@ -171,13 +172,17 @@ def contact():
     db.session.add(contact_message)
     db.session.flush()
     ticket_reference = f"RMX-{contact_message.id:06d}"
+    contact_message.ticket_reference = ticket_reference
     audit("contact_message_submitted", "contact_message", contact_message.id, {
         "email": email, "subject": subject, "source": contact_message.source,
         "ticket": ticket_reference,
     }, actor_email=email)
     db.session.commit()
 
-    notification_html = app_email_shell(
+    _email_shell = bookshop_email_shell if is_bookshop else app_email_shell
+    _eyebrow = "RealMindX Bookshop" if is_bookshop else "RealMindX Education"
+
+    notification_html = _email_shell(
         "New contact message",
         (
             f"<p><strong>Ticket:</strong> {ticket_reference}</p>"
@@ -209,14 +214,14 @@ def contact():
     # Warm confirmation to the sender
     send_email(OutboundEmail(
         to=email,
-        subject=f"We've got your message, {escape(first_name)} — ref {ticket_reference}",
-        html=app_email_shell(
-            "We've received your message!",
+        subject=f"We have received your message, {escape(first_name)} (ref {ticket_reference})",
+        html=_email_shell(
+            "We have received your message!",
             (
                 f"<p>Hello {escape(first_name)},</p>"
                 f"<p>Thank you for reaching out to RealMindX. We really appreciate you getting in touch, "
                 f"and we want you to know your message has been received and is in the hands of our team.</p>"
-                f"<div style='background:#f5f8fc;border-left:4px solid #f2bd00;border-radius:6px;"
+                f"<div style='background:#f5f8fc;border-left:4px solid #ffcc01;border-radius:6px;"
                 f"padding:14px 18px;margin:20px 0;'>"
                 f"<p style='margin:0;'><strong>Your reference:</strong> {escape(ticket_reference)}</p>"
                 f"<p style='margin:6px 0 0;'><strong>Subject:</strong> {escape(subject)}</p>"
@@ -225,8 +230,8 @@ def contact():
                 f"If your enquiry is urgent, feel free to reply to this email or reach us directly on WhatsApp.</p>"
                 f"<p>We look forward to speaking with you!</p>"
             ),
-            eyebrow="RealMindX — Enquiry Received",
-            preheader=f"Reference {ticket_reference} — we'll be in touch within one business day.",
+            eyebrow=_eyebrow,
+            preheader=f"Reference {ticket_reference}. We will be in touch within one business day.",
         ),
     ))
     return jsonify(message="Message received. We will get back to you shortly.", ticket_reference=ticket_reference), 201
