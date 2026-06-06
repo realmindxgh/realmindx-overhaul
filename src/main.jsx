@@ -88,13 +88,13 @@ const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
     return () => { alive = false; };
   }, [collection]);
 
-  const source = isApiMode() && apiItems ? apiItems : (content[collection] || []);
-  const rawItems = isApiMode() && apiItems ? source : publicItems(source);
+  const source = isApiMode() ? (apiItems ?? []) : (content[collection] || []);
+  const rawItems = isApiMode() ? source : publicItems(source);
   const itemsState = collection === 'news'
     ? managedNews
     : collection === 'gallery'
       ? managedGallery
-      : { items: rawItems, loading: false };
+      : { items: rawItems, loading: isApiMode() && apiItems === null };
   const items = itemsState.items;
   const emptyTitle = collection === 'news'
     ? 'No Published News Yet'

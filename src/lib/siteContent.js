@@ -210,7 +210,7 @@ export const usePublicServices = () => {
   }, []);
 
   const localServices = localContent.services?.length ? localContent.services : DEFAULT_SERVICES;
-  const source = isApiMode() && apiServices !== null ? apiServices : localServices;
+  const source = isApiMode() ? (apiServices ?? []) : localServices;
   return sortServices(source);
 };
 
@@ -228,7 +228,7 @@ export const usePublicPartners = () => {
   }, []);
 
   const localPartners = localContent.partners?.length ? localContent.partners : DEFAULT_PARTNERS;
-  const source = isApiMode() && apiPartners !== null ? apiPartners : localPartners;
+  const source = isApiMode() ? (apiPartners ?? []) : localPartners;
   return publicItems(source)
     .map(normalisePartner)
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
@@ -248,7 +248,7 @@ export const usePublicPeople = () => {
   }, []);
 
   const localPeople = localContent.people?.length ? localContent.people : DEFAULT_PEOPLE;
-  const source = isApiMode() && apiPeople !== null ? apiPeople : localPeople;
+  const source = isApiMode() ? (apiPeople ?? []) : localPeople;
   return publicItems(source)
     .map(normalisePerson)
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
