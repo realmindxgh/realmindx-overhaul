@@ -44,7 +44,7 @@ const HeroSlideshow = ({ navigate }) => {
         onClick={() => navigate('shop')} style={{ cursor:'pointer' }} aria-label="Promotional flyers">
         {flyers.map((f, i) => {
           const bg = f.image
-            ? { backgroundImage: `url(${f.image})`, backgroundSize: f.imageFit || 'cover', backgroundPosition: f.imagePosition || 'center' }
+            ? { backgroundImage: `url(${f.image})`, backgroundSize: f.imageFit || 'cover', backgroundPosition: f.imagePosition || 'center', backgroundRepeat: 'no-repeat' }
             : { background: FLYER_GRADIENTS[i % FLYER_GRADIENTS.length] };
           return (
             <div className={`bs-hero-slide${i === idx ? ' active' : ''}`} key={f.id}>
@@ -156,7 +156,7 @@ const HomePage = ({ navigate }) => {
           </div>
           <a className="bs-see-all" href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>View all <Icon name="arrow" size={14} /></a>
         </Reveal>
-        <div className="bs-product-grid">
+        <div className="bs-product-grid bs-home-new-grid">
           {featured.map((b, i) => (
             <Reveal key={b.id} delay={(i % 4) + 1}><ProductCard book={b} idx={i} navigate={navigate} /></Reveal>
           ))}

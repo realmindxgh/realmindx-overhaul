@@ -484,6 +484,44 @@ const LegalPage = ({ type }) => {
 
 // DonatePage is a full dedicated page imported from realmindx-site/pages/DonatePage.jsx
 
+const UnsubscribePage = () => {
+  const [status, setStatus] = React.useState('loading');
+  const [message, setMessage] = React.useState('');
+
+  React.useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('token');
+    if (!token) {
+      setStatus('error');
+      setMessage('No unsubscribe token found. Please use the link from your email.');
+      return;
+    }
+    fetch(`${API_BASE}/public/newsletter/unsubscribe?token=${encodeURIComponent(token)}`)
+      .then(async res => {
+        const data = await res.json();
+        if (res.ok) {
+          setStatus('success');
+          setMessage(data.message || 'You have been unsubscribed.');
+        } else {
+          setStatus('error');
+          setMessage(data.error || 'This unsubscribe link is invalid or has already been used.');
+        }
+      })
+      .catch(() => {
+        setStatus('error');
+        setMessage('Something went wrong. Please try again or contact us at info@realmindxgh.com.');
+      });
+  }, []);
+
+  return (
+    <SiteInfoPage
+      eyebrow="Newsletter"
+      title={status === 'loading' ? 'Unsubscribing…' : status === 'success' ? 'You are Unsubscribed' : 'Unsubscribe Failed'}
+      body={status === 'loading' ? 'Please wait a moment.' : message}
+      actions={[{ label: 'Back to Homepage', href: '/' }]}
+    />
+  );
+};
+
 const NotFoundPage = () => (
   <SiteInfoPage
     eyebrow="404"
@@ -589,11 +627,17 @@ const HashScroll = ({ children }) => {
 
 const IdleGuard = () => {
   const location = useLocation();
-  const session = getDemoSession();
-  const isTeacherPortalSession = session?.role === 'user';
+  const [session, setSession] = React.useState(() => getDemoSession());
   const isBookshopRoute = location.pathname.startsWith('/bookshop');
+
+  React.useEffect(() => {
+    const handler = () => setSession(getDemoSession());
+    window.addEventListener('rmx-session-sync', handler);
+    return () => window.removeEventListener('rmx-session-sync', handler);
+  }, []);
+
   const { countdown, keepAlive } = useIdleTimeout({
-    enabled: isTeacherPortalSession && !isBookshopRoute,
+    enabled: Boolean(session?.role) && !isBookshopRoute,
     onTimeout: async () => {
       await signOut();
       window.location.href = '/login?reason=idle';
@@ -678,6 +722,10 @@ const AppRoutes = () => {
         <Route
           path="/terms"
           element={<LegalPage type="terms" />}
+        />
+        <Route
+          path="/unsubscribe"
+          element={<UnsubscribePage />}
         />
 
         <Route

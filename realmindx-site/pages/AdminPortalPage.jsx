@@ -35,6 +35,7 @@ const NAV = [
   { key: 'staff', label: 'Staff Accounts', group: 'System', icon: 'shield' },
   { key: 'teachers', label: 'Registered Teachers', group: 'System', icon: 'teacher' },
   { key: 'auditLogs', label: 'Audit Log', group: 'System', icon: 'clipboard' },
+  { key: 'account', label: 'My Account', group: 'System', icon: 'user' },
 ];
 
 const field = (name, label, type = 'text', options = {}) => ({ name, label, type, ...options });
@@ -2242,6 +2243,78 @@ const TeachersView = () => {
   );
 };
 
+const AccountView = ({ session }) => {
+  const [form, setForm] = React.useState({ current_password: '', new_password: '', confirm_password: '' });
+  const [status, setStatus] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+
+  const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+    setStatus(null);
+    if (form.new_password !== form.confirm_password) {
+      setStatus({ error: 'New passwords do not match.' });
+      return;
+    }
+    if (form.new_password.length < 8) {
+      setStatus({ error: 'New password must be at least 8 characters.' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ current_password: form.current_password, new_password: form.new_password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus({ error: data.error || 'Failed to update password.' });
+      } else {
+        setStatus({ success: data.message || 'Password updated successfully.' });
+        setForm({ current_password: '', new_password: '', confirm_password: '' });
+      }
+    } catch {
+      setStatus({ error: 'Network error. Please try again.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: '32px 28px' }}>
+      <div className="admin-table-card" style={{ maxWidth: 520, padding: '32px 36px' }}>
+        <h3 style={{ margin: '0 0 4px' }}>My Account</h3>
+        <p style={{ color: 'var(--gray-600)', fontSize: '0.88rem', margin: '0 0 28px' }}>
+          Signed in as <strong>{session?.firstName} {session?.lastName}</strong>{session?.email ? ` (${session.email})` : ''}
+        </p>
+        <h4 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 700 }}>Change Password</h4>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
+            Current Password
+            <input type="password" name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
+            New Password
+            <input type="password" name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" required minLength={8} style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
+            Confirm New Password
+            <input type="password" name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+          </label>
+          {status?.error && <p style={{ color: '#c0392b', fontSize: '0.85rem', margin: 0 }}>{status.error}</p>}
+          {status?.success && <p style={{ color: '#1a7f4a', fontSize: '0.85rem', margin: 0 }}>{status.success}</p>}
+          <button type="submit" className="btn btn-primary" disabled={saving} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+            {saving ? 'Saving…' : 'Update Password'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const AdminPortalPage = () => {
   const { content } = useAdminContent();
   const [activeView, setActiveView] = React.useState('dashboard');
@@ -2323,6 +2396,8 @@ const AdminPortalPage = () => {
           ? <PriceAdjustmentView content={content} />
           : activeView === 'teachers'
           ? <TeachersView />
+          : activeView === 'account'
+          ? <AccountView session={session} />
           : CONFIG[activeView]
             ? <ManagedTableView config={CONFIG[activeView]} rows={content[CONFIG[activeView].collection] || []} />
             : null;

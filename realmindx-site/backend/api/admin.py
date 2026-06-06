@@ -2,6 +2,7 @@
 import io
 import mimetypes
 import re
+import secrets
 import zipfile
 from datetime import date, datetime, timezone
 from html import escape
@@ -630,6 +631,24 @@ def update_application_status(application_id):
     log_action("update_application_status", "job_application", application.id, {"status": status})
     db.session.commit()
     return jsonify(id=application.id, status=application.status)
+
+
+@admin_bp.post("/change-password")
+@login_required
+def admin_change_password():
+    payload = request.get_json(silent=True) or {}
+    current_pw = (payload.get("current_password") or "").strip()
+    new_pw = (payload.get("new_password") or "").strip()
+    if not current_pw or not new_pw:
+        return jsonify(error="Current and new password are required."), 400
+    if len(new_pw) < 8:
+        return jsonify(error="New password must be at least 8 characters."), 400
+    if not current_user.check_password(current_pw):
+        return jsonify(error="Current password is incorrect."), 403
+    current_user.set_password(new_pw)
+    log_action("change_password", "admin_user", current_user.id)
+    db.session.commit()
+    return jsonify(message="Password updated successfully.")
 
 
 @admin_bp.get("/users")
@@ -2080,9 +2099,13 @@ def send_newsletter_campaign():
         image_file = db.session.get(UploadedFile, image_file_id)
         image_url = _upload_public_url(image_file) if image_file else None
 
+    base_url = current_app.config.get("SITE_BASE_URL", "https://realmindxgh.com").rstrip("/")
     subscribers = NewsletterSubscriber.query.filter_by(is_active=True).order_by(NewsletterSubscriber.email.asc()).all()
     sent = 0
     for subscriber in subscribers:
+        if not subscriber.unsubscribe_token:
+            subscriber.unsubscribe_token = secrets.token_urlsafe(32)
+        unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
         send_email(
             OutboundEmail(
                 to=subscriber.email,
@@ -2096,7 +2119,10 @@ def send_newsletter_campaign():
                     eyebrow="RealMindX Updates",
                     preheader=payload.get("preheader") or payload.get("summary") or title,
                     hero_image_url=image_url,
-                    footer_note="You are receiving this because you subscribed to RealMindX updates.",
+                    footer_note=(
+                        f'You are receiving this because you subscribed to RealMindX updates. '
+                        f'<a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe</a>'
+                    ),
                 ),
             )
         )

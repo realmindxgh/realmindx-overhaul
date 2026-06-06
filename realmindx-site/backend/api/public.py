@@ -252,7 +252,12 @@ def newsletter():
             subscriber.is_active = True
         status = "already_subscribed"
     else:
-        subscriber = NewsletterSubscriber(email=email, source=payload.get("source") or "site")
+        import secrets as _secrets
+        subscriber = NewsletterSubscriber(
+            email=email,
+            source=payload.get("source") or "site",
+            unsubscribe_token=_secrets.token_urlsafe(32),
+        )
         db.session.add(subscriber)
         status = "subscribed"
     subscriber.confirmed_at = subscriber.confirmed_at or datetime.now(timezone.utc)
@@ -271,6 +276,23 @@ def newsletter():
         )
     )
     return jsonify(status=status, message="Newsletter subscription saved.")
+
+
+@public_bp.get("/newsletter/unsubscribe")
+@limiter.limit("20/minute")
+def newsletter_unsubscribe():
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        return jsonify(error="Missing token."), 400
+    subscriber = NewsletterSubscriber.query.filter_by(unsubscribe_token=token).first()
+    if not subscriber:
+        return jsonify(error="Invalid or expired unsubscribe link."), 404
+    already_inactive = not subscriber.is_active
+    subscriber.is_active = False
+    audit("newsletter_unsubscribe", "newsletter_subscriber", subscriber.id, {"email": subscriber.email})
+    db.session.commit()
+    msg = "You have already been unsubscribed." if already_inactive else "You have been unsubscribed successfully."
+    return jsonify(status="unsubscribed", message=msg)
 
 
 @public_bp.post("/donations/paystack/initialize")

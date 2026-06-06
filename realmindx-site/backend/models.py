@@ -306,6 +306,7 @@ class NewsletterSubscriber(TimestampMixin, db.Model):
     source = db.Column(db.String(80), default="site", nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     confirmed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    unsubscribe_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
 
 
 class News(TimestampMixin, db.Model):
