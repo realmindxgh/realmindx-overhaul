@@ -281,7 +281,7 @@ export const useDonationSlides = () => {
   return publicItems(source).map(normaliseSlide).sort((a, b) => a.sort_order - b.sort_order);
 };
 
-export const usePublicNews = (limit = 3) => {
+export const usePublicNewsState = (limit = 3) => {
   const localContent = useManagedContent();
   const [apiNews, setApiNews] = React.useState(null);
 
@@ -295,15 +295,23 @@ export const usePublicNews = (limit = 3) => {
   }, []);
 
   const localNews = localContent.news?.length ? localContent.news : [];
-  const source = isApiMode() && apiNews !== null ? apiNews : localNews;
-  const visible = isApiMode() && apiNews ? source : publicItems(source);
-  return visible
+  const source = isApiMode() ? (apiNews || []) : localNews;
+  const visible = isApiMode() ? source : publicItems(source);
+  const items = visible
     .map(normaliseNews)
     .sort((a, b) => b.sort_date - a.sort_date)
     .slice(0, limit);
+  return {
+    items,
+    loading: isApiMode() && apiNews === null,
+  };
 };
 
-export const usePublicGallery = (limit = 6) => {
+export const usePublicNews = (limit = 3) => {
+  return usePublicNewsState(limit).items;
+};
+
+export const usePublicGalleryState = (limit = 6) => {
   const localContent = useManagedContent();
   const [apiGallery, setApiGallery] = React.useState(null);
 
@@ -317,12 +325,20 @@ export const usePublicGallery = (limit = 6) => {
   }, []);
 
   const localGallery = localContent.gallery?.length ? localContent.gallery : [];
-  const source = isApiMode() && apiGallery !== null ? apiGallery : localGallery;
-  const visible = isApiMode() && apiGallery ? source : publicItems(source);
-  return visible
+  const source = isApiMode() ? (apiGallery || []) : localGallery;
+  const visible = isApiMode() ? source : publicItems(source);
+  const items = visible
     .map(normaliseGallery)
     .sort((a, b) => a.sort_order - b.sort_order)
     .slice(0, limit);
+  return {
+    items,
+    loading: isApiMode() && apiGallery === null,
+  };
+};
+
+export const usePublicGallery = (limit = 6) => {
+  return usePublicGalleryState(limit).items;
 };
 
 export const useSiteCopy = () => {

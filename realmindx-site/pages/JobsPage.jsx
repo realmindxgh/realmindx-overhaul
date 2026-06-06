@@ -3,6 +3,8 @@ import { Nav, Footer } from '../components/NavFooter';
 import { publicItems, useManagedCollection } from '../../src/lib/managedContent.js';
 import { isApiMode, api } from '../../src/lib/apiClient.js';
 import { Icon } from '../assets/components.jsx';
+import { getDemoSession } from '../../src/lib/demoAccounts.js';
+import { syncSessionFromApi } from '../../src/lib/authClient.js';
 
 /* â”€â”€ Sample data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const SAMPLE_JOBS = [
@@ -80,7 +82,7 @@ const EmptyJobs = ({ onClear }) => (
   </div>
 );
 
-const NoJobsAvailable = () => (
+const NoJobsAvailable = ({ isLoggedIn = false }) => (
   <div style={{ textAlign: 'center', padding: '80px 24px', background: 'var(--white)', borderRadius: 'var(--r-lg)' }}>
     <div style={{ fontSize: '3.5rem', marginBottom: 16, color: 'var(--yellow-dark)', display: 'inline-flex' }}><Icon name="clipboard" size={52} stroke={1.6} /></div>
     <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontSize: '1.2rem', color: 'var(--navy)', marginBottom: 8 }}>
@@ -89,18 +91,18 @@ const NoJobsAvailable = () => (
     <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem', marginBottom: 24, maxWidth: 360, margin: '0 auto 24px' }}>
       New teaching positions are added regularly. Set up a job alert so you are first to know.
     </p>
-    <a href="/register" className="btn btn-primary">Set Up Job Alerts</a>
+    <a href={isLoggedIn ? '/portal?view=alerts' : '/register'} className="btn btn-primary">Set Up Job Alerts</a>
   </div>
 );
 
-const AlertBanner = ({ onDismiss }) => (
+const AlertBanner = ({ onDismiss, isLoggedIn = false }) => (
   <div className="jobs-alert-banner">
     <div>
       <h4><Icon name="bell" size={18} stroke={2} /> Never Miss a Job</h4>
       <p>Create an account and set your subject and level preferences. We will alert you the moment a matching job is posted.</p>
     </div>
     <div style={{ display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-      <a href="/register" className="btn btn-primary btn-sm">Set Up Alerts</a>
+      <a href={isLoggedIn ? '/portal?view=alerts' : '/register'} className="btn btn-primary btn-sm">Set Up Alerts</a>
       <button className="btn btn-outline btn-sm" onClick={onDismiss} style={{ borderColor: 'rgba(255,255,255,0.45)', color: '#fff', fontSize: '0.75rem' }}>
         Dismiss
       </button>
@@ -189,6 +191,19 @@ const ApplyStateSuccess = ({ job, onClose }) => (
   </div>
 );
 
+const ApplyStateError = ({ message, onClose }) => (
+  <div style={{ padding: '28px 40px 36px', textAlign: 'center' }}>
+    <div style={{ fontSize: '2.5rem', marginBottom: 12, display: 'inline-flex', color: 'var(--danger)' }}><Icon name="warning" size={44} stroke={1.7} /></div>
+    <h3 style={{ fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)', marginBottom: 8, fontSize: '1.1rem' }}>
+      Application Could Not Be Sent
+    </h3>
+    <p style={{ color: 'var(--gray-600)', fontSize: '0.88rem', marginBottom: 24, lineHeight: 1.65 }}>
+      {message || 'Please try again. If the problem continues, contact RealMindX support.'}
+    </p>
+    <button className="btn btn-outline-navy" onClick={onClose}>Close</button>
+  </div>
+);
+
 /* â”€â”€ Job Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const JobCard = ({ job, onOpen }) => (
   <div className="job-card" onClick={() => onOpen(job)}>
@@ -219,9 +234,9 @@ const JobCard = ({ job, onOpen }) => (
 );
 
 /* â”€â”€ Job Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const JobModal = ({ job, onClose, applyState, onApply }) => {
+const JobModal = ({ job, onClose, applyState, applyError, onApply }) => {
   if (!job) return null;
-  const showApplyForm = !['not-logged-in','profile-incomplete','email-not-verified','success'].includes(applyState);
+  const showApplyForm = !['not-logged-in','profile-incomplete','email-not-verified','success','error'].includes(applyState);
 
   return (
     <div className="job-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -243,6 +258,7 @@ const JobModal = ({ job, onClose, applyState, onApply }) => {
         {applyState === 'profile-incomplete'   && <ApplyStateProfileIncomplete missing={['Upload your CV', 'Add your phone number', 'Select your teaching subject']} onClose={onClose} />}
         {applyState === 'email-not-verified'   && <ApplyStateEmailNotVerified onResend={() => {}} onClose={onClose} />}
         {applyState === 'success'              && <ApplyStateSuccess job={job} onClose={onClose} />}
+        {applyState === 'error'                && <ApplyStateError message={applyError} onClose={onClose} />}
 
         {showApplyForm && (
           <div className="job-modal-body">
@@ -274,7 +290,9 @@ const JobModal = ({ job, onClose, applyState, onApply }) => {
         {showApplyForm && (
           <div className="job-modal-footer">
             <button className="btn btn-outline-navy" onClick={onClose}>Close</button>
-            <button className="btn btn-primary" onClick={onApply}>Apply for this Job</button>
+            <button className="btn btn-primary" onClick={onApply} disabled={applyState === 'submitting'}>
+              {applyState === 'submitting' ? 'Submitting...' : 'Apply for this Job'}
+            </button>
           </div>
         )}
       </div>
@@ -297,6 +315,7 @@ const normaliseJob = (job) => ({
 const JobsPage = () => {
   const managedJobs = publicItems(useManagedCollection('jobs'));
   const [apiJobs, setApiJobs] = React.useState(null);
+  const [session, setSession] = React.useState(() => getDemoSession());
 
   React.useEffect(() => {
     if (!isApiMode()) return;
@@ -307,15 +326,32 @@ const JobsPage = () => {
       .catch(() => setApiJobs([]));
   }, []);
 
+  React.useEffect(() => {
+    let alive = true;
+    const refresh = () => setSession(getDemoSession());
+    window.addEventListener('rmx-session-sync', refresh);
+    window.addEventListener('storage', refresh);
+    syncSessionFromApi().then(freshSession => {
+      if (alive) setSession(freshSession);
+    });
+    return () => {
+      alive = false;
+      window.removeEventListener('rmx-session-sync', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
+
   const rawJobs = isApiMode()
     ? (apiJobs === null ? [] : apiJobs)       // loading -> empty list
     : (managedJobs.length ? managedJobs : SAMPLE_JOBS);
 
   const jobs = rawJobs.map(normaliseJob);
+  const isTeacherLoggedIn = session?.role === 'user';
   const [search,      setSearch]      = useState('');
   const [filters,     setFilters]     = useState({ type: [], subject: [], level: [] });
   const [selectedJob, setSelectedJob] = useState(null);
   const [applyState,  setApplyState]  = useState('idle');
+  const [applyError,  setApplyError]  = useState('');
   const [alertDismissed, setAlertDismissed] = useState(false);
 
   // Filter logic
@@ -339,10 +375,35 @@ const JobsPage = () => {
 
   const clearFilters = () => { setFilters({ type: [], subject: [], level: [] }); setSearch(''); };
 
-  const openJob = (job) => { setSelectedJob(job); setApplyState('idle'); };
+  const openJob = (job) => { setSelectedJob(job); setApplyState('idle'); setApplyError(''); };
 
-  // Simulate: change this to 'not-logged-in' | 'profile-incomplete' | 'email-not-verified' | 'success' to preview states
-  const handleApply = () => setApplyState('not-logged-in');
+  const handleApply = async () => {
+    if (!isTeacherLoggedIn) {
+      setApplyState('not-logged-in');
+      return;
+    }
+    if (!selectedJob?.id) return;
+    if (!isApiMode()) {
+      setApplyState('success');
+      return;
+    }
+    setApplyState('submitting');
+    try {
+      await api.applyForJob(selectedJob.id);
+      setApplyState('success');
+    } catch (err) {
+      if (err?.status === 401) {
+        setApplyState('not-logged-in');
+      } else if (err?.status === 403 && /verify/i.test(err.message || '')) {
+        setApplyState('email-not-verified');
+      } else if (err?.status === 409) {
+        setApplyState('success');
+      } else {
+        setApplyError(err?.message || 'Application could not be submitted.');
+        setApplyState('error');
+      }
+    }
+  };
 
   const hasActiveFilters = filters.type.length || filters.subject.length || filters.level.length || search;
 
@@ -410,7 +471,7 @@ const JobsPage = () => {
           {/* Main content */}
           <main>
             {/* Alert banner */}
-            {!alertDismissed && <AlertBanner onDismiss={() => setAlertDismissed(true)} />}
+            {!alertDismissed && <AlertBanner isLoggedIn={isTeacherLoggedIn} onDismiss={() => setAlertDismissed(true)} />}
 
             {/* Search bar */}
             <div className="jobs-search-bar">
@@ -442,7 +503,7 @@ const JobsPage = () => {
 
             {/* Job list or empty state */}
             {filtered.length === 0
-              ? (hasActiveFilters ? <EmptyJobs onClear={clearFilters} /> : <NoJobsAvailable />)
+              ? (hasActiveFilters ? <EmptyJobs onClear={clearFilters} /> : <NoJobsAvailable isLoggedIn={isTeacherLoggedIn} />)
               : filtered.map(job => (
                   <JobCard key={job.id} job={job} onOpen={openJob} />
                 ))
@@ -468,6 +529,7 @@ const JobsPage = () => {
           job={selectedJob}
           onClose={() => setSelectedJob(null)}
           applyState={applyState}
+          applyError={applyError}
           onApply={handleApply}
         />
       )}

@@ -24,14 +24,43 @@ from ..security import require_turnstile
 public_bp = Blueprint("public", __name__)
 
 
+def collection_item_id(item):
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("id") or item.get("key") or "")
+
+
+def collection_deleted_ids(key):
+    row = SiteSetting.query.filter_by(key=f"{key}__deleted_ids").first()
+    if row and isinstance(row.value, list):
+        return {str(item) for item in row.value if str(item)}
+    return set()
+
+
+def active_default_items(key, default_items):
+    deleted_ids = collection_deleted_ids(key)
+    return [
+        item for item in default_items
+        if collection_item_id(item) not in deleted_ids
+    ]
+
+
 def setting_collection(key, default_items):
+    active_defaults = active_default_items(key, default_items)
     row = SiteSetting.query.filter_by(key=key).first()
     if row and isinstance(row.value, list):
-        existing_ids = {str(item.get("id") or item.get("key") or "") for item in row.value if isinstance(item, dict)}
-        missing_defaults = [
-            item for item in default_items
-            if str(item.get("id") or item.get("key") or "") not in existing_ids
+        deleted_ids = collection_deleted_ids(key)
+        current_items = [
+            item for item in row.value
+            if isinstance(item, dict) and collection_item_id(item) not in deleted_ids
         ]
+        existing_ids = {collection_item_id(item) for item in current_items}
+        missing_defaults = [
+            item for item in active_defaults
+            if collection_item_id(item) not in existing_ids
+        ]
+        if len(current_items) != len(row.value):
+            row.value = current_items
         if missing_defaults:
             row.value = [*row.value, *missing_defaults]
             row.public = True
@@ -39,7 +68,7 @@ def setting_collection(key, default_items):
             db.session.commit()
         return row.value
     row = row or SiteSetting(key=key, public=True)
-    row.value = default_items
+    row.value = active_defaults
     row.public = True
     db.session.add(row)
     db.session.commit()

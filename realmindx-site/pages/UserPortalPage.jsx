@@ -173,6 +173,8 @@ const completionFromProfile = profile => {
     profile?.location,
     profile?.teaching_subject,
     profile?.preferred_level,
+    profile?.preferred_employment_type,
+    profile?.curriculum_experience,
     profile?.cv_file_id,
     profile?.certificate_file_id,
   ];
@@ -245,6 +247,16 @@ const NAV_ITEMS = [
   { key: 'alerts',       label: 'Job Alerts',       icon: 'bell', group: 'Jobs'      },
   { key: 'settings',     label: 'Settings',         icon: 'settings', group: 'Account'   },
 ];
+
+const PORTAL_VIEW_KEYS = new Set(NAV_ITEMS.map(item => item.key));
+
+const viewFromLocation = () => {
+  if (typeof window === 'undefined') return 'dashboard';
+  const queryView = new URLSearchParams(window.location.search).get('view');
+  if (PORTAL_VIEW_KEYS.has(queryView)) return queryView;
+  const pathView = window.location.pathname.replace(/^\/portal\/?/, '').split('/')[0];
+  return PORTAL_VIEW_KEYS.has(pathView) ? pathView : 'dashboard';
+};
 
 const Sidebar = ({ active, setActive, user, sidebarOpen, setSidebarOpen, applicationCount = 0, onPreviewAvatar }) => (
   <>
@@ -547,6 +559,7 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, ava
           { label: 'Teaching Subject',    value: user.subject  },
           { label: 'Preferred Level',     value: user.level    },
           { label: 'Work Type Preferred', value: user.preferredEmploymentType },
+          { label: 'Curriculum Experience', value: user.curriculumExperience },
           { label: 'Available From',      value: user.availableFrom },
         ].map(f => (
           <div key={f.label} className="profile-field">
@@ -646,7 +659,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Availability */}
             <div className="form-group">
               <label className="form-label">Availability</label>
-              <select className="form-input" value={form.preferred_employment_type || ''} onChange={e => setForm(p => ({ ...p, preferred_employment_type: e.target.value }))}>
+              <select className="form-input" value={form.available_from || ''} onChange={e => setForm(p => ({ ...p, available_from: e.target.value }))}>
                 <option value="">Select availability</option>
                 <option value="Immediately">Immediately Available</option>
                 <option value="1 Month">Within 1 Month</option>
@@ -672,7 +685,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
               <div className="portal-checkbox-grid">
                 {WORK_TYPES.map(wt => (
                   <label key={wt} className="portal-checkbox-row">
-                    <input type="checkbox" checked={multiValues('work_type').includes(wt)} onChange={() => toggleMulti('work_type', wt)} />
+                    <input type="checkbox" checked={multiValues('preferred_employment_type').includes(wt)} onChange={() => toggleMulti('preferred_employment_type', wt)} />
                     <span>{wt}</span>
                   </label>
                 ))}
@@ -684,7 +697,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
               <div className="portal-checkbox-grid">
                 {CURRICULA.map(c => (
                   <label key={c} className="portal-checkbox-row">
-                    <input type="checkbox" checked={multiValues('curriculum').includes(c)} onChange={() => toggleMulti('curriculum', c)} />
+                    <input type="checkbox" checked={multiValues('curriculum_experience').includes(c)} onChange={() => toggleMulti('curriculum_experience', c)} />
                     <span>{c}</span>
                   </label>
                 ))}
@@ -1065,7 +1078,7 @@ const SettingsView = () => (
 
 /* â”€â”€ MAIN PORTAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const UserPortalPage = () => {
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState(viewFromLocation);
   const pendingActionRef = React.useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [session, setSession] = React.useState(() => getDemoSession());
@@ -1122,6 +1135,7 @@ const UserPortalPage = () => {
           firstName: user.first_name || user.firstName || 'Teacher',
           lastName: user.last_name || user.lastName || '',
           initials: user.initials || `${user.first_name?.[0] || 'T'}${user.last_name?.[0] || ''}`.toUpperCase(),
+          avatarUrl: user.profile_picture_url || user.avatar_url || null,
         };
         saveDemoSession(freshSession);
         setSession(freshSession);
@@ -1136,6 +1150,12 @@ const UserPortalPage = () => {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  React.useEffect(() => {
+    const syncView = () => setActiveView(viewFromLocation());
+    window.addEventListener('popstate', syncView);
+    return () => window.removeEventListener('popstate', syncView);
   }, []);
 
   // In API mode: fetch the real user profile and applications on mount.
@@ -1204,6 +1224,7 @@ const UserPortalPage = () => {
         initials,
         avatarUrl: profileSource.profile_picture_url || profileSource.avatar_url || null,
         preferredEmploymentType: profileSource.preferred_employment_type || '',
+        curriculumExperience: profileSource.curriculum_experience || '',
         availableFrom: profileSource.available_from || '',
         nextOfKinName: profileSource.next_of_kin_name || '',
         nextOfKinPhone: profileSource.next_of_kin_phone || '',
@@ -1265,6 +1286,8 @@ const UserPortalPage = () => {
       teaching_subject: profileSource.teaching_subject || '',
       preferred_level: profileSource.preferred_level || '',
       preferred_employment_type: profileSource.preferred_employment_type || '',
+      available_from: profileSource.available_from || '',
+      curriculum_experience: profileSource.curriculum_experience || '',
       next_of_kin_name: profileSource.next_of_kin_name || '',
       next_of_kin_phone: profileSource.next_of_kin_phone || '',
       next_of_kin_relationship: profileSource.next_of_kin_relationship || '',

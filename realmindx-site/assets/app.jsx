@@ -2,11 +2,11 @@
 import { Icon, Reveal, CountUp } from './components.jsx';
 import logoWhite from './logo-white.png';
 import { getDemoSession } from '../../src/lib/demoAccounts.js';
-import { signOut } from '../../src/lib/authClient.js';
+import { signOut, syncSessionFromApi } from '../../src/lib/authClient.js';
 import {
   useHomeHeroSlides,
   usePublicGallery,
-  usePublicNews,
+  usePublicNewsState,
   usePublicPartners,
   usePublicServices,
 } from '../../src/lib/siteContent.js';
@@ -74,6 +74,24 @@ const NavUserPill = () => {
   const [session, setSession] = React.useState(() => getDemoSession());
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    syncSessionFromApi().then(freshSession => {
+      if (alive) setSession(freshSession);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  React.useEffect(() => {
+    const refresh = () => setSession(getDemoSession());
+    window.addEventListener('rmx-session-sync', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('rmx-session-sync', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
 
   React.useEffect(() => {
     const onOutsideClick = (e) => {
@@ -198,6 +216,13 @@ export const Nav = ({ activePage, solid = false }) => {
       window.removeEventListener('rmx-session-sync', refresh);
       window.removeEventListener('storage', refresh);
     };
+  }, []);
+  React.useEffect(() => {
+    let alive = true;
+    syncSessionFromApi().then(freshSession => {
+      if (alive) setSession(freshSession);
+    });
+    return () => { alive = false; };
   }, []);
   React.useEffect(() => {
     const onDocumentClick = (event) => {
@@ -515,7 +540,13 @@ const Services = () => {
     const strip = stripRef.current;
     if (!strip || serviceItems.length <= 1) return;
     measureLoop();
-    const distance = Math.min((strip.clientWidth || 420) * 0.74 * multiplier, 560);
+    const mobileQuery = window.matchMedia('(max-width: 860px)');
+    const firstCard = strip.querySelector('.home-service-card');
+    const cardRect = firstCard?.getBoundingClientRect();
+    const mobileDistance = cardRect ? cardRect.width + 14 : strip.clientWidth;
+    const distance = mobileQuery.matches
+      ? mobileDistance * multiplier
+      : Math.min((strip.clientWidth || 420) * 0.74 * multiplier, 560);
     const start = offsetRef.current;
     const target = start + direction * distance;
     const duration = 480;
@@ -1058,7 +1089,7 @@ const Gallery = () => {
 
 // ====================== News preview ======================
 const News = () => {
-  const newsItems = usePublicNews(3);
+  const { items: newsItems, loading } = usePublicNewsState(3);
   const [activeNews, setActiveNews] = React.useState(null);
 
   const closeNews = () => setActiveNews(null);
@@ -1074,7 +1105,17 @@ const News = () => {
           <a className="news-head-link" href="/news">All news <Icon name="arrow" size={14} /></a>
         </Reveal>
         <div className="news-grid">
-          {newsItems.map((n, i) => (
+          {loading ? (
+            <div className="managed-empty news-empty">
+              <h2>Loading News</h2>
+              <p>Checking the latest published RealMindX updates.</p>
+            </div>
+          ) : newsItems.length === 0 ? (
+            <div className="managed-empty news-empty">
+              <h2>No Published News Yet</h2>
+              <p>Fresh RealMindX updates will appear here when they are published.</p>
+            </div>
+          ) : newsItems.map((n, i) => (
             <Reveal key={n.id || i} delay={i * 100}>
               <button className={`news-card n-${i}`} type="button" onClick={() => setActiveNews(n)}>
                 <div className="news-img">

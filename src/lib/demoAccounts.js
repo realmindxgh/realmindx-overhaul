@@ -23,6 +23,11 @@ export const DEMO_ACCOUNTS = {
 
 const SESSION_KEY = 'realmindx.demoSession';
 
+const notifySessionChange = () => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event('rmx-session-sync'));
+};
+
 export const saveDemoSession = account => {
   if (typeof window === 'undefined') return;
   const { password, ...session } = account;
@@ -30,6 +35,7 @@ export const saveDemoSession = account => {
     ...session,
     signedInAt: new Date().toISOString(),
   }));
+  notifySessionChange();
 };
 
 export const getDemoSession = () => {
@@ -44,6 +50,7 @@ export const getDemoSession = () => {
 export const clearDemoSession = () => {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(SESSION_KEY);
+  notifySessionChange();
 };
 
 export const credentialsMatch = (account, email, password) =>

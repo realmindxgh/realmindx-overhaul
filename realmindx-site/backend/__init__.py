@@ -48,8 +48,10 @@ def create_app(config_object=Config):
         """Serve uploaded files. In production nginx handles this instead."""
         import os
         upload_folder = app.config.get("UPLOAD_FOLDER", "")
-        # Only serve files from the public subfolder without authentication
-        if not filepath.startswith("public/"):
+        # Seeded design assets are used directly by public pages in local/dev,
+        # while user documents stay protected unless the requester is signed in.
+        public_prefixes = ("public/", "Redesign/")
+        if not filepath.startswith(public_prefixes):
             from flask_login import current_user
             if not current_user.is_authenticated:
                 return jsonify(error="Unauthorised"), 401

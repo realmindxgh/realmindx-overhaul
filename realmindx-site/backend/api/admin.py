@@ -64,14 +64,76 @@ def log_action(action, entity_type=None, entity_id=None, metadata=None):
     _audit(action, entity_type, entity_id, metadata)
 
 
+def _collection_item_id(item):
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("id") or item.get("key") or "")
+
+
+def _deleted_collection_setting_key(key):
+    return f"{key}__deleted_ids"
+
+
+def _collection_deleted_ids(key):
+    row = SiteSetting.query.filter_by(key=_deleted_collection_setting_key(key)).first()
+    if row and isinstance(row.value, list):
+        return {str(item) for item in row.value if str(item)}
+    return set()
+
+
+def _save_collection_deleted_ids(key, deleted_ids):
+    row = SiteSetting.query.filter_by(key=_deleted_collection_setting_key(key)).first()
+    if not row:
+        row = SiteSetting(key=_deleted_collection_setting_key(key), public=False)
+        db.session.add(row)
+    row.value = sorted({str(item) for item in deleted_ids if str(item)})
+    row.public = False
+    return row
+
+
+def _mark_default_item_deleted(key, default_items, item_id):
+    default_ids = {_collection_item_id(item) for item in default_items}
+    item_id = str(item_id)
+    if item_id not in default_ids:
+        return
+    deleted_ids = _collection_deleted_ids(key)
+    deleted_ids.add(item_id)
+    _save_collection_deleted_ids(key, deleted_ids)
+
+
+def _restore_deleted_item_id(key, item_id):
+    item_id = str(item_id)
+    deleted_ids = _collection_deleted_ids(key)
+    if item_id not in deleted_ids:
+        return
+    deleted_ids.remove(item_id)
+    _save_collection_deleted_ids(key, deleted_ids)
+
+
+def _active_default_items(key, default_items):
+    deleted_ids = _collection_deleted_ids(key)
+    return [
+        item for item in default_items
+        if _collection_item_id(item) not in deleted_ids
+    ]
+
+
 def _collection_setting(key, default_items):
+    active_defaults = _active_default_items(key, default_items)
     row = SiteSetting.query.filter_by(key=key).first()
     if row and isinstance(row.value, list):
-        existing_ids = {str(item.get("id") or item.get("key") or "") for item in row.value if isinstance(item, dict)}
-        missing_defaults = [
-            item for item in default_items
-            if str(item.get("id") or item.get("key") or "") not in existing_ids
+        deleted_ids = _collection_deleted_ids(key)
+        current_items = [
+            item for item in row.value
+            if isinstance(item, dict) and _collection_item_id(item) not in deleted_ids
         ]
+        existing_ids = {_collection_item_id(item) for item in current_items}
+        missing_defaults = [
+            item for item in active_defaults
+            if _collection_item_id(item) not in existing_ids
+        ]
+        if len(current_items) != len(row.value):
+            row.value = current_items
         if missing_defaults:
             row.value = [*row.value, *missing_defaults]
             row.public = True
@@ -79,7 +141,7 @@ def _collection_setting(key, default_items):
             db.session.flush()
         return row, row.value
     row = row or SiteSetting(key=key, public=True)
-    row.value = default_items
+    row.value = active_defaults
     row.public = True
     db.session.add(row)
     db.session.flush()
@@ -360,6 +422,7 @@ def _create_admin_collection_item(setting_key, default_items, payload, entity_ty
         "sort_order": payload.get("sort_order") or _next_sort_order(items),
     }
     items.append(row)
+    _restore_deleted_item_id(setting_key, item_id)
     _save_collection_setting(setting_key, items)
     log_action(f"create_{entity_type}", entity_type, item_id)
     db.session.commit()
@@ -389,6 +452,7 @@ def _delete_admin_collection_item(setting_key, default_items, item_id, entity_ty
     next_items = [item for item in items if str(item.get("id")) != str(item_id)]
     if len(next_items) == len(items):
         return jsonify(error="Item not found."), 404
+    _mark_default_item_deleted(setting_key, default_items, item_id)
     _save_collection_setting(setting_key, next_items)
     log_action(f"delete_{entity_type}", entity_type, item_id)
     db.session.commit()

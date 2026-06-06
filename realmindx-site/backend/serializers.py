@@ -1,6 +1,12 @@
+from .extensions import db
+from .models import UploadedFile
+
+
 def user_json(user):
     direct_permissions = sorted({permission.key for permission in getattr(user, "direct_permissions", [])})
     role_permissions = sorted({permission.key for permission in user.role.permissions}) if user.role else []
+    profile = getattr(user, "profile", None)
+    picture = db.session.get(UploadedFile, profile.profile_picture_file_id) if profile and profile.profile_picture_file_id else None
     return {
         "id": user.id,
         "email": user.email,
@@ -9,6 +15,7 @@ def user_json(user):
         "full_name": user.full_name,
         "phone": user.phone,
         "role": user.role.name if user.role else None,
+        "profile_picture_url": _upload_url(picture),
         "permissions": sorted(set(direct_permissions + role_permissions)),
         "direct_permissions": direct_permissions,
         "is_verified": user.is_verified,

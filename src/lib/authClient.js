@@ -24,12 +24,14 @@ const initialsFrom = (first = '', last = '') =>
 const toSession = (user = {}, roleHint = 'user') => {
   const first = user.first_name || user.firstName || '';
   const last = user.last_name || user.lastName || '';
+  const avatarUrl = user.profile_picture_url || user.avatar_url || user.picture || user.photo_url || null;
   return {
     role: (user.role && (user.role.name || user.role)) || roleHint,
     email: user.email,
     firstName: first,
     lastName: last,
     initials: user.initials || initialsFrom(first, last),
+    avatarUrl,
     permissions: Array.isArray(user.permissions) ? user.permissions : [],
     directPermissions: Array.isArray(user.direct_permissions) ? user.direct_permissions : [],
   };

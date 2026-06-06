@@ -126,6 +126,7 @@ export const api = {
 
   updateProfile: (payload) => apiFetch('/me/profile', { method: 'PUT', body: payload }),
   saveJobAlerts: (payload) => apiFetch('/me/job-alerts', { method: 'PUT', body: payload }),
+  applyForJob: (jobId, payload = {}) => apiFetch(`/jobs/${jobId}/apply`, { method: 'POST', body: payload }),
 
   // admin - file upload (multipart, no JSON content-type)
   uploadFile: async (file, category = 'images') => {

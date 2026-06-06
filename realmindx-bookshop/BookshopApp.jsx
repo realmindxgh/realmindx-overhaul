@@ -173,7 +173,7 @@ const App = () => {
           />
         </main>
         <Footer navigate={navigate} />
-        <WhatsAppFab />
+        <WhatsAppFab route="home" />
         <BottomNav route="home" navigate={navigate} />
       </div>
     );
@@ -184,7 +184,7 @@ const App = () => {
       <Navbar route={route} navigate={navigate} />
       <main className="bs-page">{page}</main>
       <Footer navigate={navigate} />
-      <WhatsAppFab />
+      <WhatsAppFab route={route} />
       <BottomNav route={route} navigate={navigate} />
     </div>
   );

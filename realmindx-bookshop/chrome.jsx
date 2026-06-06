@@ -3,6 +3,7 @@ import { Icon, Stars, cedis, CoverPlaceholder, Logo } from './shared.jsx';
 import { useCatalog } from './catalog.jsx';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
+import { syncSessionFromApi } from '../src/lib/authClient.js';
 
 // ---------- Cart store (context) ----------
 const CartCtx = React.createContext(null);
@@ -22,6 +23,13 @@ const readSavedCart = () => {
   } catch {
     return [];
   }
+};
+
+const mainPortalHref = () => {
+  if (typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.')) {
+    return 'https://realmindxgh.com/portal';
+  }
+  return '/portal';
 };
 
 const CartProvider = ({ children, navigate }) => {
@@ -110,6 +118,13 @@ const NavUserMenu = ({ navigate }) => {
       window.removeEventListener('storage', refresh);
     };
   }, []);
+  React.useEffect(() => {
+    let alive = true;
+    syncSessionFromApi().then(freshSession => {
+      if (alive) setSession(freshSession);
+    });
+    return () => { alive = false; };
+  }, []);
 
   if (!session?.role) {
     return (
@@ -137,7 +152,9 @@ const NavUserMenu = ({ navigate }) => {
         aria-label={`Account menu for ${name}`}
         aria-expanded={open}
       >
-        <span className="bs-user-avatar">{initials}</span>
+        <span className="bs-user-avatar">
+          {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : initials}
+        </span>
         <span className="bs-user-name">{session.firstName || 'Account'}</span>
         <Icon name="chevDown" size={13} />
       </button>
@@ -152,7 +169,7 @@ const NavUserMenu = ({ navigate }) => {
           <button className="bs-user-dd-item" onClick={() => { setOpen(false); navigate('track'); }}>
             <Icon name="truck" size={16} /> My Orders
           </button>
-          <button className="bs-user-dd-item" onClick={() => { setOpen(false); window.location.href = '/portal'; }}>
+          <button className="bs-user-dd-item" onClick={() => { setOpen(false); window.location.href = mainPortalHref(); }}>
             <Icon name="user" size={16} /> My RealMindX Profile
           </button>
           <div className="bs-user-dd-divider" />
@@ -230,24 +247,20 @@ const Navbar = ({ route, navigate }) => {
         </div>
       </nav>
 
-      {/* mobile full-screen menu */}
+      {/* mobile menu — matches main site style */}
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
-        <div className="bs-mm-top">
-          <Logo onClick={(e) => go('home', e)} />
-          <button className="bs-mm-close" aria-label="Close menu" onClick={() => setMenuOpen(false)}><Icon name="close" size={26} /></button>
+        <div className="bs-mm-header">
+          <button className="bs-mm-close" aria-label="Close menu" onClick={() => setMenuOpen(false)}>
+            <Icon name="x" size={22} stroke={2.5} />
+          </button>
         </div>
-        <form className="bs-mm-search" onSubmit={(e) => { e.preventDefault(); go('shop'); }}>
-          <Icon name="search" size={19} className="bs-search-icn" />
-          <input placeholder="Search the shop..." aria-label="Search" />
-        </form>
         <nav className="bs-mm-links">
           {[['home','Home'],['shop','Shop'],['cart','Cart'],['track','Track Order'],['contact','Contact'],['about','About']].map(([r,l]) => (
-            <a key={r} href="#" className={route === r ? 'active' : ''} onClick={(e) => go(r, e)}>
-              {l} <Icon name="chevR" size={20} className="bs-ci" />
+            <a key={r} href="#" className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
+              {l}
             </a>
           ))}
         </nav>
-        <div className="bs-mm-foot">RealMindX Bookshop - Dome Pillar 2, Accra</div>
       </div>
     </>
   );
@@ -309,7 +322,10 @@ const Footer = ({ navigate }) => (
 );
 
 // ---------- Floating WhatsApp ----------
-const WhatsAppFab = () => (
+const WHATSAPP_HIDDEN_ROUTES = new Set(['cart', 'checkout', 'track', 'login', 'signup']);
+
+const WhatsAppFab = ({ route }) => (
+  WHATSAPP_HIDDEN_ROUTES.has(route) ? null :
   <a className="bs-wa-fab" href="https://wa.link/q5rjtp" target="_blank" rel="noopener" aria-label="Chat on WhatsApp">
     <Icon name="wa" size={28} />
   </a>
@@ -318,11 +334,39 @@ const WhatsAppFab = () => (
 // ---------- Mobile bottom nav ----------
 const BottomNav = ({ route, navigate }) => {
   const { count } = useCart();
-  const items = [['home','Home','home'],['shop','Shop','shop'],['cart','Cart','cart'],['login','Account','user']];
+  const [session, setSession] = React.useState(() => getDemoSession());
+  React.useEffect(() => {
+    const refresh = () => setSession(getDemoSession());
+    window.addEventListener('rmx-session-sync', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('rmx-session-sync', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
+  React.useEffect(() => {
+    let alive = true;
+    syncSessionFromApi().then(freshSession => {
+      if (alive) setSession(freshSession);
+    });
+    return () => { alive = false; };
+  }, []);
+  const items = [['home','Home','home'],['shop','Shop','shop'],['cart','Cart','cart'],['account','Account','user']];
   return (
     <nav className="bs-bottom-nav">
       {items.map(([r,l,icn]) => (
-        <a key={r} href="#" className={route === r ? 'active' : ''} onClick={(e) => { e.preventDefault(); navigate(r); }}>
+        <a key={r} href="#" className={(r === 'account' ? route === 'login' || route === 'signup' : route === r) ? 'active' : ''} onClick={(e) => {
+          e.preventDefault();
+          if (r === 'account') {
+            if (session?.role) {
+              window.location.href = mainPortalHref();
+            } else {
+              navigate('login');
+            }
+            return;
+          }
+          navigate(r);
+        }}>
           <Icon name={icn} size={22} />
           {l}
           {r === 'cart' && count > 0 && <span className="bs-bn-badge">{count}</span>}

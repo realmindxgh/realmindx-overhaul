@@ -105,6 +105,8 @@ class UserProfile(TimestampMixin, db.Model):
     teaching_subject = db.Column(db.String(160), nullable=True)
     preferred_level = db.Column(db.String(120), nullable=True)
     preferred_employment_type = db.Column(db.String(80), nullable=True)
+    available_from = db.Column(db.String(80), nullable=True)
+    curriculum_experience = db.Column(db.String(255), nullable=True)
     bio = db.Column(db.Text, nullable=True)
     profile_picture_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
     cv_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)

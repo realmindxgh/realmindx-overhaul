@@ -816,7 +816,14 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
   const [preview, setPreview]     = React.useState(currentUrl || null);
   const [cropSrc, setCropSrc]     = React.useState(null);
   const [error, setError]         = React.useState('');
+  const [staged, setStaged]       = React.useState(false);
   const inputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    setPreview(currentUrl || null);
+    setStaged(false);
+    setError('');
+  }, [currentFileId, currentUrl]);
 
   // Step 1: file selected → open crop modal
   const handleSelect = (e) => {
@@ -831,14 +838,17 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
   // Step 2: crop confirmed → upload
   const handleCrop = async (croppedFile, dataUrl) => {
     setCropSrc(null);
-    setPreview(dataUrl);
+    const previousPreview = preview;
     setUploading(true); setError('');
     try {
       const { api } = await import('../../src/lib/apiClient.js');
       const uploaded = await api.uploadFile(croppedFile, 'images');
       setPreview(uploaded.url);
+      setStaged(true);
       onChange(uploaded.id, uploaded.url);
     } catch (err) {
+      setPreview(previousPreview);
+      setStaged(false);
       setError(err.message || 'Upload failed');
     } finally {
       setUploading(false);
@@ -872,6 +882,11 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
         </div>
         <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleSelect} />
       </div>
+      {staged && (
+        <p style={{ color: 'var(--gray-600)', fontSize: '0.75rem', marginTop: 4 }}>
+          Image uploaded. Save changes to apply it to this record.
+        </p>
+      )}
       {guide && (
         <div className="admin-image-guide">
           {guide.map((item, i) => (
@@ -982,6 +997,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
   });
   const [saving, setSaving] = React.useState(false);
   const [categoryOptions, setCategoryOptions] = React.useState([]);
+  const [formError, setFormError] = React.useState('');
 
   React.useEffect(() => {
     if (!config.fields.some(itemField => itemField.type === 'category-select')) return;
@@ -1008,10 +1024,13 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
     }, {});
 
     setSaving(true);
+    setFormError('');
     try {
       if (initialItem) await (onUpdate ? onUpdate(initialItem.id, payload) : Promise.resolve());
       else await (onCreate ? onCreate(payload) : Promise.resolve());
       onCancel();
+    } catch (err) {
+      setFormError(err?.message || 'Could not save this record.');
     } finally {
       setSaving(false);
     }
@@ -1134,6 +1153,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
         <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : (initialItem ? 'Save Changes' : config.createLabel)}</button>
         <button className="btn btn-outline-navy" type="button" onClick={onCancel}>Cancel</button>
       </div>
+      {formError && <p className="form-error" style={{ marginTop: 10 }}>{formError}</p>}
     </form>
   );
 };
@@ -1346,12 +1366,14 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
   const [search, setSearch] = React.useState('');
   const [localRows, setLocalRows] = React.useState(null);
   const [showProductImport, setShowProductImport] = React.useState(false);
+  const [actionStatus, setActionStatus] = React.useState(null);
 
   // In API mode: fetch on mount; in local mode: use rowsProp from parent.
   React.useEffect(() => {
     if (isApiMode()) {
       fetchCollection(config.collection).then(() => {});
     }
+    setActionStatus(null);
   }, [config.collection, fetchCollection]);
 
   // In API mode the hook owns the data; in local mode the parent passes rows.
@@ -1379,6 +1401,7 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
 
   const handleCreate = async (payload) => {
     await createItem(config.collection, payload);
+    setActionStatus({ type: 'success', message: `${config.title} record created.` });
     setCreating(false);
   };
 
@@ -1388,11 +1411,22 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
     // Editing state holds the full row, so use getItemId to get the correct key.
     const id = editing ? getItemId(editing) : _rawId;
     await updateItem(config.collection, id, payload);
+    setActionStatus({ type: 'success', message: `${config.title} record saved.` });
     setEditing(null);
   };
 
-  const handleDelete = (row) => {
-    deleteItem(config.collection, getItemId(row));
+  const labelForRow = (row) => row.name || row.label || row.title || row.email || row.order_reference || 'this record';
+
+  const handleDelete = async (row) => {
+    const label = labelForRow(row);
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    setActionStatus(null);
+    try {
+      await deleteItem(config.collection, getItemId(row));
+      setActionStatus({ type: 'success', message: `Deleted ${label}.` });
+    } catch (err) {
+      setActionStatus({ type: 'error', message: err?.message || `Could not delete ${label}.` });
+    }
   };
 
   const togglePublish = (row) => {
@@ -1533,6 +1567,24 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
 
       {config.collection === 'newsletters' && (
         <NewsletterComposer onSent={() => fetchCollection(config.collection)} />
+      )}
+
+      {actionStatus && (
+        <div
+          className={actionStatus.type === 'error' ? 'form-error' : ''}
+          style={{
+            margin: '0 0 14px',
+            padding: '12px 14px',
+            borderRadius: 8,
+            border: `1px solid ${actionStatus.type === 'error' ? '#fca5a5' : '#86efac'}`,
+            background: actionStatus.type === 'error' ? '#fef2f2' : '#ecfdf5',
+            color: actionStatus.type === 'error' ? '#991b1b' : '#166534',
+            fontWeight: 700,
+            fontSize: '0.86rem',
+          }}
+        >
+          {actionStatus.message}
+        </div>
       )}
 
       {(creating || editing) && (
@@ -1974,18 +2026,7 @@ const AdminPortalPage = () => {
     }
   }, [session, sessionChecked]);
 
-  if (!sessionChecked) {
-    return (
-      <div className="admin-portal-layout">
-        <main className="admin-main">
-          <EmptySection
-            title="Checking Admin Session"
-            body="Confirming your signed-in account before opening the admin console."
-          />
-        </main>
-      </div>
-    );
-  }
+  if (!sessionChecked) return null;
 
   const view = activeView === 'dashboard'
     ? <DashboardView content={content} setActive={setActiveView} />
@@ -2087,4 +2128,3 @@ const AdminPortalPage = () => {
 };
 
 export default AdminPortalPage;
-

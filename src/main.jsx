@@ -17,7 +17,7 @@ import AdminPortalPage from '../realmindx-site/pages/AdminPortalPage.jsx';
 import { AdminLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
 import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
-import { usePublicGallery, usePublicNews, useSiteCopy } from './lib/siteContent.js';
+import { usePublicGalleryState, usePublicNewsState, useSiteCopy } from './lib/siteContent.js';
 import { API_BASE, api, isApiMode } from './lib/apiClient.js';
 
 import BookshopApp from '../realmindx-bookshop/BookshopApp.jsx';
@@ -71,8 +71,8 @@ const SiteInfoPage = ({ activePage = '', eyebrow = 'RealMindX', title, body, act
 const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
   const content = useManagedContent();
   const [apiItems, setApiItems] = React.useState(null);
-  const managedNews = usePublicNews(40);
-  const managedGallery = usePublicGallery(40);
+  const managedNews = usePublicNewsState(40);
+  const managedGallery = usePublicGalleryState(40);
 
   React.useEffect(() => {
     if (!isApiMode() || collection === 'news' || collection === 'gallery') return;
@@ -90,11 +90,22 @@ const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
 
   const source = isApiMode() && apiItems ? apiItems : (content[collection] || []);
   const rawItems = isApiMode() && apiItems ? source : publicItems(source);
-  const items = collection === 'news'
+  const itemsState = collection === 'news'
     ? managedNews
     : collection === 'gallery'
       ? managedGallery
-      : rawItems;
+      : { items: rawItems, loading: false };
+  const items = itemsState.items;
+  const emptyTitle = collection === 'news'
+    ? 'No Published News Yet'
+    : collection === 'gallery'
+      ? 'No Gallery Images Yet'
+      : 'No Published Items';
+  const emptyBody = collection === 'news'
+    ? 'Fresh RealMindX updates will appear here when they are published.'
+    : collection === 'gallery'
+      ? 'RealMindX gallery moments will appear here when they are published.'
+      : 'Fresh RealMindX content will appear here as it is published.';
   const publicAssetUrl = value => {
     if (!value || !String(value).startsWith('/uploads/')) return value;
     try {
@@ -117,10 +128,15 @@ const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
         </section>
         <section className="managed-public-section">
           <div className="container">
-            {items.length === 0 ? (
+            {itemsState.loading ? (
               <div className="managed-empty">
-                <h2>No Published Items</h2>
-                <p>Fresh RealMindX content will appear here as it is published.</p>
+                <h2>Loading Published Content</h2>
+                <p>Checking the latest RealMindX updates.</p>
+              </div>
+            ) : items.length === 0 ? (
+              <div className="managed-empty">
+                <h2>{emptyTitle}</h2>
+                <p>{emptyBody}</p>
               </div>
             ) : (
               <div className="managed-card-grid">
@@ -205,7 +221,8 @@ const NewsCard = ({ item, onClick }) => (
 );
 
 const NewsPage = () => {
-  const allItems = usePublicNews(200);
+  const newsState = usePublicNewsState(200);
+  const allItems = newsState.items;
   const [page, setPage] = React.useState(1);
   const [selectedSlug, setSelectedSlug] = React.useState(() => {
     // Support direct URL like /news#slug
@@ -283,7 +300,12 @@ const NewsPage = () => {
         </section>
         <section className="site-info-section">
           <div className="container">
-            {allItems.length === 0 ? (
+            {newsState.loading ? (
+              <div className="managed-empty">
+                <h2>Loading News</h2>
+                <p>Checking the latest published RealMindX updates.</p>
+              </div>
+            ) : allItems.length === 0 ? (
               <div className="managed-empty">
                 <h2>No Published News Yet</h2>
                 <p>Fresh RealMindX updates will appear here when they are published.</p>
@@ -620,7 +642,7 @@ const AppRoutes = () => {
         <Route path="/login" element={<UserLoginPage />} />
         <Route path="/register" element={<RegisterRoute />} />
         <Route path="/signup" element={<Navigate to="/register" replace />} />
-        <Route path="/portal" element={<UserPortalPage />} />
+        <Route path="/portal/*" element={<UserPortalPage />} />
 
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
