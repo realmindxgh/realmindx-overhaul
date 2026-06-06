@@ -2107,6 +2107,8 @@ const TeachersView = () => {
                           ['Available From', detail.profile.available_from],
                           ['Location', detail.profile.location],
                           ['Curriculum Experience', detail.profile.curriculum_experience],
+                          ['Teaching Experience', detail.profile.years_of_experience !== null && detail.profile.years_of_experience !== undefined ? (() => { const v = detail.profile.years_of_experience; if (v === 0) return 'Less than 1 year'; if (v <= 2) return '1 – 2 years'; if (v <= 5) return '3 – 5 years'; if (v <= 10) return '6 – 10 years'; if (v <= 15) return '11 – 15 years'; if (v <= 20) return '16 – 20 years'; return 'More than 20 years'; })() : null],
+                          ['Age', detail.profile.age != null ? `${detail.profile.age} years old` : null],
                         ].filter(([, v]) => v).map(([k, v]) => (
                           <div key={k}>
                             <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>

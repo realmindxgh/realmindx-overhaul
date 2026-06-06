@@ -1310,3 +1310,75 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 
 .bs-order-notes { margin-top: 18px; padding: 14px 16px; background: var(--bs-off-white); border-radius: var(--bs-radius-sm); font-size: 13px; color: var(--bs-muted); }
 .bs-order-notes code { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--bs-navy); }
+
+/* ============================================================ CART: DELIVERY TBD + WISHLIST LINK ============================================================ */
+.bs-delivery-tbd {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--bs-muted);
+}
+.bs-cart-wishlist-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--bs-muted);
+  background: none; border: none; padding: 0; cursor: pointer;
+  transition: color .2s; margin-top: 2px;
+}
+.bs-cart-wishlist-link:hover { color: #e11d48; }
+
+/* ============================================================ WISHLIST HEART BUTTON ON CARD ============================================================ */
+.bs-pcard-cover { position: relative; }
+.bs-wishlist-btn {
+  position: absolute; top: 8px; right: 8px; z-index: 3;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(255,255,255,0.88);
+  border: 1px solid rgba(0,0,0,.08);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--bs-muted); cursor: pointer;
+  transition: all .18s; box-shadow: 0 1px 4px rgba(0,0,0,.12);
+}
+.bs-wishlist-btn:hover,
+.bs-wishlist-btn.active {
+  background: #fff; color: #e11d48;
+  border-color: #fca5a5;
+  transform: scale(1.1);
+}
+.bs-wishlist-btn.active svg { fill: #e11d48; stroke: #e11d48; }
+.bs-wishlisted { color: #e11d48 !important; border-color: #fca5a5 !important; }
+
+/* ============================================================ WISHLIST PAGE ============================================================ */
+.bs-wishlist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+  margin-bottom: 40px;
+}
+.bs-wishlist-card {
+  background: #fff;
+  border: 1px solid var(--bs-border);
+  border-radius: var(--bs-radius-md);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: box-shadow .2s, transform .2s;
+}
+.bs-wishlist-card:hover { box-shadow: var(--bs-shadow-md); transform: translateY(-2px); }
+.bs-wishlist-cover { aspect-ratio: 3/4; overflow: hidden; background: #eef1f7; }
+.bs-wishlist-cover .bs-ph-cover { height: 100%; }
+.bs-wishlist-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.bs-wishlist-title {
+  font-family: 'Montserrat', sans-serif; font-weight: 700;
+  font-size: 13.5px; color: var(--bs-navy); line-height: 1.4;
+}
+.bs-wishlist-price {
+  font-family: 'Montserrat', sans-serif; font-weight: 800;
+  font-size: 16px; color: var(--bs-navy);
+}
+.bs-wishlist-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;
+}
+.bs-btn-sm {
+  padding: 6px 12px; font-size: 12px; height: auto;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+@media (max-width: 560px) {
+  .bs-wishlist-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}

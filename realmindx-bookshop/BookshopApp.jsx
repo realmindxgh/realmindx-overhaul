@@ -1,7 +1,7 @@
 import React from 'react';
 import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, BottomNav } from './chrome.jsx';
 import { HomePage, ShopPage } from './pages-shop.jsx';
-import { ProductPage, CartPage } from './pages-product-cart.jsx';
+import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
 import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage } from './pages-misc.jsx';
 import { CatalogProvider } from './catalog.jsx';
@@ -19,7 +19,8 @@ const routeFromPath = () => {
   const path = window.location.pathname.replace(/\/+$/, '');
   const p = ON_SUBDOMAIN ? path : path.replace('/bookshop', '');
   if (p === '/products' || p.startsWith('/products/')) return { route: 'shop', params: {} };
-  if (p === '/cart')     return { route: 'cart',     params: {} };
+  if (p === '/cart')      return { route: 'cart',     params: {} };
+  if (p === '/wishlist')  return { route: 'wishlist', params: {} };
   if (p === '/checkout') return { route: 'checkout', params: {} };
   if (p === '/track')    return { route: 'track',    params: {} };
   if (p === '/login')    return { route: 'login',    params: {} };
@@ -37,6 +38,7 @@ const pathForRoute = route => ({
   home:     `${PREFIX}/`,
   shop:     `${PREFIX}/products`,
   cart:     `${PREFIX}/cart`,
+  wishlist: `${PREFIX}/wishlist`,
   checkout: `${PREFIX}/checkout`,
   track:    `${PREFIX}/track`,
   login:    `${PREFIX}/login`,
@@ -111,6 +113,7 @@ const App = () => {
       shop:     { title: 'Browse Educational Books & Textbooks | RealMindX Bookshop', desc: 'Find BECE, WASSCE, primary and JHS textbooks, curricula and stationery. In-stock items with delivery across Ghana.' },
       product:  { title: 'Product | RealMindX Bookshop', desc: 'Educational books and materials available at the RealMindX Bookshop, Accra, Ghana.' },
       cart:     { title: 'Your Cart | RealMindX Bookshop', desc: '' },
+      wishlist: { title: 'My Wishlist | RealMindX Bookshop', desc: 'Your saved books and learning materials at the RealMindX Bookshop.' },
       checkout: { title: 'Checkout | RealMindX Bookshop', desc: '' },
       track:    { title: 'Track Your Order | RealMindX Bookshop', desc: 'Track your RealMindX Bookshop order by reference number or email address.' },
       login:    { title: 'Sign In | RealMindX Bookshop', desc: 'Sign in to your RealMindX account to track orders, save favourites, and check out faster.' },
@@ -124,7 +127,7 @@ const App = () => {
     };
     const m = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
     document.title = m.title;
-    const paths = { home:'/', shop:'/products', product:'/products', cart:'/cart', checkout:'/checkout', track:'/track', login:'/login', signup:'/signup', contact:'/contact', about:'/about', privacy:'/privacy', terms:'/terms', account:'/account', orders:'/orders' };
+    const paths = { home:'/', shop:'/products', product:'/products', cart:'/cart', wishlist:'/wishlist', checkout:'/checkout', track:'/track', login:'/login', signup:'/signup', contact:'/contact', about:'/about', privacy:'/privacy', terms:'/terms', account:'/account', orders:'/orders' };
     const url = `${BASE}${paths[route] || '/bookshop'}`;
     const setM = (k, v) => { if (!v) return; let el = document.querySelector(`meta[name="${k}"]`) || document.querySelector(`meta[property="${k}"]`); if (!el) { el = document.createElement('meta'); el.setAttribute(k.startsWith('og:') ? 'property' : 'name', k); document.head.appendChild(el); } el.setAttribute('content', v); };
     if (m.desc) { setM('description', m.desc); setM('og:description', m.desc); setM('twitter:description', m.desc); }
@@ -153,6 +156,7 @@ const App = () => {
     case 'shop':     page = <ShopPage navigate={navigate} initialCat={params.cat || 'all'} key={params.cat || 'all'} />; break;
     case 'product':  page = <ProductPage navigate={navigate} bookId={params.id} key={params.id} />; break;
     case 'cart':     page = <CartPage navigate={navigate} />; break;
+    case 'wishlist': page = <WishlistPage navigate={navigate} />; break;
     case 'checkout': page = <CheckoutPage navigate={navigate} />; break;
     case 'track':    page = <TrackPage navigate={navigate} />; break;
     case 'login':    page = <AuthPage navigate={navigate} mode="login" key="login" />; break;

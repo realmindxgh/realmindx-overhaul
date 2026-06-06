@@ -675,6 +675,31 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
                 <option value="After Current Term">After Current Term</option>
               </select>
             </div>
+            {/* Years of Experience */}
+            <div className="form-group">
+              <label className="form-label">Years of Teaching Experience</label>
+              <select className="form-input" value={form.years_of_experience !== undefined && form.years_of_experience !== null && form.years_of_experience !== '' ? String(form.years_of_experience) : ''} onChange={e => setForm(p => ({ ...p, years_of_experience: e.target.value === '' ? '' : Number(e.target.value) }))}>
+                <option value="">Select experience</option>
+                <option value="0">Less than 1 year</option>
+                <option value="1">1 – 2 years</option>
+                <option value="3">3 – 5 years</option>
+                <option value="6">6 – 10 years</option>
+                <option value="11">11 – 15 years</option>
+                <option value="16">16 – 20 years</option>
+                <option value="21">More than 20 years</option>
+              </select>
+            </div>
+            {/* Date of Birth */}
+            <div className="form-group">
+              <label className="form-label">Date of Birth <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(used to verify eligibility)</span></label>
+              <input
+                type="date"
+                className="form-input"
+                value={form.date_of_birth || ''}
+                max={(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 18); return d.toISOString().split('T')[0]; })()}
+                onChange={e => setForm(p => ({ ...p, date_of_birth: e.target.value }))}
+              />
+            </div>
             {/* Preferred Level checkboxes */}
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Preferred School Level <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
@@ -1316,6 +1341,8 @@ const UserPortalPage = () => {
       next_of_kin_name: profileSource.next_of_kin_name || '',
       next_of_kin_phone: profileSource.next_of_kin_phone || '',
       next_of_kin_relationship: profileSource.next_of_kin_relationship || '',
+      years_of_experience: profileSource.years_of_experience !== undefined && profileSource.years_of_experience !== null ? profileSource.years_of_experience : '',
+      date_of_birth: profileSource.date_of_birth || '',
     });
     setProfileEditSection(section);
   };

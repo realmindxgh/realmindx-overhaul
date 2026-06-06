@@ -114,6 +114,8 @@ class UserProfile(TimestampMixin, db.Model):
     next_of_kin_name = db.Column(db.String(160), nullable=True)
     next_of_kin_phone = db.Column(db.String(40), nullable=True)
     next_of_kin_relationship = db.Column(db.String(80), nullable=True)
+    years_of_experience = db.Column(db.Integer, nullable=True)
+    date_of_birth = db.Column(db.Date, nullable=True)
 
     user = db.relationship("User", back_populates="profile")
 

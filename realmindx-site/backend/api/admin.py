@@ -682,6 +682,12 @@ def get_user(user_id):
                 return None
             return f"/uploads/{f.visibility}/{f.category}/{f.stored_filename}"
 
+        age = None
+        if profile.date_of_birth:
+            today = date.today()
+            d = profile.date_of_birth
+            age = today.year - d.year - ((today.month, today.day) < (d.month, d.day))
+
         data["profile"] = {
             "location": profile.location,
             "teaching_subject": profile.teaching_subject,
@@ -695,6 +701,9 @@ def get_user(user_id):
             "next_of_kin_name": profile.next_of_kin_name,
             "next_of_kin_phone": profile.next_of_kin_phone,
             "next_of_kin_relationship": profile.next_of_kin_relationship,
+            "years_of_experience": profile.years_of_experience,
+            "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+            "age": age,
         }
     return jsonify(data)
 

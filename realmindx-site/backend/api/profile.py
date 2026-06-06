@@ -32,6 +32,8 @@ def profile_json(profile):
         "next_of_kin_name": profile.next_of_kin_name,
         "next_of_kin_phone": profile.next_of_kin_phone,
         "next_of_kin_relationship": profile.next_of_kin_relationship,
+        "years_of_experience": profile.years_of_experience,
+        "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
     }
 
 
@@ -94,9 +96,20 @@ def update_profile():
         "next_of_kin_name",
         "next_of_kin_phone",
         "next_of_kin_relationship",
+        "years_of_experience",
     ]:
         if field in payload:
             setattr(profile, field, payload[field])
+    if "date_of_birth" in payload:
+        import datetime as _dt
+        raw = payload["date_of_birth"]
+        if raw:
+            try:
+                profile.date_of_birth = _dt.date.fromisoformat(raw)
+            except (ValueError, TypeError):
+                pass
+        else:
+            profile.date_of_birth = None
     if "phone" in payload:
         current_user.phone = payload["phone"]
     _sync_profile_to_alert_preference(profile)

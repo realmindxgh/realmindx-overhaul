@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { Icon, Stars, cedis, CoverPlaceholder, REVIEWS } from './shared.jsx';
-import { useCart, ProductCard } from './chrome.jsx';
+import { useCart, useWishlist, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
@@ -28,6 +28,7 @@ const ProductPage = ({ navigate, bookId }) => {
   const { books } = useCatalog();
   const book = books.find(b => b.id === bookId) || books[0];
   const { add, toast } = useCart();
+  const wishlist = useWishlist();
   const [qty, setQty] = React.useState(1);
   const [activeImg, setActiveImg] = React.useState(0);
   const [lightbox, setLightbox] = React.useState(false);
@@ -96,8 +97,11 @@ const ProductPage = ({ navigate, bookId }) => {
                 <Icon name="bag" size={18} /> Add to Cart
               </button>
             </div>
-            <button className="bs-btn bs-btn-outline-navy bs-btn-block" onClick={() => toast('Saved for later')}>
-              <Icon name="heart" size={17} /> Save for Later
+            <button
+              className={`bs-btn bs-btn-outline-navy bs-btn-block${wishlist?.has(book.id) ? ' bs-wishlisted' : ''}`}
+              onClick={() => { wishlist?.toggle(book.id); toast(wishlist?.has(book.id) ? 'Removed from wishlist' : 'Added to wishlist'); }}
+            >
+              <Icon name="heart" size={17} /> {wishlist?.has(book.id) ? 'Saved to Wishlist ✓' : 'Save to Wishlist'}
             </button>
           </div>
 
@@ -206,8 +210,18 @@ const AuthReturnActions = ({ navigate, route = 'cart' }) => (
 
 const CartPage = ({ navigate }) => {
   const { detailed, subtotal, bulkDiscounts, bulkSaving, setQty, remove, count } = useCart();
-  const delivery = subtotal > 0 ? 15 : 0;   // delivery fee shown on cart; exact fee is computed at checkout
-  const total = subtotal - (bulkSaving || 0) + delivery;
+  const wishlist = useWishlist();
+  const { books } = useCatalog();
+  // Delivery is NOT estimated on the cart page — location has not been chosen yet.
+  // The exact fee is calculated once the user selects a delivery zone at checkout.
+  const cartTotal = subtotal - (bulkSaving || 0);
+
+  // Suggested products: same categories as cart items, not already in cart, in stock
+  const cartIds = new Set(detailed.map(b => b.id));
+  const cartCats = new Set(detailed.map(b => b.cat));
+  const suggestions = books
+    .filter(b => !cartIds.has(b.id) && cartCats.has(b.cat) && b.stock)
+    .slice(0, 4);
 
   if (count === 0) return (
     <div className="bs-container bs-fade-page">
@@ -237,6 +251,13 @@ const CartPage = ({ navigate }) => {
                 <span className="bs-cat-badge">{b.catName}</span>
                 <div className="bs-cart-item-title">{b.title}</div>
                 <div className="bs-pcard-desc" style={{ whiteSpace:'normal' }}>{b.desc}</div>
+                {/* Save to wishlist link */}
+                <button
+                  className="bs-cart-wishlist-link"
+                  onClick={() => { wishlist?.toggle(b.id); }}
+                >
+                  <Icon name="heart" size={13} /> {wishlist?.has(b.id) ? 'Remove from Wishlist' : 'Save to Wishlist'}
+                </button>
               </div>
               <div className="bs-cart-item-right">
                 <QtyStepper qty={b.qty} setQty={(q)=>setQty(b.id,q)} sm />
@@ -250,7 +271,6 @@ const CartPage = ({ navigate }) => {
         <aside className="bs-summary-card">
           <h3 className="bs-h3">Order Summary</h3>
           <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(subtotal)}</span></div>
-          <div className="bs-summary-row"><span>Delivery</span><span>{cedis(delivery)}</span></div>
           {/* Bulk Purchase Discount — automatic for 10+ of qualifying items */}
           {bulkSaving > 0 && bulkDiscounts.map(d => (
             <div key={d.id} className="bs-summary-row bs-discount" style={{ fontSize:13 }}>
@@ -261,10 +281,15 @@ const CartPage = ({ navigate }) => {
               <span style={{ color:'var(--bs-success)', fontWeight:700 }}>-{cedis(d.saving)}</span>
             </div>
           ))}
+          {/* Delivery — only known after selecting a zone at checkout */}
+          <div className="bs-summary-row">
+            <span>Delivery</span>
+            <span className="bs-delivery-tbd">Calculated at checkout</span>
+          </div>
           <p style={{ fontSize:12, color:'var(--bs-muted)', marginBottom:4 }}>
             Have a promo code? Apply it at checkout.
           </p>
-          <div className="bs-summary-row bs-total"><span>Total</span><span>{cedis(total)}</span></div>
+          <div className="bs-summary-row bs-total"><span>Subtotal</span><span>{cedis(cartTotal)}</span></div>
           <div className="bs-cart-cta-row" style={{ marginTop:18 }}>
             <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-flex" onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
             <button className="bs-btn bs-btn-outline-navy bs-btn-lg bs-btn-flex" onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
@@ -273,8 +298,109 @@ const CartPage = ({ navigate }) => {
           <div className="bs-secure-note"><Icon name="lock" size={14} /> Secure checkout powered by Paystack</div>
         </aside>
       </div>
+
+      {/* You might also like */}
+      {suggestions.length > 0 && (
+        <section className="bs-section" style={{ marginTop:48 }}>
+          <div className="bs-section-head-row">
+            <div>
+              <span className="bs-eyebrow">While you're here</span>
+              <h2 className="bs-h2">You might also like</h2>
+            </div>
+          </div>
+          <div className="bs-hscroll">
+            {suggestions.map((b, i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}
+          </div>
+        </section>
+      )}
     </div>
   );
 };
 
-export { ProductPage, CartPage, QtyStepper, Accordion };
+/* ─── WISHLIST PAGE ──────────────────────────────────── */
+const WishlistPage = ({ navigate }) => {
+  const wishlist = useWishlist();
+  const { add: addToCart, toast } = useCart();
+  const { books } = useCatalog();
+
+  const wishlisted = books.filter(b => wishlist?.has(b.id));
+
+  const moveToCart = (book) => {
+    addToCart(book.id, 1);
+    wishlist?.remove(book.id);
+    toast(`"${book.title}" moved to cart`);
+  };
+
+  if (!wishlisted.length) return (
+    <div className="bs-container bs-fade-page">
+      <div className="bs-empty-state">
+        <div className="bs-empty-icon"><Icon name="heart" size={40} /></div>
+        <h2 className="bs-h2">Your wishlist is empty.</h2>
+        <p>Tap the <Icon name="heart" size={14} style={{ verticalAlign:'middle' }} /> on any product to save it here.</p>
+        <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('shop')}>Browse the Shop <Icon name="arrow" size={16} /></button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="bs-container bs-fade-page">
+      <div className="bs-breadcrumb">
+        <a href="#" onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
+        <span className="bs-sep">/</span>
+        <span className="bs-cur">Wishlist</span>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12, marginBottom:24 }}>
+        <div>
+          <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:28, margin:0 }}>My Wishlist</h1>
+          <p className="bs-muted" style={{ marginTop:4 }}>{wishlisted.length} saved item{wishlisted.length !== 1 ? 's' : ''}</p>
+        </div>
+      </div>
+
+      <div className="bs-wishlist-grid">
+        {wishlisted.map((b, i) => (
+          <div className="bs-wishlist-card" key={b.id}>
+            <div className="bs-wishlist-cover" onClick={() => navigate('product', { id: b.id })} style={{ cursor:'pointer' }}>
+              <CoverPlaceholder title={b.title} idx={i} image={b.image} />
+            </div>
+            <div className="bs-wishlist-body">
+              <span className="bs-cat-badge" style={{ marginBottom:6 }}>{b.catName}</span>
+              <div className="bs-wishlist-title" onClick={() => navigate('product', { id: b.id })} style={{ cursor:'pointer' }}>{b.title}</div>
+              <div className="bs-wishlist-price">{cedis(b.price)}</div>
+              <div className={`bs-pcard-stock ${b.stock ? 'bs-stock-in' : 'bs-stock-out'}`} style={{ fontSize:12, marginBottom:10 }}>
+                <span className={`bs-dot ${b.stock ? 'in' : 'out'}`} /> {b.stock ? 'In Stock' : 'Out of Stock'}
+              </div>
+              <div className="bs-wishlist-actions">
+                {b.stock && (
+                  <button className="bs-btn bs-btn-gold bs-btn-sm" onClick={() => moveToCart(b)}>
+                    <Icon name="bag" size={14} /> Move to Cart
+                  </button>
+                )}
+                <button className="bs-btn bs-btn-outline-navy bs-btn-sm" onClick={() => wishlist.remove(b.id)}>
+                  <Icon name="trash" size={14} /> Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Suggestions */}
+      {(() => {
+        const wIds = new Set(wishlisted.map(b => b.id));
+        const wCats = new Set(wishlisted.map(b => b.cat));
+        const sugg = books.filter(b => !wIds.has(b.id) && wCats.has(b.cat) && b.stock).slice(0, 4);
+        if (!sugg.length) return null;
+        return (
+          <section className="bs-section" style={{ marginTop:48 }}>
+            <div className="bs-section-head-row"><div><span className="bs-eyebrow">More to love</span><h2 className="bs-h2">You might like</h2></div></div>
+            <div className="bs-hscroll">
+              {sugg.map((b, i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}
+            </div>
+          </section>
+        );
+      })()}
+    </div>
+  );
+};
+
+export { ProductPage, CartPage, WishlistPage, QtyStepper, Accordion };

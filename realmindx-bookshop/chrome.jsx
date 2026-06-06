@@ -5,6 +5,45 @@ import logoWhite from '../realmindx-site/assets/logo-white.png';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 
+// ---------- Wishlist store ----------
+const WishlistCtx = React.createContext(null);
+const useWishlist = () => React.useContext(WishlistCtx);
+
+const WISHLIST_STORAGE_KEY = 'rmx.bookshop.wishlist.v1';
+
+const readSavedWishlist = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(WISHLIST_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(id => id !== undefined && id !== null) : [];
+  } catch {
+    return [];
+  }
+};
+
+const WishlistProvider = ({ children }) => {
+  const [items, setItems] = React.useState(readSavedWishlist);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(items));
+  }, [items]);
+
+  const toggle = (bookId) => setItems(prev =>
+    prev.includes(bookId) ? prev.filter(id => id !== bookId) : [...prev, bookId]
+  );
+  const add    = (bookId) => setItems(prev => prev.includes(bookId) ? prev : [...prev, bookId]);
+  const remove = (bookId) => setItems(prev => prev.filter(id => id !== bookId));
+  const has    = (bookId) => items.includes(bookId);
+  const count  = items.length;
+
+  return (
+    <WishlistCtx.Provider value={{ items, count, toggle, add, remove, has }}>
+      {children}
+    </WishlistCtx.Provider>
+  );
+};
+
 // ---------- Cart store (context) ----------
 const CartCtx = React.createContext(null);
 const useCart = () => React.useContext(CartCtx);
@@ -33,6 +72,15 @@ const mainPortalHref = () => {
 };
 
 const CartProvider = ({ children, navigate }) => {
+  // CartProvider wraps WishlistProvider so both contexts are available everywhere
+  return (
+    <WishlistProvider>
+      <CartProviderInner navigate={navigate}>{children}</CartProviderInner>
+    </WishlistProvider>
+  );
+};
+
+const CartProviderInner = ({ children, navigate }) => {
   const { books } = useCatalog();
   const [items, setItems] = React.useState(readSavedCart);
   const [toasts, setToasts] = React.useState([]);
@@ -185,6 +233,7 @@ const NavUserMenu = ({ navigate }) => {
 // ---------- Navbar ----------
 const Navbar = ({ route, navigate }) => {
   const { count } = useCart();
+  const { count: wishlistCount } = useWishlist();
   const { categories, books } = useCatalog();
   const [catsOpen, setCatsOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -344,6 +393,10 @@ const Navbar = ({ route, navigate }) => {
               <span>Track Order</span>
             </button>
             <NavUserMenu navigate={navigate} />
+            <button className="bs-icon-btn" aria-label={`Wishlist, ${wishlistCount} items`} onClick={() => navigate('wishlist')} title="Wishlist">
+              <Icon name="heart" size={20} />
+              {wishlistCount > 0 && <span className="bs-cart-badge">{wishlistCount}</span>}
+            </button>
             <button className="bs-icon-btn" aria-label={`Cart, ${count} items`} onClick={() => navigate('cart')}>
               <Icon name="cart" size={21} />
               {count > 0 && <span className="bs-cart-badge">{count}</span>}
@@ -369,7 +422,7 @@ const Navbar = ({ route, navigate }) => {
           </button>
         </div>
         <nav className="bs-mm-links">
-          {[['home','Home'],['shop','Shop'],['cart','Cart'],['track','Track Order'],['contact','Contact'],['about','About']].map(([r,l]) => (
+          {[['home','Home'],['shop','Shop'],['wishlist','Wishlist'],['cart','Cart'],['track','Track Order'],['contact','Contact'],['about','About']].map(([r,l]) => (
             <a key={r} href="#" className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
               {l}
             </a>
@@ -504,16 +557,30 @@ const RatingLine = ({ book, size = 13 }) => {
 // ---------- Product card ----------
 const ProductCard = ({ book, idx = 0, navigate }) => {
   const { add } = useCart();
+  const wishlist = useWishlist();
   const [added, setAdded] = React.useState(false);
   const onAdd = (e) => {
     e.stopPropagation();
     add(book.id);
     setAdded(true); setTimeout(() => setAdded(false), 1200);
   };
+  const onWishlist = (e) => {
+    e.stopPropagation();
+    wishlist.toggle(book.id);
+  };
+  const wishlisted = wishlist?.has(book.id);
   return (
     <div className={`bs-pcard${book.stock ? '' : ' bs-oos'}`} onClick={() => navigate('product', { id: book.id })} style={{ cursor:'pointer' }}>
       <div className="bs-pcard-cover">
         {book.badge && <span className="bs-cover-badge">{book.badge}</span>}
+        <button
+          className={`bs-wishlist-btn${wishlisted ? ' active' : ''}`}
+          onClick={onWishlist}
+          aria-label={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+          title={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+        >
+          <Icon name="heart" size={16} />
+        </button>
         <CoverPlaceholder title={book.title} idx={idx} image={book.image} />
       </div>
       <div className="bs-pcard-body">
@@ -566,4 +633,4 @@ const ListCard = ({ book, idx = 0, navigate }) => {
   );
 };
 
-export { CartCtx, useCart, CartProvider, Navbar, Footer, WhatsAppFab, BottomNav, ProductCard, ListCard };
+export { CartCtx, useCart, CartProvider, WishlistCtx, useWishlist, WishlistProvider, Navbar, Footer, WhatsAppFab, BottomNav, ProductCard, ListCard };
