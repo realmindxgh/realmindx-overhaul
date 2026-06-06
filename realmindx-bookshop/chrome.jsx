@@ -166,11 +166,11 @@ const NavUserMenu = ({ navigate }) => {
             <span className="bs-user-dd-email">{session.email}</span>
           </div>
           <div className="bs-user-dd-divider" />
-          <button className="bs-user-dd-item" onClick={() => { setOpen(false); navigate('track'); }}>
-            <Icon name="truck" size={16} /> My Orders
+          <button className="bs-user-dd-item" onClick={() => { setOpen(false); navigate('account'); }}>
+            <Icon name="user" size={16} /> My Account
           </button>
-          <button className="bs-user-dd-item" onClick={() => { setOpen(false); window.location.href = mainPortalHref(); }}>
-            <Icon name="user" size={16} /> My RealMindX Profile
+          <button className="bs-user-dd-item" onClick={() => { setOpen(false); navigate('track'); }}>
+            <Icon name="truck" size={16} /> Track an Order
           </button>
           <div className="bs-user-dd-divider" />
           <button className="bs-user-dd-item bs-user-dd-signout" onClick={handleSignOut}>
@@ -235,6 +235,10 @@ const Navbar = ({ route, navigate }) => {
               </div>
             </div>
 
+            <button className="bs-track-pill" onClick={() => navigate('track')} title="Track your order">
+              <Icon name="truck" size={15} />
+              <span>Track Order</span>
+            </button>
             <NavUserMenu navigate={navigate} />
             <button className="bs-icon-btn" aria-label={`Cart, ${count} items`} onClick={() => navigate('cart')}>
               <Icon name="cart" size={21} />
@@ -358,11 +362,7 @@ const BottomNav = ({ route, navigate }) => {
         <a key={r} href="#" className={(r === 'account' ? route === 'login' || route === 'signup' : route === r) ? 'active' : ''} onClick={(e) => {
           e.preventDefault();
           if (r === 'account') {
-            if (session?.role) {
-              window.location.href = mainPortalHref();
-            } else {
-              navigate('login');
-            }
+            navigate(session?.role ? 'account' : 'login');
             return;
           }
           navigate(r);

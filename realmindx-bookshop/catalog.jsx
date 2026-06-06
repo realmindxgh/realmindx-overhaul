@@ -68,6 +68,7 @@ const fromApiProduct = (p) => {
     isbn: p.isbn || '-',
     badge: tags.length ? (BADGE_LABEL[tags[0]] || tags[0]) : undefined,
     featured: Boolean(p.featured),
+    tags,
     image: apiAssetUrl(p.image_url) || null,
     // Bulk discount — set on the category (bulk_discount_percent field, min qty = 10)
     bulkDiscountPct: Number(p.bulk_discount_percent || p.category_bulk_discount_percent) || 0,

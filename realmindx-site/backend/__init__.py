@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, redirect, request, send_from_directory
 from flask_wtf.csrf import CSRFError
 
 from .api import register_api_blueprints
@@ -32,6 +32,18 @@ def create_app(config_object=Config):
     @login_manager.user_loader
     def load_user(user_id):
         return db.session.get(User, int(user_id))
+
+    # ---------- Legacy URL redirects ----------
+    # Old site used /user/signup and /user/login. Google may still index those.
+    # 301 redirects ensure link equity flows to the current SPA routes.
+    @app.get("/user/signup")
+    @app.get("/user/register")
+    def redirect_old_signup():
+        return redirect("/register", code=301)
+
+    @app.get("/user/login")
+    def redirect_old_login():
+        return redirect("/login", code=301)
 
     @app.get("/health")
     def health():

@@ -3,7 +3,7 @@ import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, BottomNav } from '.
 import { HomePage, ShopPage } from './pages-shop.jsx';
 import { ProductPage, CartPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
-import { AuthPage, ContactPage, InfoPage, BookshopLegalPage } from './pages-misc.jsx';
+import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage } from './pages-misc.jsx';
 import { CatalogProvider } from './catalog.jsx';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 
@@ -28,6 +28,8 @@ const routeFromPath = () => {
   if (p === '/about')    return { route: 'about',    params: {} };
   if (p === '/privacy')  return { route: 'privacy',  params: {} };
   if (p === '/terms')    return { route: 'terms',    params: {} };
+  if (p === '/account')  return { route: 'account',  params: {} };
+  if (p === '/orders')   return { route: 'orders',   params: {} };
   return { route: 'home', params: {} };
 };
 
@@ -43,6 +45,8 @@ const pathForRoute = route => ({
   about:    `${PREFIX}/about`,
   privacy:  `${PREFIX}/privacy`,
   terms:    `${PREFIX}/terms`,
+  account:  `${PREFIX}/account`,
+  orders:   `${PREFIX}/orders`,
 }[route] || `${PREFIX}/`);
 
 // Paystack confirmation page: shown when user returns from Paystack payment
@@ -115,10 +119,12 @@ const App = () => {
       about:    { title: 'About the Bookshop | RealMindX', desc: 'Learn about the RealMindX Bookshop — Ghana\'s educational books and stationery shop.' },
       privacy:  { title: 'Privacy Policy | RealMindX Bookshop', desc: 'How the RealMindX Bookshop collects, uses, and protects your personal information.' },
       terms:    { title: 'Terms and Conditions | RealMindX Bookshop', desc: 'Terms governing your use of the RealMindX Bookshop and any purchases you make.' },
+      account:  { title: 'My Account | RealMindX Bookshop', desc: 'Manage your RealMindX Bookshop account, view billing info, and access your order history.' },
+      orders:   { title: 'My Orders | RealMindX Bookshop', desc: 'View all your past orders, track deliveries, and see order details.' },
     };
     const m = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
     document.title = m.title;
-    const paths = { home:'/', shop:'/products', product:'/products', cart:'/cart', checkout:'/checkout', track:'/track', login:'/login', signup:'/signup', contact:'/contact', about:'/about', privacy:'/privacy', terms:'/terms' };
+    const paths = { home:'/', shop:'/products', product:'/products', cart:'/cart', checkout:'/checkout', track:'/track', login:'/login', signup:'/signup', contact:'/contact', about:'/about', privacy:'/privacy', terms:'/terms', account:'/account', orders:'/orders' };
     const url = `${BASE}${paths[route] || '/bookshop'}`;
     const setM = (k, v) => { if (!v) return; let el = document.querySelector(`meta[name="${k}"]`) || document.querySelector(`meta[property="${k}"]`); if (!el) { el = document.createElement('meta'); el.setAttribute(k.startsWith('og:') ? 'property' : 'name', k); document.head.appendChild(el); } el.setAttribute('content', v); };
     if (m.desc) { setM('description', m.desc); setM('og:description', m.desc); setM('twitter:description', m.desc); }
@@ -155,6 +161,8 @@ const App = () => {
     case 'about':    page = <InfoPage navigate={navigate} />; break;
     case 'privacy':  page = <BookshopLegalPage type="privacy" />; break;
     case 'terms':    page = <BookshopLegalPage type="terms" />; break;
+    case 'account':  page = <AccountPage navigate={navigate} />; break;
+    case 'orders':   page = <OrdersPage navigate={navigate} />; break;
     default:         page = <HomePage navigate={navigate} />;
   }
 

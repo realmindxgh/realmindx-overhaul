@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, jsonify, request
+from flask_login import current_user, login_required
 from markupsafe import escape
 import requests
 from sqlalchemy import or_
@@ -212,6 +213,47 @@ def track_orders():
 
     orders = orders_query.order_by(Order.created_at.desc()).limit(5).all()
     return jsonify(items=[order_tracking_json(order) for order in orders])
+
+
+@bookshop_bp.get("/orders/mine")
+@login_required
+@limiter.limit("60/minute")
+def my_orders():
+    """Return the authenticated user's order history.
+    Matches by email (orders placed as guest with same email are included).
+    Supports: page, per_page (max 40), q (order ref search), sort, status.
+    """
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        per_page = min(max(1, int(request.args.get("per_page", 40))), 40)
+    except (TypeError, ValueError):
+        page, per_page = 1, 40
+    q = (request.args.get("q") or "").strip()
+    sort = request.args.get("sort", "newest")
+    status_filter = (request.args.get("status") or "").strip()
+
+    # Match by user_id where set (logged-in checkout) OR by email (guest checkout)
+    query = Order.query.filter(
+        or_(Order.email == current_user.email, Order.user_id == current_user.id)
+    )
+    if q:
+        query = query.filter(Order.order_reference.ilike(f"%{q}%"))
+    if status_filter:
+        query = query.filter(Order.status == status_filter)
+    if sort == "oldest":
+        query = query.order_by(Order.created_at.asc())
+    else:
+        query = query.order_by(Order.created_at.desc())
+
+    total = query.count()
+    orders = query.offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify(
+        items=[order_tracking_json(order) for order in orders],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=max(1, (total + per_page - 1) // per_page),
+    )
 
 
 @bookshop_bp.post("/orders")

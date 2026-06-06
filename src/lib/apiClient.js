@@ -76,6 +76,7 @@ export const api = {
   // public + bookshop
   createOrder: (payload) => apiFetch('/orders', { method: 'POST', body: payload }),
   trackOrders: (query) => apiFetch(`/orders/track?q=${encodeURIComponent(query)}`),
+  fetchMyOrders: (qs = '') => apiFetch(`/orders/mine${qs ? '?' + qs : ''}`),
   sendContact: (payload) => apiFetch('/contact', { method: 'POST', body: payload }),
   subscribeNewsletter: (payload) => apiFetch('/newsletter', { method: 'POST', body: payload }),
   initDonationPayment: (payload) => apiFetch('/donations/paystack/initialize', { method: 'POST', body: payload }),

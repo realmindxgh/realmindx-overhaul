@@ -130,9 +130,20 @@ const HomePage = ({ navigate }) => {
     }
   };
   const featuredPool = books.filter(b => b.featured);
-  const featured = (featuredPool.length ? featuredPool : books).slice(0, 8);
-  const examPool = books.filter(b => /exam|past|textbook/i.test(b.cat) || /exam|past|textbook/i.test(b.catName));
-  const examPicks = (examPool.length ? examPool : books.slice(8)).slice(0, 4);
+  const featured = (featuredPool.length ? featuredPool : books).slice(0, 10);
+
+  // BECE/WASSCE picks — admin-curated via the 'exam-pick' tag on individual products
+  // (set in the admin product editor under Tags), or featured products in exam categories.
+  // Fallback to category-name heuristic when nothing is explicitly tagged.
+  const examTagged = books.filter(b => (b.tags || []).includes('exam-pick'));
+  const examCatFeatured = books.filter(b =>
+    b.featured && /bece|wassce|exam|past[\s-]?questions?|textbook/i.test(`${b.cat || ''} ${b.catName || ''}`)
+  );
+  const examFallback = books.filter(b =>
+    /exam|past|textbook/i.test(b.cat || '') || /exam|past|textbook/i.test(b.catName || '')
+  );
+  const examPool = examTagged.length ? examTagged : examCatFeatured.length ? examCatFeatured : examFallback;
+  const examPicks = (examPool.length ? examPool : books.slice(10)).slice(0, 10);
   return (
     <div className="bs-fade-page">
       <HeroSlideshow navigate={navigate} />
