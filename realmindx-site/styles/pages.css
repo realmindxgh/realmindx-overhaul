@@ -3131,7 +3131,15 @@ input, textarea, select { font-family: inherit; }
 
   /* ── Portal cards & grids ────────────────────────────── */
   .welcome-card { grid-template-columns: 1fr; }
-  .welcome-image-side { display: none; }
+  .welcome-image-side {
+    display: flex !important;
+    order: -1;
+    justify-content: center;
+    padding: 32px 24px 0;
+  }
+  .welcome-avatar-large { width: 120px; height: 120px; }
+  .welcome-content { padding: 20px 24px 32px; order: 1; }
+  .welcome-content h2 { font-size: 1.6rem; }
   .portal-grid-2 { grid-template-columns: 1fr; }
   .profile-sections-grid { grid-template-columns: 1fr; }
   .admin-grid-2 { grid-template-columns: 1fr; }
@@ -3202,7 +3210,7 @@ input, textarea, select { font-family: inherit; }
 
 /* Extra small screens (< 400px) */
 @media (max-width: 400px) {
-  .portal-stats-grid { grid-template-columns: 1fr; }
+  /* portal-stats-grid intentionally kept at repeat(2,1fr) — 2x2 is correct on phones */
   .quick-actions-row { grid-template-columns: 1fr; }
   .services-grid { grid-template-columns: 1fr; }
   .why-grid { grid-template-columns: 1fr; }

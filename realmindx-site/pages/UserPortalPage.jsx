@@ -6,6 +6,14 @@ import { signOut } from '../../src/lib/authClient.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { useCropUpload } from '../../src/lib/useCropUpload.jsx';
 
+// Valid work-type values. Defined at module scope so the user object
+// construction can filter out stale values (e.g. "Immediately" that leaked
+// into preferred_employment_type before the available_from column existed).
+const VALID_WORK_TYPES = new Set(['Full Time','Part Time','Contract','Supply / Relief Teaching','Volunteer','Remote / Online','Locum']);
+
+const filterWorkTypes = (raw = '') =>
+  raw.split(',').map(s => s.trim()).filter(s => VALID_WORK_TYPES.has(s)).join(', ');
+
 // CV Tutorial video card — YouTube URL is configurable via admin Site Settings (key: cv_tutorial_url)
 const CV_TUTORIAL_FALLBACK_URL = '';  // set a YouTube embed URL here once you have one, e.g. 'https://www.youtube.com/embed/XXXXXXXXXXX'
 
@@ -909,12 +917,28 @@ const ApplicationsView = ({ applications = [] }) => (
 );
 
 /* â”€â”€ ALERTS VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const AlertsView = ({ initialAlerts = [], onSaved }) => {
+const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
   const [alerts, setAlerts] = useState(initialAlerts);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ subject: '', location: '', preferred_level: '', employment_type: '', frequency: 'instant', alert_by_email: true });
+  const blankForm = { subject: '', location: '', preferred_level: '', employment_type: '', frequency: 'instant', alert_by_email: true };
+  const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const openForm = () => {
+    // Pre-fill from the user's existing profile so they only need to
+    // change the fields that make this alert *different* from their default.
+    setForm({
+      subject: user?.subject || '',
+      location: user?.location || '',
+      preferred_level: user?.level || '',
+      employment_type: user?.preferredEmploymentType || '',
+      frequency: 'instant',
+      alert_by_email: true,
+    });
+    setError('');
+    setShowForm(true);
+  };
 
   React.useEffect(() => setAlerts(initialAlerts), [initialAlerts]);
 
@@ -951,10 +975,10 @@ const AlertsView = ({ initialAlerts = [], onSaved }) => {
         <div>
           <h2 className="portal-page-title">Job Alerts</h2>
           <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem', marginTop: 4 }}>
-            Get notified when jobs matching your preferences are posted.
+            Your profile preferences already generate automatic alerts. Create an additional alert here if you want to be notified about a <strong>different subject, location, or role type</strong> beyond your profile.
           </p>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>New Alert</button>
+        <button className="btn btn-primary btn-sm" onClick={openForm}>New Alert</button>
       </div>
 
       {alerts.length === 0 ? (
@@ -993,7 +1017,10 @@ const AlertsView = ({ initialAlerts = [], onSaved }) => {
               <Icon name="x" size={16} stroke={2.1} />
               <span>Close</span>
             </button>
-            <h3 style={{ fontFamily: "'Montserrat', sans-serif", marginBottom: 20, fontSize: '1.25rem', color: 'var(--navy)' }}>Create Job Alert</h3>
+            <h3 style={{ fontFamily: "'Montserrat', sans-serif", marginBottom: 8, fontSize: '1.25rem', color: 'var(--navy)' }}>Create Additional Alert</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', marginBottom: 20, lineHeight: 1.6 }}>
+              Pre-filled from your profile. Only change the fields that should be <em>different</em> from your main preferences — e.g. a second subject or a different location.
+            </p>
             <div className="profile-sections-grid">
               <div className="form-group">
                 <label className="form-label">Teaching Subject</label>
@@ -1223,7 +1250,7 @@ const UserPortalPage = () => {
         hasCerts: Boolean(profileSource.certificate_file_id),
         initials,
         avatarUrl: profileSource.profile_picture_url || profileSource.avatar_url || null,
-        preferredEmploymentType: profileSource.preferred_employment_type || '',
+        preferredEmploymentType: filterWorkTypes(profileSource.preferred_employment_type || ''),
         curriculumExperience: profileSource.curriculum_experience || '',
         availableFrom: profileSource.available_from || '',
         nextOfKinName: profileSource.next_of_kin_name || '',
@@ -1285,7 +1312,7 @@ const UserPortalPage = () => {
       bio: profileSource.bio || '',
       teaching_subject: profileSource.teaching_subject || '',
       preferred_level: profileSource.preferred_level || '',
-      preferred_employment_type: profileSource.preferred_employment_type || '',
+      preferred_employment_type: filterWorkTypes(profileSource.preferred_employment_type || ''),
       available_from: profileSource.available_from || '',
       curriculum_experience: profileSource.curriculum_experience || '',
       next_of_kin_name: profileSource.next_of_kin_name || '',
@@ -1337,7 +1364,7 @@ const UserPortalPage = () => {
       case 'profile':      return <ProfileView      user={user} onPreviewAvatar={() => setAvatarPreview(true)} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} avatarUploading={avatarUploading} uploadError={uploadError} />;
       case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} highlight={pendingActionRef.current === 'highlight-cv' ? 'cv' : pendingActionRef.current === 'highlight-cert' ? 'cert' : null} />;
       case 'applications': return <ApplicationsView applications={applications} />;
-      case 'alerts':       return <AlertsView initialAlerts={alerts} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;
+      case 'alerts':       return <AlertsView initialAlerts={alerts} user={user} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;
       case 'settings':     return <SettingsView />;
       default:             return <DashboardView user={user} setActive={setActiveView} onAction={handleChecklistAction} applications={applications} alerts={alerts} onPreviewAvatar={() => setAvatarPreview(true)} />;
     }

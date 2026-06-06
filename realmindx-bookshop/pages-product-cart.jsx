@@ -245,7 +245,6 @@ const CartPage = ({ navigate }) => {
               </div>
             </div>
           ))}
-          <button className="bs-btn bs-btn-outline-navy" style={{ marginTop:22 }} onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
         </div>
 
         <aside className="bs-summary-card">
@@ -266,7 +265,10 @@ const CartPage = ({ navigate }) => {
             Have a promo code? Apply it at checkout.
           </p>
           <div className="bs-summary-row bs-total"><span>Total</span><span>{cedis(total)}</span></div>
-          <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:18 }} onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
+          <div className="bs-cart-cta-row" style={{ marginTop:18 }}>
+            <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-flex" onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
+            <button className="bs-btn bs-btn-outline-navy bs-btn-lg bs-btn-flex" onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
+          </div>
           <AuthReturnActions navigate={navigate} route="cart" />
           <div className="bs-secure-note"><Icon name="lock" size={14} /> Secure checkout powered by Paystack</div>
         </aside>
