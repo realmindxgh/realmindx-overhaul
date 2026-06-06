@@ -269,16 +269,21 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
   );
 };
 
-const PER_PAGE = 8;
+const BATCH = 40;
+
 const ShopPage = ({ navigate, initialCat = 'all' }) => {
-  const { books, priceCeiling } = useCatalog();
+  const { books, categories, priceCeiling } = useCatalog();
   const [filters, setFilters] = React.useState({ cats: initialCat !== 'all' ? [initialCat] : [], min:0, max:priceCeiling, rating:0, inStock:false });
   const [sort, setSort] = React.useState('newest');
   const [view, setView] = React.useState('grid');
-  const [page, setPage] = React.useState(1);
+  const [visible, setVisible] = React.useState(BATCH);
+  const [loading, setLoading] = React.useState(false);
   const [drawer, setDrawer] = React.useState(false);
+  const sentinelRef = React.useRef(null);
+  const loadingRef = React.useRef(false);
 
-  React.useEffect(() => { setPage(1); }, [filters, sort]);
+  // Reset to first batch when filters or sort changes
+  React.useEffect(() => { setVisible(BATCH); setLoading(false); loadingRef.current = false; }, [filters, sort]);
   React.useEffect(() => { document.body.style.overflow = drawer ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [drawer]);
 
   const matchesCategory = (book, id) => book.cat === id || book.curriculum === id || book.curriculumName === id;
@@ -290,10 +295,58 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
   );
   if (sort === 'low') list = [...list].sort((a,b) => a.price - b.price);
   if (sort === 'high') list = [...list].sort((a,b) => b.price - a.price);
-  if (sort === 'popular') list = [...list].sort((a,b) => (b.rating * b.reviews) - (a.rating * a.reviews));
+  if (sort === 'popular') list = [...list].sort((a,b) => (b.rating * (b.reviews||1)) - (a.rating * (a.reviews||1)));
 
-  const totalPages = Math.max(1, Math.ceil(list.length / PER_PAGE));
-  const shown = list.slice((page-1)*PER_PAGE, page*PER_PAGE);
+  const shown = list.slice(0, visible);
+  const allLoaded = shown.length >= list.length;
+
+  // ── Infinite scroll sentinel ──────────────────────────────────
+  React.useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || allLoaded) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !loadingRef.current) {
+          loadingRef.current = true;
+          setLoading(true);
+          setTimeout(() => {
+            setVisible(v => v + BATCH);
+            setLoading(false);
+            loadingRef.current = false;
+          }, 280);
+        }
+      },
+      { rootMargin: '300px' } // trigger 300px before sentinel reaches viewport
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [allLoaded, visible]);
+
+  // ── Context label for end-of-results message ─────────────────
+  const contextLabel = React.useMemo(() => {
+    const catNames = filters.cats
+      .map(id => categories.find(c => c.id === id)?.name)
+      .filter(Boolean);
+    let base;
+    if (catNames.length === 1)      base = catNames[0];
+    else if (catNames.length > 1)   base = 'your selected categories';
+    else                             base = 'the full catalogue';
+    const extras = [];
+    if (filters.inStock)             extras.push('in stock only');
+    if (filters.rating >= 4)         extras.push(`${filters.rating}+ stars`);
+    return extras.length ? `${base} — ${extras.join(', ')}` : base;
+  }, [filters, categories]);
+
+  // ── Top picks: highest-rated in-stock books NOT in current filter ──
+  const topPicks = React.useMemo(() => {
+    const isFiltered = filters.cats.length > 0 || filters.inStock || filters.rating > 0;
+    if (!isFiltered) return []; // already showing all books — no need to suggest
+    const shownIds = new Set(list.map(b => b.id));
+    return books
+      .filter(b => !shownIds.has(b.id) && b.stock)
+      .sort((a, b) => (b.rating * (b.reviews || 1)) - (a.rating * (a.reviews || 1)))
+      .slice(0, 6);
+  }, [books, list, filters]);
 
   return (
     <div className="bs-container bs-fade-page">
@@ -312,7 +365,11 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
           <div className="bs-shop-toolbar">
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <button className="bs-filter-mobile-btn" onClick={() => setDrawer(true)}><Icon name="filter" size={16} /> Filter</button>
-              <span className="bs-shop-count">Showing <strong>{shown.length}</strong> of <strong>{list.length}</strong> results</span>
+              <span className="bs-shop-count">
+                {allLoaded
+                  ? <><strong>{list.length}</strong> result{list.length !== 1 ? 's' : ''}</>
+                  : <>Showing <strong>{shown.length}</strong> of <strong>{list.length}</strong></>}
+              </span>
             </div>
             <div className="bs-toolbar-right">
               <select className="bs-sort-select" value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort by">
@@ -329,29 +386,72 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
           </div>
 
           {shown.length === 0
-            ? <div className="bs-empty-state"><div className="bs-empty-icon"><Icon name="search" size={36} /></div><h2>No books match</h2><p>Try widening your filters.</p></div>
+            ? (
+              <div className="bs-empty-state">
+                <div className="bs-empty-icon"><Icon name="search" size={36} /></div>
+                <h2>No books match your filters.</h2>
+                <p>Try a different category, adjust the price range, or remove stock/rating filters.</p>
+                <button className="bs-btn bs-btn-gold" onClick={() => setFilters({ cats:[], min:0, max:priceCeiling, rating:0, inStock:false })}>
+                  Clear all filters
+                </button>
+              </div>
+            )
             : view === 'grid'
               ? <div className="bs-product-grid">{shown.map((b,i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}</div>
-              : <div style={{ display:'flex', flexDirection:'column', gap:14 }}>{shown.map((b,i) => <ListCard key={b.id} book={b} idx={i} navigate={navigate} />)}</div>}
+              : <div style={{ display:'flex', flexDirection:'column', gap:14 }}>{shown.map((b,i) => <ListCard key={b.id} book={b} idx={i} navigate={navigate} />)}</div>
+          }
 
-          {totalPages > 1 && (
-            <div className="bs-pagination">
-              <button className="bs-page-btn pill" disabled={page===1} onClick={() => setPage(p => Math.max(1,p-1))}><Icon name="chevL" size={15}/> Prev</button>
-              {Array.from({length: totalPages}).map((_,i) => (
-                <button key={i} className={`bs-page-btn${page === i+1 ? ' active' : ''}`} onClick={() => setPage(i+1)}>{i+1}</button>
-              ))}
-              <button className="bs-page-btn pill" disabled={page===totalPages} onClick={() => setPage(p => Math.min(totalPages,p+1))}>Next <Icon name="chevR" size={15}/></button>
+          {/* Infinite scroll sentinel + loading indicator */}
+          {!allLoaded && shown.length > 0 && (
+            <div ref={sentinelRef} className="bs-scroll-sentinel" aria-hidden="true">
+              {loading && (
+                <div className="bs-loading-dots" role="status" aria-label="Loading more">
+                  <span /><span /><span />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* End-of-results */}
+          {allLoaded && list.length > 0 && (
+            <div className="bs-end-of-results">
+              <div className="bs-eor-divider" />
+              <div className="bs-eor-badge">
+                <Icon name="check" size={14} />
+                That's all for <strong>{contextLabel}</strong>
+              </div>
+
+              {topPicks.length >= 2 && (
+                <div className="bs-eor-picks">
+                  <div className="bs-section-head-row" style={{ marginBottom:18 }}>
+                    <div>
+                      <span className="bs-eyebrow">While you're here</span>
+                      <h2 className="bs-h2" style={{ fontSize:'clamp(20px,4vw,26px)', margin:0 }}>Top picks from across the shop</h2>
+                    </div>
+                    <a className="bs-see-all" href="#" onClick={(e) => {
+                      e.preventDefault();
+                      setFilters({ cats:[], min:0, max:priceCeiling, rating:0, inStock:false });
+                      window.scrollTo({ top:0, behavior:'smooth' });
+                    }}>Browse all <Icon name="arrow" size={14} /></a>
+                  </div>
+                  <div className="bs-hscroll">
+                    {topPicks.map((b, i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* mobile filter drawer */}
+      {/* Mobile filter drawer */}
       <div className={`bs-drawer-scrim${drawer ? ' open' : ''}`} onClick={() => setDrawer(false)} />
       <div className={`bs-filter-drawer${drawer ? ' open' : ''}`}>
         <div className="bs-drawer-handle" />
         <FilterPanel filters={filters} setFilters={setFilters} ceiling={priceCeiling} />
-        <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop:18 }} onClick={() => setDrawer(false)}>Show {list.length} results</button>
+        <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop:18 }} onClick={() => setDrawer(false)}>
+          Show {list.length} result{list.length !== 1 ? 's' : ''}
+        </button>
       </div>
     </div>
   );
