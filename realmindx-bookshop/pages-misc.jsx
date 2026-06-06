@@ -2,7 +2,7 @@ import React from 'react';
 import { Icon, cedis } from './shared.jsx';
 import { useCart } from './chrome.jsx';
 import { submitMessage } from '../src/lib/managedContent.js';
-import { useSiteCopy } from '../src/lib/siteContent.js';
+import { useSiteCopy, usePublicSettings } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { resendVerificationOtp, signIn, signOut, signUp, syncSessionFromApi, verifyEmailOtp } from '../src/lib/authClient.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
@@ -296,6 +296,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
 
 const ContactPage = ({ navigate }) => {
   const { toast } = useCart();
+  const settings = usePublicSettings();
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const onSubmit = async (event) => {
     event.preventDefault();
@@ -329,8 +330,9 @@ const ContactPage = ({ navigate }) => {
         <h1 className="bs-h2" style={{ color: 'var(--bs-navy)', fontSize: 36, marginTop: 12 }}>We'd love to help.</h1>
       </div>
       <div className="bs-contact-layout">
-        <div className="bs-form-card">
-          <h3 className="bs-h3">Send us a message</h3>
+        <div className="bs-form-card" style={{ borderTop: '4px solid var(--bs-navy)', boxShadow: 'var(--bs-shadow-md)' }}>
+          <h3 className="bs-h3" style={{ fontSize: 22, color: 'var(--bs-navy)', marginBottom: 6 }}>Send us a message</h3>
+          <p style={{ fontSize: '0.88rem', color: 'var(--bs-muted)', marginBottom: 22 }}>We reply within one business day. You will receive a confirmation email with a reference number.</p>
           <form onSubmit={onSubmit}>
             <div className="bs-field-row">
               <div className="bs-field"><label>Name</label><input name="name" placeholder="Your name" required /></div>
@@ -347,9 +349,18 @@ const ContactPage = ({ navigate }) => {
           <h3 className="bs-h3">Visit and reach us</h3>
           <div className="bs-contact-row"><Icon name="pin" size={20} className="bs-ci" /><div><div className="bs-cr-label">Address</div><div className="bs-cr-val">Dome Pillar 2, Accra, Ghana</div></div></div>
           <div className="bs-contact-row"><Icon name="phone" size={20} className="bs-ci" /><div><div className="bs-cr-label">Call us</div><div className="bs-cr-val">+233 55 803 9190 / +233 55 452 9493</div></div></div>
-          <div className="bs-contact-row"><Icon name="mail" size={20} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">bookshop@realmindxgh.com</div></div></div>
+          <div className="bs-contact-row"><Icon name="mail" size={20} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">info@realmindxgh.com</div></div></div>
           <a className="bs-contact-row" href="https://wa.link/q5rjtp" style={{ textDecoration: 'none' }}><Icon name="wa" size={20} className="bs-ci" /><div><div className="bs-cr-label">WhatsApp</div><div className="bs-cr-val">Chat with us instantly</div></div></a>
-          <div className="bs-map-embed"><div className="bs-imgph bs-navy"><span className="bs-lab">[ map embed - Dome Pillar 2 ]</span></div></div>
+          {settings.contact_map_embed ? (
+            <iframe
+              title="RealMindX Bookshop – Dome Pillar 2, Accra"
+              src={settings.contact_map_embed}
+              loading="lazy"
+              allowFullScreen
+              referrerPolicy="no-referrer-when-downgrade"
+              style={{ width: '100%', height: 260, border: 'none', borderRadius: 8, marginTop: 16, display: 'block' }}
+            />
+          ) : null}
           <table className="bs-hours-table" style={{ marginTop: 20 }}>
             <tbody>
               <tr><td>Monday - Friday</td><td>8:00 - 18:00</td></tr>
@@ -398,7 +409,7 @@ const InfoPage = ({ navigate }) => (
           <h4>Quick Contact</h4>
           <div className="bs-contact-row"><Icon name="pin" size={18} className="bs-ci" /><div><div className="bs-cr-label">Address</div><div className="bs-cr-val">Dome Pillar 2, Accra</div></div></div>
           <div className="bs-contact-row"><Icon name="phone" size={18} className="bs-ci" /><div><div className="bs-cr-label">Phone</div><div className="bs-cr-val">+233 55 803 9190</div></div></div>
-          <div className="bs-contact-row"><Icon name="mail" size={18} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">bookshop@realmindxgh.com</div></div></div>
+          <div className="bs-contact-row"><Icon name="mail" size={18} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">info@realmindxgh.com</div></div></div>
           <h4 style={{ marginTop: 24 }}>Opening Hours</h4>
           <table className="bs-hours-table" style={{ color: 'var(--bs-text)' }}>
             <tbody>
@@ -779,7 +790,7 @@ const AccountPage = ({ navigate }) => {
                 <p className="bs-muted" style={{ marginTop: 6 }}>{session.email}</p>
               </div>
             </div>
-            <img src="/bookshop-logo.png" alt="RealMindX Bookshop" className="bs-account-hero-logo" />
+            {/* Logo removed from account hero — prevents blurred watermark on mobile */}
           </div>
         </div>
       </div>
@@ -836,7 +847,7 @@ const AccountPage = ({ navigate }) => {
                 </div>
               </div>
               <p className="bs-muted" style={{ marginTop: 14, fontSize: '0.82rem' }}>
-                To update your details, contact us at <a href="mailto:bookshop@realmindxgh.com" style={{ color: 'var(--bs-gold-on-light)' }}>bookshop@realmindxgh.com</a>.
+                To update your details, contact us at <a href="mailto:info@realmindxgh.com" style={{ color: 'var(--bs-gold-on-light)' }}>info@realmindxgh.com</a>.
               </p>
             </section>
 

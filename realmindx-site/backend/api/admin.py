@@ -1280,6 +1280,172 @@ def export_users():
                      as_attachment=True, download_name="realmindx-teachers.xlsx")
 
 
+@admin_bp.get("/jobs/export")
+@login_required
+@permission_required("jobs.export")
+def export_jobs():
+    """Export job posts as CSV, XLSX, or PDF."""
+    export_format = (request.args.get("format") or "csv").lower()
+    rows = Job.query.order_by(Job.created_at.desc()).all()
+    headers = ["id", "title", "organisation", "location", "subject", "level",
+               "employment_type", "salary_min", "salary_max", "deadline", "status", "created_at"]
+
+    data_rows = [
+        {
+            "id": j.id,
+            "title": j.title,
+            "organisation": j.organisation or "",
+            "location": j.location or "",
+            "subject": j.subject or "",
+            "level": j.level or "",
+            "employment_type": j.employment_type or "",
+            "salary_min": float(j.salary_min) if j.salary_min is not None else "",
+            "salary_max": float(j.salary_max) if j.salary_max is not None else "",
+            "deadline": str(j.deadline) if j.deadline else "",
+            "status": j.status,
+            "created_at": str(j.created_at.date()) if j.created_at else "",
+        }
+        for j in rows
+    ]
+
+    if export_format == "csv":
+        out = io.StringIO()
+        writer = csv.DictWriter(out, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(data_rows)
+        return Response(out.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=realmindx-jobs.csv"})
+
+    if export_format == "xlsx":
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            return jsonify(error="XLSX export requires openpyxl."), 501
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Job Posts"
+        ws.append(headers)
+        for row in data_rows:
+            ws.append([row[h] for h in headers])
+        stream = io.BytesIO()
+        wb.save(stream)
+        stream.seek(0)
+        return send_file(stream, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                         as_attachment=True, download_name="realmindx-jobs.xlsx")
+
+    if export_format == "pdf":
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas as rl_canvas
+        except ImportError:
+            return jsonify(error="PDF export requires reportlab."), 501
+        stream = io.BytesIO()
+        pdf = rl_canvas.Canvas(stream, pagesize=A4)
+        width, height = A4
+        y = height - 48
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(40, y, "RealMindX Job Posts")
+        y -= 28
+        pdf.setFont("Helvetica", 8)
+        for j in rows:
+            line = f"{j.id}. {j.title} | {j.organisation or ''} | {j.location or ''} | {j.status}"
+            pdf.drawString(40, y, line[:135])
+            y -= 14
+            if y < 44:
+                pdf.showPage()
+                y = height - 48
+                pdf.setFont("Helvetica", 8)
+        pdf.save()
+        stream.seek(0)
+        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name="realmindx-jobs.pdf")
+
+    return jsonify(error="Unsupported format. Use csv, xlsx, or pdf."), 400
+
+
+@admin_bp.get("/applications/export")
+@login_required
+@permission_required("applications.export")
+def export_applications():
+    """Export job applications as CSV, XLSX, or PDF."""
+    export_format = (request.args.get("format") or "csv").lower()
+    rows = (
+        JobApplication.query
+        .join(JobApplication.user, isouter=True)
+        .join(JobApplication.job, isouter=True)
+        .order_by(JobApplication.created_at.desc())
+        .all()
+    )
+    headers = ["id", "job_title", "applicant_name", "applicant_email", "status", "cover_note", "applied_at"]
+
+    data_rows = [
+        {
+            "id": a.id,
+            "job_title": a.job.title if a.job else "",
+            "applicant_name": f"{a.user.first_name or ''} {a.user.last_name or ''}".strip() if a.user else "",
+            "applicant_email": a.user.email if a.user else "",
+            "status": a.status,
+            "cover_note": (a.cover_note or "")[:200],
+            "applied_at": str(a.created_at.date()) if a.created_at else "",
+        }
+        for a in rows
+    ]
+
+    if export_format == "csv":
+        out = io.StringIO()
+        writer = csv.DictWriter(out, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(data_rows)
+        return Response(out.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=realmindx-applications.csv"})
+
+    if export_format == "xlsx":
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            return jsonify(error="XLSX export requires openpyxl."), 501
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Applications"
+        ws.append(headers)
+        for row in data_rows:
+            ws.append([row[h] for h in headers])
+        stream = io.BytesIO()
+        wb.save(stream)
+        stream.seek(0)
+        return send_file(stream, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                         as_attachment=True, download_name="realmindx-applications.xlsx")
+
+    if export_format == "pdf":
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas as rl_canvas
+        except ImportError:
+            return jsonify(error="PDF export requires reportlab."), 501
+        stream = io.BytesIO()
+        pdf = rl_canvas.Canvas(stream, pagesize=A4)
+        width, height = A4
+        y = height - 48
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(40, y, "RealMindX Job Applications")
+        y -= 28
+        pdf.setFont("Helvetica", 8)
+        for a in rows:
+            name = f"{a.user.first_name or ''} {a.user.last_name or ''}".strip() if a.user else "—"
+            email = a.user.email if a.user else ""
+            line = f"{a.id}. {a.job.title if a.job else '?'} | {name} | {email} | {a.status}"
+            pdf.drawString(40, y, line[:135])
+            y -= 14
+            if y < 44:
+                pdf.showPage()
+                y = height - 48
+                pdf.setFont("Helvetica", 8)
+        pdf.save()
+        stream.seek(0)
+        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name="realmindx-applications.pdf")
+
+    return jsonify(error="Unsupported format. Use csv, xlsx, or pdf."), 400
+
+
 @admin_bp.get("/categories")
 @login_required
 @permission_required("categories.view")

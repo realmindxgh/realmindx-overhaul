@@ -252,7 +252,8 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-mm-top .bs-logo-shop { color: rgba(255,255,255,.55); }
 
 /* ============================================================ HERO ============================================================ */
-.bs-hero { position: relative; width: 100%; height: calc(100vh - var(--bs-nav-h, 76px)); min-height: 560px; max-height: none; background: var(--bs-navy-dark); overflow: hidden; }
+/* Hero height — clamp prevents full-viewport stretch while keeping a useful minimum */
+.bs-hero { position: relative; width: 100%; height: clamp(340px, 52vh, 540px); background: var(--bs-navy-dark); overflow: hidden; }
 .bs-hero-slide { position: absolute; inset: 0; opacity: 0; transition: opacity .8s; }
 .bs-hero-slide.active { opacity: 1; }
 .bs-hero-flyer { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: #fff; position: relative; text-align: center; padding: 40px; }
@@ -274,7 +275,7 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-hero-dot { width: 9px; height: 9px; border-radius: 999px; background: rgba(255,255,255,.45); transition: all .3s; cursor: pointer; }
 .bs-hero-dot.active { background: var(--bs-gold-live); width: 26px; }
 .bs-gold-rule { height: 3px; background: var(--bs-gold-live); width: 100%; display: block; margin: 0; padding: 0; }
-@media (max-width: 768px) { .bs-hero { height: auto; aspect-ratio: 100 / 85; max-height: none; } .bs-hero-arrow { display: none; } }
+@media (max-width: 768px) { .bs-hero { height: auto; aspect-ratio: 5 / 3; } .bs-hero-arrow { display: none; } }
 
 /* ============================================================ CATEGORY STRIP ============================================================ */
 .bs-cat-strip-wrap { background: #fff; border-bottom: 1px solid var(--bs-border); }
@@ -371,8 +372,9 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-newsletter .bs-eyebrow { color: var(--bs-gold-dark); display: block; margin-bottom: 12px; }
 .bs-newsletter p { color: var(--bs-muted); font-size: 16px; margin: 14px auto 0; max-width: 480px; }
 .bs-newsletter-form { display: flex; gap: 10px; max-width: 480px; margin: 30px auto 0; }
-.bs-newsletter-form input { flex: 1; height: 50px; border-radius: var(--bs-radius-sm); border: 1.5px solid var(--bs-border); padding: 0 18px; font-size: 15px; background: #fff; }
+.bs-newsletter-form input { flex: 1; height: 50px; border-radius: 999px; border: 1.5px solid var(--bs-border); padding: 0 22px; font-size: 15px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 .bs-newsletter-form input:focus { outline: none; border-color: var(--bs-navy); box-shadow: 0 0 0 3px rgba(20,54,112,.12); }
+.bs-newsletter-form .bs-btn { border-radius: 999px; }
 @media (max-width: 768px) {
   .bs-newsletter { padding: 40px 16px; }
   .bs-newsletter-form { flex-direction: column; max-width: 100%; margin: 24px 0 0; }
@@ -434,7 +436,7 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
   }
 
   /* ── Hero flyer on mobile ────────────────────────────────── */
-  .bs-hero { height: auto !important; min-height: 0 !important; aspect-ratio: 5 / 4 !important; margin-left: 0 !important; margin-right: 0 !important; }
+  .bs-hero { height: auto !important; aspect-ratio: 5 / 3 !important; margin-left: 0 !important; margin-right: 0 !important; }
   .bs-hero-flyer { padding: 24px 18px !important; }
   .bs-fade-page > .bs-hero,
   .bs-fade-page > * > .bs-hero { margin-top: 0 !important; }
@@ -452,10 +454,11 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
   .bs-see-all { font-size: 11px; }
   .bs-section { padding: 40px 0; }
 
-  /* ── Auth page – show form only ─────────────────────────── */
+  /* ── Auth page – show form only, no side gaps ───────────── */
   .bs-auth { grid-template-columns: 1fr !important; min-height: 100svh; }
   .bs-auth-brand { display: none !important; }
-  .bs-auth-form-wrap { padding: 44px 24px 60px; min-height: 100svh; }
+  .bs-auth-form-wrap { padding: 44px 16px 60px; min-height: 100svh; }
+  .bs-auth-form { max-width: 100% !important; }
 
   /* ── Checkout / Cart ─────────────────────────────────────── */
   .bs-checkout-layout { grid-template-columns: 1fr !important; }
@@ -595,6 +598,27 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 
   /* ── Marquee / promo band ────────────────────────────────── */
   .bs-promo-band-inner { flex-wrap: wrap; gap: 12px; justify-content: center; text-align: center; }
+
+  /* ── Account page ────────────────────────────────────────── */
+  /* Force single-column regardless of what the larger breakpoint says */
+  .bs-account-layout { grid-template-columns: 1fr !important; gap: 20px !important; }
+  .bs-account-panels { grid-template-columns: 1fr !important; }
+  /* Every direct grid child must shrink, not overflow */
+  .bs-account-layout > *,
+  .bs-account-panels > *,
+  .bs-account-section { min-width: 0; width: 100%; box-sizing: border-box; }
+  .bs-account-section { padding: 18px 16px; }
+  /* Hero card: allow wrapping so badge/actions don't get pushed off screen */
+  .bs-account-hero-card { flex-wrap: wrap; justify-content: flex-start; gap: 12px; }
+  /* Nav card: un-sticky on mobile so it doesn't overlap content */
+  .bs-account-nav-card { position: static; }
+
+  /* ── Orders page ──────────────────────────────────────────── */
+  .bs-orders-grid { grid-template-columns: 1fr !important; }
+  .bs-orders-hero-row { flex-wrap: wrap; gap: 8px; }
+  .bs-orders-toolbar { flex-wrap: wrap; gap: 8px; }
+  .bs-orders-toolbar > * { min-width: 0; }
+  .bs-orders-search-wrap { min-width: 160px; }
 }
 
 /* ============================================================ FAB + BOTTOM NAV ============================================================ */
@@ -1143,12 +1167,9 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
   box-shadow: var(--bs-shadow-sm);
   position: relative; overflow: hidden;
 }
-.bs-account-hero-card::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
-  background: linear-gradient(90deg, var(--bs-navy) 0%, var(--bs-gold-live) 100%);
-}
+.bs-account-hero-card::before { content: none; /* gradient bar removed — cleaner card */ }
 .bs-account-hero-user { display: flex; align-items: center; gap: 22px; }
-.bs-account-hero-logo { height: 52px; opacity: 0.15; flex-shrink: 0; }
+.bs-account-hero-logo { display: none; /* watermark logo removed */ }
 .bs-account-avatar-lg {
   width: 72px; height: 72px; border-radius: 50%;
   background: var(--bs-gold-live); color: var(--bs-navy);
@@ -1159,11 +1180,16 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 }
 .bs-account-avatar-lg img { width: 100%; height: 100%; object-fit: cover; display: block; }
 @media (max-width: 600px) {
-  .bs-account-hero-logo { display: none; }
-  .bs-account-hero-card { padding: 18px 20px; }
+  .bs-account-hero-card { padding: 16px 18px; }
+  .bs-account-avatar-lg { width: 52px; height: 52px; font-size: 16px; }
+  /* Tighten account hero text on mobile */
+  .bs-account-hero-user .bs-h1 { font-size: clamp(17px, 5vw, 22px) !important; }
+  .bs-account-hero-user .bs-eyebrow { font-size: 9px; }
+  .bs-account-hero-user .bs-muted { font-size: 0.8rem; }
 }
 
 .bs-account-layout { display: grid; grid-template-columns: 220px 1fr; gap: 36px; align-items: start; }
+.bs-account-layout > * { min-width: 0; }          /* prevent grid blowout */
 @media (max-width: 900px) { .bs-account-layout { grid-template-columns: 1fr; } }
 
 /* Account sidebar nav */
@@ -1194,6 +1220,7 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-account-panels {
   display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
 }
+.bs-account-panels > * { min-width: 0; }           /* prevent grid blowout */
 .bs-account-panels .bs-account-section { margin-bottom: 0; }
 @media (max-width: 800px) { .bs-account-panels { grid-template-columns: 1fr; } }
 

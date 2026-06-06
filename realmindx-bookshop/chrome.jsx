@@ -415,12 +415,8 @@ const Navbar = ({ route, navigate }) => {
       </nav>
 
       {/* Mobile menu — slide down from top-right */}
+      {/* Note: no redundant close button here — the hamburger in the navbar already animates to X */}
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
-        <div className="bs-mm-header">
-          <button className="bs-mm-close" aria-label="Close menu" onClick={() => setMenuOpen(false)}>
-            <Icon name="x" size={22} stroke={2.5} />
-          </button>
-        </div>
         <nav className="bs-mm-links">
           {[['home','Home'],['shop','Shop'],['wishlist','Wishlist'],['cart','Cart'],['track','Track Order'],['contact','Contact'],['about','About']].map(([r,l]) => (
             <a key={r} href="#" className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
@@ -462,7 +458,7 @@ const Footer = ({ navigate }) => (
           <h4>Contact</h4>
           <div className="bs-footer-contact">
             <span><Icon name="pin" size={17} className="bs-ci" /> Dome Pillar 2, Accra, Ghana</span>
-            <a href="mailto:bookshop@realmindxgh.com"><Icon name="mail" size={17} className="bs-ci" /> bookshop@realmindxgh.com</a>
+            <a href="mailto:info@realmindxgh.com"><Icon name="mail" size={17} className="bs-ci" /> info@realmindxgh.com</a>
             <span><Icon name="phone" size={17} className="bs-ci" /> +233 55 803 9190</span>
             <span style={{ marginLeft: 27 }}>+233 55 452 9493</span>
           </div>

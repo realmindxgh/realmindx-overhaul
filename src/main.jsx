@@ -642,6 +642,10 @@ const AppRoutes = () => {
         <Route path="/login" element={<UserLoginPage />} />
         <Route path="/register" element={<RegisterRoute />} />
         <Route path="/signup" element={<Navigate to="/register" replace />} />
+        {/* Legacy /user/* URLs that Google may still index — redirect client-side */}
+        <Route path="/user/signup" element={<Navigate to="/register" replace />} />
+        <Route path="/user/register" element={<Navigate to="/register" replace />} />
+        <Route path="/user/login" element={<Navigate to="/login" replace />} />
         <Route path="/portal/*" element={<UserPortalPage />} />
 
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />

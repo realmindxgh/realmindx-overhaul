@@ -642,7 +642,7 @@ const fieldPlaceholder = (itemField, config) => {
     order_reference: 'Leave blank for an automatic reference if unsure',
     customer_name: 'Customer full name',
     phone: '+233 XX XXX XXXX',
-    location: 'Delivery town or pickup location',
+    location: 'City, region or school address',
     message: 'Full message or internal note',
     url: 'https://... or /resources/...',
     organisation: 'School, company, or organisation name',
@@ -1374,6 +1374,9 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
   const [replyText, setReplyText] = React.useState('');
   const [replyError, setReplyError] = React.useState('');
   const [search, setSearch] = React.useState('');
+  const [filterStatus, setFilterStatus] = React.useState('');
+  const [sortCol, setSortCol] = React.useState(null);
+  const [sortDir, setSortDir] = React.useState('asc');
   const [localRows, setLocalRows] = React.useState(null);
   const [showProductImport, setShowProductImport] = React.useState(false);
   const [actionStatus, setActionStatus] = React.useState(null);
@@ -1399,15 +1402,36 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
   const TABLE_PAGE_SIZE = 20;
   const [tablePage, setTablePage] = React.useState(1);
 
-  // Reset to page 1 when search changes
-  React.useEffect(() => { setTablePage(1); }, [search]);
+  // Reset to page 1 when search or filter changes
+  React.useEffect(() => { setTablePage(1); }, [search, filterStatus]);
 
-  const filtered = rows.filter(row =>
-    !search.trim() || Object.values(row).join(' ').toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = rows.filter(row => {
+    if (filterStatus && row.status !== filterStatus) return false;
+    return !search.trim() || Object.values(row).join(' ').toLowerCase().includes(search.toLowerCase());
+  });
 
-  const totalTablePages = Math.max(1, Math.ceil(filtered.length / TABLE_PAGE_SIZE));
-  const paginatedRows = filtered.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE);
+  // Column sort — clicking a header cycles asc → desc → off
+  const toggleSort = (col) => {
+    if (sortCol === col) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortCol(null); setSortDir('asc'); }
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  };
+
+  const sorted = sortCol
+    ? [...filtered].sort((a, b) => {
+        const av = String(a[sortCol] ?? '').toLowerCase();
+        const bv = String(b[sortCol] ?? '').toLowerCase();
+        const n = av.localeCompare(bv, undefined, { numeric: true });
+        return sortDir === 'asc' ? n : -n;
+      })
+    : filtered;
+
+  const totalTablePages = Math.max(1, Math.ceil(sorted.length / TABLE_PAGE_SIZE));
+  const paginatedRows = sorted.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE);
 
   const handleCreate = async (payload) => {
     await createItem(config.collection, payload);
@@ -1570,11 +1594,13 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {config.collection === 'products' && isApiMode() && (
+          {EXPORTABLE_PERMISSION_KEYS.has(config.collection) && isApiMode() && (
             <>
-              <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setShowProductImport(value => !value)}>Batch Import</button>
+              {config.collection === 'products' && (
+                <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setShowProductImport(value => !value)}>Batch Import</button>
+              )}
               {['csv', 'xlsx', 'pdf'].map(format => (
-                <a className="btn btn-outline-navy btn-sm" key={format} href={api.adminExportUrl('products', format)}>
+                <a className="btn btn-outline-navy btn-sm" key={format} href={api.adminExportUrl(config.collection, format)}>
                   Export {format.toUpperCase()}
                 </a>
               ))}
@@ -1650,9 +1676,24 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
       )}
 
       <div className="admin-table-card">
-        <div className="atc-header">
-          <h3>{filtered.length} Record{filtered.length !== 1 ? 's' : ''}{filtered.length > TABLE_PAGE_SIZE ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
-          <div className="atc-search"><span>Search</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search records" /></div>
+        <div className="atc-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <h3>{sorted.length} Record{sorted.length !== 1 ? 's' : ''}{sorted.length > TABLE_PAGE_SIZE ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
+            {/* Status filter — shown whenever rows have a status column */}
+            {rows.some(r => 'status' in r) && (
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border-light,#e2e8f0)', background: '#fff', color: filterStatus ? 'var(--navy)' : 'var(--gray-500)', fontWeight: filterStatus ? 700 : 400 }}
+              >
+                <option value="">All statuses</option>
+                {[...new Set(rows.map(r => r.status).filter(Boolean))].sort().map(s => (
+                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                ))}
+              </select>
+            )}
+            <div className="atc-search"><span>Search</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search records" /></div>
+          </div>
         </div>
         {loadError ? (
           <EmptySection
@@ -1674,8 +1715,29 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
           <table className="admin-table">
             <thead>
               <tr>
-                {config.columns.map(column => <th key={column}>{columnLabel(config, column)}</th>)}
-                <th>Updated</th>
+                {config.columns.map(column => (
+                  <th
+                    key={column}
+                    onClick={() => toggleSort(column)}
+                    style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                    title={`Sort by ${columnLabel(config, column)}`}
+                  >
+                    {columnLabel(config, column)}
+                    <span style={{ marginLeft: 4, opacity: sortCol === column ? 1 : 0.3, fontSize: '0.75em' }}>
+                      {sortCol === column ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+                    </span>
+                  </th>
+                ))}
+                <th
+                  onClick={() => toggleSort('updated_at')}
+                  style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                  title="Sort by date updated"
+                >
+                  Updated
+                  <span style={{ marginLeft: 4, opacity: sortCol === 'updated_at' ? 1 : 0.3, fontSize: '0.75em' }}>
+                    {sortCol === 'updated_at' ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
                 {hasActions && <th>Actions</th>}
               </tr>
             </thead>
