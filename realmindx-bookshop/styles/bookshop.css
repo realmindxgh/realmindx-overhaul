@@ -622,7 +622,20 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 
 /* ============================================================ SHOP PAGE ============================================================ */
 .bs-shop-layout { display: grid; grid-template-columns: 268px 1fr; gap: 32px; align-items: start; padding: 24px 0 72px; }
-.bs-filter-card { background: #fff; border: 1px solid var(--bs-border); border-radius: var(--bs-radius-md); padding: 22px; box-shadow: var(--bs-shadow-sm); position: sticky; top: calc(var(--bs-nav-h) + 16px); }
+.bs-filter-card {
+  background: #fff; border: 1px solid var(--bs-border);
+  border-radius: var(--bs-radius-md); padding: 22px;
+  box-shadow: var(--bs-shadow-sm);
+  position: sticky; top: calc(var(--bs-nav-h) + 16px);
+  max-height: calc(100vh - var(--bs-nav-h) - 32px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bs-border) transparent;
+}
+.bs-filter-card::-webkit-scrollbar { width: 4px; }
+.bs-filter-card::-webkit-scrollbar-track { background: transparent; }
+.bs-filter-card::-webkit-scrollbar-thumb { background: var(--bs-border); border-radius: 4px; }
+.bs-filter-card::-webkit-scrollbar-thumb:hover { background: #b0bec5; }
 .bs-filter-card .bs-h3 { font-size: 17px; color: var(--bs-navy); margin-bottom: 8px; }
 .bs-filter-sec { border-top: 1px solid var(--bs-border); padding: 16px 0; }
 .bs-filter-sec:first-of-type { border-top: none; }
