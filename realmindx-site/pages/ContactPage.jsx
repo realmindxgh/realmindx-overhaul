@@ -3,7 +3,7 @@ import { Nav, Footer } from '../components/NavFooter';
 import { Icon } from '../assets/components.jsx';
 import { TurnstileField } from '../../src/lib/TurnstileField.jsx';
 import { submitMessage } from '../../src/lib/managedContent.js';
-import { usePublicServices } from '../../src/lib/siteContent.js';
+import { usePublicServices, usePublicSettings } from '../../src/lib/siteContent.js';
 
 const SERVICE_OPTIONS = [
   'Teacher Recruitment',
@@ -45,6 +45,12 @@ const ContactSocialIcon = ({ name }) => {
 
 const ContactPage = () => {
   const managedServices = usePublicServices();
+  const settings = usePublicSettings();
+  const phones = [
+    settings.contact_phone_1,
+    settings.contact_phone_2,
+    settings.contact_phone_3,
+  ].filter(Boolean);
   const [form, setForm]       = useState(INITIAL);
   const [errors, setErrors]   = useState({});
   const [sent, setSent]       = useState(false);
@@ -283,7 +289,7 @@ const ContactPage = () => {
               <div className="cii-icon"><Icon name="mapPin" size={21} stroke={1.8} /></div>
               <div>
                 <p className="cii-label">Our Address</p>
-                <p className="cii-value">Dome Pillar 2, Accra, Ghana</p>
+                <p className="cii-value">{settings.contact_address}</p>
               </div>
             </div>
 
@@ -292,31 +298,37 @@ const ContactPage = () => {
               <div>
                 <p className="cii-label">Email Us</p>
                 <p className="cii-value">
-                  <a href="mailto:info@realmindxgh.com" style={{ color: 'var(--white)' }}>
-                    info@realmindxgh.com
+                  <a href={`mailto:${settings.contact_email}`} style={{ color: 'var(--white)' }}>
+                    {settings.contact_email}
                   </a>
                 </p>
               </div>
             </div>
 
-            <div className="contact-info-item">
-              <div className="cii-icon"><Icon name="phone" size={21} stroke={1.8} /></div>
-              <div>
-                <p className="cii-label">Call Us</p>
-                <div className="cii-value">
-                  <div><a href="tel:+233558039190" style={{ color: 'var(--white)' }}>+233 55 803 9190</a></div>
-                  <div><a href="tel:+233554529493" style={{ color: 'var(--white)' }}>+233 55 452 9493</a></div>
-                  <div><a href="tel:+233551324729" style={{ color: 'var(--white)' }}>+233 55 132 4729</a></div>
+            {phones.length > 0 && (
+              <div className="contact-info-item">
+                <div className="cii-icon"><Icon name="phone" size={21} stroke={1.8} /></div>
+                <div>
+                  <p className="cii-label">Call Us</p>
+                  <div className="cii-value">
+                    {phones.map(phone => (
+                      <div key={phone}>
+                        <a href={`tel:${phone.replace(/\s/g, '')}`} style={{ color: 'var(--white)' }}>
+                          {phone}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="contact-info-item">
               <div className="cii-icon"><Icon name="clock" size={21} stroke={1.8} /></div>
               <div>
                 <p className="cii-label">Working Hours</p>
-                <p className="cii-value">Monday - Friday: 8:00am - 5:00pm</p>
-                <p className="cii-value">Saturday: 9:00am - 1:00pm</p>
+                {settings.working_hours_weekday && <p className="cii-value">{settings.working_hours_weekday}</p>}
+                {settings.working_hours_saturday && <p className="cii-value">{settings.working_hours_saturday}</p>}
               </div>
             </div>
 

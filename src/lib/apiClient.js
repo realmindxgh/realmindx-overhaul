@@ -84,6 +84,7 @@ export const api = {
   fetchFlyers: () => apiFetch('/flyers'),
   fetchServices: () => apiFetch('/services'),
   fetchSiteCopy: () => apiFetch('/site-copy'),
+  fetchSettings: () => apiFetch('/settings'),
   fetchPartners: () => apiFetch('/partners'),
   fetchPeople: () => apiFetch('/people'),
   fetchHomeHeroSlides: () => apiFetch('/home-hero-slides'),

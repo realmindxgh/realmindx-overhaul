@@ -341,6 +341,38 @@ export const usePublicGallery = (limit = 6) => {
   return usePublicGalleryState(limit).items;
 };
 
+// Hardcoded fallback — mirrors what the migration seeds into the DB.
+// If an admin edits a value in the console, the live value takes over.
+// In non-API mode (local dev) these are always used.
+const CONTACT_DEFAULTS = {
+  contact_email: 'info@realmindxgh.com',
+  contact_phone_1: '+233 55 803 9190',
+  contact_phone_2: '+233 55 452 9493',
+  contact_phone_3: '+233 55 132 4729',
+  contact_address: 'Dome Pillar 2, Accra, Ghana',
+  working_hours_weekday: 'Monday - Friday: 8:00am - 5:00pm',
+  working_hours_saturday: 'Saturday: 9:00am - 1:00pm',
+};
+
+export const usePublicSettings = () => {
+  const [apiSettings, setApiSettings] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!isApiMode()) return;
+    let alive = true;
+    api.fetchSettings()
+      .then(data => { if (alive) setApiSettings(data.settings || {}); })
+      .catch(() => { if (alive) setApiSettings({}); });
+    return () => { alive = false; };
+  }, []);
+
+  // Merge: defaults first, then any live API values on top.
+  // While loading (null) or in non-API mode, only defaults are used —
+  // no blank flash because the defaults ARE the correct production values.
+  const live = isApiMode() && apiSettings !== null ? apiSettings : {};
+  return { ...CONTACT_DEFAULTS, ...live };
+};
+
 export const useSiteCopy = () => {
   const localContent = useManagedContent();
   const [apiCopy, setApiCopy] = React.useState(null);
