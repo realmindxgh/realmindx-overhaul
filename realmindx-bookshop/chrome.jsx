@@ -475,10 +475,6 @@ const Footer = ({ navigate }) => (
       </div>
       <div className="bs-footer-bottom">
         &copy; {new Date().getFullYear()} RealMindX Education Limited. All rights reserved.
-        <span style={{ margin: '0 10px', opacity: 0.4 }}>-</span>
-        <a href="#" onClick={(e)=>{e.preventDefault();navigate('privacy');}} style={{ color: 'rgba(255,255,255,0.5)' }}>Privacy Policy</a>
-        <span style={{ margin: '0 8px', opacity: 0.4 }}>-</span>
-        <a href="#" onClick={(e)=>{e.preventDefault();navigate('terms');}} style={{ color: 'rgba(255,255,255,0.5)' }}>Terms of Service</a>
       </div>
     </div>
   </footer>
