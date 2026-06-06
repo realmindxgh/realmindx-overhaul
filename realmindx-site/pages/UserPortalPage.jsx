@@ -271,7 +271,7 @@ const Sidebar = ({ active, setActive, user, sidebarOpen, setSidebarOpen, applica
     {sidebarOpen && (
       <div
         onClick={() => setSidebarOpen(false)}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 99, display: 'none' }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 99 }}
         className="sidebar-overlay"
       />
     )}
@@ -869,7 +869,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
 /* ── APPLICATIONS VIEW ─────────────────────────────────── */
 const ApplicationsView = ({ applications = [] }) => (
   <div>
-    <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="portal-view-header">
       <div>
         <h2 className="portal-page-title">My Applications</h2>
         <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem', marginTop: 4 }}>
@@ -971,14 +971,14 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
 
   return (
     <div>
-      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="portal-view-header" style={{ alignItems: 'flex-start' }}>
         <div>
           <h2 className="portal-page-title">Job Alerts</h2>
           <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem', marginTop: 4 }}>
             We email you instantly when a new teaching role matches your saved preferences. Your alert is set up automatically the first time you save your profile — edit it any time.
           </p>
         </div>
-        <button className="btn btn-primary btn-sm" onClick={openForm}>
+        <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={openForm}>
           {alerts.length === 0 ? 'Set Up Alert' : 'Edit Alert'}
         </button>
       </div>
@@ -1383,7 +1383,7 @@ const UserPortalPage = () => {
       <main className="portal-main">
         {/* Topbar */}
         <div className="portal-topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="portal-topbar-left" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="mobile-menu-toggle"
@@ -1412,7 +1412,7 @@ const UserPortalPage = () => {
               <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--yellow)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: '0.75rem', color: 'var(--navy)' }}>
                 {user.avatarUrl ? <img src={user.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} /> : user.initials}
               </div>
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)' }}>
+              <span className="portal-user-chip-name" style={{ fontSize: '0.82rem', fontWeight: 700, fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)' }}>
                 {user.firstName}
               </span>
               <Icon name="chevron" size={14} stroke={2} />

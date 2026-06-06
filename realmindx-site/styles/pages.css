@@ -3087,7 +3087,63 @@ input, textarea, select { font-family: inherit; }
 .activity-text strong { color: var(--navy); }
 .activity-time { font-size: 0.72rem; color: var(--gray-600); margin-top: 2px; }
 
-/* â”€â”€ Responsive portal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Admin toast notification ───────────────────────────────────────────────── */
+.admin-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  padding: 14px 18px;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+  font-size: 0.875rem;
+  font-weight: 600;
+  max-width: 380px;
+  min-width: 240px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: adminToastIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  color: #fff;
+  background: #166534;
+}
+.admin-toast[data-type=”error”] { background: #991b1b; }
+.admin-toast-icon { flex-shrink: 0; font-size: 1rem; line-height: 1; }
+.admin-toast-msg { flex: 1; line-height: 1.4; }
+.admin-toast-close {
+  background: none; border: none; color: rgba(255,255,255,0.75);
+  cursor: pointer; font-size: 1rem; padding: 2px 4px; line-height: 1;
+  flex-shrink: 0; transition: color 0.15s;
+}
+.admin-toast-close:hover { color: #fff; }
+@keyframes adminToastIn {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+/* ── Admin topbar title: hidden desktop, shown mobile ───────────────────────── */
+.admin-topbar-title {
+  display: none;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--navy);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Portal view page headers ───────────────────────────────────────────────── */
+.portal-view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* ── Responsive portal ─────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .portal-sidebar, .admin-sidebar { width: 220px; }
   .portal-main { margin-left: 220px; }
@@ -3129,9 +3185,45 @@ input, textarea, select { font-family: inherit; }
     overflow-x: hidden;
   }
 
-  /* Topbar */
-  .portal-topbar { margin-bottom: 20px; }
-  .portal-page-title { font-size: 1.2rem; }
+  /* ── Topbar ─────────────────────────────────────────── */
+  .portal-topbar, .admin-topbar { margin-bottom: 20px; gap: 10px; }
+
+  /* Left flex container: give it flex:1 + overflow so the title can truncate */
+  .portal-topbar-left, .admin-topbar-left {
+    min-width: 0;
+    overflow: hidden;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* Page titles: single line, truncate if still too long */
+  .portal-page-title {
+    font-size: 1.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Admin topbar title: shown only on mobile */
+  .admin-topbar-title {
+    display: block !important;
+    font-size: 1.1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* User chip: show only avatar on mobile, hide name + chevron */
+  .portal-user-chip-name, .admin-chip-name { display: none !important; }
+  .portal-user-chip { gap: 0; padding: 4px !important; border-radius: 50% !important; }
+
+  /* Admin chip avatar only */
+  .admin-chip-name { display: none !important; }
+
+  /* Sidebar overlay: make it active when sidebar is open */
+  .sidebar-overlay { display: block !important; }
 
   /* ── Portal cards & grids ────────────────────────────── */
   .welcome-card { grid-template-columns: 1fr; }
@@ -3144,6 +3236,29 @@ input, textarea, select { font-family: inherit; }
   .welcome-avatar-large { width: 120px; height: 120px; }
   .welcome-content { padding: 20px 24px 32px; order: 1; }
   .welcome-content h2 { font-size: 1.6rem; }
+
+  /* Welcome CTAs: stack vertically, equal width, centered */
+  .welcome-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .welcome-actions .btn {
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* View page headers (e.g. "My Applications" + CTA button): stack on mobile */
+  .portal-view-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .portal-view-header > .btn,
+  .portal-view-header > a.btn {
+    align-self: flex-start;
+  }
+
   .portal-grid-2 { grid-template-columns: 1fr; }
   .profile-sections-grid { grid-template-columns: 1fr; }
   .admin-grid-2 { grid-template-columns: 1fr; }

@@ -689,7 +689,15 @@ const AdminSidebar = ({ active, setActive, open, setOpen, session }) => {
   }, {});
 
   return (
-    <aside className={`admin-sidebar${open ? ' open' : ''}`}>
+    <>
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 99 }}
+          className="sidebar-overlay"
+        />
+      )}
+      <aside className={`admin-sidebar${open ? ' open' : ''}`}>
       <div className="admin-sidebar-logo">
         <img src={logoWhite} alt="RealMindX Education" className="admin-sidebar-logo-img" />
         <div>
@@ -717,6 +725,7 @@ const AdminSidebar = ({ active, setActive, open, setOpen, session }) => {
         <a href="/" className="admin-nav-item" style={{ textDecoration: 'none' }}><span className="ani-icon"><Icon name="arrow" size={16} stroke={2} /></span> View Site</a>
       </div>
     </aside>
+    </>
   );
 };
 
@@ -1417,6 +1426,13 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
 
   const labelForRow = (row) => row.name || row.label || row.title || row.email || row.order_reference || 'this record';
 
+  // Auto-dismiss the action-status toast after 2.5 s
+  React.useEffect(() => {
+    if (!actionStatus) return undefined;
+    const t = setTimeout(() => setActionStatus(null), 2500);
+    return () => clearTimeout(t);
+  }, [actionStatus]);
+
   const [confirmModal, setConfirmModal] = React.useState(null); // { row }
 
   const handleDelete = (row) => {
@@ -1578,20 +1594,10 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
       )}
 
       {actionStatus && (
-        <div
-          className={actionStatus.type === 'error' ? 'form-error' : ''}
-          style={{
-            margin: '0 0 14px',
-            padding: '12px 14px',
-            borderRadius: 8,
-            border: `1px solid ${actionStatus.type === 'error' ? '#fca5a5' : '#86efac'}`,
-            background: actionStatus.type === 'error' ? '#fef2f2' : '#ecfdf5',
-            color: actionStatus.type === 'error' ? '#991b1b' : '#166534',
-            fontWeight: 700,
-            fontSize: '0.86rem',
-          }}
-        >
-          {actionStatus.message}
+        <div className="admin-toast" data-type={actionStatus.type}>
+          <span className="admin-toast-icon">{actionStatus.type === 'error' ? '✕' : '✓'}</span>
+          <span className="admin-toast-msg">{actionStatus.message}</span>
+          <button className="admin-toast-close" onClick={() => setActionStatus(null)} aria-label="Dismiss">✕</button>
         </div>
       )}
 
@@ -2258,13 +2264,18 @@ const AdminPortalPage = () => {
       <AdminSidebar active={activeView} setActive={setActiveView} open={sidebarOpen} setOpen={setSidebarOpen} session={session} />
       <main className="admin-main">
         <div className="admin-topbar">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="mobile-menu-toggle"
-            style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer' }}
-          >
-            Menu
-          </button>
+          <div className="admin-topbar-left" style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="mobile-menu-toggle"
+              style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <h2 className="admin-topbar-title">
+              {(NAV.find(n => n.key === activeView) || { label: 'Dashboard' }).label}
+            </h2>
+          </div>
           <div className="admin-topbar-right">
             {!isApiMode() && (
               <button className="table-action-btn" onClick={resetManagedContent}>Restore Local Demo Data</button>
