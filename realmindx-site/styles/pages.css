@@ -2378,7 +2378,7 @@ input, textarea, select { font-family: inherit; }
 
 .welcome-content p { color: rgba(255,255,255,0.6); font-size: 0.92rem; }
 
-.welcome-actions { display: flex; gap: 10px; margin-top: 24px; }
+.welcome-actions { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
 
 .welcome-image-side {
   display: flex;
@@ -2398,6 +2398,10 @@ input, textarea, select { font-family: inherit; }
   border: 4px solid rgba(245,194,0,0.5);
   box-shadow: 0 0 0 8px rgba(245,194,0,0.08), 0 12px 40px rgba(0,0,0,0.3);
   flex-shrink: 0;
+  /* Reset button-element defaults so image fills the circle correctly */
+  padding: 0;
+  cursor: pointer;
+  display: block;
 }
 
 .welcome-avatar-large img {
@@ -3144,8 +3148,12 @@ input, textarea, select { font-family: inherit; }
   .profile-sections-grid { grid-template-columns: 1fr; }
   .admin-grid-2 { grid-template-columns: 1fr; }
   .quick-actions-row { grid-template-columns: repeat(2, 1fr); }
-  .portal-stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .portal-stats-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 1fr; }
   .admin-stats-row { grid-template-columns: repeat(2, 1fr); }
+  /* Tighter stat cards on mobile — prevent label wrapping that causes unequal heights */
+  .portal-stat-card { padding: 18px 14px; }
+  .psc-label { font-size: 0.6rem; letter-spacing: 0.07em; }
+  .psc-value { font-size: 1.75rem; }
 
   /* Profile header card: stack on mobile */
   .profile-header-card {

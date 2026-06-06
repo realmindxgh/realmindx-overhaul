@@ -185,22 +185,72 @@ const NavUserMenu = ({ navigate }) => {
 // ---------- Navbar ----------
 const Navbar = ({ route, navigate }) => {
   const { count } = useCart();
-  const { categories } = useCatalog();
+  const { categories, books } = useCatalog();
   const [catsOpen, setCatsOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState('');
+  const [searchFocused, setSearchFocused] = React.useState(false);
   const catsRef = React.useRef(null);
+  const searchWrapRef = React.useRef(null);
 
   React.useEffect(() => {
-    const onDoc = (e) => { if (catsRef.current && !catsRef.current.contains(e.target)) setCatsOpen(false); };
+    const onDoc = (e) => {
+      if (catsRef.current && !catsRef.current.contains(e.target)) setCatsOpen(false);
+    };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
-  React.useEffect(() => { document.body.style.overflow = menuOpen ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [menuOpen]);
 
-  const go = (r, e) => { if (e) e.preventDefault(); setMenuOpen(false); setCatsOpen(false); navigate(r); };
-  const submitSearch = (e) => { e.preventDefault(); navigate('shop'); setSearching(false); };
+  React.useEffect(() => {
+    document.body.style.overflow = menuOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [menuOpen]);
+
+  const go = (r, e) => {
+    if (e) e.preventDefault();
+    setMenuOpen(false);
+    setCatsOpen(false);
+    navigate(r);
+  };
+
+  const openSearch = () => {
+    setSearching(true);
+    // Small delay so the input is in the DOM before focusing
+    setTimeout(() => {
+      const inp = searchWrapRef.current?.querySelector('input');
+      if (inp) inp.focus();
+    }, 60);
+  };
+
+  const closeSearch = () => {
+    setSearching(false);
+    setSearchFocused(false);
+    setQ('');
+  };
+
+  const submitSearch = (e) => {
+    if (e) e.preventDefault();
+    navigate('shop');
+    setSearching(false);
+    setSearchFocused(false);
+  };
+
+  // Live suggestions — filter books by query (title or category name match)
+  const suggestions = React.useMemo(() => {
+    const t = q.trim();
+    if (t.length < 2) return [];
+    const lower = t.toLowerCase();
+    return books
+      .filter(b =>
+        b.title.toLowerCase().includes(lower) ||
+        (b.catName || '').toLowerCase().includes(lower) ||
+        (b.author || '').toLowerCase().includes(lower)
+      )
+      .slice(0, 6);
+  }, [books, q]);
+
+  const showSuggestions = suggestions.length > 0 && (searching || searchFocused);
 
   return (
     <>
@@ -208,18 +258,72 @@ const Navbar = ({ route, navigate }) => {
         <div className="bs-nav-inner">
           <Logo onClick={(e) => go('home', e)} />
 
-          <form className="bs-nav-search" onSubmit={submitSearch}>
-            <Icon name="search" size={19} className="bs-search-icn" />
-            <input value={q} onChange={e => setQ(e.target.value)}
-              placeholder="Search textbooks, curriculum, stationery..." aria-label="Search the shop" />
-          </form>
+          {/* Search wrapper — always in DOM; hidden on mobile until searching */}
+          <div className="bs-nav-search-wrap" ref={searchWrapRef}>
+            <form className="bs-nav-search" onSubmit={submitSearch} autoComplete="off">
+              <Icon name="search" size={19} className="bs-search-icn" />
+              <input
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setTimeout(() => setSearchFocused(false), 160)}
+                placeholder="Search textbooks, curriculum, stationery..."
+                aria-label="Search the shop"
+                aria-autocomplete="list"
+                aria-expanded={showSuggestions}
+              />
+              {/* Submit button — inside the input, right side, visible when query has text */}
+              {q.trim() && (
+                <button type="submit" className="bs-search-go" aria-label="Search">
+                  <Icon name="arrow" size={15} />
+                </button>
+              )}
+            </form>
+
+            {/* Live suggestions dropdown */}
+            {showSuggestions && (
+              <div className="bs-search-suggestions" role="listbox">
+                {suggestions.map(b => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    role="option"
+                    className="bs-search-sug-item"
+                    onMouseDown={e => e.preventDefault()} /* prevent input blur before click */
+                    onClick={() => {
+                      navigate('product', { id: b.id });
+                      setSearching(false);
+                      setSearchFocused(false);
+                      setQ('');
+                    }}
+                  >
+                    <Icon name="book" size={13} className="bs-ci" style={{ color: 'var(--bs-navy)', opacity: 0.45, flexShrink: 0 }} />
+                    <span className="bs-sug-title">{b.title}</span>
+                    {b.catName && <span className="bs-sug-cat">{b.catName}</span>}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="bs-sug-all"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={submitSearch}
+                >
+                  <Icon name="search" size={13} />
+                  <span>See all results for <strong>"{q.trim()}"</strong></span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Dismiss X — outside the search bar, to the right — only shown on mobile when searching */}
+          <button className="bs-search-dismiss" type="button" aria-label="Close search" onClick={closeSearch}>
+            <Icon name="close" size={20} />
+          </button>
 
           <div className="bs-nav-actions">
-            <button className="bs-icon-btn bs-nav-search-toggle" aria-label="Search" onClick={() => setSearching(true)}>
+            {/* Mobile search open trigger — no X here any more */}
+            <button className="bs-icon-btn bs-nav-search-toggle" aria-label="Search" onClick={openSearch}>
               <Icon name="search" size={21} />
-            </button>
-            <button className="bs-icon-btn bs-nav-search-toggle bs-close" aria-label="Close search" onClick={() => setSearching(false)}>
-              <Icon name="close" size={21} />
             </button>
 
             <div className="bs-nav-cats" ref={catsRef}>
@@ -244,14 +348,20 @@ const Navbar = ({ route, navigate }) => {
               <Icon name="cart" size={21} />
               {count > 0 && <span className="bs-cart-badge">{count}</span>}
             </button>
-            <button className="bs-hamburger" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
+
+            {/* Hamburger — toggles open/close, animates to X when open */}
+            <button
+              className={`bs-hamburger${menuOpen ? ' open' : ''}`}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              onClick={() => setMenuOpen(o => !o)}
+            >
               <span/><span/><span/>
             </button>
           </div>
         </div>
       </nav>
 
-      {/* mobile menu — matches main site style */}
+      {/* Mobile menu — slide down from top-right */}
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
         <div className="bs-mm-header">
           <button className="bs-mm-close" aria-label="Close menu" onClick={() => setMenuOpen(false)}>
