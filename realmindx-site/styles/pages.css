@@ -1429,10 +1429,15 @@ input, textarea, select { font-family: inherit; }
 .team-section { background: var(--white); padding: 96px 0; }
 
 .team-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 24px;
   margin-top: 48px;
+}
+
+.team-card {
+  flex: 0 1 240px;
 }
 
 .team-card { text-align: center; }
@@ -3188,7 +3193,8 @@ input, textarea, select { font-family: inherit; }
 
   /* ── About page ──────────────────────────────────────── */
   .why-grid { grid-template-columns: repeat(2, 1fr); }
-  .team-grid { grid-template-columns: repeat(2, 1fr); }
+  /* .team-grid responsive override removed — team grid is now flexbox with
+     justify-content:center, so cards wrap and centre automatically */
   .about-intro-grid { grid-template-columns: 1fr; }
   .mvg-grid { grid-template-columns: 1fr; }
   .mvg-card:first-child { grid-template-columns: 1fr; }
@@ -3214,7 +3220,7 @@ input, textarea, select { font-family: inherit; }
   .quick-actions-row { grid-template-columns: 1fr; }
   .services-grid { grid-template-columns: 1fr; }
   .why-grid { grid-template-columns: 1fr; }
-  .team-grid { grid-template-columns: 1fr; }
+  /* .team-grid — no override needed, flexbox wraps to 1 col automatically */
   .stats-bar-inner { grid-template-columns: 1fr; }
   .hero-cta-row .btn { flex: 1 1 100%; }
 }

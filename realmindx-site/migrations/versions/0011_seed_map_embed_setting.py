@@ -34,8 +34,8 @@ def upgrade():
     conn = op.get_bind()
     conn.execute(
         sa.text(
-            "INSERT INTO site_settings (key, value, public) "
-            "VALUES (:key, CAST(:value AS json), TRUE) "
+            "INSERT INTO site_settings (key, value, public, created_at, updated_at) "
+            "VALUES (:key, CAST(:value AS json), TRUE, NOW(), NOW()) "
             "ON CONFLICT (key) DO NOTHING"
         ),
         {"key": "contact_map_embed", "value": json.dumps(MAP_EMBED_URL)},

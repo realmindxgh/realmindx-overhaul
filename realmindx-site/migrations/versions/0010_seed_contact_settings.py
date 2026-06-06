@@ -35,10 +35,14 @@ def upgrade():
         # varying' for the two occurrences and refuses to reconcile them).
         # CAST(:value AS json) is required because psycopg3 won't coerce a plain
         # Python string into a json column without an explicit type hint.
+        # TimestampMixin.created_at/updated_at use Python-level SQLAlchemy
+        # defaults (default=utcnow), NOT PostgreSQL DEFAULT clauses. Raw SQL
+        # INSERT bypasses the ORM, so PostgreSQL sees NULL for those columns
+        # and raises NotNullViolation. Supply NOW() explicitly.
         conn.execute(
             sa.text(
-                "INSERT INTO site_settings (key, value, public) "
-                "VALUES (:key, CAST(:value AS json), TRUE) "
+                "INSERT INTO site_settings (key, value, public, created_at, updated_at) "
+                "VALUES (:key, CAST(:value AS json), TRUE, NOW(), NOW()) "
                 "ON CONFLICT (key) DO NOTHING"
             ),
             {"key": key, "value": json.dumps(value)},
