@@ -1,4 +1,5 @@
 ﻿import React from 'react';
+import ReactDOM from 'react-dom';
 import { Icon } from '../assets/components.jsx';
 import { resetManagedContent } from '../../src/lib/managedContent.js';
 import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
@@ -1593,12 +1594,13 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
         <NewsletterComposer onSent={() => fetchCollection(config.collection)} />
       )}
 
-      {actionStatus && (
+      {actionStatus && ReactDOM.createPortal(
         <div className="admin-toast" data-type={actionStatus.type}>
           <span className="admin-toast-icon">{actionStatus.type === 'error' ? '✕' : '✓'}</span>
           <span className="admin-toast-msg">{actionStatus.message}</span>
-          <button className="admin-toast-close" onClick={() => setActionStatus(null)} aria-label="Dismiss">✕</button>
-        </div>
+          <button className="admin-toast-close" type="button" onClick={() => setActionStatus(null)} aria-label="Dismiss">✕</button>
+        </div>,
+        document.body,
       )}
 
       {(creating || editing) && (

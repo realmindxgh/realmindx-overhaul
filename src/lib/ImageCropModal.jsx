@@ -207,7 +207,7 @@ export default function ImageCropModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 16, backdropFilter: 'blur(6px)',
     }}>
-      <div style={{ background: '#fff', borderRadius: 18, padding: '24px 24px 20px', maxWidth: `min(${VW + 80}px, 95vw)`, width: '100%' }}>
+      <div style={{ background: '#fff', borderRadius: 18, padding: '24px 24px 20px', maxWidth: `min(${VW + 80}px, 95vw)`, width: '100%', maxHeight: 'calc(100svh - 32px)', overflowY: 'auto' }}>
         <h3 style={{ margin: '0 0 4px', fontFamily: 'Montserrat,sans-serif', fontWeight: 900, fontSize: 17, color: '#143670' }}>{title}</h3>
         <p style={{ margin: '0 0 14px', fontSize: 12.5, color: '#6b7a99' }}>Drag to reposition · Scroll or pinch to zoom</p>
 
@@ -222,14 +222,14 @@ export default function ImageCropModal({
         <img ref={imgRef} src={src} onLoad={onLoad} style={{ display: 'none' }} alt="" crossOrigin="anonymous" />
 
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-          <button onClick={applyCrop} style={{
+          <button type="button" onClick={applyCrop} style={{
             flex: 1, padding: '12px', background: '#143670', color: '#fff',
             border: 'none', borderRadius: 9, fontFamily: 'Montserrat,sans-serif',
             fontWeight: 800, fontSize: 14, cursor: 'pointer',
           }}>
             Apply Crop
           </button>
-          <button onClick={onCancel} style={{
+          <button type="button" onClick={onCancel} style={{
             padding: '12px 18px', background: 'none', color: '#6b7a99',
             border: '1.5px solid #e2e8f0', borderRadius: 9,
             fontFamily: 'Montserrat,sans-serif', fontWeight: 600, fontSize: 14, cursor: 'pointer',

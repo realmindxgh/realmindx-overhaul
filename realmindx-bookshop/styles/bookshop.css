@@ -294,10 +294,11 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-see-all:hover { gap: 11px; }
 /* Full-width pages (home): 5 cols × 2 rows visible ≈ 10 cards per section view */
 .bs-product-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 18px; }
-/* Sidebar pages (shop with filter panel): 4 cols to fit narrower content area */
-.bs-shop-layout .bs-product-grid { grid-template-columns: repeat(4,1fr); gap: 16px; }
+/* Sidebar pages (shop with filter panel): 5 cols at full width, step down gracefully */
+.bs-shop-layout .bs-product-grid { grid-template-columns: repeat(5,1fr); gap: 16px; }
+@media (max-width: 1400px) { .bs-shop-layout .bs-product-grid { grid-template-columns: repeat(4,1fr); } }
 @media (max-width: 1200px) { .bs-product-grid { grid-template-columns: repeat(4,1fr); } }
-@media (max-width: 1024px) { .bs-product-grid { grid-template-columns: repeat(3,1fr); } .bs-shop-layout .bs-product-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 1024px) { .bs-product-grid { grid-template-columns: repeat(3,1fr); } .bs-shop-layout .bs-product-grid { grid-template-columns: repeat(3,1fr); } }
 @media (max-width: 768px)  { .bs-product-grid { grid-template-columns: repeat(2,1fr); gap: 10px; } }
 
 /* ---------- Product card ---------- */

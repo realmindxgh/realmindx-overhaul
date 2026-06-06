@@ -1,7 +1,12 @@
 ﻿import React from 'react';
 import { API_BASE, isApiMode, api } from '../src/lib/apiClient.js';
 import { useManagedContent, publicItems } from '../src/lib/managedContent.js';
-import { BOOKS as FALLBACK_BOOKS, CATEGORIES as FALLBACK_CATEGORIES } from './shared.jsx';
+import { BOOKS as DEMO_BOOKS, CATEGORIES as FALLBACK_CATEGORIES } from './shared.jsx';
+
+// Fallback books supplement the API catalog when the shop has fewer than this many real products.
+// They are real Ghanaian curriculum titles — once the admin adds 10+ real products these disappear.
+const FALLBACK_BOOKS = DEMO_BOOKS;
+const MIN_CATALOG_SIZE = 10;
 
 // ============================================================
 // Catalog adapter - two modes:
@@ -171,7 +176,18 @@ const ApiCatalogProvider = ({ children }) => {
         ];
         const mappedFlyers = (flyerData.items || []).map(fromApiFlyer);
 
-        setBooks(mappedBooks);
+        // If the shop has fewer than MIN_CATALOG_SIZE real products, supplement with
+        // demo titles so the grid looks populated. These are replaced automatically
+        // once the admin adds enough real products via the admin panel.
+        const realIds = new Set(mappedBooks.map(b => b.title.toLowerCase().trim()));
+        const supplemented = mappedBooks.length < MIN_CATALOG_SIZE
+          ? [
+              ...mappedBooks,
+              ...FALLBACK_BOOKS.filter(fb => !realIds.has(fb.title.toLowerCase().trim())),
+            ]
+          : mappedBooks;
+
+        setBooks(supplemented);
         setCategories(mappedCats.length ? mappedCats : [{ id: 'all', name: 'All Books', icon: 'grid' }]);
         setFlyers(mappedFlyers);
 
