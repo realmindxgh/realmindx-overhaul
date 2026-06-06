@@ -29,11 +29,17 @@ CONTACT_SETTINGS = [
 def upgrade():
     conn = op.get_bind()
     for key, value in CONTACT_SETTINGS:
+        # Use ON CONFLICT to avoid the psycopg3 AmbiguousParameter error that
+        # arises when the same :key param appears in both the SELECT list and a
+        # WHERE NOT EXISTS sub-select (psycopg3 infers 'text' vs 'character
+        # varying' for the two occurrences and refuses to reconcile them).
+        # CAST(:value AS json) is required because psycopg3 won't coerce a plain
+        # Python string into a json column without an explicit type hint.
         conn.execute(
             sa.text(
                 "INSERT INTO site_settings (key, value, public) "
-                "SELECT :key, :value, TRUE "
-                "WHERE NOT EXISTS (SELECT 1 FROM site_settings WHERE key = :key)"
+                "VALUES (:key, CAST(:value AS json), TRUE) "
+                "ON CONFLICT (key) DO NOTHING"
             ),
             {"key": key, "value": json.dumps(value)},
         )
