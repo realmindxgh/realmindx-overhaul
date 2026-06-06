@@ -1,6 +1,6 @@
 """newsletter_unsubscribe_tokens: add unsubscribe_token to newsletter_subscribers
 
-Revision ID: 0014_newsletter_unsubscribe_tokens
+Revision ID: 0014_newsletter_unsubscribe
 Revises: 0013_ticket_system
 Create Date: 2026-06-06
 """
@@ -9,7 +9,7 @@ import secrets
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0014_newsletter_unsubscribe_tokens"
+revision = "0014_newsletter_unsubscribe"
 down_revision = "0013_ticket_system"
 branch_labels = None
 depends_on = None
