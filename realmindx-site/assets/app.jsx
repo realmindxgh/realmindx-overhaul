@@ -9,6 +9,7 @@ import {
   usePublicNewsState,
   usePublicPartners,
   usePublicServices,
+  usePublicSettings,
 } from '../../src/lib/siteContent.js';
 
 // ====================== Nav ======================
@@ -1232,7 +1233,10 @@ const SocialIcon = ({ name }) => {
   );
 };
 
-export const Footer = () => (
+export const Footer = () => {
+  const settings = usePublicSettings();
+  const extraPhones = [settings.contact_phone_2, settings.contact_phone_3].filter(Boolean);
+  return (
   <footer className="footer main-footer" id="contact">
     <div className="container">
       <div className="footer-grid">
@@ -1268,16 +1272,17 @@ export const Footer = () => (
           <div className="footer-contact">
             <span style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <Icon name="mapPin" size={18} />
-              Dome Pillar 2, Accra, Ghana
+              {settings.contact_address}
             </span>
-            <a href="mailto:info@realmindxgh.com" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <Icon name="mail" size={18} /> info@realmindxgh.com
+            <a href={`mailto:${settings.contact_email}`} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <Icon name="mail" size={18} /> {settings.contact_email}
             </a>
             <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <Icon name="phone" size={18} /> +233 55 803 9190
+              <Icon name="phone" size={18} /> {settings.contact_phone_1}
             </span>
-            <span style={{ marginLeft: 28, fontSize: 14 }}>+233 55 452 9493</span>
-            <span style={{ marginLeft: 28, fontSize: 14 }}>+233 55 132 4729</span>
+            {extraPhones.map(phone => (
+              <span key={phone} style={{ marginLeft: 28, fontSize: 14 }}>{phone}</span>
+            ))}
           </div>
         </div>
         <div>
@@ -1296,7 +1301,8 @@ export const Footer = () => (
       </div>
     </div>
   </footer>
-);
+  );
+};
 
 // ====================== App ======================
 const App = () => (
