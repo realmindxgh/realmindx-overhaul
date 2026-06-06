@@ -352,6 +352,7 @@ const CONTACT_DEFAULTS = {
   contact_address: 'Dome Pillar 2, Accra, Ghana',
   working_hours_weekday: 'Monday - Friday: 8:00am - 5:00pm',
   working_hours_saturday: 'Saturday: 9:00am - 1:00pm',
+  contact_map_embed: 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3970.4149449183387!2d-0.21959702603021514!3d5.652959532669197!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xfdf9d0d971fa545%3A0xb6793ef61afc720f!2sDome%20pillar%202!5e0!3m2!1sen!2sgh!4v1780224663665!5m2!1sen!2sgh',
 };
 
 export const usePublicSettings = () => {

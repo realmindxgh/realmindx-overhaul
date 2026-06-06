@@ -343,15 +343,17 @@ const ContactPage = () => {
               <a href="https://wa.link/d6x888" target="_blank" rel="noreferrer" title="WhatsApp"><ContactSocialIcon name="whatsapp" /></a>
             </div>
 
-            <div className="contact-map-card">
-              <iframe
-                title="RealMindX Education location at Dome Pillar 2, Accra"
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3970.4149449183387!2d-0.21959702603021514!3d5.652959532669197!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xfdf9d0d971fa545%3A0xb6793ef61afc720f!2sDome%20pillar%202!5e0!3m2!1sen!2sgh!4v1780224663665!5m2!1sen!2sgh"
-                loading="lazy"
-                allowFullScreen
-                referrerPolicy="no-referrer-when-downgrade"
-              />
-            </div>
+            {settings.contact_map_embed && (
+              <div className="contact-map-card">
+                <iframe
+                  title={`${settings.contact_address} — map`}
+                  src={settings.contact_map_embed}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
