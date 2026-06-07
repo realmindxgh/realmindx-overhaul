@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { Icon } from '../assets/components.jsx';
+import { Icon, DatePickerField } from '../assets/components.jsx';
 import logoWhite from '../assets/logo-white.png';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
 import { signOut } from '../../src/lib/authClient.js';
@@ -381,7 +381,7 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
     {/* Stats */}
     <div className="portal-stats-grid">
       {[
-        { label: 'Applications Sent',  value: applications.length, sub: applications.length ? 'Total submitted' : 'Apply for your first job' },
+        { label: 'Applications Sent',  value: applications.length, sub: applications.length ? 'Total submitted' : 'None yet' },
         { label: 'Under Review',       value: pendingCount,        sub: pendingCount ? 'Awaiting school response' : 'None yet' },
         { label: 'Accepted',           value: acceptedCount,       sub: acceptedCount ? 'Schools want to meet you' : 'None yet' },
         { label: 'Profile Complete',    value: `${user.profileComplete}%`,                                                            sub: user.profileComplete < 100 ? 'Finish your profile' : 'Fully complete' },
@@ -629,9 +629,36 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     'Office Administration','Marketing','Textiles','Woodwork / Carpentry',
     'Auto Mechanics / Auto Tech','Other',
   ];
+  // "Other" was a dead end — picking it gave no way to say *what* subject.
+  // Treat any saved value that isn't one of the preset options as a custom
+  // "Other" entry, so reopening the form for someone who already typed one
+  // shows their text back instead of silently discarding it.
+  const KNOWN_SUBJECTS = SUBJECTS.filter(s => s !== 'Other');
+  const [customSubject, setCustomSubject] = React.useState(
+    () => Boolean(form.teaching_subject) && !KNOWN_SUBJECTS.includes(form.teaching_subject)
+  );
   const LEVELS = ['Nursery / KG (ECCE)','Primary (1-6)','JHS (7-9)','SHS (10-12)','Technical / Vocational (TVET)','Tertiary / University','All Levels'];
   const WORK_TYPES = ['Full Time','Part Time','Contract','Supply / Relief Teaching','Volunteer','Remote / Online','Locum'];
   const CURRICULA = ['Ghana Education Service (GES)','Cambridge (IGCSE / A-Level)','International Baccalaureate (IB)','American / AP','Montessori','French / Francophone','Islamic / Arabic Studies','Other'];
+  // Same dead end as Teaching Subject, but this list is multi-select: ticking
+  // "Other" just added the literal word "Other" with no way to say what it was.
+  // Fix: drop "Other" as a checkbox and let the teacher type any number of their
+  // own entries instead, each becoming its own removable tag stored directly in
+  // the same comma-joined field. Anything already saved that isn't one of the
+  // preset names (e.g. a custom entry typed previously, or a stray "Other" left
+  // over from the old broken checkbox) renders back as a tag too, so nothing
+  // saved is ever silently dropped.
+  const KNOWN_CURRICULA = CURRICULA.filter(c => c !== 'Other');
+  const selectedCurricula = multiValues('curriculum_experience');
+  const customCurricula = selectedCurricula.filter(c => !KNOWN_CURRICULA.includes(c));
+  const [newCurriculum, setNewCurriculum] = React.useState('');
+  const addCustomCurriculum = () => {
+    const val = newCurriculum.trim();
+    if (!val) return;
+    const cur = multiValues('curriculum_experience');
+    if (!cur.includes(val)) setForm(prev => ({ ...prev, curriculum_experience: [...cur, val].join(', ') }));
+    setNewCurriculum('');
+  };
 
   const fields = section === 'teaching'
     ? null // rendered separately below
@@ -660,10 +687,35 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Subject dropdown */}
             <div className="form-group">
               <label className="form-label">Teaching Subject</label>
-              <select className="form-input" value={form.teaching_subject || ''} onChange={e => setForm(p => ({ ...p, teaching_subject: e.target.value }))}>
+              <select
+                className="form-input"
+                value={customSubject ? 'Other' : (form.teaching_subject || '')}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === 'Other') {
+                    // Switch to free-text entry; start blank so the teacher
+                    // isn't left with the literal word "Other" as their subject.
+                    setCustomSubject(true);
+                    setForm(p => ({ ...p, teaching_subject: '' }));
+                  } else {
+                    setCustomSubject(false);
+                    setForm(p => ({ ...p, teaching_subject: val }));
+                  }
+                }}
+              >
                 <option value="">Select subject</option>
                 {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+              {customSubject && (
+                <input
+                  className="form-input"
+                  style={{ marginTop: 8 }}
+                  placeholder="Type your teaching subject"
+                  value={form.teaching_subject || ''}
+                  onChange={e => setForm(p => ({ ...p, teaching_subject: e.target.value }))}
+                  autoFocus
+                />
+              )}
             </div>
             {/* Availability */}
             <div className="form-group">
@@ -693,12 +745,12 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Date of Birth */}
             <div className="form-group">
               <label className="form-label">Date of Birth <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(used to verify eligibility)</span></label>
-              <input
-                type="date"
-                className="form-input"
+              <DatePickerField
                 value={form.date_of_birth || ''}
+                onChange={value => setForm(p => ({ ...p, date_of_birth: value }))}
                 max={(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 18); return d.toISOString().split('T')[0]; })()}
-                onChange={e => setForm(p => ({ ...p, date_of_birth: e.target.value }))}
+                placeholder="Select your date of birth"
+                ariaLabel="Date of Birth"
               />
             </div>
             {/* Preferred Level checkboxes */}
@@ -729,12 +781,50 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Curriculum Experience <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
               <div className="portal-checkbox-grid">
-                {CURRICULA.map(c => (
+                {KNOWN_CURRICULA.map(c => (
                   <label key={c} className="portal-checkbox-row">
-                    <input type="checkbox" checked={multiValues('curriculum_experience').includes(c)} onChange={() => toggleMulti('curriculum_experience', c)} />
+                    <input type="checkbox" checked={selectedCurricula.includes(c)} onChange={() => toggleMulti('curriculum_experience', c)} />
                     <span>{c}</span>
                   </label>
                 ))}
+              </div>
+              {customCurricula.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                  {customCurricula.map(c => (
+                    <span
+                      key={c}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: 'var(--gray-100)', border: '1px solid var(--gray-200)',
+                        borderRadius: 100, padding: '4px 6px 4px 12px',
+                        fontSize: '0.82rem', color: 'var(--navy)',
+                      }}
+                    >
+                      {c}
+                      <button
+                        type="button"
+                        onClick={() => toggleMulti('curriculum_experience', c)}
+                        aria-label={`Remove ${c}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 20, height: 20, borderRadius: '50%', border: 'none',
+                          background: 'var(--gray-200)', color: 'var(--navy)', cursor: 'pointer',
+                          fontSize: '0.9rem', lineHeight: 1, padding: 0,
+                        }}
+                      >×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <input
+                  className="form-input"
+                  placeholder="Other curriculum? Type it and press Enter to add"
+                  value={newCurriculum}
+                  onChange={e => setNewCurriculum(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomCurriculum(); } }}
+                />
+                <button type="button" className="btn btn-outline-navy btn-sm" onClick={addCustomCurriculum} style={{ flexShrink: 0 }}>Add</button>
               </div>
             </div>
           </>)}

@@ -96,10 +96,22 @@ def update_profile():
         "next_of_kin_name",
         "next_of_kin_phone",
         "next_of_kin_relationship",
-        "years_of_experience",
     ]:
         if field in payload:
             setattr(profile, field, payload[field])
+    if "years_of_experience" in payload:
+        # Integer column — the form sends '' for "not selected", which Postgres
+        # rejects outright ("invalid input syntax for type integer: ''"),
+        # crashing the whole request with an unhandled 500. Coerce like
+        # date_of_birth below: blank/invalid → NULL, valid → parsed value.
+        raw = payload["years_of_experience"]
+        if raw == "" or raw is None:
+            profile.years_of_experience = None
+        else:
+            try:
+                profile.years_of_experience = int(raw)
+            except (ValueError, TypeError):
+                pass
     if "date_of_birth" in payload:
         import datetime as _dt
         raw = payload["date_of_birth"]
