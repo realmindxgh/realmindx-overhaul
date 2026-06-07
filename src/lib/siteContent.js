@@ -149,7 +149,16 @@ const normaliseNews = (item, index = 0) => {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  const dateValue = item.published_at || item.date || item.created_at || '';
+  // Precedence matters here: `item.date` carries an editor's explicitly-chosen
+  // "Display Date" (backend display_date column), while `published_at` is
+  // auto-populated by the API on every item — including a server-side fallback
+  // to the creation timestamp when no publish date is set (see backend
+  // api/public.py's /news route). Because of that fallback, `published_at` is
+  // *never* empty, so checking it first meant a custom Display Date could never
+  // win — it was being stored correctly but silently never shown. An editor's
+  // deliberate choice should take precedence; published/created date remains
+  // the fallback for the (common) case where no Display Date was set.
+  const dateValue = item.date || item.published_at || item.created_at || '';
   const dateLabel = dateValue
     ? new Date(dateValue).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
