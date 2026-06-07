@@ -60,6 +60,7 @@ class User(UserMixin, TimestampMixin, db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     is_verified = db.Column(db.Boolean, default=False, nullable=False)
     failed_login_count = db.Column(db.Integer, default=0, nullable=False)
+    locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     role = db.relationship("Role")

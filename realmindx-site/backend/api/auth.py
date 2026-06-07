@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import math
 import re
 import secrets
 
@@ -114,6 +115,10 @@ def signup():
     ), 201
 
 
+LOGIN_LOCKOUT_THRESHOLD = 5
+LOGIN_LOCKOUT_MINUTES = 15
+
+
 @auth_bp.post("/login")
 @limiter.limit("10/minute")
 def login():
@@ -124,9 +129,21 @@ def login():
         return jsonify(error="Invalid email or password."), 401
 
     user = User.query.filter_by(email=email).first()
+
+    now = datetime.now(timezone.utc)
+    if user and user.locked_until and user.locked_until > now:
+        wait_minutes = max(1, math.ceil((user.locked_until - now).total_seconds() / 60))
+        return jsonify(
+            error=f"Too many failed attempts. Try again in {wait_minutes} minute{'s' if wait_minutes != 1 else ''}.",
+        ), 429
+
     if not user or not user.check_password(payload.get("password") or ""):
         if user:
             user.failed_login_count += 1
+            if user.failed_login_count >= LOGIN_LOCKOUT_THRESHOLD:
+                user.locked_until = now + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+                user.failed_login_count = 0
+                audit("user_login_locked", "user", user.id, {"email": user.email, "minutes": LOGIN_LOCKOUT_MINUTES})
             db.session.commit()
         return jsonify(error="Invalid email or password."), 401
 
@@ -140,7 +157,8 @@ def login():
         ), 403
 
     user.failed_login_count = 0
-    user.last_login_at = datetime.now(timezone.utc)
+    user.locked_until = None
+    user.last_login_at = now
     audit("user_login", "user", user.id, {"email": user.email, "role": user.role.name if user.role else None})
     db.session.commit()
     login_user(user, remember=bool(payload.get("remember")))

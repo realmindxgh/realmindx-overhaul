@@ -23,6 +23,12 @@ tmp-*.mjs
 tmp-*.js
 *.debug.js
 
+# Browser automation profiles (CDP user-data-dirs) — these contain real
+# cookies/passwords/history from whatever session created them. Never commit.
+.tmp-*-cdp/
+.tmp-edge-cdp/
+.tmp-chrome-cdp/
+
 # Uploads (managed by the server, not git)
 realmindx-site/uploads/*
 !realmindx-site/uploads/.gitkeep
