@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 
 // Icons & primitives shared across the site
 export const Icon = ({ name, size = 24, stroke = 1.8 }) => {
@@ -48,6 +49,7 @@ export const Icon = ({ name, size = 24, stroke = 1.8 }) => {
     x: <><path d="M6 6l12 12"/><path d="M18 6L6 18"/></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,
     clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+    calendar: <><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></>,
     message: <><path d="M21 15a4 4 0 0 1-4 4H8l-5 3 1.5-4A7 7 0 1 1 21 15z"/></>,
     briefcase: <><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M3 12h18"/></>,
     lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
@@ -64,6 +66,185 @@ export const Icon = ({ name, size = 24, stroke = 1.8 }) => {
          stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
       {paths[name]}
     </svg>
+  );
+};
+
+// ---------- Date helpers (ISO yyyy-mm-dd in/out, shared by every date selector on the site) ----------
+const dpPad2 = n => String(n).padStart(2, '0');
+const dpToISO = (year, month, day) => `${year}-${dpPad2(month + 1)}-${dpPad2(day)}`;
+const dpParseISO = value => {
+  if (!value || typeof value !== 'string') return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+};
+const dpFormatDisplay = value => {
+  const date = dpParseISO(value);
+  return date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+};
+const dpStartOfDay = date => { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; };
+const dpSameDay = (a, b) => !!a && !!b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+// Pulls a date inside [minDate, maxDate] (when given) — used so the calendar always opens on a month
+// that actually contains selectable days, instead of stranding the user on a fully-disabled "today"
+// (e.g. a Date of Birth field constrained to 18+ years ago would otherwise open on the current month,
+// where every single day is disabled, forcing ~200+ clicks back to a usable year).
+const dpClampToRange = (date, minDate, maxDate) => {
+  if (maxDate && date > maxDate) return maxDate;
+  if (minDate && date < minDate) return minDate;
+  return date;
+};
+const DP_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DP_WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+// Custom calendar date selector (RealMindX-styled popover) — used everywhere a date needs to be picked,
+// across both the admin portal and user-facing forms, instead of the bare native <input type="date">.
+export const DatePickerField = ({ value, onChange, placeholder, min, max, ariaLabel, className = '' }) => {
+  // Computed up front (not hooks — plain derived values) so the initial viewDate below can use them.
+  const selected = dpParseISO(value);
+  const parsedMin = min ? dpParseISO(min) : null;
+  const parsedMax = max ? dpParseISO(max) : null;
+  const minDate = parsedMin ? dpStartOfDay(parsedMin) : null;
+  const maxDate = parsedMax ? dpStartOfDay(parsedMax) : null;
+  const today = dpStartOfDay(new Date());
+  // Where the calendar should land when there's no selection yet: today, pulled inside [min, max]
+  // if today falls outside it. Keeps "open the picker" useful for any field — birthdays decades back,
+  // expiries decades forward — instead of always dumping the user on a dead, fully-disabled month.
+  const preferredView = selected || dpClampToRange(today, minDate, maxDate);
+
+  const [open, setOpen] = React.useState(false);
+  const [viewDate, setViewDate] = React.useState(() => preferredView);
+  const wrapRef = React.useRef(null);
+  const popRef = React.useRef(null);
+  const triggerRef = React.useRef(null);
+  const [coords, setCoords] = React.useState({ top: 0, left: 0, width: 240 });
+
+  const reposition = React.useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setCoords({ top: rect.bottom + 8, left: rect.left, width: rect.width });
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    setViewDate(preferredView);
+    reposition();
+    const handlePointerDown = event => {
+      if (wrapRef.current?.contains(event.target) || popRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') {
+        // Stop here so the keypress only closes this popover, not any parent
+        // modal (e.g. AdminPortalPage's form modal also closes on Escape via
+        // a window-level listener — without this, one Escape press would
+        // dismiss the calendar AND discard the admin's in-progress form).
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const isDisabled = date => {
+    const day = dpStartOfDay(date);
+    if (minDate && day < minDate) return true;
+    if (maxDate && day > maxDate) return true;
+    return false;
+  };
+
+  const pick = date => {
+    if (isDisabled(date)) return;
+    onChange(dpToISO(date.getFullYear(), date.getMonth(), date.getDate()));
+    setOpen(false);
+  };
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const cells = [];
+  if (open) {
+    const firstOfMonth = new Date(year, month, 1);
+    const gridStart = new Date(year, month, 1 - firstOfMonth.getDay());
+    for (let i = 0; i < 42; i++) cells.push(new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i));
+  }
+
+  const popover = open && ReactDOM.createPortal(
+    <div ref={popRef} className="dx-datepicker-pop" role="dialog" aria-label={`${ariaLabel || 'Date'} picker`}
+         style={{ position: 'fixed', top: coords.top, left: coords.left, minWidth: Math.max(coords.width, 272) }}>
+      <div className="dx-datepicker-head">
+        <button type="button" className="dx-datepicker-nav" aria-label="Previous month"
+                onClick={() => setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>
+          <Icon name="chevL" size={16} stroke={2.2} />
+        </button>
+        <span className="dx-datepicker-title">{DP_MONTHS[month]} {year}</span>
+        <button type="button" className="dx-datepicker-nav" aria-label="Next month"
+                onClick={() => setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>
+          <Icon name="chevR" size={16} stroke={2.2} />
+        </button>
+      </div>
+      <div className="dx-datepicker-weekdays">
+        {DP_WEEKDAYS.map(label => <span key={label}>{label}</span>)}
+      </div>
+      <div className="dx-datepicker-grid">
+        {cells.map((date, i) => {
+          const classes = ['dx-datepicker-cell'];
+          if (date.getMonth() !== month) classes.push('is-outside');
+          if (dpSameDay(date, today)) classes.push('is-today');
+          if (dpSameDay(date, selected)) classes.push('is-selected');
+          if (isDisabled(date)) classes.push('is-disabled');
+          return (
+            <button type="button" key={i} className={classes.join(' ')} disabled={isDisabled(date)}
+                    onClick={() => pick(date)} aria-pressed={dpSameDay(date, selected)}>
+              {date.getDate()}
+            </button>
+          );
+        })}
+      </div>
+      <div className="dx-datepicker-foot">
+        <button type="button" className="dx-datepicker-link" onClick={() => {
+          if (!isDisabled(today)) { onChange(dpToISO(today.getFullYear(), today.getMonth(), today.getDate())); setOpen(false); }
+          // Today isn't selectable here (e.g. a Date of Birth field) — land on the nearest edge of
+          // the valid range instead of "today"'s month, which would just be another dead end.
+          else setViewDate(dpClampToRange(today, minDate, maxDate));
+        }}>
+          Jump to today
+        </button>
+        {value ? (
+          <button type="button" className="dx-datepicker-link is-danger" onClick={() => { onChange(''); setOpen(false); }}>
+            Clear
+          </button>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
+
+  return (
+    <div className={`dx-datepicker ${className}`} ref={wrapRef}>
+      <button type="button" ref={triggerRef} className="dx-datepicker-trigger form-input"
+              aria-haspopup="dialog" aria-expanded={open} aria-label={ariaLabel}
+              onClick={() => setOpen(o => !o)}>
+        <span className={`dx-datepicker-value${value ? '' : ' is-placeholder'}`}>
+          {value ? dpFormatDisplay(value) : (placeholder || 'Select a date')}
+        </span>
+        <span className="dx-datepicker-icon"><Icon name="calendar" size={17} stroke={1.8} /></span>
+      </button>
+      {popover}
+    </div>
   );
 };
 

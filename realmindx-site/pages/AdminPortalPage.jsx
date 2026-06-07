@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import ReactDOM from 'react-dom';
-import { Icon } from '../assets/components.jsx';
+import { Icon, DatePickerField } from '../assets/components.jsx';
 import { resetManagedContent } from '../../src/lib/managedContent.js';
 import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
 import { API_BASE, api, isApiMode } from '../../src/lib/apiClient.js';
@@ -152,7 +152,7 @@ const CONFIG = {
       field('level', 'Level'),
       field('employment_type', 'Employment Type'),
       field('salary', 'Salary'),
-      field('deadline', 'Deadline'),
+      field('deadline', 'Deadline', 'date', { placeholder: 'No application deadline' }),
       field('description', 'Description', 'textarea'),
       field('status', 'Status', 'select', { options: ['published', 'draft', 'closed'] }),
     ],
@@ -218,8 +218,8 @@ const CONFIG = {
       field('applies_to', 'Applies To', 'select', { options: ['products', 'delivery', 'all'] }),
       field('min_order_amount', 'Minimum Order Amount (GH₵)', 'number', { help: 'Leave 0 for no minimum.' }),
       field('max_uses', 'Maximum Uses', 'number', { help: 'Leave blank for unlimited.' }),
-      field('valid_from', 'Valid From', 'text', { help: 'Date format YYYY-MM-DD. Leave blank for no start restriction.' }),
-      field('valid_until', 'Valid Until', 'text', { help: 'Date format YYYY-MM-DD. Leave blank for no expiry.' }),
+      field('valid_from', 'Valid From', 'date', { placeholder: 'No start restriction', help: 'Leave blank for this code to be valid immediately.', max: form => form.valid_until || undefined }),
+      field('valid_until', 'Valid Until', 'date', { placeholder: 'No expiry', help: 'Leave blank for this code to never expire.', min: form => form.valid_from || undefined }),
       field('is_active', 'Active', 'checkbox'),
     ],
     columns: ['code', 'discount_type', 'discount_value', 'applies_to', 'is_active'],
@@ -424,7 +424,7 @@ const CONFIG = {
         { icon: 'camera',   text: 'Minimum size: 1200 x 675 px. A strong header image is the biggest driver of people clicking through to read the article.' },
         { icon: 'check',    text: 'This image also appears in newsletters when the post is reused. Make it recognisable and eye-catching at small sizes.' },
       ] }),
-      field('date', 'Display Date'),
+      field('date', 'Display Date', 'date', { placeholder: 'No display date set' }),
       field('status', 'Status', 'select', { options: ['published', 'draft'] }),
     ],
     columns: ['image_url', 'title', 'category', 'date', 'status'],
@@ -651,7 +651,6 @@ const fieldPlaceholder = (itemField, config) => {
     organisation: 'School, company, or organisation name',
     employment_type: 'Example: Full-time, Part-time, Contract',
     salary: 'Optional salary or range',
-    deadline: 'Example: 2026-06-30',
     position: 'Role or job title',
     initials: 'Two-letter fallback, e.g. RM',
     sections: 'Add article sections with headings, paragraphs, images, and captions',
@@ -1148,6 +1147,15 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
                   <span className="toggle-slider" />
                 </span>
               </label>
+            ) : itemField.type === 'date' ? (
+              <DatePickerField
+                value={form[itemField.name]}
+                onChange={nextValue => setForm(prev => ({ ...prev, [itemField.name]: nextValue }))}
+                placeholder={fieldPlaceholder(itemField, config)}
+                min={typeof itemField.min === 'function' ? itemField.min(form) : itemField.min}
+                max={typeof itemField.max === 'function' ? itemField.max(form) : itemField.max}
+                ariaLabel={itemField.label}
+              />
             ) : (
               <input
                 className="form-input"

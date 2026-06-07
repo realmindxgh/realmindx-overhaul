@@ -1794,6 +1794,7 @@ def _news_json(row):
         "image_url": image_url,
         "image_file_id": row.image_file_id,
         "status": row.status,
+        "date": str(row.display_date) if row.display_date else None,
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         "published_at": row.published_at.isoformat() if row.published_at else None,
@@ -1822,6 +1823,7 @@ def create_news():
         sections=_clean_news_sections(payload.get("sections")),
         image_file_id=payload.get("image_file_id") or None,
         status=payload.get("status") or "draft",
+        display_date=date.fromisoformat(payload["date"]) if payload.get("date") else None,
     )
     if not row.title:
         return jsonify(error="Title is required."), 400
@@ -1845,6 +1847,8 @@ def update_news(news_id):
             setattr(row, field, payload[field])
     if "sections" in payload:
         row.sections = _clean_news_sections(payload.get("sections"))
+    if "date" in payload:
+        row.display_date = date.fromisoformat(payload["date"]) if payload["date"] else None
     if row.status == "published" and not row.published_at:
         row.published_at = datetime.now(timezone.utc)
     log_action("update_news", "news", row.id)

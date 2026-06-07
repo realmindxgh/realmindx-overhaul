@@ -323,6 +323,9 @@ class News(TimestampMixin, db.Model):
     image_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
     status = db.Column(db.String(30), default="draft", nullable=False)
     published_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # Editor-controlled "Display Date" shown with the post (distinct from published_at,
+    # which is an automatic system stamp set the moment status flips to "published").
+    display_date = db.Column(db.Date, nullable=True)
     image_file = db.relationship("UploadedFile", foreign_keys=[image_file_id])
 
 

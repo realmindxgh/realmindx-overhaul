@@ -463,6 +463,7 @@ def news():
         "body": row.body,
         "sections": enrich_news_sections(row.sections or []),
         "image_url": _img(row),
+        "date": str(row.display_date) if row.display_date else None,
         "published_at": row.published_at.isoformat() if row.published_at else row.created_at.isoformat(),
     } for row in rows])
 
