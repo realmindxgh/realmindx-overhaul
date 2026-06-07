@@ -295,7 +295,6 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
 };
 
 const ContactPage = ({ navigate }) => {
-  const { toast } = useCart();
   const settings = usePublicSettings();
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const onSubmit = async (event) => {
@@ -313,9 +312,9 @@ const ContactPage = ({ navigate }) => {
       });
       formEl.reset();
       setTurnstileToken('');
-      toast("Message sent. We'll reply soon.");
+      globalToast.success("Message sent. We'll reply soon.");
     } catch (err) {
-      toast(err?.message || 'Could not send message.');
+      globalToast.error(err?.message || 'Could not send message.');
     }
   };
 

@@ -153,7 +153,7 @@ const App = () => {
   let page;
   switch (route) {
     case 'home':     page = <HomePage navigate={navigate} />; break;
-    case 'shop':     page = <ShopPage navigate={navigate} initialCat={params.cat || 'all'} key={params.cat || 'all'} />; break;
+    case 'shop':     page = <ShopPage navigate={navigate} initialCat={params.cat || 'all'} initialQuery={params.q || ''} key={`${params.cat || 'all'}::${params.q || ''}::${params.sq || ''}`} />; break;
     case 'product':  page = <ProductPage navigate={navigate} bookId={params.id} key={params.id} />; break;
     case 'cart':     page = <CartPage navigate={navigate} />; break;
     case 'wishlist': page = <WishlistPage navigate={navigate} />; break;

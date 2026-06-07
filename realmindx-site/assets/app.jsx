@@ -3,6 +3,7 @@ import { Icon, Reveal, CountUp } from './components.jsx';
 import logoWhite from './logo-white.png';
 import { getDemoSession } from '../../src/lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from '../../src/lib/authClient.js';
+import toast from '../../src/lib/toast.js';
 import {
   useHomeHeroSlides,
   usePublicGallery,
@@ -118,7 +119,8 @@ const NavUserPill = () => {
     e.stopPropagation();
     await signOut();
     setSession(null);
-    window.location.href = '/';
+    setOpen(false);
+    toast.success("You've been signed out.");
   };
 
   return (

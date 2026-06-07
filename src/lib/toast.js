@@ -59,4 +59,39 @@ const toast = {
   nudge: (msg, dur) => showToast(msg, 'nudge', dur ?? 5000),
 };
 
+const FLASH_KEY = 'rmx.flashToast';
+
+/**
+ * Queue a toast to appear after the next full-page navigation/reload.
+ *
+ * A toast fired immediately before `window.location.href = ...` gets torn
+ * down with the old document before it can ever be seen — there's no DOM
+ * left to animate it in. Call this instead right before a hard redirect,
+ * then call `flushQueuedToast()` once when the next page boots to display
+ * (and clear) it. Mirrors the sessionStorage hand-off pattern already used
+ * by `realmindx-bookshop/authReturn.js` for carrying state across reloads.
+ */
+export function queueToast(msg, type = 'info') {
+  if (typeof window === 'undefined' || !window.sessionStorage || !msg) return;
+  try {
+    window.sessionStorage.setItem(FLASH_KEY, JSON.stringify({ msg, type }));
+  } catch { /* storage unavailable (private mode / quota) - drop silently */ }
+}
+
+/**
+ * Show and clear any toast queued by `queueToast` from the page that
+ * redirected here. Safe to call on every app boot — it's a no-op once the
+ * queued entry has been consumed.
+ */
+export function flushQueuedToast() {
+  if (typeof window === 'undefined' || !window.sessionStorage) return;
+  try {
+    const raw = window.sessionStorage.getItem(FLASH_KEY);
+    if (!raw) return;
+    window.sessionStorage.removeItem(FLASH_KEY);
+    const { msg, type } = JSON.parse(raw);
+    if (msg) showToast(msg, type);
+  } catch { /* malformed payload - drop it */ }
+}
+
 export default toast;

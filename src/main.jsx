@@ -27,6 +27,7 @@ import { useIdleTimeout } from './lib/useIdleTimeout.js';
 import { IdleWarning } from './lib/IdleWarning.jsx';
 import { getDemoSession } from './lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from './lib/authClient.js';
+import { flushQueuedToast } from './lib/toast.js';
 
 
 const SiteInfoPage = ({ activePage = '', eyebrow = 'RealMindX', title, body, actions = [], cards = [], children }) => (
@@ -737,6 +738,10 @@ const AppRoutes = () => {
   </BrowserRouter>
   );
 };
+
+// Show (and clear) any toast a previous page queued right before redirecting
+// here — e.g. "You've been signed out" survives the hard reload to /login.
+flushQueuedToast();
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

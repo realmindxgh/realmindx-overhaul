@@ -4,6 +4,7 @@ import { useCatalog } from './catalog.jsx';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
+import globalToast from '../src/lib/toast.js';
 
 // ---------- Wishlist store ----------
 const WishlistCtx = React.createContext(null);
@@ -83,18 +84,12 @@ const CartProvider = ({ children, navigate }) => {
 const CartProviderInner = ({ children, navigate }) => {
   const { books } = useCatalog();
   const [items, setItems] = React.useState(readSavedCart);
-  const [toasts, setToasts] = React.useState([]);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
-  const toast = (msg) => {
-    const id = Math.random().toString(36).slice(2);
-    setToasts(t => [...t, { id, msg }]);
-    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 2600);
-  };
   const add = (bookId, qty = 1) => {
     setItems(prev => {
       const ex = prev.find(i => i.id === bookId);
@@ -102,7 +97,7 @@ const CartProviderInner = ({ children, navigate }) => {
       return [...prev, { id: bookId, qty }];
     });
     const b = books.find(x => x.id === bookId);
-    toast(`Added "${b ? b.title : 'item'}" to cart`);
+    globalToast.success(`Added "${b ? b.title : 'item'}" to cart`);
   };
   const setQty = (bookId, qty) => setItems(prev => prev.map(i => i.id === bookId ? { ...i, qty: Math.max(1, qty) } : i));
   const remove = (bookId) => setItems(prev => prev.filter(i => i.id !== bookId));
@@ -131,17 +126,8 @@ const CartProviderInner = ({ children, navigate }) => {
   const bulkSaving = bulkDiscounts.reduce((s, d) => s + d.saving, 0);
 
   return (
-    <CartCtx.Provider value={{ items, detailed, count, subtotal, bulkDiscounts, bulkSaving, add, setQty, remove, clear, toast, navigate }}>
+    <CartCtx.Provider value={{ items, detailed, count, subtotal, bulkDiscounts, bulkSaving, add, setQty, remove, clear, navigate }}>
       {children}
-      <div className="bs-toast-wrap">
-        {toasts.map(t => (
-          <div className={`bs-toast${t.isNudge ? ' bs-toast-nudge' : ''}`} key={t.id}>
-            {t.isNudge
-              ? <><Icon name="user" size={15} className="bs-tc" style={{ opacity:.75 }} /> {t.msg}</>
-              : <><Icon name="check" size={16} className="bs-tc" /> {t.msg}</>}
-          </div>
-        ))}
-      </div>
     </CartCtx.Provider>
   );
 };
@@ -242,6 +228,10 @@ const Navbar = ({ route, navigate }) => {
   const [searchFocused, setSearchFocused] = React.useState(false);
   const catsRef = React.useRef(null);
   const searchWrapRef = React.useRef(null);
+  // Bumped on every explicit search submission so ShopPage remounts even when
+  // the same query text is submitted twice in a row (e.g. search "pencils",
+  // clear it in-page, search "pencils" again — params.q alone wouldn't change).
+  const searchSeq = React.useRef(0);
 
   React.useEffect(() => {
     const onDoc = (e) => {
@@ -280,7 +270,10 @@ const Navbar = ({ route, navigate }) => {
 
   const submitSearch = (e) => {
     if (e) e.preventDefault();
-    navigate('shop');
+    const t = q.trim();
+    // sq makes every submission unique even for a repeated query, so the
+    // ShopPage remount key below always changes and re-applies initialQuery.
+    navigate('shop', t ? { q: t, sq: ++searchSeq.current } : {});
     setSearching(false);
     setSearchFocused(false);
   };

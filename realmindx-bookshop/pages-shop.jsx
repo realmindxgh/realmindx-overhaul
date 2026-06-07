@@ -1,9 +1,10 @@
 import React from 'react';
-import { Icon, Reveal, cedis, Stars } from './shared.jsx';
+import { Icon, Reveal, cedis } from './shared.jsx';
 import { ProductCard, ListCard, useCart } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
+import globalToast from '../src/lib/toast.js';
 
 // ---------- Flyer hero slideshow (admin-managed) ----------
 const FLYER_GRADIENTS = [
@@ -114,7 +115,6 @@ const CategoryMarquee = ({ navigate }) => {
 // ---------- Homepage ----------
 const HomePage = ({ navigate }) => {
   const { books } = useCatalog();
-  const { toast } = useCart();
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const onSubscribe = async (e) => {
     e.preventDefault();
@@ -124,9 +124,9 @@ const HomePage = ({ navigate }) => {
       const res = await subscribeNewsletter(email, 'bookshop', turnstileToken);
       formEl.reset();
       setTurnstileToken('');
-      toast(res?.status === 'already_subscribed' ? "You're already subscribed" : 'Subscribed - thank you!');
+      globalToast.success(res?.status === 'already_subscribed' ? "You're already subscribed" : 'Subscribed - thank you!');
     } catch (err) {
-      toast(err?.message || 'Could not subscribe.');
+      globalToast.error(err?.message || 'Could not subscribe.');
     }
   };
   const featuredPool = books.filter(b => b.featured);
@@ -212,6 +212,32 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
     return { ...f, cats: has ? f.cats.filter(x => x !== id) : [...f.cats, id] };
   });
 
+  // Star-range picker: clicking an active chip clears it back to "Any" (empty).
+  // Picking a bound that would conflict with the other one (min > max) carries
+  // the other bound along so the range stays valid — e.g. Min=4 while Max=2 is
+  // set pulls Max up to 4, rather than silently producing zero results.
+  const setRatingBound = (key, n) => setFilters(f => {
+    const other = key === 'ratingMin' ? 'ratingMax' : 'ratingMin';
+    const value = f[key] === n ? '' : n;
+    const conflicts = value !== '' && f[other] !== '' &&
+      (key === 'ratingMin' ? f[other] < value : f[other] > value);
+    return { ...f, [key]: value, [other]: conflicts ? value : f[other] };
+  });
+  // Live hover/focus preview for the star pickers below — while the pointer (or
+  // keyboard focus) rests on star N, stars 1..N preview as filled, exactly like
+  // the selection itself would look, the same "rate up to here" convention every
+  // star-rating control uses. Falls back to the actual committed value otherwise.
+  const [hoverMin, setHoverMin] = React.useState(null);
+  const [hoverMax, setHoverMax] = React.useState(null);
+  const starFilled = (value, hover, n) => hover !== null ? n <= hover : (value !== '' && n <= value);
+  const { ratingMin, ratingMax } = filters;
+  const ratingHint =
+    ratingMin === '' && ratingMax === '' ? 'Any rating'
+    : ratingMin !== '' && ratingMax !== ''
+      ? (ratingMin === ratingMax ? `${ratingMin} star${ratingMin > 1 ? 's' : ''} only` : `${ratingMin}–${ratingMax} stars`)
+    : ratingMin !== '' ? `${ratingMin}+ stars`
+    : `${ratingMax} stars or fewer`;
+
   return (
     <>
       <h3 className="bs-h3">Filter Books</h3>
@@ -245,15 +271,52 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
       <div className={`bs-filter-sec${open.rating ? '' : ' collapsed'}`}>
         <button className="bs-filter-sec-head" onClick={() => toggle('rating')}>Rating <Icon name="chevDown" size={16} className="bs-chev" /></button>
         <div className="bs-filter-sec-body bs-rating-filter">
-          {[5,4,3,0].map(r => (
-            <button key={r} type="button" className={`bs-rating-opt${filters.rating === r ? ' active' : ''}`} onClick={() => setFilters(f => ({ ...f, rating: r }))}>
-              {r === 5
-                ? <><Stars value={5} size={14} /><span>5 stars only</span></>
-                : r > 0
-                  ? <><Stars value={r} size={14} /><span>{r}+ stars</span></>
-                  : <span>Any rating</span>}
+          <p className="bs-rating-hint">{ratingHint}</p>
+          <div className="bs-rating-range-row">
+            <span className="bs-rating-range-label">Min</span>
+            <div className="bs-rating-stars" role="group" aria-label="Minimum star rating"
+              onMouseLeave={() => setHoverMin(null)}>
+              <span className="bs-rating-endpoint" aria-hidden="true">1</span>
+              {[1,2,3,4,5].map(n => (
+                <button key={n} type="button"
+                  className={`bs-rating-star${starFilled(ratingMin, hoverMin, n) ? ' filled' : ''}`}
+                  aria-pressed={ratingMin === n}
+                  aria-label={`Set minimum rating to ${n} star${n > 1 ? 's' : ''}`}
+                  onMouseEnter={() => setHoverMin(n)}
+                  onFocus={() => setHoverMin(n)}
+                  onBlur={() => setHoverMin(null)}
+                  onClick={() => setRatingBound('ratingMin', n)}>
+                  <Icon name="star" size={20} stroke={0} />
+                </button>
+              ))}
+              <span className="bs-rating-endpoint" aria-hidden="true">5</span>
+            </div>
+          </div>
+          <div className="bs-rating-range-row">
+            <span className="bs-rating-range-label">Max</span>
+            <div className="bs-rating-stars" role="group" aria-label="Maximum star rating"
+              onMouseLeave={() => setHoverMax(null)}>
+              <span className="bs-rating-endpoint" aria-hidden="true">1</span>
+              {[1,2,3,4,5].map(n => (
+                <button key={n} type="button"
+                  className={`bs-rating-star${starFilled(ratingMax, hoverMax, n) ? ' filled' : ''}`}
+                  aria-pressed={ratingMax === n}
+                  aria-label={`Set maximum rating to ${n} star${n > 1 ? 's' : ''}`}
+                  onMouseEnter={() => setHoverMax(n)}
+                  onFocus={() => setHoverMax(n)}
+                  onBlur={() => setHoverMax(null)}
+                  onClick={() => setRatingBound('ratingMax', n)}>
+                  <Icon name="star" size={20} stroke={0} />
+                </button>
+              ))}
+              <span className="bs-rating-endpoint" aria-hidden="true">5</span>
+            </div>
+          </div>
+          {(ratingMin !== '' || ratingMax !== '') && (
+            <button type="button" className="bs-rating-reset" onClick={() => setFilters(f => ({ ...f, ratingMin: '', ratingMax: '' }))}>
+              <Icon name="close" size={11} /> Clear rating filter
             </button>
-          ))}
+          )}
         </div>
       </div>
       <div className={`bs-filter-sec${open.avail ? '' : ' collapsed'}`}>
@@ -271,9 +334,9 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
 
 const BATCH = 40;
 
-const ShopPage = ({ navigate, initialCat = 'all' }) => {
+const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
   const { books, categories, priceCeiling } = useCatalog();
-  const [filters, setFilters] = React.useState({ cats: initialCat !== 'all' ? [initialCat] : [], min:0, max:priceCeiling, rating:0, inStock:false });
+  const [filters, setFilters] = React.useState({ cats: initialCat !== 'all' ? [initialCat] : [], min:0, max:priceCeiling, ratingMin:'', ratingMax:'', inStock:false, query: initialQuery });
   const [sort, setSort] = React.useState('newest');
   const [view, setView] = React.useState('grid');
   const [visible, setVisible] = React.useState(BATCH);
@@ -287,10 +350,29 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
   React.useEffect(() => { document.body.style.overflow = drawer ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [drawer]);
 
   const matchesCategory = (book, id) => book.cat === id || book.curriculum === id || book.curriculumName === id;
+  // Compare against the *rounded* star value — that's what the ★ icons (and the
+  // picker itself) display, so "min 3 / max 4" reliably shows only books whose
+  // visible star rating falls in [3,4], with no confusing rounding edge-cases.
+  const matchesRating = (b) => {
+    const stars = Math.round(b.rating);
+    return (filters.ratingMin === '' || stars >= filters.ratingMin) &&
+           (filters.ratingMax === '' || stars <= filters.ratingMax);
+  };
+  // Same title/category/author substring matcher the navbar's live-suggestions
+  // dropdown uses (chrome.jsx) — "See all results for ..." should show exactly
+  // the books that matched there, not the unfiltered catalogue.
+  const trimmedQuery = filters.query.trim().toLowerCase();
+  const matchesQuery = (b) => {
+    if (!trimmedQuery) return true;
+    return b.title.toLowerCase().includes(trimmedQuery) ||
+           (b.catName || '').toLowerCase().includes(trimmedQuery) ||
+           (b.author || '').toLowerCase().includes(trimmedQuery);
+  };
   let list = books.filter(b =>
     (filters.cats.length === 0 || filters.cats.some(id => matchesCategory(b, id))) &&
     b.price >= filters.min && b.price <= filters.max &&
-    b.rating >= (filters.rating === 5 ? 4.5 : filters.rating) &&
+    matchesRating(b) &&
+    matchesQuery(b) &&
     (!filters.inStock || b.stock)
   );
   if (sort === 'low') list = [...list].sort((a,b) => a.price - b.price);
@@ -331,15 +413,23 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
     if (catNames.length === 1)      base = catNames[0];
     else if (catNames.length > 1)   base = 'your selected categories';
     else                             base = 'the full catalogue';
+    if (filters.query)               base = `"${filters.query.trim()}" search results${catNames.length ? ` in ${base}` : ''}`;
     const extras = [];
     if (filters.inStock)             extras.push('in stock only');
-    if (filters.rating >= 4)         extras.push(`${filters.rating}+ stars`);
+    const { ratingMin, ratingMax } = filters;
+    if (ratingMin !== '' && ratingMax !== '') {
+      extras.push(ratingMin === ratingMax ? `${ratingMin}★ only` : `${ratingMin}–${ratingMax}★`);
+    } else if (ratingMin !== '') {
+      extras.push(`${ratingMin}★ & up`);
+    } else if (ratingMax !== '') {
+      extras.push(`${ratingMax}★ or under`);
+    }
     return extras.length ? `${base}: ${extras.join(', ')}` : base;
   }, [filters, categories]);
 
   // ── Top picks: highest-rated in-stock books NOT in current filter ──
   const topPicks = React.useMemo(() => {
-    const isFiltered = filters.cats.length > 0 || filters.inStock || filters.rating > 0;
+    const isFiltered = filters.cats.length > 0 || filters.inStock || filters.ratingMin !== '' || filters.ratingMax !== '' || filters.query !== '';
     if (!isFiltered) return []; // already showing all books — no need to suggest
     const shownIds = new Set(list.map(b => b.id));
     return books
@@ -362,6 +452,17 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
         </aside>
 
         <div>
+          {filters.query && (
+            <div className="bs-search-banner">
+              <span className="bs-search-banner-label">
+                <Icon name="search" size={15} />
+                Search results for <strong>"{filters.query.trim()}"</strong>
+              </span>
+              <button type="button" className="bs-search-clear" onClick={() => setFilters(f => ({ ...f, query: '' }))}>
+                <Icon name="close" size={12} /> Clear search
+              </button>
+            </div>
+          )}
           <div className="bs-shop-toolbar">
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <button className="bs-filter-mobile-btn" onClick={() => setDrawer(true)}><Icon name="filter" size={16} /> Filter</button>
@@ -389,9 +490,11 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
             ? (
               <div className="bs-empty-state">
                 <div className="bs-empty-icon"><Icon name="search" size={36} /></div>
-                <h2>No books match your filters.</h2>
-                <p>Try a different category, adjust the price range, or remove stock/rating filters.</p>
-                <button className="bs-btn bs-btn-gold" onClick={() => setFilters({ cats:[], min:0, max:priceCeiling, rating:0, inStock:false })}>
+                <h2>No books match your {filters.query ? 'search' : 'filters'}.</h2>
+                <p>{filters.query
+                  ? <>Nothing matched <strong>"{filters.query.trim()}"</strong>. Try a different term, or clear your search and filters.</>
+                  : 'Try a different category, adjust the price range, or remove stock/rating filters.'}</p>
+                <button className="bs-btn bs-btn-gold" onClick={() => setFilters({ cats:[], min:0, max:priceCeiling, ratingMin:'', ratingMax:'', inStock:false, query:'' })}>
                   Clear all filters
                 </button>
               </div>
@@ -430,7 +533,7 @@ const ShopPage = ({ navigate, initialCat = 'all' }) => {
                     </div>
                     <a className="bs-see-all" href="#" onClick={(e) => {
                       e.preventDefault();
-                      setFilters({ cats:[], min:0, max:priceCeiling, rating:0, inStock:false });
+                      setFilters({ cats:[], min:0, max:priceCeiling, ratingMin:'', ratingMax:'', inStock:false, query:'' });
                       window.scrollTo({ top:0, behavior:'smooth' });
                     }}>Browse all <Icon name="arrow" size={14} /></a>
                   </div>

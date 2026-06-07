@@ -3,6 +3,7 @@ import { Icon } from '../assets/components.jsx';
 import logoWhite from '../assets/logo-white.png';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
 import { signOut } from '../../src/lib/authClient.js';
+import { queueToast } from '../../src/lib/toast.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { useCropUpload } from '../../src/lib/useCropUpload.jsx';
 
@@ -326,7 +327,7 @@ const Sidebar = ({ active, setActive, user, sidebarOpen, setSidebarOpen, applica
         <a href="/" className="portal-nav-item" style={{ textDecoration: 'none' }}>
           <span className="nav-icon"><Icon name="home" size={17} stroke={1.9} /></span> Back to RealMindX
         </a>
-        <button className="portal-nav-item" style={{ color: 'var(--danger)', width: '100%', textAlign: 'left' }} onClick={async () => { await signOut(); window.location.href = '/'; }}>
+        <button className="portal-nav-item" style={{ color: 'var(--danger)', width: '100%', textAlign: 'left' }} onClick={async () => { await signOut(); queueToast("You've been signed out.", 'success'); window.location.href = '/login'; }}>
           <span className="nav-icon"><Icon name="x" size={17} stroke={1.9} /></span> Sign Out
         </button>
       </div>
@@ -1381,7 +1382,8 @@ const UserPortalPage = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    window.location.href = '/';
+    queueToast("You've been signed out.", 'success');
+    window.location.href = '/login';
   };
 
   const renderView = () => {

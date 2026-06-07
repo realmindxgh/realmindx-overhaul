@@ -4,6 +4,7 @@ import { useCart, useWishlist, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
+import globalToast from '../src/lib/toast.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 
 const Accordion = ({ title, children, defaultOpen = false }) => {
@@ -27,7 +28,7 @@ const QtyStepper = ({ qty, setQty, sm = false }) => (
 const ProductPage = ({ navigate, bookId }) => {
   const { books } = useCatalog();
   const book = books.find(b => b.id === bookId) || books[0];
-  const { add, toast } = useCart();
+  const { add } = useCart();
   const wishlist = useWishlist();
   const [qty, setQty] = React.useState(1);
   const [activeImg, setActiveImg] = React.useState(0);
@@ -99,7 +100,7 @@ const ProductPage = ({ navigate, bookId }) => {
             </div>
             <button
               className={`bs-btn bs-btn-outline-navy bs-btn-block${wishlist?.has(book.id) ? ' bs-wishlisted' : ''}`}
-              onClick={() => { wishlist?.toggle(book.id); toast(wishlist?.has(book.id) ? 'Removed from wishlist' : 'Added to wishlist'); }}
+              onClick={() => { wishlist?.toggle(book.id); globalToast.success(wishlist?.has(book.id) ? 'Removed from wishlist' : 'Added to wishlist'); }}
             >
               <Icon name="heart" size={17} /> {wishlist?.has(book.id) ? 'Saved to Wishlist ✓' : 'Save to Wishlist'}
             </button>
@@ -320,7 +321,7 @@ const CartPage = ({ navigate }) => {
 /* ─── WISHLIST PAGE ──────────────────────────────────── */
 const WishlistPage = ({ navigate }) => {
   const wishlist = useWishlist();
-  const { add: addToCart, toast } = useCart();
+  const { add: addToCart } = useCart();
   const { books } = useCatalog();
 
   const wishlisted = books.filter(b => wishlist?.has(b.id));
@@ -328,7 +329,7 @@ const WishlistPage = ({ navigate }) => {
   const moveToCart = (book) => {
     addToCart(book.id, 1);
     wishlist?.remove(book.id);
-    toast(`"${book.title}" moved to cart`);
+    globalToast.success(`"${book.title}" moved to cart`);
   };
 
   if (!wishlisted.length) return (
