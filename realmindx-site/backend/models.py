@@ -103,11 +103,17 @@ class UserProfile(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=False)
     location = db.Column(db.String(160), nullable=True)
-    teaching_subject = db.Column(db.String(160), nullable=True)
-    preferred_level = db.Column(db.String(120), nullable=True)
-    preferred_employment_type = db.Column(db.String(80), nullable=True)
+    # Multi-select fields store a comma-joined list of values (e.g.
+    # "Mathematics, Physics, Chemistry"). Text (no length cap) because the
+    # official option lists are long and growing, teachers can pick many at
+    # once, and "Other" lets them append arbitrary custom entries — a fixed
+    # String(N) would silently truncate (or error on some drivers) the moment
+    # a handful of longer option names were combined.
+    teaching_subject = db.Column(db.Text, nullable=True)
+    preferred_level = db.Column(db.Text, nullable=True)
+    preferred_employment_type = db.Column(db.Text, nullable=True)
     available_from = db.Column(db.String(80), nullable=True)
-    curriculum_experience = db.Column(db.String(255), nullable=True)
+    curriculum_experience = db.Column(db.Text, nullable=True)
     bio = db.Column(db.Text, nullable=True)
     profile_picture_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
     cv_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
@@ -115,6 +121,7 @@ class UserProfile(TimestampMixin, db.Model):
     next_of_kin_name = db.Column(db.String(160), nullable=True)
     next_of_kin_phone = db.Column(db.String(40), nullable=True)
     next_of_kin_relationship = db.Column(db.String(80), nullable=True)
+    next_of_kin_email = db.Column(db.String(255), nullable=True)
     years_of_experience = db.Column(db.Integer, nullable=True)
     date_of_birth = db.Column(db.Date, nullable=True)
 
@@ -176,7 +183,10 @@ class JobAlertPreference(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    subject = db.Column(db.String(160), nullable=True)
+    # Text, not String(160): _sync_profile_to_alert_preference() seeds this
+    # directly from UserProfile.teaching_subject, which is now a comma-joined
+    # multi-select value — it must be able to hold whatever that column holds.
+    subject = db.Column(db.Text, nullable=True)
     location = db.Column(db.String(160), nullable=True)
     preferred_level = db.Column(db.String(120), nullable=True)
     employment_type = db.Column(db.String(80), nullable=True)

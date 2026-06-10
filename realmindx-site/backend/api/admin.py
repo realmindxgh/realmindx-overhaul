@@ -461,8 +461,16 @@ def _delete_admin_collection_item(setting_key, default_items, item_id, entity_ty
 
 
 def _matches_job_alert(job, preference):
-    subject_match = not preference.subject or (
-        job.subject and preference.subject.lower() in job.subject.lower()
+    # preference.subject is a comma-joined multi-select value (a teacher can
+    # now save several teaching subjects, e.g. "Mathematics, Physics,
+    # Chemistry"). Match if ANY one of those subjects appears in the job's
+    # subject — a straight whole-string containment check would require the
+    # entire joined list to appear verbatim inside a single-subject job
+    # posting, which would never happen and would silently stop all subject
+    # -based alerts for every multi-subject teacher.
+    pref_subjects = [s.strip().lower() for s in (preference.subject or "").split(",") if s.strip()]
+    subject_match = not pref_subjects or (
+        job.subject and any(token in job.subject.lower() for token in pref_subjects)
     )
     location_match = not preference.location or (
         job.location and preference.location.lower() in job.location.lower()
@@ -473,7 +481,7 @@ def _matches_job_alert(job, preference):
     type_match = not preference.employment_type or (
         job.employment_type and preference.employment_type.lower() == job.employment_type.lower()
     )
-    if preference.subject:
+    if pref_subjects:
         return subject_match and type_match and (location_match or level_match)
     return subject_match and location_match and level_match and type_match
 

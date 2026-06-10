@@ -32,6 +32,7 @@ def profile_json(profile):
         "next_of_kin_name": profile.next_of_kin_name,
         "next_of_kin_phone": profile.next_of_kin_phone,
         "next_of_kin_relationship": profile.next_of_kin_relationship,
+        "next_of_kin_email": profile.next_of_kin_email,
         "years_of_experience": profile.years_of_experience,
         "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
     }
@@ -96,6 +97,7 @@ def update_profile():
         "next_of_kin_name",
         "next_of_kin_phone",
         "next_of_kin_relationship",
+        "next_of_kin_email",
     ]:
         if field in payload:
             setattr(profile, field, payload[field])
