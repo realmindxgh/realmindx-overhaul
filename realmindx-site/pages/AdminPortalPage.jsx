@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { Icon, DatePickerField } from '../assets/components.jsx';
-import { resetManagedContent } from '../../src/lib/managedContent.js';
+import { resetManagedContent, JOB_LEVELS, JOB_SUBJECTS, JOB_TYPES } from '../../src/lib/managedContent.js';
 import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
 import { API_BASE, api, isApiMode } from '../../src/lib/apiClient.js';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
@@ -148,13 +148,16 @@ const CONFIG = {
       field('title', 'Job Title'),
       field('organisation', 'School / Organisation'),
       field('location', 'Location'),
-      field('subject', 'Subject'),
-      field('level', 'Level'),
-      field('employment_type', 'Employment Type'),
-      field('salary', 'Salary'),
+      field('subject', 'Subject', 'select', { options: JOB_SUBJECTS }),
+      field('level', 'Level', 'select', { options: JOB_LEVELS }),
+      field('employment_type', 'Employment Type', 'select', { options: JOB_TYPES }),
+      field('salary_min', 'Minimum Salary (GHS)', 'number', { help: 'Monthly salary range shown to applicants. Leave both blank to show "Available on request".' }),
+      field('salary_max', 'Maximum Salary (GHS)', 'number'),
       field('deadline', 'Deadline', 'date', { placeholder: 'No application deadline' }),
       field('description', 'Description', 'textarea'),
-      field('status', 'Status', 'select', { options: ['published', 'draft', 'closed'] }),
+      field('requirements', 'Requirements', 'textarea', { help: 'One requirement per line. Shown as a bullet list to applicants.' }),
+      field('responsibilities', 'Responsibilities', 'textarea', { help: 'One responsibility per line. Shown as a bullet list to applicants.' }),
+      field('status', 'Status', 'select', { options: ['draft', 'published', 'closed'] }),
     ],
     columns: ['title', 'organisation', 'location', 'subject', 'status'],
   },
@@ -245,7 +248,7 @@ const CONFIG = {
       field('show_overlay', 'Dark / Stripe Overlay', 'checkbox'),
       field('image_fit', 'Image Fit', 'select', { options: ['cover', 'contain'] }),
       field('image_position', 'Image Position', 'select', { options: ['center', 'top', 'bottom', 'left', 'right'] }),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['image_url', 'headline', 'accent', 'badge', 'status'],
     columnLabels: { image_url: 'Image' },
@@ -294,7 +297,7 @@ const CONFIG = {
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('badge', 'Badge'),
       field('sort_order', 'Sort Order', 'number'),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['image_url', 'label', 'tag', 'sort_order', 'status'],
     columnLabels: { image_url: 'Image', sort_order: 'Order' },
@@ -316,7 +319,7 @@ const CONFIG = {
         { icon: 'check',    text: 'Logos appear in the scrolling partner marquee on the homepage. Keep the crop tight so the logo stays legible at small sizes.' },
       ] }),
       field('sort_order', 'Sort Order', 'number'),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['image_url', 'name', 'sort_order', 'status'],
     columnLabels: { image_url: 'Logo', sort_order: 'Order' },
@@ -340,7 +343,7 @@ const CONFIG = {
         { icon: 'check',    text: 'If no photo is provided, the system displays the initials as a fallback. A photo always looks more professional.' },
       ] }),
       field('sort_order', 'Sort Order', 'number'),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['image_url', 'name', 'position', 'sort_order', 'status'],
     columnLabels: { image_url: 'Photo', sort_order: 'Order' },
@@ -363,7 +366,7 @@ const CONFIG = {
       ] }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('sort_order', 'Sort Order', 'number'),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['image_url', 'label', 'sort_order', 'status'],
     columnLabels: { image_url: 'Image', sort_order: 'Order' },
@@ -386,7 +389,7 @@ const CONFIG = {
       ] }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('sort_order', 'Sort Order', 'number'),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['image_url', 'label', 'sort_order', 'status'],
     columnLabels: { image_url: 'Image', sort_order: 'Order' },
@@ -403,7 +406,7 @@ const CONFIG = {
       field('label', 'Friendly Name'),
       field('area', 'Website Area', 'select', { options: ['home', 'about', 'services', 'legal', 'bookshop', 'jobs', 'contact'] }),
       field('value', 'Text', 'textarea'),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['label', 'area', 'status'],
   },
@@ -425,7 +428,7 @@ const CONFIG = {
         { icon: 'check',    text: 'This image also appears in newsletters when the post is reused. Make it recognisable and eye-catching at small sizes.' },
       ] }),
       field('date', 'Display Date', 'date', { placeholder: 'No display date set' }),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['image_url', 'title', 'category', 'date', 'status'],
     columnLabels: { image_url: 'Image' },
@@ -445,7 +448,7 @@ const CONFIG = {
         { icon: 'check',    text: 'The gallery is often the first place potential school partners look to assess the quality and scale of RealMindX work. Choose impactful, well-lit photos.' },
       ] }),
       field('sort_order', 'Sort Order', 'number'),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['image_url', 'title', 'sort_order', 'status'],
     columnLabels: { image_url: 'Image', sort_order: 'Order' },
@@ -459,7 +462,7 @@ const CONFIG = {
       field('title', 'Title'),
       field('description', 'Description', 'textarea'),
       field('url', 'URL'),
-      field('status', 'Status', 'select', { options: ['published', 'draft'] }),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
     columns: ['title', 'description', 'url', 'status'],
   },
@@ -608,6 +611,11 @@ const valueForInput = (value, itemField) => {
   if (itemField.type === 'category-select') return value ?? '';
   if (itemField.type === 'permission-list') return Array.isArray(value) ? value : [];
   if (itemField.type === 'article-sections') return Array.isArray(value) ? value : [];
+  if (itemField.type === 'select' && (value === null || value === undefined || value === '') && itemField.options?.length) {
+    // A <select> always shows its first <option> when value doesn't match any option, so make
+    // that the real default too - otherwise an untouched dropdown silently submits ''.
+    return optionValue(itemField.options[0]);
+  }
   return value ?? '';
 };
 
@@ -650,7 +658,8 @@ const fieldPlaceholder = (itemField, config) => {
     url: 'https://... or /resources/...',
     organisation: 'School, company, or organisation name',
     employment_type: 'Example: Full-time, Part-time, Contract',
-    salary: 'Optional salary or range',
+    salary_min: 'Example: 1500',
+    salary_max: 'Example: 2500',
     position: 'Role or job title',
     initials: 'Two-letter fallback, e.g. RM',
     sections: 'Add article sections with headings, paragraphs, images, and captions',

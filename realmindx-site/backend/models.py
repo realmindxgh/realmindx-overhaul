@@ -154,6 +154,7 @@ class Job(TimestampMixin, db.Model):
     employment_type = db.Column(db.String(80), nullable=True, index=True)
     description = db.Column(db.Text, nullable=False)
     requirements = db.Column(db.Text, nullable=True)
+    responsibilities = db.Column(db.Text, nullable=True)
     deadline = db.Column(db.Date, nullable=True)
     salary_min = db.Column(db.Numeric(12, 2), nullable=True)
     salary_max = db.Column(db.Numeric(12, 2), nullable=True)

@@ -1,6 +1,6 @@
 ﻿import React, { useState } from 'react';
 import { Nav, Footer } from '../components/NavFooter';
-import { publicItems, useManagedCollection } from '../../src/lib/managedContent.js';
+import { publicItems, useManagedCollection, JOB_LEVELS as LEVELS, JOB_SUBJECTS as SUBJECTS, JOB_TYPES } from '../../src/lib/managedContent.js';
 import { isApiMode, api } from '../../src/lib/apiClient.js';
 import { Icon } from '../assets/components.jsx';
 import { getDemoSession } from '../../src/lib/demoAccounts.js';
@@ -64,11 +64,19 @@ const SAMPLE_JOBS = [
   },
 ];
 
-const SUBJECTS  = ['Mathematics','English','Science','ICT','French','Social Studies','Special Needs','Art','Music','Physical Education'];
-const LEVELS    = ['Nursery/KG','Primary','JHS','SHS','All Levels'];
-const JOB_TYPES = ['Full-time','Part-time','Contract','Volunteer'];
-
 /* â”€â”€ Empty / status states â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+const LoadingJobs = () => (
+  <div style={{ textAlign: 'center', padding: '80px 24px', background: 'var(--white)', borderRadius: 'var(--r-lg)' }}>
+    <div className="jobs-loading-spinner" />
+    <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontSize: '1.2rem', color: 'var(--navy)', marginBottom: 8 }}>
+      Loading Jobs...
+    </h3>
+    <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem' }}>
+      Fetching the latest teaching vacancies for you.
+    </p>
+  </div>
+);
+
 const EmptyJobs = ({ onClear }) => (
   <div style={{ textAlign: 'center', padding: '80px 24px', background: 'var(--white)', borderRadius: 'var(--r-lg)' }}>
     <div style={{ fontSize: '3.5rem', marginBottom: 16, color: 'var(--yellow-dark)', display: 'inline-flex' }}><Icon name="search" size={52} stroke={1.6} /></div>
@@ -95,17 +103,19 @@ const NoJobsAvailable = ({ isLoggedIn = false }) => (
   </div>
 );
 
-const AlertBanner = ({ onDismiss, isLoggedIn = false }) => (
-  <div className="jobs-alert-banner">
-    <div>
-      <h4><Icon name="bell" size={18} stroke={2} /> Never Miss a Job</h4>
-      <p>Create an account and set your subject and level preferences. We will alert you the moment a matching job is posted.</p>
-    </div>
-    <div style={{ display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-      <a href={isLoggedIn ? '/portal?view=alerts' : '/register'} className="btn btn-primary btn-sm">Set Up Alerts</a>
-      <button className="btn btn-outline btn-sm" onClick={onDismiss} style={{ borderColor: 'rgba(255,255,255,0.45)', color: '#fff', fontSize: '0.75rem' }}>
-        Dismiss
+const JobAlertModal = ({ onDismiss, isLoggedIn = false }) => (
+  <div className="job-modal-overlay" onClick={(e) => e.target === e.currentTarget && onDismiss()}>
+    <div className="job-alert-modal">
+      <button className="job-alert-modal-close" onClick={onDismiss} aria-label="Close">
+        <Icon name="x" size={16} stroke={2.2} />
       </button>
+      <div className="job-alert-modal-icon"><Icon name="bell" size={26} stroke={2} /></div>
+      <h3>Never Miss a Job</h3>
+      <p>Create an account and set your subject and level preferences. We will alert you the moment a matching job is posted.</p>
+      <div className="job-alert-modal-actions">
+        <a href={isLoggedIn ? '/portal?view=alerts' : '/register'} className="btn btn-primary" onClick={onDismiss}>Set Up Alerts</a>
+        <button className="btn btn-outline-navy" onClick={onDismiss}>Maybe Later</button>
+      </div>
     </div>
   </div>
 );
@@ -222,7 +232,11 @@ const JobCard = ({ job, onOpen }) => (
     </div>
     <p className="job-card-desc">{job.description}</p>
     <div className="job-card-footer">
-      <span className="job-deadline">Closes {job.deadline}</span>
+      {job.deadline
+        ? <span className="job-deadline">Closes {job.deadline}</span>
+        /* keep an empty flex item so `justify-content: space-between` still pins
+           the posted-date/apply-button group to the right when there's no deadline */
+        : <span />}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <span style={{ fontSize: '0.75rem', color: 'var(--gray-600)' }}>{job.posted}</span>
         <button className="btn btn-primary btn-sm" onClick={e => { e.stopPropagation(); onOpen(job); }}>
@@ -267,7 +281,7 @@ const JobModal = ({ job, onClose, applyState, applyError, onApply }) => {
               <span className="job-meta-tag"><Icon name="teacher" size={13} stroke={2} /> {job.level}</span>
               <span className="job-meta-tag"><Icon name="book" size={13} stroke={2} /> {job.subject}</span>
               <span className="job-meta-tag"><Icon name="money" size={13} stroke={2} /> {job.salary}</span>
-              <span className="job-meta-tag"><Icon name="clock" size={13} stroke={2} /> Closes {job.deadline}</span>
+              {job.deadline && <span className="job-meta-tag"><Icon name="clock" size={13} stroke={2} /> Closes {job.deadline}</span>}
             </div>
 
             <div className="job-modal-section">
@@ -300,16 +314,49 @@ const JobModal = ({ job, onClose, applyState, applyError, onApply }) => {
   );
 };
 
+// Admin enters requirements/responsibilities as one item per line (Text column);
+// sample/seed jobs already provide arrays. Normalise both to an array of strings.
+const splitLines = value => (
+  Array.isArray(value)
+    ? value
+    : String(value || '').split('\n').map(line => line.trim()).filter(Boolean)
+);
+
+const formatSalary = job => {
+  if (job.salary) return job.salary;
+  const currency = job.salary_currency || 'GHS';
+  const { salary_min: min, salary_max: max } = job;
+  const fmt = n => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  if (min != null && max != null) return `${currency} ${fmt(min)} - ${fmt(max)} / month`;
+  if (min != null) return `From ${currency} ${fmt(min)} / month`;
+  if (max != null) return `Up to ${currency} ${fmt(max)} / month`;
+  return 'Available on request';
+};
+
+// Admin saves deadlines as ISO (YYYY-MM-DD) via DatePickerField; sample/seed jobs already
+// provide pre-formatted "D MMM YYYY" strings. Normalise both to the same display format,
+// parsing the ISO date as local Y/M/D components to avoid UTC off-by-one shifts.
+const formatDeadline = deadline => {
+  if (!deadline) return '';
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(deadline);
+  if (!isoMatch) return deadline;
+  const [, y, m, d] = isoMatch;
+  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 const normaliseJob = (job) => ({
   ...job,
   school: job.school || job.organisation,
   type: job.type || job.employment_type,
-  requirements: Array.isArray(job.requirements) ? job.requirements : (job.requirements ? [job.requirements] : []),
-  responsibilities: Array.isArray(job.responsibilities) ? job.responsibilities : (job.responsibilities ? [job.responsibilities] : []),
-  salary: job.salary || 'Available on request',
+  requirements: splitLines(job.requirements),
+  responsibilities: splitLines(job.responsibilities),
+  salary: formatSalary(job),
+  deadline: formatDeadline(job.deadline),
   logo: job.logo || (job.organisation || job.school || 'RM').substring(0, 2).toUpperCase(),
   posted: job.posted || (job.created_at ? new Date(job.created_at).toLocaleDateString() : ''),
 });
+
+const JOB_ALERT_MODAL_KEY = 'rmx-jobs-alert-modal-dismissed';
 
 /* â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const JobsPage = () => {
@@ -341,8 +388,9 @@ const JobsPage = () => {
     };
   }, []);
 
+  const isLoadingJobs = isApiMode() && apiJobs === null;
   const rawJobs = isApiMode()
-    ? (apiJobs === null ? [] : apiJobs)       // loading -> empty list
+    ? (apiJobs || [])
     : (managedJobs.length ? managedJobs : SAMPLE_JOBS);
 
   const jobs = rawJobs.map(normaliseJob);
@@ -352,7 +400,14 @@ const JobsPage = () => {
   const [selectedJob, setSelectedJob] = useState(null);
   const [applyState,  setApplyState]  = useState('idle');
   const [applyError,  setApplyError]  = useState('');
-  const [alertDismissed, setAlertDismissed] = useState(false);
+  const [showAlertModal, setShowAlertModal] = useState(() => {
+    try { return localStorage.getItem(JOB_ALERT_MODAL_KEY) !== '1'; } catch { return true; }
+  });
+
+  const dismissAlertModal = () => {
+    setShowAlertModal(false);
+    try { localStorage.setItem(JOB_ALERT_MODAL_KEY, '1'); } catch {}
+  };
 
   // Filter logic
   const filtered = jobs.filter(j => {
@@ -470,9 +525,6 @@ const JobsPage = () => {
 
           {/* Main content */}
           <main>
-            {/* Alert banner */}
-            {!alertDismissed && <AlertBanner isLoggedIn={isTeacherLoggedIn} onDismiss={() => setAlertDismissed(true)} />}
-
             {/* Search bar */}
             <div className="jobs-search-bar">
               <span style={{ color: 'var(--gray-600)', fontSize: '1.1rem' }}><Icon name="search" size={18} stroke={2} /></span>
@@ -487,26 +539,30 @@ const JobsPage = () => {
             </div>
 
             {/* Results header */}
-            <div className="jobs-main-header">
-              <p className="jobs-count">
-                Showing <strong>{filtered.length}</strong> of <strong>{jobs.length}</strong> jobs
-              </p>
-              <div className="jobs-sort">
-                <label style={{ fontSize: '0.82rem', color: 'var(--gray-600)' }}>Sort by</label>
-                <select>
-                  <option>Most Recent</option>
-                  <option>Deadline</option>
-                  <option>Level</option>
-                </select>
+            {!isLoadingJobs && (
+              <div className="jobs-main-header">
+                <p className="jobs-count">
+                  Showing <strong>{filtered.length}</strong> of <strong>{jobs.length}</strong> jobs
+                </p>
+                <div className="jobs-sort">
+                  <label style={{ fontSize: '0.82rem', color: 'var(--gray-600)' }}>Sort by</label>
+                  <select>
+                    <option>Most Recent</option>
+                    <option>Deadline</option>
+                    <option>Level</option>
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Job list or empty state */}
-            {filtered.length === 0
-              ? (hasActiveFilters ? <EmptyJobs onClear={clearFilters} /> : <NoJobsAvailable isLoggedIn={isTeacherLoggedIn} />)
-              : filtered.map(job => (
-                  <JobCard key={job.id} job={job} onOpen={openJob} />
-                ))
+            {/* Job list, loading, or empty state */}
+            {isLoadingJobs
+              ? <LoadingJobs />
+              : filtered.length === 0
+                ? (hasActiveFilters ? <EmptyJobs onClear={clearFilters} /> : <NoJobsAvailable isLoggedIn={isTeacherLoggedIn} />)
+                : filtered.map(job => (
+                    <JobCard key={job.id} job={job} onOpen={openJob} />
+                  ))
             }
 
             {filtered.length > 0 && (
@@ -532,6 +588,11 @@ const JobsPage = () => {
           applyError={applyError}
           onApply={handleApply}
         />
+      )}
+
+      {/* "Never Miss a Job" one-time alert modal */}
+      {showAlertModal && !selectedJob && (
+        <JobAlertModal isLoggedIn={isTeacherLoggedIn} onDismiss={dismissAlertModal} />
       )}
     </>
   );

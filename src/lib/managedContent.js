@@ -451,6 +451,12 @@ export const SAMPLE_PRODUCTS = SEED_CONTENT.products;
 export const LEVELS = ['Nursery/KG', 'Primary', 'JHS', 'SHS'];
 export const SUBJECTS = ['Mathematics', 'English', 'Science', 'Social Studies', 'French', 'RME', 'All Subjects'];
 
+// Canonical job-post vocabulary, shared by the admin job form and the public
+// jobs filter sidebar so admin-entered values always match a filter option.
+export const JOB_LEVELS = ['Nursery/KG', 'Primary', 'JHS', 'SHS'];
+export const JOB_SUBJECTS = ['Mathematics', 'English', 'Science', 'ICT', 'French', 'Social Studies', 'Special Needs', 'Art', 'Music', 'Physical Education'];
+export const JOB_TYPES = ['Full-time', 'Part-time', 'Contract', 'Volunteer'];
+
 const clone = value => JSON.parse(JSON.stringify(value));
 
 export const getManagedContent = () => {

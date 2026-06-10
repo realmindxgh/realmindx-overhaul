@@ -562,7 +562,10 @@ def create_job():
         employment_type=payload.get("employment_type"),
         description=payload.get("description") or "",
         requirements=payload.get("requirements"),
+        responsibilities=payload.get("responsibilities"),
         deadline=date.fromisoformat(payload["deadline"]) if payload.get("deadline") else None,
+        salary_min=payload.get("salary_min"),
+        salary_max=payload.get("salary_max"),
         status=payload.get("status") or "draft",
         created_by_id=current_user.id,
     )
@@ -584,7 +587,7 @@ def create_job():
 def update_job(job_id):
     job = db.get_or_404(Job, job_id)
     payload = request.get_json(silent=True) or {}
-    for field in ["title", "organisation", "location", "subject", "level", "employment_type", "description", "requirements", "status"]:
+    for field in ["title", "organisation", "location", "subject", "level", "employment_type", "description", "requirements", "responsibilities", "salary_min", "salary_max", "status"]:
         if field in payload:
             setattr(job, field, payload[field])
     if "deadline" in payload:
