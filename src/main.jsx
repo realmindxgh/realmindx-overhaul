@@ -27,7 +27,7 @@ import { useIdleTimeout } from './lib/useIdleTimeout.js';
 import { IdleWarning } from './lib/IdleWarning.jsx';
 import { getDemoSession } from './lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from './lib/authClient.js';
-import { flushQueuedToast } from './lib/toast.js';
+import { flushQueuedToast, queueToast } from './lib/toast.js';
 
 
 const SiteInfoPage = ({ activePage = '', eyebrow = 'RealMindX', title, body, actions = [], cards = [], children }) => (
@@ -630,6 +630,9 @@ const IdleGuard = () => {
   const location = useLocation();
   const [session, setSession] = React.useState(() => getDemoSession());
   const isBookshopRoute = location.pathname.startsWith('/bookshop');
+  // Only dashboards send the user to a login screen on sign-out; any other
+  // page just reloads in place, now logged out, with a toast explaining why.
+  const isDashboardRoute = location.pathname.startsWith('/portal') || location.pathname.startsWith('/admin');
 
   React.useEffect(() => {
     const handler = () => setSession(getDemoSession());
@@ -640,18 +643,25 @@ const IdleGuard = () => {
   const isAdmin = session?.role === 'admin' || session?.role === 'staff';
   const loginUrl = isAdmin ? '/admin/login' : '/login';
 
+  const signOutHere = async (message, { idle = false } = {}) => {
+    await signOut();
+    if (isDashboardRoute) {
+      window.location.href = idle ? `${loginUrl}?reason=idle` : loginUrl;
+    } else {
+      queueToast(message, 'info');
+      window.location.reload();
+    }
+  };
+
   const { countdown, keepAlive } = useIdleTimeout({
     enabled: Boolean(session?.role) && !isBookshopRoute,
-    onTimeout: async () => {
-      await signOut();
-      window.location.href = `${loginUrl}?reason=idle`;
-    },
+    onTimeout: () => signOutHere('You were signed out after 15 minutes of inactivity.', { idle: true }),
   });
   return (
     <IdleWarning
       countdown={countdown}
       onKeepAlive={keepAlive}
-      onLogout={async () => { await signOut(); window.location.href = loginUrl; }}
+      onLogout={() => signOutHere("You've been signed out.")}
     />
   );
 };
