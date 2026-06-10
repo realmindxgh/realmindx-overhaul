@@ -122,7 +122,7 @@ const JobAlertModal = ({ onDismiss, isLoggedIn = false }) => (
 
 /* â”€â”€ Apply states â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const ApplyStateNotLoggedIn = ({ job, onClose }) => (
-  <div style={{ padding: '28px 40px 36px', textAlign: 'center' }}>
+  <div className="job-apply-state">
     <div style={{ fontSize: '2.5rem', marginBottom: 12, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="lock" size={44} stroke={1.7} /></div>
     <h3 style={{ fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)', marginBottom: 8, fontSize: '1.1rem' }}>
       Create an Account to Apply
@@ -142,7 +142,7 @@ const ApplyStateNotLoggedIn = ({ job, onClose }) => (
 );
 
 const ApplyStateProfileIncomplete = ({ missing = [], onClose }) => (
-  <div style={{ padding: '28px 40px 36px', textAlign: 'center' }}>
+  <div className="job-apply-state">
     <div style={{ fontSize: '2.5rem', marginBottom: 12, display: 'inline-flex', color: 'var(--warning)' }}><Icon name="warning" size={44} stroke={1.7} /></div>
     <h3 style={{ fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)', marginBottom: 8, fontSize: '1.1rem' }}>
       Complete Your Profile First
@@ -157,7 +157,7 @@ const ApplyStateProfileIncomplete = ({ missing = [], onClose }) => (
         </div>
       ))}
     </div>
-    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+    <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
       <a href="/portal/profile" className="btn btn-primary">Complete Profile</a>
       <button className="btn btn-outline-navy" onClick={onClose}>Later</button>
     </div>
@@ -165,7 +165,7 @@ const ApplyStateProfileIncomplete = ({ missing = [], onClose }) => (
 );
 
 const ApplyStateEmailNotVerified = ({ onResend, onClose }) => (
-  <div style={{ padding: '28px 40px 36px', textAlign: 'center' }}>
+  <div className="job-apply-state">
     <div style={{ fontSize: '2.5rem', marginBottom: 12, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="mail" size={44} stroke={1.7} /></div>
     <h3 style={{ fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)', marginBottom: 8, fontSize: '1.1rem' }}>
       Verify Your Email First
@@ -173,7 +173,7 @@ const ApplyStateEmailNotVerified = ({ onResend, onClose }) => (
     <p style={{ color: 'var(--gray-600)', fontSize: '0.88rem', marginBottom: 24, lineHeight: 1.65 }}>
       We sent a verification link to your email address. Please click the link in that email before you can apply for jobs.
     </p>
-    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+    <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
       <button className="btn btn-primary" onClick={onResend}>Resend Verification Email</button>
       <button className="btn btn-outline-navy" onClick={onClose}>Close</button>
     </div>
@@ -181,7 +181,7 @@ const ApplyStateEmailNotVerified = ({ onResend, onClose }) => (
 );
 
 const ApplyStateSuccess = ({ job, onClose }) => (
-  <div style={{ padding: '28px 40px 36px', textAlign: 'center' }}>
+  <div className="job-apply-state">
     <div style={{ width: 64, height: 64, background: 'var(--success-bg)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.8rem', margin: '0 auto 16px' }}>
       <Icon name="check" size={30} stroke={2.4} />
     </div>
@@ -194,7 +194,7 @@ const ApplyStateSuccess = ({ job, onClose }) => (
     <p style={{ color: 'var(--gray-600)', fontSize: '0.85rem', marginBottom: 24 }}>
       We will notify you by email when the school reviews your application.
     </p>
-    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+    <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
       <a href="/portal/applications" className="btn btn-primary">Track My Application</a>
       <button className="btn btn-outline-navy" onClick={onClose}>Browse More Jobs</button>
     </div>
@@ -202,7 +202,7 @@ const ApplyStateSuccess = ({ job, onClose }) => (
 );
 
 const ApplyStateError = ({ message, onClose }) => (
-  <div style={{ padding: '28px 40px 36px', textAlign: 'center' }}>
+  <div className="job-apply-state">
     <div style={{ fontSize: '2.5rem', marginBottom: 12, display: 'inline-flex', color: 'var(--danger)' }}><Icon name="warning" size={44} stroke={1.7} /></div>
     <h3 style={{ fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)', marginBottom: 8, fontSize: '1.1rem' }}>
       Application Could Not Be Sent

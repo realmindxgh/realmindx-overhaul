@@ -2242,7 +2242,7 @@ const TeachersView = () => {
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding:'16px 28px', borderTop:'1px solid var(--border)', display:'flex', gap:10, justifyContent:'flex-end' }}>
+            <div style={{ padding:'16px 28px', borderTop:'1px solid var(--border)', display:'flex', gap:10, justifyContent:'flex-end', flexWrap:'wrap' }}>
               <button
                 className="btn btn-outline-navy btn-sm"
                 style={detail.is_active !== false ? { color:'#92400e', borderColor:'#d97706' } : { color:'#166534', borderColor:'#16a34a' }}

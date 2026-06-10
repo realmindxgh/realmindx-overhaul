@@ -759,7 +759,7 @@ const AccountPage = ({ navigate }) => {
           <div className="bs-empty-icon"><Icon name="user" size={38} /></div>
           <h2 className="bs-h2">Sign in to view your account</h2>
           <p className="bs-muted">Access your order history, billing information, and account settings.</p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 }}>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
             <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('login')}>Sign In</button>
             <button className="bs-btn bs-btn-outline-navy" onClick={() => navigate('signup')}>Create Account</button>
           </div>

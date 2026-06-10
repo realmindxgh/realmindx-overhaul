@@ -1368,7 +1368,7 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 }
 .bs-modal-close:hover { background: var(--bs-off-white); color: var(--bs-navy); }
 .bs-modal-body { padding: 24px 28px; }
-.bs-modal-foot { padding: 16px 28px 24px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--bs-border); }
+.bs-modal-foot { padding: 16px 28px 24px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--bs-border); flex-wrap: wrap; }
 
 /* Order meta grid */
 .bs-order-meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 24px; margin-bottom: 20px; }

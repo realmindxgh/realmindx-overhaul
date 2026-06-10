@@ -2127,6 +2127,24 @@ input, textarea, select { font-family: inherit; }
   display: flex;
   gap: 12px;
   justify-content: flex-end;
+  /* never push a CTA off-screen when the row runs out of width */
+  flex-wrap: wrap;
+}
+
+/* Apply-flow states (sign in / verify / success / error) inside the job modal */
+.job-apply-state {
+  padding: 28px 40px 36px;
+  text-align: center;
+}
+
+/* Phone widths: tighten modal padding and let footer CTAs stack full-width
+   instead of being clipped at the modal edge */
+@media (max-width: 640px) {
+  .job-modal-header { padding: 24px 20px; }
+  .job-modal-body { padding: 24px 20px; }
+  .job-modal-footer { padding: 16px 20px; }
+  .job-modal-footer .btn { flex: 1 1 auto; }
+  .job-apply-state { padding: 24px 20px 32px; }
 }
 
 /* Pagination */
