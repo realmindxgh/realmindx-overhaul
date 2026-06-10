@@ -364,7 +364,22 @@ const normaliseJob = (job) => ({
   deadline: formatFullDate(job.deadline),
   logo: job.logo || (job.organisation || job.school || 'RM').substring(0, 2).toUpperCase(),
   posted: formatFullDate(job.posted_at || job.created_at) || job.posted || '',
+  // raw timestamps kept alongside the display strings so sorting works on real dates
+  posted_ts: Date.parse(job.posted_at || job.created_at || '') || 0,
+  deadline_ts: (() => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(job.deadline || ''));
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime() : Infinity;
+  })(),
 });
+
+const PAGE_SIZE = 6;
+
+// Sort comparators backing the "Sort by" select
+const JOB_SORTERS = {
+  recent:   (a, b) => b.posted_ts - a.posted_ts,
+  deadline: (a, b) => a.deadline_ts - b.deadline_ts,
+  level:    (a, b) => String(a.level || '').localeCompare(String(b.level || '')),
+};
 
 const JOB_ALERT_MODAL_KEY = 'rmx-jobs-alert-modal-dismissed';
 
@@ -379,7 +394,8 @@ const JobsPage = () => {
     api.fetchProducts && api.fetchProducts; // ensure client is initialised
     fetch('/api/jobs', { credentials: 'include' })
       .then(r => r.ok ? r.json() : { items: [] })
-      .then(data => setApiJobs((data.items || []).map(normaliseJob)))
+      // keep raw — normalisation happens once, in the render pipeline below
+      .then(data => setApiJobs(data.items || []))
       .catch(() => setApiJobs([]));
   }, []);
 
@@ -407,6 +423,8 @@ const JobsPage = () => {
   const isTeacherLoggedIn = session?.role === 'user';
   const [search,      setSearch]      = useState('');
   const [filters,     setFilters]     = useState({ type: [], subject: [], level: [] });
+  const [sortBy,      setSortBy]      = useState('recent');
+  const [page,        setPage]        = useState(1);
   const [selectedJob, setSelectedJob] = useState(null);
   const [applyState,  setApplyState]  = useState('idle');
   const [applyError,  setApplyError]  = useState('');
@@ -439,6 +457,29 @@ const JobsPage = () => {
   };
 
   const clearFilters = () => { setFilters({ type: [], subject: [], level: [] }); setSearch(''); };
+
+  // Sorting + pagination over the filtered list
+  const sorted = [...filtered].sort(JOB_SORTERS[sortBy] || JOB_SORTERS.recent);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageJobs = sorted.slice(pageStart, pageStart + PAGE_SIZE);
+
+  // back to page 1 whenever the result set changes shape
+  React.useEffect(() => { setPage(1); }, [search, filters, sortBy]);
+
+  const goToPage = (n) => {
+    setPage(n);
+    document.querySelector('.jobs-main-header')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const pageNumbers = totalPages <= 7
+    ? Array.from({ length: totalPages }, (_, i) => i + 1)
+    : currentPage <= 4
+      ? [1, 2, 3, 4, 5, '…', totalPages]
+      : currentPage >= totalPages - 3
+        ? [1, '…', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+        : [1, '…', currentPage - 1, currentPage, currentPage + 1, '…', totalPages];
 
   const openJob = (job) => { setSelectedJob(job); setApplyState('idle'); setApplyError(''); };
 
@@ -552,14 +593,18 @@ const JobsPage = () => {
             {!isLoadingJobs && (
               <div className="jobs-main-header">
                 <p className="jobs-count">
-                  Showing <strong>{filtered.length}</strong> of <strong>{jobs.length}</strong> jobs
+                  {sorted.length === 0
+                    ? <>Showing <strong>0</strong> of <strong>{jobs.length}</strong> jobs</>
+                    : sorted.length <= PAGE_SIZE
+                      ? <>Showing <strong>{sorted.length}</strong> of <strong>{jobs.length}</strong> jobs</>
+                      : <>Showing <strong>{pageStart + 1}-{pageStart + pageJobs.length}</strong> of <strong>{sorted.length}</strong> jobs</>}
                 </p>
                 <div className="jobs-sort">
-                  <label style={{ fontSize: '0.82rem', color: 'var(--gray-600)' }}>Sort by</label>
-                  <select>
-                    <option>Most Recent</option>
-                    <option>Deadline</option>
-                    <option>Level</option>
+                  <label htmlFor="jobs-sort-select" style={{ fontSize: '0.82rem', color: 'var(--gray-600)' }}>Sort by</label>
+                  <select id="jobs-sort-select" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                    <option value="recent">Most Recent</option>
+                    <option value="deadline">Deadline</option>
+                    <option value="level">Level</option>
                   </select>
                 </div>
               </div>
@@ -568,19 +613,29 @@ const JobsPage = () => {
             {/* Job list, loading, or empty state */}
             {isLoadingJobs
               ? <LoadingJobs />
-              : filtered.length === 0
+              : sorted.length === 0
                 ? (hasActiveFilters ? <EmptyJobs onClear={clearFilters} /> : <NoJobsAvailable isLoggedIn={isTeacherLoggedIn} />)
-                : filtered.map(job => (
+                : pageJobs.map(job => (
                     <JobCard key={job.id} job={job} onOpen={openJob} />
                   ))
             }
 
-            {filtered.length > 0 && (
+            {totalPages > 1 && (
               <div className="pagination">
-                {[1, 2, 3].map(n => (
-                  <button key={n} className={`pag-btn${n === 1 ? ' active' : ''}`}>{n}</button>
-                ))}
-                <button className="pag-btn">&gt;</button>
+                <button className="pag-btn" onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1} aria-label="Previous page">&lt;</button>
+                {pageNumbers.map((n, i) => n === '…'
+                  ? <span key={`gap-${i}`} className="pag-gap">…</span>
+                  : (
+                    <button
+                      key={n}
+                      className={`pag-btn${n === currentPage ? ' active' : ''}`}
+                      onClick={() => goToPage(n)}
+                      aria-current={n === currentPage ? 'page' : undefined}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                <button className="pag-btn" onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages} aria-label="Next page">&gt;</button>
               </div>
             )}
           </main>

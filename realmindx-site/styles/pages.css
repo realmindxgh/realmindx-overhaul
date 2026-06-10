@@ -2188,6 +2188,21 @@ input, textarea, select { font-family: inherit; }
 
 .pag-btn.active { background: var(--yellow); color: var(--navy); border-color: var(--yellow); }
 
+.pag-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--white);
+  color: var(--gray-600);
+  border-color: var(--gray-200);
+}
+
+.pag-gap {
+  color: var(--gray-400);
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  padding: 0 2px;
+}
+
 
 /* ============================================================
    USER PORTAL
