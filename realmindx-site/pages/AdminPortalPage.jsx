@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom';
 import { Icon, DatePickerField } from '../assets/components.jsx';
 import { resetManagedContent } from '../../src/lib/managedContent.js';
@@ -2386,6 +2386,18 @@ const AdminPortalPage = () => {
   }, [activeView, canViewActive, sessionChecked]);
 
   React.useEffect(() => {
+    const handler = () => {
+      const fresh = getDemoSession();
+      setSession(fresh);
+      if (!fresh || !['admin', 'staff'].includes(fresh.role)) {
+        window.location.href = '/admin/login';
+      }
+    };
+    window.addEventListener('rmx-session-sync', handler);
+    return () => window.removeEventListener('rmx-session-sync', handler);
+  }, []);
+
+  React.useEffect(() => {
     if (isApiMode() || sessionChecked) return;
     if (!session || !['admin', 'staff'].includes(session.role)) {
       window.location.href = '/admin/login';
@@ -2416,10 +2428,24 @@ const AdminPortalPage = () => {
       <main className="admin-main">
         <div className="admin-topbar">
           <div className="admin-topbar-left" style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            {/* Desktop-only back button: visible on non-dashboard views */}
+            {activeView !== 'dashboard' && (
+              <button
+                type="button"
+                className="portal-desktop-back-btn"
+                onClick={() => setActiveView('dashboard')}
+                aria-label="Back to dashboard"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                <span>Dashboard</span>
+              </button>
+            )}
+            {/* Mobile-only hamburger */}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="mobile-menu-toggle"
               style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              aria-label="Open menu"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>

@@ -190,7 +190,30 @@ export const DatePickerField = ({ value, onChange, placeholder, min, max, ariaLa
                 onClick={() => setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>
           <Icon name="chevL" size={16} stroke={2.2} />
         </button>
-        <span className="dx-datepicker-title">{DP_MONTHS[month]} {year}</span>
+        <span className="dx-datepicker-title">
+          <select
+            className="dx-datepicker-jump-select"
+            aria-label="Month"
+            value={month}
+            onChange={e => setViewDate(new Date(year, Number(e.target.value), 1))}
+          >
+            {DP_MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+          </select>
+          <select
+            className="dx-datepicker-jump-select"
+            aria-label="Year"
+            value={year}
+            onChange={e => setViewDate(new Date(Number(e.target.value), month, 1))}
+          >
+            {(() => {
+              const lo = minDate ? minDate.getFullYear() : today.getFullYear() - 100;
+              const hi = maxDate ? maxDate.getFullYear() : today.getFullYear() + 10;
+              const yrs = [];
+              for (let y = hi; y >= lo; y--) yrs.push(y);
+              return yrs.map(y => <option key={y} value={y}>{y}</option>);
+            })()}
+          </select>
+        </span>
         <button type="button" className="dx-datepicker-nav" aria-label="Next month"
                 onClick={() => setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>
           <Icon name="chevR" size={16} stroke={2.2} />

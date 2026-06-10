@@ -1,4 +1,4 @@
-﻿/* ===================================================
+/* ===================================================
    RealMindX Pages Design System
    Extends existing styles.css
    =================================================== */
@@ -3182,7 +3182,27 @@ input, textarea, select { font-family: inherit; }
   font-size: 0.92rem;
   letter-spacing: 0.01em;
   color: var(--navy);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+.dx-datepicker-jump-select {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--navy);
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 2px 2px;
+  border-radius: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: background 0.15s;
+}
+.dx-datepicker-jump-select:hover,
+.dx-datepicker-jump-select:focus { background: var(--gray-100); }
 .dx-datepicker-nav {
   display: inline-flex;
   align-items: center;
@@ -3280,6 +3300,30 @@ input, textarea, select { font-family: inherit; }
   margin-bottom: 24px;
 }
 
+/* ── Desktop back button (non-dashboard views) ──────────────────────────────── */
+.portal-desktop-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1.5px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 6px 12px 6px 8px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--navy);
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+.portal-desktop-back-btn:hover {
+  border-color: var(--yellow);
+  background: var(--yellow-pale);
+}
+/* Hamburger is always hidden on desktop — mobile media query overrides to flex */
+.mobile-menu-toggle { display: none; }
+
 /* ── Responsive portal ─────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .portal-sidebar, .admin-sidebar { width: 220px; }
@@ -3314,6 +3358,8 @@ input, textarea, select { font-family: inherit; }
     align-items: center;
     flex-shrink: 0;
   }
+  /* Desktop back button: not shown on mobile */
+  .portal-desktop-back-btn { display: none !important; }
 
   /* Main content area */
   .portal-main, .admin-main {

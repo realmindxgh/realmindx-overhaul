@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Icon, DatePickerField } from '../assets/components.jsx';
 import logoWhite from '../assets/logo-white.png';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
@@ -7,13 +7,12 @@ import { queueToast } from '../../src/lib/toast.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { useCropUpload } from '../../src/lib/useCropUpload.jsx';
 
-// Valid work-type values. Defined at module scope so the user object
-// construction can filter out stale values (e.g. "Immediately" that leaked
-// into preferred_employment_type before the available_from column existed).
-const VALID_WORK_TYPES = new Set(['Full Time','Part Time','Contract','Supply / Relief Teaching','Volunteer','Remote / Online','Locum']);
-
-const filterWorkTypes = (raw = '') =>
-  raw.split(',').map(s => s.trim()).filter(s => VALID_WORK_TYPES.has(s)).join(', ');
+// Splits a comma-joined multi-select value (e.g. "Mathematics, Physics, ICT")
+// into trimmed, non-empty parts. Mirrors the `.join(', ')` used whenever a
+// multi-select field (teaching subjects, curricula, levels, work types) is
+// saved, so the same string can be safely round-tripped for editing or split
+// back out into individual badges for display.
+const splitMulti = (raw = '') => raw.split(',').map(s => s.trim()).filter(Boolean);
 
 // CV Tutorial video card — YouTube URL is configurable via admin Site Settings (key: cv_tutorial_url)
 const CV_TUTORIAL_FALLBACK_URL = '';  // set a YouTube embed URL here once you have one, e.g. 'https://www.youtube.com/embed/XXXXXXXXXXX'
@@ -522,8 +521,12 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, ava
         <h2>{user.firstName} {user.lastName}</h2>
         <p>{user.email}</p>
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-          {user.subject && <span className="badge badge-yellow">{user.subject}</span>}
-          {user.level && <span className="badge badge-navy">{user.level}</span>}
+          {/* Both fields are comma-joined multi-select values (a teacher can have
+              several subjects and several preferred levels) — render one badge
+              per value rather than cramming the whole joined string into a
+              single pill. */}
+          {splitMulti(user.subject).map(s => <span key={`subject-${s}`} className="badge badge-yellow">{s}</span>)}
+          {splitMulti(user.level).map(l => <span key={`level-${l}`} className="badge badge-navy">{l}</span>)}
         </div>
         <div className="profile-completion" style={{ marginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -610,7 +613,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     kin: 'Edit Next of Kin',
   };
   // Helpers for comma-separated multi-select fields
-  const multiValues = (key) => (form[key] || '').split(',').map(s => s.trim()).filter(Boolean);
+  const multiValues = (key) => splitMulti(form[key] || '');
   const toggleMulti = (key, value) => {
     const cur = multiValues(key);
     const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
@@ -618,28 +621,76 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
   };
 
   const SUBJECTS = [
-    'Mathematics','English Language','Integrated Science','Social Studies',
-    'Religious & Moral Education (RME)','Creative Arts','French','Ghanaian Language',
-    'Computing / ICT','History','Geography','Economics','Business Studies',
-    'Elective Mathematics','Physics','Chemistry','Biology / Life Science',
-    'Literature in English','Government / Civics','Agriculture Science',
-    'Technical Drawing','Visual Arts','Music','Physical Education (PE)',
-    'Home Economics / Management in Living','Early Childhood Education (ECCE)',
-    'Special Education / Inclusive Education','Career Technology','Accounting',
-    'Office Administration','Marketing','Textiles','Woodwork / Carpentry',
-    'Auto Mechanics / Auto Tech','Other',
+    'Accounting','Agricultural Science','Agriculture','Applied Technology','Arabic',
+    'Auto Mechanics','Autobody Works','Basketry','Biology','Building and Construction',
+    'Business Management','Business Studies','Career Technology','Catering / Hospitality','Ceramics',
+    'Chemistry','Christian Religious Studies','Clothing and Textiles','Commerce','Computer Science',
+    'Computing','Cosmetology','Cost Accounting','Creative Arts','Creative Arts and Design',
+    'Dance','Design and Technology','Diesel Mechanic / Heavy Engine','Drama / Theatre Arts','Early Childhood Learning Areas',
+    'Economics','Electrical Installation','Electronics','Engineering','English Language',
+    'Entrepreneurship','Environmental Science','Fashion Design','Financial Accounting','Food and Nutrition',
+    'French','General Knowledge in Art','General Science','Geography','Ghanaian Language',
+    'Global Perspectives','Government / Civics','Graphic Design','Health Education','Heavy Duty Industrial Mechanics',
+    'History','Home Economics','ICT','Integrated Science','Islamic Religious Studies',
+    'Jewellery','Law','Leatherwork','Life Skills','Literature',
+    'Management in Living','Mathematics','Mechanical Engineering Technology','Media Studies','Metalwork',
+    'Montessori Learning Areas','Motor Vehicle Engineering','Music','Other Foreign Languages','Our World Our People',
+    'Performing Arts','Philosophy','Physical and Health Education','Physical Education','Physics',
+    'Picture Making','Plumbing','Psychology','Refrigeration and Air Conditioning','Religious and Moral Education',
+    'Robotics','Science','Sculpture','Social Studies','Sociology',
+    'Spanish','Technical Drawing','Textiles','Welding and Fabrication','Woodwork / Carpentry and Joinery',
+    'Other',
   ];
-  // "Other" was a dead end — picking it gave no way to say *what* subject.
-  // Treat any saved value that isn't one of the preset options as a custom
-  // "Other" entry, so reopening the form for someone who already typed one
-  // shows their text back instead of silently discarding it.
+  // A teacher can teach more than one subject, so this is multi-select, the
+  // same tag pattern proven out for Curriculum Experience below: presets
+  // render as checkboxes, anything saved that isn't a preset (a previously
+  // typed custom entry, or a stray "Other" left over from the old single
+  // -select dropdown) renders back as a removable tag, and a free-text "Add"
+  // box lets a teacher append any subject not on the official list. A search
+  // box narrows the ~90-option checklist down to a manageable handful — handy
+  // since scrolling through all of them to find one would be its own bad UX.
   const KNOWN_SUBJECTS = SUBJECTS.filter(s => s !== 'Other');
-  const [customSubject, setCustomSubject] = React.useState(
-    () => Boolean(form.teaching_subject) && !KNOWN_SUBJECTS.includes(form.teaching_subject)
-  );
-  const LEVELS = ['Nursery / KG (ECCE)','Primary (1-6)','JHS (7-9)','SHS (10-12)','Technical / Vocational (TVET)','Tertiary / University','All Levels'];
-  const WORK_TYPES = ['Full Time','Part Time','Contract','Supply / Relief Teaching','Volunteer','Remote / Online','Locum'];
-  const CURRICULA = ['Ghana Education Service (GES)','Cambridge (IGCSE / A-Level)','International Baccalaureate (IB)','American / AP','Montessori','French / Francophone','Islamic / Arabic Studies','Other'];
+  const selectedSubjects = multiValues('teaching_subject');
+  const [subjectFilter, setSubjectFilter] = React.useState('');
+  const [newSubject, setNewSubject] = React.useState('');
+  const addCustomSubject = () => {
+    const val = newSubject.trim();
+    if (!val) return;
+    const cur = multiValues('teaching_subject');
+    if (!cur.includes(val)) setForm(prev => ({ ...prev, teaching_subject: [...cur, val].join(', ') }));
+    setNewSubject('');
+  };
+  const filteredSubjects = (() => {
+    const q = subjectFilter.trim().toLowerCase();
+    return q ? KNOWN_SUBJECTS.filter(s => s.toLowerCase().includes(q)) : KNOWN_SUBJECTS;
+  })();
+  const LEVELS = ['Early Childhood / Daycare','Pre-School / Nursery','Kindergarten','Lower Primary','Upper Primary','Junior High / Lower Secondary','Senior High / Upper Secondary','Sixth Form / Pre-University','TVET / Vocational','Other'];
+  const KNOWN_LEVELS = LEVELS.filter(l => l !== 'Other');
+  const selectedLevels = multiValues('preferred_level');
+  const customLevels = selectedLevels.filter(l => !KNOWN_LEVELS.includes(l));
+  const [newLevel, setNewLevel] = React.useState('');
+  const addCustomLevel = () => {
+    const val = newLevel.trim();
+    if (!val) return;
+    const cur = multiValues('preferred_level');
+    if (!cur.includes(val)) setForm(prev => ({ ...prev, preferred_level: [...cur, val].join(', ') }));
+    setNewLevel('');
+  };
+
+  const WORK_TYPES = ['Full Time','Part Time','Contract','Volunteer','Remote / Online','Other'];
+  const KNOWN_WORK_TYPES = WORK_TYPES.filter(w => w !== 'Other');
+  const selectedWorkTypes = multiValues('preferred_employment_type');
+  const customWorkTypes = selectedWorkTypes.filter(w => !KNOWN_WORK_TYPES.includes(w));
+  const [newWorkType, setNewWorkType] = React.useState('');
+  const addCustomWorkType = () => {
+    const val = newWorkType.trim();
+    if (!val) return;
+    const cur = multiValues('preferred_employment_type');
+    if (!cur.includes(val)) setForm(prev => ({ ...prev, preferred_employment_type: [...cur, val].join(', ') }));
+    setNewWorkType('');
+  };
+
+  const CURRICULA = ['GES / NaCCA Curriculum','TVET / CTVET Curriculum','Cambridge International Curriculum','British / English National Curriculum','Pearson Edexcel Pathway','International Baccalaureate (IB) Curriculum','American Curriculum','Montessori Curriculum','Oxford International Curriculum','Other'];
   // Same dead end as Teaching Subject, but this list is multi-select: ticking
   // "Other" just added the literal word "Other" with no way to say what it was.
   // Fix: drop "Other" as a checkbox and let the teacher type any number of their
@@ -684,39 +735,6 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
         <div className="profile-sections-grid">
           {/* ── Teaching section: dropdowns + checkboxes ── */}
           {section === 'teaching' && (<>
-            {/* Subject dropdown */}
-            <div className="form-group">
-              <label className="form-label">Teaching Subject</label>
-              <select
-                className="form-input"
-                value={customSubject ? 'Other' : (form.teaching_subject || '')}
-                onChange={e => {
-                  const val = e.target.value;
-                  if (val === 'Other') {
-                    // Switch to free-text entry; start blank so the teacher
-                    // isn't left with the literal word "Other" as their subject.
-                    setCustomSubject(true);
-                    setForm(p => ({ ...p, teaching_subject: '' }));
-                  } else {
-                    setCustomSubject(false);
-                    setForm(p => ({ ...p, teaching_subject: val }));
-                  }
-                }}
-              >
-                <option value="">Select subject</option>
-                {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              {customSubject && (
-                <input
-                  className="form-input"
-                  style={{ marginTop: 8 }}
-                  placeholder="Type your teaching subject"
-                  value={form.teaching_subject || ''}
-                  onChange={e => setForm(p => ({ ...p, teaching_subject: e.target.value }))}
-                  autoFocus
-                />
-              )}
-            </div>
             {/* Availability */}
             <div className="form-group">
               <label className="form-label">Availability</label>
@@ -753,28 +771,166 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
                 ariaLabel="Date of Birth"
               />
             </div>
-            {/* Preferred Level checkboxes */}
+            {/* Teaching Subjects — searchable multi-select with custom entries */}
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Teaching Subjects <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
+              {selectedSubjects.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                  {selectedSubjects.map(s => (
+                    <span
+                      key={s}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: 'var(--gray-100)', border: '1px solid var(--gray-200)',
+                        borderRadius: 100, padding: '4px 6px 4px 12px',
+                        fontSize: '0.82rem', color: 'var(--navy)',
+                      }}
+                    >
+                      {s}
+                      <button
+                        type="button"
+                        onClick={() => toggleMulti('teaching_subject', s)}
+                        aria-label={`Remove ${s}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 20, height: 20, borderRadius: '50%', border: 'none',
+                          background: 'var(--gray-200)', color: 'var(--navy)', cursor: 'pointer',
+                          fontSize: '0.9rem', lineHeight: 1, padding: 0,
+                        }}
+                      >×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input
+                className="form-input"
+                placeholder="Search subjects (e.g. Mathematics, ICT, French)…"
+                value={subjectFilter}
+                onChange={e => setSubjectFilter(e.target.value)}
+                style={{ marginBottom: 8 }}
+              />
+              <div className="portal-checkbox-grid" style={{ maxHeight: 260, overflowY: 'auto', paddingRight: 6 }}>
+                {filteredSubjects.map(s => (
+                  <label key={s} className="portal-checkbox-row">
+                    <input type="checkbox" checked={selectedSubjects.includes(s)} onChange={() => toggleMulti('teaching_subject', s)} />
+                    <span>{s}</span>
+                  </label>
+                ))}
+              </div>
+              {filteredSubjects.length === 0 && (
+                <p style={{ color: 'var(--gray-600)', fontSize: '0.85rem', marginTop: 8 }}>
+                  No subjects match "{subjectFilter}" — type it below to add it as a custom entry.
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <input
+                  className="form-input"
+                  placeholder="Other subject? Type it and press Enter to add"
+                  value={newSubject}
+                  onChange={e => setNewSubject(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomSubject(); } }}
+                />
+                <button type="button" className="btn btn-outline-navy btn-sm" onClick={addCustomSubject} style={{ flexShrink: 0 }}>Add</button>
+              </div>
+            </div>
+            {/* Preferred Level checkboxes + custom entries */}
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Preferred School Level <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
               <div className="portal-checkbox-grid">
-                {LEVELS.map(lvl => (
+                {KNOWN_LEVELS.map(lvl => (
                   <label key={lvl} className="portal-checkbox-row">
-                    <input type="checkbox" checked={multiValues('preferred_level').includes(lvl)} onChange={() => toggleMulti('preferred_level', lvl)} />
+                    <input type="checkbox" checked={selectedLevels.includes(lvl)} onChange={() => toggleMulti('preferred_level', lvl)} />
                     <span>{lvl}</span>
                   </label>
                 ))}
               </div>
+              {customLevels.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                  {customLevels.map(lvl => (
+                    <span
+                      key={lvl}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: 'var(--gray-100)', border: '1px solid var(--gray-200)',
+                        borderRadius: 100, padding: '4px 6px 4px 12px',
+                        fontSize: '0.82rem', color: 'var(--navy)',
+                      }}
+                    >
+                      {lvl}
+                      <button
+                        type="button"
+                        onClick={() => toggleMulti('preferred_level', lvl)}
+                        aria-label={`Remove ${lvl}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 20, height: 20, borderRadius: '50%', border: 'none',
+                          background: 'var(--gray-200)', color: 'var(--navy)', cursor: 'pointer',
+                          fontSize: '0.9rem', lineHeight: 1, padding: 0,
+                        }}
+                      >×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <input
+                  className="form-input"
+                  placeholder="Other school level? Type it and press Enter to add"
+                  value={newLevel}
+                  onChange={e => setNewLevel(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomLevel(); } }}
+                />
+                <button type="button" className="btn btn-outline-navy btn-sm" onClick={addCustomLevel} style={{ flexShrink: 0 }}>Add</button>
+              </div>
             </div>
-            {/* Work Type checkboxes */}
+            {/* Work Type checkboxes + custom entries */}
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Work Type <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
               <div className="portal-checkbox-grid">
-                {WORK_TYPES.map(wt => (
+                {KNOWN_WORK_TYPES.map(wt => (
                   <label key={wt} className="portal-checkbox-row">
-                    <input type="checkbox" checked={multiValues('preferred_employment_type').includes(wt)} onChange={() => toggleMulti('preferred_employment_type', wt)} />
+                    <input type="checkbox" checked={selectedWorkTypes.includes(wt)} onChange={() => toggleMulti('preferred_employment_type', wt)} />
                     <span>{wt}</span>
                   </label>
                 ))}
+              </div>
+              {customWorkTypes.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                  {customWorkTypes.map(wt => (
+                    <span
+                      key={wt}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        background: 'var(--gray-100)', border: '1px solid var(--gray-200)',
+                        borderRadius: 100, padding: '4px 6px 4px 12px',
+                        fontSize: '0.82rem', color: 'var(--navy)',
+                      }}
+                    >
+                      {wt}
+                      <button
+                        type="button"
+                        onClick={() => toggleMulti('preferred_employment_type', wt)}
+                        aria-label={`Remove ${wt}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: 20, height: 20, borderRadius: '50%', border: 'none',
+                          background: 'var(--gray-200)', color: 'var(--navy)', cursor: 'pointer',
+                          fontSize: '0.9rem', lineHeight: 1, padding: 0,
+                        }}
+                      >×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <input
+                  className="form-input"
+                  placeholder="Other work type? Type it and press Enter to add"
+                  value={newWorkType}
+                  onChange={e => setNewWorkType(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomWorkType(); } }}
+                />
+                <button type="button" className="btn btn-outline-navy btn-sm" onClick={addCustomWorkType} style={{ flexShrink: 0 }}>Add</button>
               </div>
             </div>
             {/* Curriculum checkboxes */}
@@ -1299,6 +1455,18 @@ const UserPortalPage = () => {
     return () => window.removeEventListener('popstate', syncView);
   }, []);
 
+  React.useEffect(() => {
+    const handler = () => {
+      const fresh = getDemoSession();
+      setSession(fresh);
+      if (!fresh) {
+        window.location.href = '/login';
+      }
+    };
+    window.addEventListener('rmx-session-sync', handler);
+    return () => window.removeEventListener('rmx-session-sync', handler);
+  }, []);
+
   // In API mode: fetch the real user profile and applications on mount.
   React.useEffect(() => {
     if (!sessionChecked || !session || ['admin', 'staff'].includes(session.role) || !isApiMode()) return;
@@ -1364,7 +1532,7 @@ const UserPortalPage = () => {
         hasCerts: Boolean(profileSource.certificate_file_id),
         initials,
         avatarUrl: profileSource.profile_picture_url || profileSource.avatar_url || null,
-        preferredEmploymentType: filterWorkTypes(profileSource.preferred_employment_type || ''),
+        preferredEmploymentType: profileSource.preferred_employment_type || '',
         curriculumExperience: profileSource.curriculum_experience || '',
         availableFrom: profileSource.available_from || '',
         nextOfKinName: profileSource.next_of_kin_name || '',
@@ -1426,7 +1594,7 @@ const UserPortalPage = () => {
       bio: profileSource.bio || '',
       teaching_subject: profileSource.teaching_subject || '',
       preferred_level: profileSource.preferred_level || '',
-      preferred_employment_type: filterWorkTypes(profileSource.preferred_employment_type || ''),
+      preferred_employment_type: profileSource.preferred_employment_type || '',
       available_from: profileSource.available_from || '',
       curriculum_experience: profileSource.curriculum_experience || '',
       next_of_kin_name: profileSource.next_of_kin_name || '',
@@ -1503,9 +1671,24 @@ const UserPortalPage = () => {
         {/* Topbar */}
         <div className="portal-topbar">
           <div className="portal-topbar-left" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Desktop-only back button: visible on non-dashboard views, hidden on dashboard */}
+            {activeView !== 'dashboard' && (
+              <button
+                type="button"
+                className="portal-desktop-back-btn"
+                onClick={() => setActiveView('dashboard')}
+                aria-label="Back to dashboard"
+              >
+                <Icon name="chevL" size={16} stroke={2.4} />
+                <span>Dashboard</span>
+              </button>
+            )}
+            {/* Mobile-only hamburger: hidden on desktop via inline style; media query overrides to flex */}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="mobile-menu-toggle"
+              style={{ display: 'none' }}
+              aria-label="Open menu"
             >
               <Icon name="menu" size={18} stroke={2.2} />
             </button>
