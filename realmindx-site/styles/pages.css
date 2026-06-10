@@ -1949,6 +1949,13 @@ input, textarea, select { font-family: inherit; }
   gap: 12px;
   padding-top: 16px;
   border-top: 1px solid var(--gray-100);
+  flex-wrap: wrap;
+}
+
+.job-card-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .job-deadline {

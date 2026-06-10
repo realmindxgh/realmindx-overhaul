@@ -11,7 +11,7 @@ const SAMPLE_JOBS = [
   {
     id: 1, title: 'Mathematics Teacher (JHS)', school: 'Annan House Community School',
     location: 'Dome, Accra', type: 'Full-time', level: 'JHS', subject: 'Mathematics',
-    salary: 'GH 2,500 - 3,500 / month', posted: '2 days ago', deadline: '31 Jun 2026',
+    salary: 'GH 2,500 - 3,500 / month', posted_at: '2026-06-08', deadline: '2026-06-30',
     description: 'We are looking for a dedicated and experienced Mathematics teacher to join our Junior High School department. The successful candidate will deliver engaging lessons, track student progress, and collaborate with colleagues to raise academic standards.',
     requirements: ['BSc Ed or BA Ed in Mathematics or related field', 'Valid NTC Teaching License', 'Minimum 2 years classroom experience', 'Strong communication and classroom management skills'],
     responsibilities: ['Plan and deliver effective lessons aligned with the national curriculum', 'Assess, record, and report student progress', 'Participate in CPD programmes and staff meetings', 'Support students with diverse learning needs'],
@@ -20,7 +20,7 @@ const SAMPLE_JOBS = [
   {
     id: 2, title: 'English Language Teacher (Primary)', school: 'Grace Valley School',
     location: 'Adenta, Accra', type: 'Full-time', level: 'Primary', subject: 'English',
-    salary: 'GH 2,000 - 2,800 / month', posted: '5 days ago', deadline: '15 Jun 2026',
+    salary: 'GH 2,000 - 2,800 / month', posted_at: '2026-06-05', deadline: '2026-06-15',
     description: 'Grace Valley School is seeking an enthusiastic Primary English Language Teacher to inspire a love of reading and writing in young learners.',
     requirements: ['Degree in English Education or related field', 'NTC License', 'Experience with primary learners', 'Creative and patient approach'],
     responsibilities: ['Teach English Language from Primary 1 to Primary 6', 'Design creative literacy activities', 'Liaise with parents on student progress'],
@@ -29,7 +29,7 @@ const SAMPLE_JOBS = [
   {
     id: 3, title: 'Science Teacher (SHS)', school: 'Lighthouse International School',
     location: 'East Legon, Accra', type: 'Full-time', level: 'SHS', subject: 'Science',
-    salary: 'GH 3,500 - 5,000 / month', posted: '1 week ago', deadline: '30 Jun 2026',
+    salary: 'GH 3,500 - 5,000 / month', posted_at: '2026-06-03', deadline: '2026-06-30',
     description: "An exciting opportunity for a Science teacher at one of Accra's leading international schools. Laboratory facilities are world-class and professional development is strongly supported.",
     requirements: ['BSc Ed in Science or Pure Science degree with PGDE', 'NTC License', 'Strong practical science background', '3+ years experience preferred'],
     responsibilities: ['Teach Physics, Chemistry, or Biology at SHS level', 'Manage laboratory sessions safely', 'Prepare students for WASSCE examinations'],
@@ -38,7 +38,7 @@ const SAMPLE_JOBS = [
   {
     id: 4, title: 'ICT Teacher (JHS/SHS)', school: 'New Generation Academy',
     location: 'Kasoa, Central Region', type: 'Full-time', level: 'JHS/SHS', subject: 'ICT',
-    salary: 'GH 2,200 - 3,000 / month', posted: '3 days ago', deadline: '20 Jun 2026',
+    salary: 'GH 2,200 - 3,000 / month', posted_at: '2026-06-07', deadline: '2026-06-20',
     description: 'New Generation Academy seeks a tech-savvy ICT Teacher to lead digital education across the school.',
     requirements: ['Degree in Computer Science, ICT Education, or related field', 'NTC License preferred', 'Proficiency in Microsoft Office, coding basics'],
     responsibilities: ['Deliver ICT curriculum at JHS and SHS levels', 'Maintain computer lab equipment', 'Run after-school coding and robotics clubs'],
@@ -47,7 +47,7 @@ const SAMPLE_JOBS = [
   {
     id: 5, title: 'Special Education Coordinator', school: 'RealMindX Partner School',
     location: 'Accra (Flexible)', type: 'Part-time', level: 'All Levels', subject: 'Special Needs',
-    salary: 'GH 1,800 - 2,500 / month', posted: '1 day ago', deadline: '10 Jul 2026',
+    salary: 'GH 1,800 - 2,500 / month', posted_at: '2026-06-09', deadline: '2026-07-10',
     description: 'RealMindX Education is recruiting a Special Education Coordinator to work across partner schools, supporting inclusive education practices and IEP development.',
     requirements: ['Degree in Special Education or Psychology', 'Experience with IEP development', 'Training in inclusive classroom strategies', 'Strong interpersonal skills'],
     responsibilities: ['Coordinate special education support across partner schools', 'Develop and review Individual Education Plans', 'Train classroom teachers on inclusive practice'],
@@ -56,7 +56,7 @@ const SAMPLE_JOBS = [
   {
     id: 6, title: 'French Teacher (Primary & JHS)', school: 'La Bonne Ecole',
     location: 'Labadi, Accra', type: 'Full-time', level: 'Primary/JHS', subject: 'French',
-    salary: 'GH 2,300 - 3,200 / month', posted: '4 days ago', deadline: '25 Jun 2026',
+    salary: 'GH 2,300 - 3,200 / month', posted_at: '2026-06-06', deadline: '2026-06-25',
     description: 'A bilingual school in Labadi is seeking a qualified French teacher for Primary and JHS classes.',
     requirements: ['Degree in French Education or Modern Languages', 'Fluent French speaker', 'NTC License or equivalent'],
     responsibilities: ['Deliver French language instruction', 'Organise French cultural events and language clubs'],
@@ -232,17 +232,13 @@ const JobCard = ({ job, onOpen }) => (
     </div>
     <p className="job-card-desc">{job.description}</p>
     <div className="job-card-footer">
-      {job.deadline
-        ? <span className="job-deadline">Closes {job.deadline}</span>
-        /* keep an empty flex item so `justify-content: space-between` still pins
-           the posted-date/apply-button group to the right when there's no deadline */
-        : <span />}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ fontSize: '0.75rem', color: 'var(--gray-600)' }}>{job.posted}</span>
-        <button className="btn btn-primary btn-sm" onClick={e => { e.stopPropagation(); onOpen(job); }}>
-          View & Apply
-        </button>
+      <div className="job-card-dates">
+        {job.posted && <span className="job-deadline">Date Posted: {job.posted}</span>}
+        {job.deadline && <span className="job-deadline">Application deadline: {job.deadline}</span>}
       </div>
+      <button className="btn btn-primary btn-sm" onClick={e => { e.stopPropagation(); onOpen(job); }}>
+        View & Apply
+      </button>
     </div>
   </div>
 );
@@ -281,7 +277,8 @@ const JobModal = ({ job, onClose, applyState, applyError, onApply }) => {
               <span className="job-meta-tag"><Icon name="teacher" size={13} stroke={2} /> {job.level}</span>
               <span className="job-meta-tag"><Icon name="book" size={13} stroke={2} /> {job.subject}</span>
               <span className="job-meta-tag"><Icon name="money" size={13} stroke={2} /> {job.salary}</span>
-              {job.deadline && <span className="job-meta-tag"><Icon name="clock" size={13} stroke={2} /> Closes {job.deadline}</span>}
+              {job.posted && <span className="job-meta-tag"><Icon name="calendar" size={13} stroke={2} /> Date Posted: {job.posted}</span>}
+              {job.deadline && <span className="job-meta-tag"><Icon name="clock" size={13} stroke={2} /> Application deadline: {job.deadline}</span>}
             </div>
 
             <div className="job-modal-section">
@@ -333,15 +330,28 @@ const formatSalary = job => {
   return 'Available on request';
 };
 
-// Admin saves deadlines as ISO (YYYY-MM-DD) via DatePickerField; sample/seed jobs already
-// provide pre-formatted "D MMM YYYY" strings. Normalise both to the same display format,
-// parsing the ISO date as local Y/M/D components to avoid UTC off-by-one shifts.
-const formatDeadline = deadline => {
-  if (!deadline) return '';
-  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(deadline);
-  if (!isoMatch) return deadline;
-  const [, y, m, d] = isoMatch;
-  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+// Canonical date display for job posts: full words with ordinal day, e.g. "2nd March 2025".
+// Admin saves dates as ISO (YYYY-MM-DD / full timestamps) — parse those as local Y/M/D
+// components to avoid UTC off-by-one shifts; anything else falls back to Date parsing,
+// and unparseable strings are shown as-is.
+const ordinalDay = n => {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th';
+  return `${n}${suffix}`;
+};
+
+const formatFullDate = value => {
+  if (!value) return '';
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  let date;
+  if (isoMatch) {
+    date = new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+  } else {
+    date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+  }
+  return `${ordinalDay(date.getDate())} ${date.toLocaleDateString('en-GB', { month: 'long' })} ${date.getFullYear()}`;
 };
 
 const normaliseJob = (job) => ({
@@ -351,9 +361,9 @@ const normaliseJob = (job) => ({
   requirements: splitLines(job.requirements),
   responsibilities: splitLines(job.responsibilities),
   salary: formatSalary(job),
-  deadline: formatDeadline(job.deadline),
+  deadline: formatFullDate(job.deadline),
   logo: job.logo || (job.organisation || job.school || 'RM').substring(0, 2).toUpperCase(),
-  posted: job.posted || (job.created_at ? new Date(job.created_at).toLocaleDateString() : ''),
+  posted: formatFullDate(job.posted_at || job.created_at) || job.posted || '',
 });
 
 const JOB_ALERT_MODAL_KEY = 'rmx-jobs-alert-modal-dismissed';
