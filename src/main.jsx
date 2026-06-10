@@ -637,18 +637,21 @@ const IdleGuard = () => {
     return () => window.removeEventListener('rmx-session-sync', handler);
   }, []);
 
+  const isAdmin = session?.role === 'admin' || session?.role === 'staff';
+  const loginUrl = isAdmin ? '/admin/login' : '/login';
+
   const { countdown, keepAlive } = useIdleTimeout({
     enabled: Boolean(session?.role) && !isBookshopRoute,
     onTimeout: async () => {
       await signOut();
-      window.location.href = '/login?reason=idle';
+      window.location.href = `${loginUrl}?reason=idle`;
     },
   });
   return (
     <IdleWarning
       countdown={countdown}
       onKeepAlive={keepAlive}
-      onLogout={async () => { await signOut(); window.location.href = '/login'; }}
+      onLogout={async () => { await signOut(); window.location.href = loginUrl; }}
     />
   );
 };

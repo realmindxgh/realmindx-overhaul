@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // API client - talks to the Flask backend when VITE_API_BASE_URL
 // is set. When it is empty (default for local dev) the app
 // stays on the localStorage data layer and this module is dormant.
@@ -47,6 +47,13 @@ const isCsrfFailure = (res, data) =>
   res.status === 400
   && (!data.error || /csrf|security token/i.test(String(data.error)));
 
+const handleUnauthorized = () => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem('realmindx.demoSession');
+    window.dispatchEvent(new Event('rmx-session-sync'));
+  }
+};
+
 async function apiFetch(path, { method = 'GET', body, freshCsrf = false } = {}) {
   const useCsrf = method !== 'GET';
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -60,6 +67,9 @@ async function apiFetch(path, { method = 'GET', body, freshCsrf = false } = {}) 
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) return data;
+    if (res.status === 401) {
+      handleUnauthorized();
+    }
     if (useCsrf && attempt === 0 && isCsrfFailure(res, data)) {
       csrfToken = null;
       continue;
@@ -114,6 +124,9 @@ export const api = {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) return data;
+      if (res.status === 401) {
+        handleUnauthorized();
+      }
       if (attempt === 0 && isCsrfFailure(res, data)) {
         csrfToken = null;
         continue;
@@ -146,6 +159,9 @@ export const api = {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) return data.file; // { id, url, original_filename, category, visibility }
+      if (res.status === 401) {
+        handleUnauthorized();
+      }
       if (attempt === 0 && isCsrfFailure(res, data)) {
         csrfToken = null;
         continue;
@@ -181,6 +197,9 @@ export const api = {
       body: fd,
     });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      handleUnauthorized();
+    }
     if (!res.ok) {
       const err = new Error(data.error || `Import failed (${res.status}).`);
       err.status = res.status;
