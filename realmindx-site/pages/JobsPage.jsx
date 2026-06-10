@@ -311,6 +311,76 @@ const JobModal = ({ job, onClose, applyState, applyError, onApply }) => {
   );
 };
 
+/* ── Filter Modal (opened from the toolbar CTA) ─────── */
+// Works on a draft copy of the filters: ticking boxes changes nothing on the
+// page until "Save Filters" commits the draft; closing/overlay-click discards it.
+const FilterModal = ({ filters, jobs, onApply, onClose }) => {
+  const [draft, setDraft] = useState(filters);
+
+  const toggle = (group, value) => setDraft(prev => ({
+    ...prev,
+    [group]: prev[group].includes(value)
+      ? prev[group].filter(v => v !== value)
+      : [...prev[group], value],
+  }));
+
+  const groups = [
+    { key: 'type',    title: 'Job Type', options: JOB_TYPES },
+    { key: 'level',   title: 'Level',    options: LEVELS },
+    { key: 'subject', title: 'Subject',  options: SUBJECTS },
+  ];
+  const matchers = {
+    type:    (j, v) => j.type === v,
+    level:   (j, v) => j.level === v,
+    subject: (j, v) => j.subject === v,
+  };
+  const draftCount = draft.type.length + draft.level.length + draft.subject.length;
+
+  return (
+    <div className="job-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="jobs-filter-modal">
+        <div className="jobs-filter-modal-header">
+          <h3><Icon name="filter" size={16} stroke={2} /> Filter Jobs</h3>
+          <button onClick={onClose} aria-label="Close filters"><Icon name="x" size={16} stroke={2.2} /></button>
+        </div>
+        <div className="jobs-filter-modal-body">
+          {groups.map(g => (
+            <div key={g.key} className="filter-card">
+              <h4>{g.title}</h4>
+              <div className="filter-options-grid">
+                {g.options.map(opt => (
+                  <div key={opt} className="filter-option">
+                    <input
+                      type="checkbox"
+                      id={`fm-${g.key}-${opt}`}
+                      checked={draft[g.key].includes(opt)}
+                      onChange={() => toggle(g.key, opt)}
+                    />
+                    <label htmlFor={`fm-${g.key}-${opt}`}>{opt}</label>
+                    <span className="count">{jobs.filter(j => matchers[g.key](j, opt)).length}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="job-modal-footer">
+          <button
+            className="btn btn-outline-navy"
+            onClick={() => setDraft({ type: [], subject: [], level: [] })}
+            disabled={draftCount === 0}
+          >
+            Clear All
+          </button>
+          <button className="btn btn-primary" onClick={() => onApply(draft)}>
+            Save Filters
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Admin enters requirements/responsibilities as one item per line (Text column);
 // sample/seed jobs already provide arrays. Normalise both to an array of strings.
 const splitLines = value => (
@@ -425,6 +495,7 @@ const JobsPage = () => {
   const [filters,     setFilters]     = useState({ type: [], subject: [], level: [] });
   const [sortBy,      setSortBy]      = useState('recent');
   const [page,        setPage]        = useState(1);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
   const [applyState,  setApplyState]  = useState('idle');
   const [applyError,  setApplyError]  = useState('');
@@ -512,6 +583,7 @@ const JobsPage = () => {
   };
 
   const hasActiveFilters = filters.type.length || filters.subject.length || filters.level.length || search;
+  const filterCount = filters.type.length + filters.subject.length + filters.level.length;
 
   return (
     <>
@@ -576,8 +648,34 @@ const JobsPage = () => {
 
           {/* Main content */}
           <main>
-            {/* Search bar */}
-            <div className="jobs-search-bar">
+            {/* Mobile-only sticky toolbar: Filter CTA + search + sort on one line,
+                stuck under the navbar. Hidden on desktop, where the sidebar,
+                search card, and header sort remain unchanged. */}
+            <div className="jobs-toolbar">
+              <button className="jobs-filter-cta" onClick={() => setShowFilterModal(true)}>
+                <Icon name="filter" size={15} stroke={2} />
+                Filters
+                {filterCount > 0 && <span className="jobs-filter-count">{filterCount}</span>}
+              </button>
+              <div className="jobs-search-bar jobs-search-toolbar">
+                <span style={{ color: 'var(--gray-600)', display: 'inline-flex' }}><Icon name="search" size={16} stroke={2} /></span>
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search jobs..."
+                />
+              </div>
+              <div className="jobs-sort jobs-sort-toolbar">
+                <select aria-label="Sort jobs" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                  <option value="recent">Most Recent</option>
+                  <option value="deadline">Deadline</option>
+                  <option value="level">Level</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Search bar (desktop) */}
+            <div className="jobs-search-bar jobs-search-desktop">
               <span style={{ color: 'var(--gray-600)', fontSize: '1.1rem' }}><Icon name="search" size={18} stroke={2} /></span>
               <input
                 value={search}
@@ -655,8 +753,18 @@ const JobsPage = () => {
         />
       )}
 
+      {/* Filter modal (opened from the mobile toolbar CTA) */}
+      {showFilterModal && (
+        <FilterModal
+          filters={filters}
+          jobs={jobs}
+          onApply={next => { setFilters(next); setShowFilterModal(false); }}
+          onClose={() => setShowFilterModal(false)}
+        />
+      )}
+
       {/* "Never Miss a Job" one-time alert modal */}
-      {showAlertModal && !selectedJob && (
+      {showAlertModal && !selectedJob && !showFilterModal && (
         <JobAlertModal isLoggedIn={isTeacherLoggedIn} onDismiss={dismissAlertModal} />
       )}
     </>

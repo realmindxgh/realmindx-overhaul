@@ -60,6 +60,7 @@ export const Icon = ({ name, size = 24, stroke = 1.8 }) => {
     camera: <><path d="M4 8h4l1.5-2h5L16 8h4v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></>,
     folder: <><path d="M3 6h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></>,
     party: <><path d="M5 21l5-17 10 10L5 21z"/><path d="M14 4l1-2M18 8l3-1M16 12l2 2M10 7l-2-2"/></>,
+    filter: <path d="M3 5h18l-7 8.5V19l-4 2.5v-8L3 5z"/>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"

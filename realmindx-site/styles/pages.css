@@ -1812,6 +1812,8 @@ input, textarea, select { font-family: inherit; }
   margin-bottom: 24px;
   gap: 16px;
   flex-wrap: wrap;
+  /* pagination scrolls back to this header — keep it clear of the fixed navbar */
+  scroll-margin-top: 90px;
 }
 
 .jobs-count {
@@ -1865,6 +1867,45 @@ input, textarea, select { font-family: inherit; }
 }
 
 .jobs-search-bar input::placeholder { color: var(--gray-400); }
+
+/* ── Mobile filter/search/sort toolbar ─────────────────
+   Hidden on desktop (sidebar + search card + header sort stay as-is);
+   the <=768px media block turns it into a sticky one-line bar. */
+.jobs-toolbar { display: none; }
+
+.jobs-filter-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--navy);
+  color: var(--white);
+  border: none;
+  border-radius: var(--r-md);
+  padding: 0 14px;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.jobs-filter-cta:hover { background: var(--navy-light); }
+.jobs-filter-cta svg { color: var(--yellow); flex-shrink: 0; }
+
+.jobs-filter-count {
+  background: var(--yellow);
+  color: var(--navy);
+  border-radius: 100px;
+  min-width: 19px;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0 5px;
+}
 
 .job-card {
   background: var(--white);
@@ -2152,6 +2193,75 @@ input, textarea, select { font-family: inherit; }
   .job-modal-footer { padding: 16px 20px; }
   .job-modal-footer .btn { flex: 1 1 auto; }
   .job-apply-state { padding: 24px 20px 32px; }
+}
+
+/* ── Filter modal (opened from the mobile toolbar CTA) ── */
+.jobs-filter-modal {
+  background: var(--white);
+  border-radius: var(--r-xl);
+  max-width: 520px;
+  width: 100%;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+
+.jobs-filter-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--gray-100);
+  flex-shrink: 0;
+}
+
+.jobs-filter-modal-header h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.02rem;
+  color: var(--navy);
+}
+
+.jobs-filter-modal-header h3 svg { color: var(--yellow-dark); }
+
+.jobs-filter-modal-header button {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: var(--gray-100);
+  color: var(--gray-600);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.jobs-filter-modal-body {
+  padding: 22px 24px 6px;
+  overflow-y: auto;
+}
+
+/* filter-card restyled inside the modal: plain sections, no card chrome */
+.jobs-filter-modal .filter-card {
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 18px;
+}
+
+.filter-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0 16px;
+}
+
+@media (max-width: 420px) {
+  .filter-options-grid { grid-template-columns: 1fr; }
 }
 
 /* Pagination */
@@ -3572,8 +3682,49 @@ input, textarea, select { font-family: inherit; }
   .admin-table td, .admin-table th { padding: 8px 10px; }
 
   /* ── Jobs page ───────────────────────────────────────── */
-  .jobs-layout { grid-template-columns: 1fr; }
-  .jobs-filters { position: static; }
+  /* minmax(0,1fr): stop the column inheriting the toolbar's min-content
+     width (grid items default to min-width:auto and refuse to shrink) */
+  .jobs-layout { grid-template-columns: minmax(0, 1fr); }
+  /* Phones swap the sidebar filter list + standalone search card for the
+     sticky toolbar (Filter CTA + search + sort) and the filter modal */
+  .jobs-filters { display: none; }
+  .jobs-search-desktop { display: none; }
+  .jobs-main-header .jobs-sort { display: none; }
+  .jobs-main-header { scroll-margin-top: 140px; }
+
+  .jobs-toolbar {
+    display: flex;
+    position: sticky;
+    top: 70px;            /* flush under the fixed 70px navbar */
+    z-index: 100;
+    align-items: stretch;
+    gap: 8px;
+    background: var(--off-white);
+    padding: 10px 0;
+    margin-bottom: 12px;
+  }
+
+  .jobs-search-toolbar {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+    padding: 0 12px;
+    height: 44px;
+  }
+
+  /* the input is itself a flex item — without min-width:0 its intrinsic
+     ~200px floor blows the whole toolbar past the viewport */
+  .jobs-search-toolbar input { min-width: 0; }
+
+  .jobs-sort-toolbar select {
+    height: 44px;
+    border-radius: var(--r-md);
+    border: 2px solid transparent;
+    box-shadow: var(--shadow-sm);
+    padding: 0 8px;
+    font-size: 0.8rem;
+    max-width: 118px;
+  }
 
   /* ── Auth pages ──────────────────────────────────────── */
   .auth-layout { grid-template-columns: 1fr; }
