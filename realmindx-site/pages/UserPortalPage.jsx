@@ -591,6 +591,7 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, ava
           { label: 'Full Name',     value: user.nextOfKinName },
           { label: 'Relationship', value: user.nextOfKinRelationship },
           { label: 'Phone Number', value: user.nextOfKinPhone },
+          { label: 'Email Address', value: user.nextOfKinEmail },
         ].map(f => (
           <div key={f.label} className="profile-field">
             <div className="profile-field-label">{f.label}</div>
@@ -718,6 +719,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
           ['next_of_kin_name', 'Full Name', 'Example: Ama Mensah'],
           ['next_of_kin_relationship', 'Relationship', 'Example: Parent, Spouse, Sibling'],
           ['next_of_kin_phone', 'Phone Number', 'Example: +233 24 000 0000'],
+          ['next_of_kin_email', 'Email Address', 'Example: ama.mensah@example.com'],
         ]
       : [
           ['phone', 'Phone Number', 'Example: +233 24 000 0000'],
@@ -991,6 +993,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
               <label className="form-label">{label}</label>
               <input
                 className="form-input"
+                type={name.includes('email') ? 'email' : 'text'}
                 placeholder={placeholder}
                 value={form[name] || ''}
                 onChange={event => setForm(prev => ({ ...prev, [name]: event.target.value }))}
@@ -1538,6 +1541,7 @@ const UserPortalPage = () => {
         nextOfKinName: profileSource.next_of_kin_name || '',
         nextOfKinPhone: profileSource.next_of_kin_phone || '',
         nextOfKinRelationship: profileSource.next_of_kin_relationship || '',
+        nextOfKinEmail: profileSource.next_of_kin_email || '',
       }
     : {
         ...MOCK_USER,
@@ -1600,6 +1604,7 @@ const UserPortalPage = () => {
       next_of_kin_name: profileSource.next_of_kin_name || '',
       next_of_kin_phone: profileSource.next_of_kin_phone || '',
       next_of_kin_relationship: profileSource.next_of_kin_relationship || '',
+      next_of_kin_email: profileSource.next_of_kin_email || '',
       years_of_experience: profileSource.years_of_experience !== undefined && profileSource.years_of_experience !== null ? profileSource.years_of_experience : '',
       date_of_birth: profileSource.date_of_birth || '',
     });

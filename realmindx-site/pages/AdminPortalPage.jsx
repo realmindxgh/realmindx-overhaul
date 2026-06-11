@@ -2221,11 +2221,11 @@ const TeachersView = () => {
                         </div>
                       )}
                       {/* Next of kin */}
-                      {detail.profile.next_of_kin_name && (
+                      {(detail.profile.next_of_kin_name || detail.profile.next_of_kin_email) && (
                         <div style={{ marginBottom:20 }}>
                           <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Next of Kin</h4>
                           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px' }}>
-                            {[['Name', detail.profile.next_of_kin_name], ['Phone', detail.profile.next_of_kin_phone], ['Relationship', detail.profile.next_of_kin_relationship]].filter(([, v]) => v).map(([k, v]) => (
+                            {[['Name', detail.profile.next_of_kin_name], ['Phone', detail.profile.next_of_kin_phone], ['Relationship', detail.profile.next_of_kin_relationship], ['Email', detail.profile.next_of_kin_email]].filter(([, v]) => v).map(([k, v]) => (
                               <div key={k}>
                                 <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>
                                 <div style={{ fontSize:'0.875rem', color:'var(--navy)' }}>{v}</div>
