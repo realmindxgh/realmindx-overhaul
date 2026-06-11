@@ -28,6 +28,20 @@ const HeroSlideshow = ({ navigate }) => {
   // Keep the active index valid if the admin removes flyers.
   React.useEffect(() => { setIdx(i => (i >= total ? 0 : i)); }, [total]);
 
+  // Natural aspect ratio of the active flyer's artwork. On phones the hero
+  // box adopts it (via --bs-hero-ratio) so the banner fits edge-to-edge at
+  // its natural height — no cropping, stretching, or letterbox bars.
+  const [imgRatio, setImgRatio] = React.useState(null);
+  const activeImage = flyers[idx]?.image || null;
+  React.useEffect(() => {
+    if (!activeImage) { setImgRatio(null); return undefined; }
+    let alive = true;
+    const probe = new Image();
+    probe.onload = () => { if (alive && probe.naturalHeight) setImgRatio(probe.naturalWidth / probe.naturalHeight); };
+    probe.src = activeImage;
+    return () => { alive = false; };
+  }, [activeImage]);
+
   if (total === 0) return null;
 
   const go = (n) => setIdx((n + total) % total);
@@ -42,7 +56,9 @@ const HeroSlideshow = ({ navigate }) => {
   return (
     <>
       <section className="bs-hero" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
-        onClick={() => navigate('shop')} style={{ cursor:'pointer' }} aria-label="Promotional flyers">
+        onClick={() => navigate('shop')}
+        style={{ cursor: 'pointer', ...(imgRatio ? { '--bs-hero-ratio': String(imgRatio) } : {}) }}
+        aria-label="Promotional flyers">
         {flyers.map((f, i) => {
           const bg = f.image
             ? { backgroundImage: `url(${f.image})`, backgroundSize: f.imageFit || 'cover', backgroundPosition: f.imagePosition || 'center', backgroundRepeat: 'no-repeat' }

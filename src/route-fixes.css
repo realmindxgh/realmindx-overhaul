@@ -2525,8 +2525,9 @@
 .btn-outline-navy,
 .bs-btn-outline-navy {
   color: var(--navy) !important;
-  border-color: rgba(20, 54, 112, 0.42) !important;
-  background: transparent !important;
+  border-color: rgba(20, 54, 112, 0.34) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #eaf1ff 100%) !important;
+  box-shadow: 0 10px 24px rgba(20, 54, 112, 0.1) !important;
 }
 
 .btn-outline-navy:hover,
@@ -2534,6 +2535,7 @@
   color: #fff !important;
   border-color: var(--navy) !important;
   background: var(--navy) !important;
+  box-shadow: 0 16px 30px rgba(20, 54, 112, 0.18) !important;
 }
 
 .admin-nav {
@@ -2696,10 +2698,13 @@
 }
 
 @media (max-width: 768px) {
+  /* the box follows the active flyer's natural image ratio (set by
+     HeroSlideshow as --bs-hero-ratio) — full width, natural height */
   .bs-hero {
     height: auto !important;
     min-height: 0 !important;
-    aspect-ratio: 100 / 85 !important;
+    aspect-ratio: var(--bs-hero-ratio, 16 / 9) !important;
+    max-height: 70vh !important;
   }
 }
 
@@ -3489,9 +3494,9 @@
   .bs .bs-hero {
     width: 100vw !important;
     margin-left: calc(50% - 50vw) !important;
-    aspect-ratio: 16 / 9 !important;
+    aspect-ratio: var(--bs-hero-ratio, 16 / 9) !important;
     min-height: 0 !important;
-    max-height: 300px !important;
+    max-height: 70vh !important;
   }
 
   .bs .bs-hero-flyer.has-img {
@@ -3673,15 +3678,17 @@
   .bs .bs-hero {
     width: 100vw !important;
     margin-left: calc(50% - 50vw) !important;
-    aspect-ratio: 5 / 4 !important;
+    /* the box matches the artwork's own ratio — contain below then fits it
+       exactly (100% 100% used to squash wide banners into a 5:4 frame) */
+    aspect-ratio: var(--bs-hero-ratio, 16 / 9) !important;
     min-height: 0 !important;
-    max-height: none !important;
+    max-height: 70vh !important;
     overflow: hidden !important;
   }
 
   .bs .bs-hero-flyer.has-img {
     padding: 0 !important;
-    background-size: 100% 100% !important;
+    background-size: contain !important;
     background-position: center center !important;
     background-repeat: no-repeat !important;
     background-color: #fff !important;
@@ -3696,7 +3703,7 @@
 
   .bs .bs-newsletter-form {
     width: 100% !important;
-    max-width: 380px !important;
+    max-width: 340px !important;
     margin: 24px auto 0 !important;
   }
 

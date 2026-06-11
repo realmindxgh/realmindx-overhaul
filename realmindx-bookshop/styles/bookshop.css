@@ -385,14 +385,18 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-newsletter .bs-eyebrow { color: var(--bs-gold-dark); display: block; margin-bottom: 12px; }
 .bs-newsletter p { color: var(--bs-muted); font-size: 16px; margin: 14px auto 0; max-width: 480px; }
 .bs-newsletter-form { display: flex; gap: 10px; max-width: 480px; margin: 30px auto 0; }
-.bs-newsletter-form input { flex: 1; height: 50px; border-radius: 999px; border: 1.5px solid var(--bs-border); padding: 0 22px; font-size: 15px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+/* min-height guards against generic input resets squashing the field flat */
+.bs-newsletter-form input { flex: 1; height: 54px; min-height: 54px; border-radius: 999px; border: 1.5px solid var(--bs-border); padding: 0 22px; font-size: 16px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.06); box-sizing: border-box; }
 .bs-newsletter-form input:focus { outline: none; border-color: var(--bs-navy); box-shadow: 0 0 0 3px rgba(20,54,112,.12); }
 .bs-newsletter-form .bs-btn { border-radius: 999px; }
 @media (max-width: 768px) {
   .bs-newsletter { padding: 40px 16px; }
-  .bs-newsletter-form { flex-direction: column; max-width: 100%; margin: 24px 0 0; }
+  /* balanced block, centered — not a full-width stretched strip */
+  .bs-newsletter-form { flex-direction: column; gap: 12px; max-width: 340px; margin: 24px auto 0; }
   .bs-newsletter-form input,
   .bs-newsletter-form .bs-btn { width: 100%; }
+  .bs-newsletter-form input { height: 54px; min-height: 54px; }
+  .bs-newsletter-form .bs-btn { min-height: 50px; }
   .bs-newsletter p { max-width: 100%; padding: 0 4px; }
   .bs-turnstile-wrap { margin: 0 auto; }
 }
