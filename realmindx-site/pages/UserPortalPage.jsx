@@ -691,6 +691,16 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     setNewWorkType('');
   };
 
+  // Availability is single-choice; the preset windows can't cover every real
+  // answer ("From January 2027", "After WASSCE marking"), so "Other" reveals a
+  // free-text input writing to the same available_from field. A saved custom
+  // value re-opens in custom mode instead of being silently dropped.
+  const AVAILABILITY_OPTIONS = ['Immediately', '1 Month', '3 Months', 'After Current Term'];
+  const [availabilityOther, setAvailabilityOther] = React.useState(() => {
+    const v = form.available_from || '';
+    return Boolean(v) && !AVAILABILITY_OPTIONS.includes(v);
+  });
+
   const CURRICULA = ['GES / NaCCA Curriculum','TVET / CTVET Curriculum','Cambridge International Curriculum','British / English National Curriculum','Pearson Edexcel Pathway','International Baccalaureate (IB) Curriculum','American Curriculum','Montessori Curriculum','Oxford International Curriculum','Other'];
   // Same dead end as Teaching Subject, but this list is multi-select: ticking
   // "Other" just added the literal word "Other" with no way to say what it was.
@@ -740,13 +750,36 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Availability */}
             <div className="form-group">
               <label className="form-label">Availability</label>
-              <select className="form-input" value={form.available_from || ''} onChange={e => setForm(p => ({ ...p, available_from: e.target.value }))}>
+              <select
+                className="form-input"
+                value={availabilityOther ? '__other__' : (form.available_from || '')}
+                onChange={e => {
+                  const value = e.target.value;
+                  if (value === '__other__') {
+                    setAvailabilityOther(true);
+                    setForm(p => ({ ...p, available_from: '' }));
+                  } else {
+                    setAvailabilityOther(false);
+                    setForm(p => ({ ...p, available_from: value }));
+                  }
+                }}
+              >
                 <option value="">Select availability</option>
                 <option value="Immediately">Immediately Available</option>
                 <option value="1 Month">Within 1 Month</option>
                 <option value="3 Months">Within 3 Months</option>
                 <option value="After Current Term">After Current Term</option>
+                <option value="__other__">Other…</option>
               </select>
+              {availabilityOther && (
+                <input
+                  className="form-input"
+                  style={{ marginTop: 8 }}
+                  placeholder="Example: From January 2027"
+                  value={form.available_from || ''}
+                  onChange={e => setForm(p => ({ ...p, available_from: e.target.value }))}
+                />
+              )}
             </div>
             {/* Years of Experience */}
             <div className="form-group">

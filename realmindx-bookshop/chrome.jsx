@@ -440,8 +440,8 @@ const Footer = ({ navigate }) => (
         <div>
           <h4>Quick Links</h4>
           <div className="bs-footer-links">
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>All Curricula</a>
+            <a href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop the Catalogue</a>
+            <a href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>Browse Curricula</a>
             <a href="#" onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
             <a href="#" onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
             <a href="#" onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>

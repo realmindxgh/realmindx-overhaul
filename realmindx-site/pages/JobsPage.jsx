@@ -46,7 +46,7 @@ const SAMPLE_JOBS = [
   },
   {
     id: 5, title: 'Special Education Coordinator', school: 'RealMindX Partner School',
-    location: 'Accra (Flexible)', type: 'Part-time', level: 'All Levels', subject: 'Special Needs',
+    location: 'Accra (Flexible)', type: 'Part-time', level: 'Primary/JHS', subject: 'Special Needs',
     salary: 'GH 1,800 - 2,500 / month', posted_at: '2026-06-09', deadline: '2026-07-10',
     description: 'RealMindX Education is recruiting a Special Education Coordinator to work across partner schools, supporting inclusive education practices and IEP development.',
     requirements: ['Degree in Special Education or Psychology', 'Experience with IEP development', 'Training in inclusive classroom strategies', 'Strong interpersonal skills'],

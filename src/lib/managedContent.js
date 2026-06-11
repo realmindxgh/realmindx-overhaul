@@ -394,7 +394,7 @@ export const SEED_CONTENT = {
     { id: 2, name: 'Integrated Science SHS 1 & 2', author: 'Approabi Publishers', source: 'Approabi Publishers', category: 'Textbooks', price: 42, oldPrice: null, badges: ['popular'], stock: 'in', level: 'SHS', subject: 'Science', image: bookshopHeroImage },
     { id: 3, name: 'English for Primary 3', author: 'Ghana Education Service', source: 'Ghana Education Service', category: 'Textbooks', price: 18, oldPrice: null, badges: ['new'], stock: 'in', level: 'Primary', subject: 'English', image: bookshopHeroImage },
     { id: 4, name: 'Anansi the Spider: Story Collection', author: 'Various Authors', source: 'Local distributor', category: 'Storybooks', price: 15, oldPrice: null, badges: [], stock: 'in', level: 'Primary', subject: 'English', image: homeTeachingImage },
-    { id: 5, name: 'BECE Past Questions 2015-2024', author: 'RealMindX', source: 'RealMindX', category: 'Exam Prep', price: 22, oldPrice: null, badges: ['popular'], stock: 'low', level: 'JHS', subject: 'All Subjects', image: teacherRecruitmentImage },
+    { id: 5, name: 'BECE Past Questions 2015-2024', author: 'RealMindX', source: 'RealMindX', category: 'Exam Prep', price: 22, oldPrice: null, badges: ['popular'], stock: 'low', level: 'JHS', subject: 'Core Subjects', image: teacherRecruitmentImage },
     { id: 6, name: 'Maths Workbook (Primary 4-6)', author: 'MoE Ghana', source: 'MoE Ghana', category: 'Workbooks', price: 12, oldPrice: null, badges: ['new'], stock: 'in', level: 'Primary', subject: 'Mathematics', image: bookshopHeroImage },
     { id: 7, name: 'A4 Exercise Books (Pack of 10)', author: null, source: 'Stationery wholesaler', category: 'Stationery', price: 18, oldPrice: 22, badges: ['sale'], stock: 'in', level: null, subject: null, image: stationeryImage },
     { id: 8, name: 'Geometry Set (Maped)', author: null, source: 'Stationery wholesaler', category: 'Stationery', price: 8.5, oldPrice: null, badges: [], stock: 'in', level: null, subject: null, image: stationeryImage },
@@ -448,8 +448,6 @@ export const SEED_CONTENT = {
 
 export const CATEGORIES = SEED_CONTENT.categories;
 export const SAMPLE_PRODUCTS = SEED_CONTENT.products;
-export const LEVELS = ['Nursery/KG', 'Primary', 'JHS', 'SHS'];
-export const SUBJECTS = ['Mathematics', 'English', 'Science', 'Social Studies', 'French', 'RME', 'All Subjects'];
 
 // Canonical job-post vocabulary, shared by the admin job form and the public
 // jobs filter sidebar so admin-entered values always match a filter option.

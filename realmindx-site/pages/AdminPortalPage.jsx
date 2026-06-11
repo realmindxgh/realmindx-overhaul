@@ -1706,7 +1706,7 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
                 onChange={e => setFilterStatus(e.target.value)}
                 style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border-light,#e2e8f0)', background: '#fff', color: filterStatus ? 'var(--navy)' : 'var(--gray-500)', fontWeight: filterStatus ? 700 : 400 }}
               >
-                <option value="">All statuses</option>
+                <option value="">Any status</option>
                 {[...new Set(rows.map(r => r.status).filter(Boolean))].sort().map(s => (
                   <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
                 ))}

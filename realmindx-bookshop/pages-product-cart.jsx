@@ -131,7 +131,7 @@ const ProductPage = ({ navigate, bookId }) => {
             <dt>Publisher</dt><dd>{book.publisher}</dd>
             <dt>ISBN</dt><dd className="bs-mono">{book.isbn}</dd>
             <dt>Subject</dt><dd>{book.subject}</dd>
-            <dt>Grade Level</dt><dd>{book.grade || 'All levels'}</dd>
+            <dt>Grade Level</dt><dd>{book.grade || 'Not specified'}</dd>
           </dl>
           <div className="bs-divider" />
 

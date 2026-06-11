@@ -116,7 +116,7 @@ const mapCategories = (cats) => {
     id: c.slug || slugifyCat(c.value || c.label),
     name: c.label || c.value, icon: 'book',
   }));
-  return [{ id: 'all', name: 'All Books', icon: 'grid' }, ...list];
+  return [{ id: 'all', name: 'Full Catalogue', icon: 'grid' }, ...list];
 };
 
 const mapProducts = (products, cats) => {
@@ -154,7 +154,7 @@ const mapProducts = (products, cats) => {
 // â”€â”€ API-mode CatalogProvider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ApiCatalogProvider = ({ children }) => {
   const [books, setBooks] = React.useState([]);
-  const [categories, setCategories] = React.useState([{ id: 'all', name: 'All Books', icon: 'grid' }]);
+  const [categories, setCategories] = React.useState([{ id: 'all', name: 'Full Catalogue', icon: 'grid' }]);
   const [flyers, setFlyers] = React.useState([]);
   const [priceCeiling, setPriceCeiling] = React.useState(80);
 
@@ -171,7 +171,7 @@ const ApiCatalogProvider = ({ children }) => {
 
         const mappedBooks = (prods.items || []).map(fromApiProduct);
         const mappedCats = [
-          { id: 'all', name: 'All Books', icon: 'grid' },
+          { id: 'all', name: 'Full Catalogue', icon: 'grid' },
           ...(cats.items || []).map(fromApiCategory),
         ];
         const mappedFlyers = (flyerData.items || []).map(fromApiFlyer);
@@ -188,7 +188,7 @@ const ApiCatalogProvider = ({ children }) => {
           : mappedBooks;
 
         setBooks(supplemented);
-        setCategories(mappedCats.length ? mappedCats : [{ id: 'all', name: 'All Books', icon: 'grid' }]);
+        setCategories(mappedCats.length ? mappedCats : [{ id: 'all', name: 'Full Catalogue', icon: 'grid' }]);
         setFlyers(mappedFlyers);
 
         const maxPrice = mappedBooks.reduce((m, b) => Math.max(m, b.price), 0);
