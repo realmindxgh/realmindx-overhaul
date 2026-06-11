@@ -1,5 +1,5 @@
 ﻿import React from 'react';
-import { Icon, cedis, CoverPlaceholder } from './shared.jsx';
+import { Icon, LoadingState, cedis, CoverPlaceholder } from './shared.jsx';
 import { useCart } from './chrome.jsx';
 import { submitOrder } from '../src/lib/managedContent.js';
 import { isApiMode, api } from '../src/lib/apiClient.js';
@@ -56,7 +56,7 @@ const MiniSummary = ({ detailed, total, delivery, subtotal }) => (
 );
 
 const CheckoutPage = ({ navigate }) => {
-  const { detailed, subtotal, count, clear, bulkSaving = 0 } = useCart();
+  const { detailed, subtotal, count, clear, bulkSaving = 0, loading: cartLoading } = useCart();
   const [step, setStep] = React.useState(0);
   const [method, setMethod] = React.useState('delivery');
   const [form, setForm] = React.useState({ name:'', phone:'', email:'', address:'', city:'' });
@@ -190,6 +190,15 @@ const CheckoutPage = ({ navigate }) => {
       setPlacing(false);
     }
   };
+
+  if (cartLoading && step < 2) return (
+    <div className="bs-container bs-fade-page">
+      <LoadingState
+        title="Loading checkout"
+        body="Restoring your saved books before payment."
+      />
+    </div>
+  );
 
   if (count === 0 && step < 2) return (
     <div className="bs-container bs-fade-page"><div className="bs-empty-state">

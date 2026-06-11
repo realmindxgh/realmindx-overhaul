@@ -1,5 +1,5 @@
 ﻿import React from 'react';
-import { Icon, Stars, cedis, CoverPlaceholder } from './shared.jsx';
+import { Icon, Stars, LoadingState, cedis, CoverPlaceholder } from './shared.jsx';
 import { useCart, useWishlist, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
@@ -27,8 +27,8 @@ const QtyStepper = ({ qty, setQty, sm = false }) => (
 );
 
 const ProductPage = ({ navigate, bookId }) => {
-  const { books } = useCatalog();
-  const book = books.find(b => b.id === bookId) || books[0];
+  const { books, loading: catalogLoading } = useCatalog();
+  const book = books.find(b => b.id === bookId) || (!bookId ? books[0] : null) || books[0] || null;
   const { add } = useCart();
   const wishlist = useWishlist();
   const [qty, setQty] = React.useState(1);
@@ -51,7 +51,31 @@ const ProductPage = ({ navigate, bookId }) => {
     return () => { alive = false; };
   }, [book?.id]);
 
-  if (!book) return null;
+  if (catalogLoading && books.length === 0) {
+    return (
+      <div className="bs-container bs-fade-page">
+        <LoadingState
+          title="Loading product details"
+          body="Getting the latest pricing, stock, and review information."
+        />
+      </div>
+    );
+  }
+
+  if (!book) {
+    return (
+      <div className="bs-container bs-fade-page">
+        <div className="bs-empty-state">
+          <div className="bs-empty-icon"><Icon name="book" size={36} /></div>
+          <h2 className="bs-h2">This product is unavailable.</h2>
+          <p>It may have been removed from the latest catalog.</p>
+          <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('shop')}>
+            Browse the Shop <Icon name="arrow" size={16} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const samePublisher = book.publisher
     ? books.filter(b => b.id !== book.id && b.publisher && b.publisher.toLowerCase() === book.publisher.toLowerCase())
@@ -245,7 +269,7 @@ const AuthReturnActions = ({ navigate, route = 'cart' }) => (
 );
 
 const CartPage = ({ navigate }) => {
-  const { detailed, subtotal, bulkDiscounts, bulkSaving, setQty, remove, count } = useCart();
+  const { detailed, subtotal, bulkDiscounts, bulkSaving, setQty, remove, count, loading: cartLoading } = useCart();
   const wishlist = useWishlist();
   const { books } = useCatalog();
   // Delivery is NOT estimated on the cart page — location has not been chosen yet.
@@ -258,6 +282,15 @@ const CartPage = ({ navigate }) => {
   const suggestions = books
     .filter(b => !cartIds.has(b.id) && cartCats.has(b.cat) && b.stock)
     .slice(0, 4);
+
+  if (cartLoading) return (
+    <div className="bs-container bs-fade-page">
+      <LoadingState
+        title="Loading your cart"
+        body="Restoring your saved items from the latest catalog."
+      />
+    </div>
+  );
 
   if (count === 0) return (
     <div className="bs-container bs-fade-page">
@@ -357,9 +390,18 @@ const CartPage = ({ navigate }) => {
 const WishlistPage = ({ navigate }) => {
   const wishlist = useWishlist();
   const { add: addToCart } = useCart();
-  const { books } = useCatalog();
+  const { books, loading: catalogLoading } = useCatalog();
 
   const wishlisted = books.filter(b => wishlist?.has(b.id));
+
+  if (catalogLoading && (wishlist?.count || 0) > 0 && wishlisted.length === 0) return (
+    <div className="bs-container bs-fade-page">
+      <LoadingState
+        title="Loading your wishlist"
+        body="Restoring your saved books from the latest catalog."
+      />
+    </div>
+  );
 
   const moveToCart = (book) => {
     addToCart(book.id, 1);

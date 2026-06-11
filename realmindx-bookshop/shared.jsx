@@ -84,6 +84,23 @@ const Stars = ({ value = 0, size = 14 }) => (
   </span>
 );
 
+const LoadingState = ({
+  title = 'Loading',
+  body = 'Please wait while we fetch the latest bookshop data.',
+}) => (
+  <div className="bs-empty-state bs-loading-state" role="status" aria-live="polite">
+    <div className="bs-empty-icon bs-loading-icon" aria-hidden="true">
+      <div className="bs-loading-dots">
+        <span />
+        <span />
+        <span />
+      </div>
+    </div>
+    <h2 className="bs-h2">{title}</h2>
+    <p>{body}</p>
+  </div>
+);
+
 const cedis = (n) => `GH\u20b5${Number(n || 0).toFixed(2)}`;
 
 const COVER_TINTS = ['#143670','#1c4a96','#0d2550','#26417a','#324f8a'];
@@ -157,4 +174,4 @@ const BOOKS = [
   { id:'b20', title:'BECE Past Questions: Mathematics', cat:'past', catName:'Past Questions', price:35, desc:'Worked solutions, 2015-2024', rating:5.0, reviews:176, stock:true, grade:'JHS 3', subject:'Mathematics', publisher:'Aki-Ola Series', isbn:'978-9988-2-7783-4', badge:'Bestseller' },
 ];
 
-export { Icon, BrainMark, Logo, Stars, cedis, CoverPlaceholder, Reveal, CATEGORIES, BOOKS };
+export { Icon, BrainMark, Logo, Stars, LoadingState, cedis, CoverPlaceholder, Reveal, CATEGORIES, BOOKS };

@@ -3359,6 +3359,11 @@
     box-sizing: border-box !important;
   }
 
+  .bs .bs-page.bs-page-auth {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
   .bs .bs-track-search {
     width: min(100%, 270px) !important;
     max-width: 270px !important;
@@ -3697,6 +3702,15 @@
 
   .bs .bs-auth-form-wrap {
     padding-bottom: calc(var(--bs-bottomnav-h) + 36px) !important;
+  }
+
+  body.bs-has-bottomnav .bs .bs-page.bs-page-auth {
+    min-height: auto !important;
+    padding-bottom: 0 !important;
+  }
+
+  .bs .bs-page.bs-page-auth .bs-auth-form-wrap {
+    padding-bottom: 28px !important;
   }
 
   .admin-stats-row {

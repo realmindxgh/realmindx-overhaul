@@ -1,5 +1,5 @@
 import React from 'react';
-import { Icon, Reveal, cedis } from './shared.jsx';
+import { Icon, Reveal, LoadingState, cedis } from './shared.jsx';
 import { ProductCard, ListCard, useCart } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
@@ -114,7 +114,7 @@ const CategoryMarquee = ({ navigate }) => {
 
 // ---------- Homepage ----------
 const HomePage = ({ navigate }) => {
-  const { books } = useCatalog();
+  const { books, loading: catalogLoading } = useCatalog();
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const onSubscribe = async (e) => {
     e.preventDefault();
@@ -148,6 +148,21 @@ const HomePage = ({ navigate }) => {
   // curated picks first, then top up from the rest of the catalogue so this
   // section also fills its 5x2 grid instead of leaving holes
   const examPicks = [...examPool, ...books.filter(b => !examPool.includes(b))].slice(0, 10);
+
+  if (catalogLoading && books.length === 0) {
+    return (
+      <div className="bs-fade-page">
+        <HeroSlideshow navigate={navigate} />
+        <section className="bs-section bs-container">
+          <LoadingState
+            title="Loading the bookshop"
+            body="Fetching the latest books, categories, and offers."
+          />
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="bs-fade-page">
       <HeroSlideshow navigate={navigate} />
@@ -339,7 +354,7 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
 const BATCH = 40;
 
 const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
-  const { books, categories, priceCeiling } = useCatalog();
+  const { books, categories, priceCeiling, loading: catalogLoading } = useCatalog();
   const [filters, setFilters] = React.useState({ cats: initialCat !== 'all' ? [initialCat] : [], min:0, max:priceCeiling, ratingMin:'', ratingMax:'', inStock:false, query: initialQuery });
   const [sort, setSort] = React.useState('newest');
   const [view, setView] = React.useState('grid');
@@ -441,6 +456,21 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
       .sort((a, b) => (b.rating * (b.reviews || 1)) - (a.rating * (a.reviews || 1)))
       .slice(0, 6);
   }, [books, list, filters]);
+
+  if (catalogLoading && books.length === 0) {
+    return (
+      <div className="bs-container bs-fade-page">
+        <div className="bs-breadcrumb">
+          <a href="#" onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
+          <span className="bs-sep">/</span><span className="bs-cur">Shop</span>
+        </div>
+        <LoadingState
+          title="Loading the shop"
+          body="Fetching the latest catalog, categories, and pricing."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="bs-container bs-fade-page">

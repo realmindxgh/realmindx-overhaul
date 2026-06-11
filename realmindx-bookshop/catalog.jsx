@@ -3,10 +3,7 @@ import { API_BASE, isApiMode, api } from '../src/lib/apiClient.js';
 import { useManagedContent, publicItems } from '../src/lib/managedContent.js';
 import { BOOKS as DEMO_BOOKS, CATEGORIES as FALLBACK_CATEGORIES } from './shared.jsx';
 
-// Fallback books supplement the API catalog when the shop has fewer than this many real products.
-// They are real Ghanaian curriculum titles — once the admin adds 10+ real products these disappear.
 const FALLBACK_BOOKS = DEMO_BOOKS;
-const MIN_CATALOG_SIZE = 10;
 
 // ============================================================
 // Catalog adapter - two modes:
@@ -24,7 +21,13 @@ const FALLBACK_FLYERS = [
   { id: 'f3', headline: 'Wholesale for', accent: 'Schools', subline: 'Class sets delivered within 48 hours', badge: 'GET A QUOTE', image: null, showOverlay: false, imageFit: 'cover', imagePosition: 'center' },
 ];
 
-const CatalogCtx = React.createContext({ books: FALLBACK_BOOKS, categories: FALLBACK_CATEGORIES, flyers: FALLBACK_FLYERS, priceCeiling: 80 });
+const CatalogCtx = React.createContext({
+  books: FALLBACK_BOOKS,
+  categories: FALLBACK_CATEGORIES,
+  flyers: FALLBACK_FLYERS,
+  priceCeiling: 80,
+  loading: false,
+});
 export const useCatalog = () => React.useContext(CatalogCtx);
 
 // â”€â”€ Shared helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -159,10 +162,12 @@ const ApiCatalogProvider = ({ children }) => {
   const [categories, setCategories] = React.useState([{ id: 'all', name: 'All Books', icon: 'grid' }]);
   const [flyers, setFlyers] = React.useState([]);
   const [priceCeiling, setPriceCeiling] = React.useState(80);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      setLoading(true);
       try {
         const [prods, cats, flyerData] = await Promise.all([
           api.fetchProducts(),
@@ -178,18 +183,9 @@ const ApiCatalogProvider = ({ children }) => {
         ];
         const mappedFlyers = (flyerData.items || []).map(fromApiFlyer);
 
-        // If the shop has fewer than MIN_CATALOG_SIZE real products, supplement with
-        // demo titles so the grid looks populated. These are replaced automatically
-        // once the admin adds enough real products via the admin panel.
-        const realIds = new Set(mappedBooks.map(b => b.title.toLowerCase().trim()));
-        const supplemented = mappedBooks.length < MIN_CATALOG_SIZE
-          ? [
-              ...mappedBooks,
-              ...FALLBACK_BOOKS.filter(fb => !realIds.has(fb.title.toLowerCase().trim())),
-            ]
-          : mappedBooks;
-
-        setBooks(supplemented);
+        // In API mode, show only admin-backed products. Demo catalog data is kept
+        // strictly as an offline fallback when the API is unavailable altogether.
+        setBooks(mappedBooks);
         setCategories(mappedCats.length ? mappedCats : [{ id: 'all', name: 'All Books', icon: 'grid' }]);
         setFlyers(mappedFlyers);
 
@@ -197,6 +193,14 @@ const ApiCatalogProvider = ({ children }) => {
         setPriceCeiling(Math.max(80, Math.ceil(maxPrice / 10) * 10));
       } catch (err) {
         console.warn('[CatalogProvider] API fetch failed, using fallback:', err.message);
+        if (cancelled) return;
+        setBooks(FALLBACK_BOOKS);
+        setCategories(FALLBACK_CATEGORIES);
+        setFlyers(FALLBACK_FLYERS);
+        const fallbackMax = FALLBACK_BOOKS.reduce((m, b) => Math.max(m, b.price), 0);
+        setPriceCeiling(Math.max(80, Math.ceil(fallbackMax / 10) * 10));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
     load();
@@ -204,7 +208,7 @@ const ApiCatalogProvider = ({ children }) => {
   }, []);
 
   return (
-    <CatalogCtx.Provider value={{ books, categories, flyers, priceCeiling }}>
+    <CatalogCtx.Provider value={{ books, categories, flyers, priceCeiling, loading }}>
       {children}
     </CatalogCtx.Provider>
   );
@@ -223,7 +227,7 @@ const LocalCatalogProvider = ({ children }) => {
     const flyers = mappedFlyers.length ? mappedFlyers : FALLBACK_FLYERS;
     const maxPrice = books.reduce((m, b) => Math.max(m, b.price), 0);
     const priceCeiling = Math.max(80, Math.ceil(maxPrice / 10) * 10);
-    return { books, categories, flyers, priceCeiling };
+    return { books, categories, flyers, priceCeiling, loading: false };
   }, [content]);
 
   return <CatalogCtx.Provider value={value}>{children}</CatalogCtx.Provider>;

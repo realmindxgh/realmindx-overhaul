@@ -82,7 +82,7 @@ const CartProvider = ({ children, navigate }) => {
 };
 
 const CartProviderInner = ({ children, navigate }) => {
-  const { books } = useCatalog();
+  const { books, loading: catalogLoading } = useCatalog();
   const [items, setItems] = React.useState(readSavedCart);
 
   React.useEffect(() => {
@@ -108,8 +108,9 @@ const CartProviderInner = ({ children, navigate }) => {
   const detailed = items
     .map(i => { const b = books.find(x => x.id === i.id); return b ? { ...b, qty: i.qty } : null; })
     .filter(Boolean);
-  const count = detailed.reduce((s, b) => s + b.qty, 0);
+  const count = items.reduce((s, item) => s + item.qty, 0);
   const subtotal = detailed.reduce((s, b) => s + b.price * b.qty, 0);
+  const loading = catalogLoading && count > 0 && detailed.length === 0;
 
   // Bulk Purchase Discount — applies when qty >= 10 for items whose category
   // has a bulk_discount_percent set (e.g. the "Bulk / Schools" category).
@@ -126,7 +127,7 @@ const CartProviderInner = ({ children, navigate }) => {
   const bulkSaving = bulkDiscounts.reduce((s, d) => s + d.saving, 0);
 
   return (
-    <CartCtx.Provider value={{ items, detailed, count, subtotal, bulkDiscounts, bulkSaving, add, setQty, remove, clear, navigate }}>
+    <CartCtx.Provider value={{ items, detailed, count, subtotal, bulkDiscounts, bulkSaving, add, setQty, remove, clear, navigate, loading, catalogLoading }}>
       {children}
     </CartCtx.Provider>
   );

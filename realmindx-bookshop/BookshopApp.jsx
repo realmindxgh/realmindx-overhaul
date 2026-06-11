@@ -169,6 +169,7 @@ const App = () => {
     case 'orders':   page = <OrdersPage navigate={navigate} />; break;
     default:         page = <HomePage navigate={navigate} />;
   }
+  const mainClassName = `bs-page${route === 'login' || route === 'signup' ? ' bs-page-auth' : ''}`;
 
   const { clear } = React.useContext(CartCtx) || {};
 
@@ -177,7 +178,7 @@ const App = () => {
     return (
       <div className="bs">
         <Navbar route="home" navigate={(r) => { setPaystackReturn(null); navigate(r); }} />
-        <main className="bs-page">
+        <main className={mainClassName}>
           <PaystackReturnPage
             orderRef={paystackReturn}
             navigate={(r) => { setPaystackReturn(null); navigate(r); }}
@@ -194,7 +195,7 @@ const App = () => {
   return (
     <div className="bs">
       <Navbar route={route} navigate={navigate} />
-      <main className="bs-page">{page}</main>
+      <main className={mainClassName}>{page}</main>
       <Footer navigate={navigate} />
       <WhatsAppFab route={route} />
       <BottomNav route={route} navigate={navigate} />
