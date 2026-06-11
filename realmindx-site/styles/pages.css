@@ -3041,12 +3041,13 @@ input, textarea, select { font-family: inherit; }
   color: var(--navy);
 }
 
-/* Admin stats */
+/* Admin stats — six cards as a uniform 3x2 grid (2x3 on phones), with a
+   clear 60px break (2.5x the old 24px) before the quick-actions row */
 .admin-stats-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 60px;
 }
 
 .admin-stat {
@@ -3652,7 +3653,9 @@ input, textarea, select { font-family: inherit; }
   .admin-grid-2 { grid-template-columns: 1fr; }
   .quick-actions-row { grid-template-columns: repeat(2, 1fr); }
   .portal-stats-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 1fr; }
-  .admin-stats-row { grid-template-columns: repeat(2, 1fr); }
+  .admin-stats-row { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  /* Tighter admin stat cards so the 2x3 grid fits phone widths */
+  .admin-stat { padding: 16px 14px; }
   /* Tighter stat cards on mobile — prevent label wrapping that causes unequal heights */
   .portal-stat-card { padding: 18px 14px; }
   .psc-label { font-size: 0.6rem; letter-spacing: 0.07em; }
@@ -3772,7 +3775,8 @@ input, textarea, select { font-family: inherit; }
 /* Extra small screens (< 400px) */
 @media (max-width: 400px) {
   /* portal-stats-grid intentionally kept at repeat(2,1fr) — 2x2 is correct on phones */
-  .quick-actions-row { grid-template-columns: 1fr; }
+  /* quick-actions-row stays repeat(2,1fr) — Post Job / Add Product / Add Flyer /
+     Write News form a neat 2x2 on phones rather than a long single column */
   .services-grid { grid-template-columns: 1fr; }
   .why-grid { grid-template-columns: 1fr; }
   /* .team-grid — no override needed, flexbox wraps to 1 col automatically */

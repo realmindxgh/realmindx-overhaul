@@ -3737,32 +3737,33 @@
     padding-bottom: 28px !important;
   }
 
+  /* Phones: six stats as a 2x3 grid, quick actions as a 2x2 grid */
   .admin-stats-row {
-    grid-template-columns: 1fr !important;
-    gap: 12px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
   }
 
   .admin-stat {
     min-height: 0 !important;
-    padding: 16px !important;
+    padding: 14px 12px !important;
     display: flex !important;
     align-items: center !important;
-    gap: 14px !important;
+    gap: 10px !important;
   }
 
   .admin-stat-info .ast-value {
-    font-size: 1.65rem !important;
+    font-size: 1.45rem !important;
     line-height: 1 !important;
   }
 
   .admin-stat-info .ast-label,
   .admin-stat-info .ast-change {
-    font-size: 0.84rem !important;
-    line-height: 1.35 !important;
+    font-size: 0.74rem !important;
+    line-height: 1.3 !important;
   }
 
   .quick-actions-row {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 12px !important;
   }
 }
