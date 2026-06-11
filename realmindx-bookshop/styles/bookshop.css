@@ -615,6 +615,9 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
   /* ── Account page ────────────────────────────────────────── */
   /* Force single-column regardless of what the larger breakpoint says */
   .bs-account-layout { grid-template-columns: 1fr !important; gap: 20px !important; }
+  /* Phones: the bottom tab bar + navbar account menu cover navigation —
+     the sidebar Navigation card just pushes real content below the fold */
+  .bs-account-sidebar { display: none; }
   .bs-account-panels { grid-template-columns: 1fr !important; }
   /* Every direct grid child must shrink, not overflow */
   .bs-account-layout > *,
@@ -847,6 +850,22 @@ a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; 
 .bs-review-name { font-family:'Montserrat',sans-serif; font-weight: 700; font-size: 14px; color: var(--bs-navy); }
 .bs-review-date { font-size: 12px; color: var(--bs-muted); }
 .bs-review-body { font-size: 14.5px; color: var(--bs-text); line-height: 1.7; }
+
+/* Review submission form */
+.bs-review-form { border-top: 1px solid var(--bs-border); padding: 26px 0 6px; max-width: 560px; }
+.bs-review-form-title { font-family:'Montserrat',sans-serif; font-weight: 800; font-size: 17px; color: var(--bs-navy); margin-bottom: 4px; }
+.bs-review-form-sub { font-size: 13.5px; color: var(--bs-muted); margin-bottom: 18px; }
+.bs-review-form .bs-optional { font-weight: 400; color: var(--bs-muted); text-transform: none; }
+.bs-review-form-hint { font-size: 12px; color: var(--bs-muted); margin-top: 6px; line-height: 1.6; }
+.bs-star-picker { display: flex; gap: 2px; }
+.bs-star-picker button { background: none; border: none; padding: 3px; cursor: pointer; color: var(--bs-border); line-height: 0; transition: color .12s, transform .12s; }
+.bs-star-picker button.lit { color: var(--bs-gold-live); }
+.bs-star-picker button:hover { transform: scale(1.12); }
+.bs-field.err .bs-star-picker button:not(.lit) { color: rgba(214,69,69,.35); }
+.bs-review-success { display: flex; gap: 12px; align-items: flex-start; background: var(--bs-off-white); border: 1px solid var(--bs-border); border-radius: var(--bs-radius-md); padding: 18px 20px; color: var(--bs-navy); }
+.bs-review-success svg { flex-shrink: 0; margin-top: 2px; color: var(--bs-green, #1d8a4b); }
+.bs-review-success strong { font-family:'Montserrat',sans-serif; font-size: 14.5px; display: block; margin-bottom: 3px; }
+.bs-review-success p { font-size: 13.5px; color: var(--bs-muted); margin: 0; }
 .bs-hscroll { display: flex; gap: 18px; overflow-x: auto; padding-bottom: 12px; scrollbar-width: none; }
 .bs-hscroll::-webkit-scrollbar { display: none; }
 .bs-hscroll > * { flex: 0 0 230px; }

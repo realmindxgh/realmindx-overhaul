@@ -3349,14 +3349,31 @@
     line-height: 1.5 !important;
   }
 
-  .bs .bs-container,
-  .bs .bs-container-narrow,
+  /* The page provides the 18px gutters. Containers are plain width-100%
+     blocks — width:100vw on containers NESTED inside wrappers (e.g. the
+     account page) used to push their right edge 36px past the screen. */
   .bs .bs-page {
     width: 100vw !important;
     max-width: 100vw !important;
     padding-left: 18px !important;
     padding-right: 18px !important;
     box-sizing: border-box !important;
+  }
+
+  .bs .bs-container,
+  .bs .bs-container-narrow {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Inside the page the gutters already exist — no second set of padding */
+  .bs .bs-page .bs-container,
+  .bs .bs-page .bs-container-narrow {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
 
   .bs .bs-page.bs-page-auth {
