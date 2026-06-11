@@ -79,7 +79,7 @@ const AboutPage = () => {
               'We are not a tutoring centre. We are not a staffing agency. We are a comprehensive educational services provider, covering the full lifecycle of learning.',
               'That breadth is deliberate. Education does not fail at one point. RealMindX exists to fix connected problems together.',
             ]).map(paragraph => <p key={paragraph}>{paragraph}</p>)}
-            <div style={{ display: 'flex', gap: 12, marginTop: 32 }}>
+            <div style={{ display: 'flex', gap: 12, marginTop: 32, flexWrap: 'wrap' }}>
               <a href="/services" className="btn btn-primary">Explore Our Services</a>
               <a href="/contact"  className="btn btn-outline-navy">Get In Touch</a>
             </div>

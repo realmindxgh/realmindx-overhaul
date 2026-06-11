@@ -3742,7 +3742,15 @@ input, textarea, select { font-family: inherit; }
   .why-grid { grid-template-columns: repeat(2, 1fr); }
   /* .team-grid responsive override removed — team grid is now flexbox with
      justify-content:center, so cards wrap and centre automatically */
-  .about-intro-grid { grid-template-columns: 1fr; }
+  /* minmax(0,1fr): without it the column inherits the CTA row's min-content
+     width and pushes the buttons + image collage past the screen edge */
+  .about-intro-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .about-intro { padding: 56px 0; }
+  .about-img-collage { height: 360px; }
+  /* badge hangs 16px outside the collage on desktop; keep it on-screen here */
+  .about-stat-float { left: 0; }
+  .mvg-section { padding: 64px 0; }
+  .mvg-card { padding: 28px 22px; }
   .mvg-grid { grid-template-columns: 1fr; }
   .mvg-card:first-child { grid-template-columns: 1fr; }
   .stats-bar-inner { grid-template-columns: repeat(2, 1fr); }
