@@ -2708,17 +2708,23 @@
   font-weight: 800;
 }
 
-/* Bookshop: compact portrait product cards across home, shop, search, and related grids */
+/* Bookshop: compact portrait product cards across home, shop, search, and related grids.
+   Full-width grids are 5 columns spanning the whole row — no leftover gap at the right. */
 .bs .bs-product-grid {
-  grid-template-columns: repeat(4, minmax(180px, 220px)) !important;
-  justify-content: start !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
   align-items: start !important;
   gap: 22px !important;
 }
 
+/* Shop page keeps 4 columns beside its 268px filter sidebar. Zero-specificity
+   :where() so the narrower-viewport overrides further down still win by order. */
+.bs :where(.bs-shop-layout) .bs-product-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+}
+
 .bs .bs-pcard {
   width: 100% !important;
-  max-width: 220px !important;
 }
 
 .bs .bs-pcard-cover {
@@ -2768,7 +2774,7 @@
 
 @media (max-width: 1180px) and (min-width: 769px) {
   .bs .bs-product-grid {
-    grid-template-columns: repeat(3, minmax(180px, 220px)) !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 }
 

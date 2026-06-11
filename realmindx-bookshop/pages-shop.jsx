@@ -130,7 +130,9 @@ const HomePage = ({ navigate }) => {
     }
   };
   const featuredPool = books.filter(b => b.featured);
-  const featured = (featuredPool.length ? featuredPool : books).slice(0, 10);
+  // featured first, then top up from the rest of the catalogue so the
+  // 5x2 grid fills even when fewer than 10 products are flagged featured
+  const featured = [...featuredPool, ...books.filter(b => !b.featured)].slice(0, 10);
 
   // BECE/WASSCE picks — admin-curated via the 'exam-pick' tag on individual products
   // (set in the admin product editor under Tags), or featured products in exam categories.
@@ -143,7 +145,9 @@ const HomePage = ({ navigate }) => {
     /exam|past|textbook/i.test(b.cat || '') || /exam|past|textbook/i.test(b.catName || '')
   );
   const examPool = examTagged.length ? examTagged : examCatFeatured.length ? examCatFeatured : examFallback;
-  const examPicks = (examPool.length ? examPool : books.slice(10)).slice(0, 10);
+  // curated picks first, then top up from the rest of the catalogue so this
+  // section also fills its 5x2 grid instead of leaving holes
+  const examPicks = [...examPool, ...books.filter(b => !examPool.includes(b))].slice(0, 10);
   return (
     <div className="bs-fade-page">
       <HeroSlideshow navigate={navigate} />
