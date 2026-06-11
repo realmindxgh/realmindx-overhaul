@@ -157,10 +157,4 @@ const BOOKS = [
   { id:'b20', title:'BECE Past Questions: Mathematics', cat:'past', catName:'Past Questions', price:35, desc:'Worked solutions, 2015-2024', rating:5.0, reviews:176, stock:true, grade:'JHS 3', subject:'Mathematics', publisher:'Aki-Ola Series', isbn:'978-9988-2-7783-4', badge:'Bestseller' },
 ];
 
-const REVIEWS = [
-  { name:'Ama Mensah',   role:'Parent', rating:5, date:'12 May 2026', body:'Exactly the approved edition my daughter needed. Delivered to Madina the next morning - beautifully packaged.' },
-  { name:'Kwesi Boateng',role:'Teacher',rating:4, date:'28 Apr 2026', body:'Good quality print and binding. Bought a class set at wholesale and the pricing was very fair.' },
-  { name:'Efua Asante',  role:'Student',rating:5, date:'15 Apr 2026', body:'The solved past questions are a lifesaver for BECE prep. Clear explanations throughout.' },
-];
-
-export { Icon, BrainMark, Logo, Stars, cedis, CoverPlaceholder, Reveal, CATEGORIES, BOOKS, REVIEWS };
+export { Icon, BrainMark, Logo, Stars, cedis, CoverPlaceholder, Reveal, CATEGORIES, BOOKS };

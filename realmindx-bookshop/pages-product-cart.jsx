@@ -1,7 +1,8 @@
 ﻿import React from 'react';
-import { Icon, Stars, cedis, CoverPlaceholder, REVIEWS } from './shared.jsx';
+import { Icon, Stars, cedis, CoverPlaceholder } from './shared.jsx';
 import { useCart, useWishlist, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
+import { api, isApiMode } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
 import globalToast from '../src/lib/toast.js';
@@ -37,6 +38,19 @@ const ProductPage = ({ navigate, bookId }) => {
 
   React.useEffect(() => { setQty(1); setActiveImg(0); window.scrollTo(0,0); }, [bookId]);
 
+  // Approved reviews from the backend. Demo fallback books carry non-numeric
+  // ids ('b1') and have no backend rows — they just show the empty state.
+  const [productReviews, setProductReviews] = React.useState([]);
+  React.useEffect(() => {
+    setProductReviews([]);
+    if (!isApiMode() || !/^\d+$/.test(String(book?.id ?? ''))) return undefined;
+    let alive = true;
+    api.fetchProductReviews(book.id)
+      .then(data => { if (alive) setProductReviews(data.items || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [book?.id]);
+
   if (!book) return null;
 
   const samePublisher = book.publisher
@@ -49,8 +63,14 @@ const ProductPage = ({ navigate, bookId }) => {
   const relatedTitle = samePublisher.length && book.publisher
     ? `More from ${book.publisher}`
     : 'More in this category';
-  const ratingDist = [70,20,6,3,1];
+  // Star distribution computed from the actual fetched reviews (5★ first)
+  const ratingDist = [5, 4, 3, 2, 1].map(star => (
+    productReviews.length
+      ? Math.round((productReviews.filter(r => Number(r.rating) === star).length / productReviews.length) * 100)
+      : 0
+  ));
   const hasReviews = Number(book.reviews || 0) > 0 && Number(book.rating || 0) > 0;
+  const fmtReviewDate = iso => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
   return (
     <div className="bs-container bs-fade-page">
@@ -151,15 +171,17 @@ const ProductPage = ({ navigate, bookId }) => {
                 <div className="bs-rating-big">{book.rating.toFixed(1)}</div>
                 <Stars value={book.rating} size={18} />
                 <div className="bs-muted" style={{ fontSize:13, marginTop:6 }}>Based on {book.reviews} review{book.reviews === 1 ? '' : 's'}</div>
-                <div style={{ marginTop:18 }}>
-                  {ratingDist.map((pct, i) => (
-                    <div className="bs-bar-row" key={i}>
-                      <span style={{ width:38 }}>{5-i} star</span>
-                      <span className="bs-bar-track"><span className="bs-bar-fill" style={{ width: pct+'%' }} /></span>
-                      <span style={{ width:34, textAlign:'right' }}>{pct}%</span>
-                    </div>
-                  ))}
-                </div>
+                {productReviews.length > 0 && (
+                  <div style={{ marginTop:18 }}>
+                    {ratingDist.map((pct, i) => (
+                      <div className="bs-bar-row" key={i}>
+                        <span style={{ width:38 }}>{5-i} star</span>
+                        <span className="bs-bar-track"><span className="bs-bar-fill" style={{ width: pct+'%' }} /></span>
+                        <span style={{ width:34, textAlign:'right' }}>{pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             ) : (
               <div className="bs-review-empty">
@@ -169,16 +191,24 @@ const ProductPage = ({ navigate, bookId }) => {
             )}
           </div>
           <div>
-            {hasReviews ? REVIEWS.slice(0, Math.min(REVIEWS.length, Number(book.reviews))).map((r,i) => (
-              <div className="bs-review-card" key={i}>
+            {productReviews.length > 0 ? productReviews.map(r => (
+              <div className="bs-review-card" key={r.id}>
                 <div className="bs-review-head">
-                  <div className="bs-review-avatar">{r.name.split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
+                  <div className="bs-review-avatar">{(r.customer_name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}</div>
                   <div>
-                    <div className="bs-review-name">{r.name} <span className="bs-muted" style={{ fontWeight:400, fontSize:12 }}>- {r.role}</span></div>
-                    <div className="bs-review-date"><Stars value={r.rating} size={12} /> - {r.date}</div>
+                    <div className="bs-review-name">
+                      {r.customer_name}
+                      {r.verified_purchase && <span className="bs-muted" style={{ fontWeight:400, fontSize:12 }}> - Verified purchase</span>}
+                    </div>
+                    <div className="bs-review-date"><Stars value={r.rating} size={12} />{r.created_at && <> - {fmtReviewDate(r.created_at)}</>}</div>
                   </div>
                 </div>
-                <p className="bs-review-body">{r.body}</p>
+                {(r.title || r.comment) && (
+                  <p className="bs-review-body">
+                    {r.title && <strong>{r.title}{r.comment ? ' — ' : ''}</strong>}
+                    {r.comment}
+                  </p>
+                )}
               </div>
             )) : (
               <div className="bs-review-card">

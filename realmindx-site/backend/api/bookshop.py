@@ -18,7 +18,7 @@ from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
 from ..models import DeliveryZone, Order, OrderItem, Product, ProductCategory, ProductReview
 from ..security import require_turnstile
-from ..serializers import category_json, delivery_zone_json, order_json, product_json
+from ..serializers import category_json, delivery_zone_json, order_json, product_json, product_review_json
 
 bookshop_bp = Blueprint("bookshop", __name__)
 
@@ -135,6 +135,25 @@ def get_product(product_id):
     if not product.is_active:
         return jsonify(error="Product not available."), 404
     return jsonify(product=product_json(product))
+
+
+@bookshop_bp.get("/products/<int:product_id>/reviews")
+def list_product_reviews(product_id):
+    """Public, moderated reviews for a product — the statuses here must stay
+    in sync with serializers._product_rating so the list matches the
+    rating_average/rating_count aggregates shown on cards."""
+    product = db.get_or_404(Product, product_id)
+    if not product.is_active:
+        return jsonify(error="Product not available."), 404
+    reviews = (
+        ProductReview.query.filter(
+            ProductReview.product_id == product.id,
+            ProductReview.status.in_(["approved", "published"]),
+        )
+        .order_by(ProductReview.created_at.desc())
+        .all()
+    )
+    return jsonify(items=[product_review_json(review) for review in reviews])
 
 
 @bookshop_bp.post("/products/<int:product_id>/reviews")

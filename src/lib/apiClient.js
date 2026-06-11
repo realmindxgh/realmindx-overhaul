@@ -109,6 +109,7 @@ export const api = {
   bulkDeliveryAdjust: (type, value, direction) => apiFetch('/admin/delivery-zones/bulk-adjust', { method: 'POST', body: { type, value, direction } }),
   initPaystackPayment: (orderId, callbackUrl) => apiFetch(`/orders/${orderId}/paystack/initialize`, { method: 'POST', body: { callback_url: callbackUrl } }),
   createProductReview: (productId, payload) => apiFetch(`/products/${productId}/reviews`, { method: 'POST', body: payload }),
+  fetchProductReviews: (productId) => apiFetch(`/products/${productId}/reviews`),
 
   uploadUserFile: async (file, kind = 'document') => {
     for (let attempt = 0; attempt < 2; attempt += 1) {

@@ -76,6 +76,19 @@ def _product_rating(product):
     return round(total / len(reviews), 1), len(reviews)
 
 
+def product_review_json(review):
+    """Public review payload — deliberately excludes the reviewer's email."""
+    return {
+        "id": review.id,
+        "customer_name": review.customer_name,
+        "rating": int(review.rating or 0),
+        "title": review.title,
+        "comment": review.comment,
+        "verified_purchase": review.order_id is not None,
+        "created_at": review.created_at.isoformat() if review.created_at else None,
+    }
+
+
 def product_json(product, include_private=False):
     rating_average, rating_count = _product_rating(product)
     payload = {
