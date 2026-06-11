@@ -125,7 +125,7 @@ const Reveal = ({ children, className = '', delay = 0, as: As = 'div', ...rest }
 };
 
 const CATEGORIES = [
-  { id: 'all',        name: 'Full Catalogue',     icon: 'grid' },
+  { id: 'all',        name: 'All Books',     icon: 'grid' },
   { id: 'curriculum', name: 'Curriculum Books', icon: 'cap' },
   { id: 'textbooks',  name: 'Textbooks',     icon: 'book' },
   { id: 'past',       name: 'Past Questions',icon: 'files' },

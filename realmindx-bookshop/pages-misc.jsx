@@ -892,7 +892,7 @@ const AccountPage = ({ navigate }) => {
 // ─── Orders page ──────────────────────────────────────────────────────────────
 
 const ORDER_STATUS_OPTIONS = [
-  { value: '', label: 'Any status' },
+  { value: '', label: 'All statuses' },
   { value: 'new', label: 'Placed' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'packed', label: 'Packed' },
