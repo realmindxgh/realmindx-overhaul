@@ -86,13 +86,17 @@ const ProductPage = ({ navigate, bookId }) => {
           <div className="bs-pdp-main-img" onClick={() => setLightbox(true)}>
             <CoverPlaceholder title={book.title} idx={idx} image={book.image} />
           </div>
-          <div className="bs-pdp-thumbs">
-            {[0,1,2].map(i => (
-              <div key={i} className={`bs-pdp-thumb${activeImg === i ? ' active' : ''}`} onClick={() => setActiveImg(i)}>
-                <CoverPlaceholder title={book.title} idx={idx+i} small image={book.image} />
-              </div>
-            ))}
-          </div>
+          {/* Thumb strip only for placeholder covers (which vary by index) — a real
+              single product photo repeated three times reads as a fake gallery */}
+          {!book.image && (
+            <div className="bs-pdp-thumbs">
+              {[0,1,2].map(i => (
+                <div key={i} className={`bs-pdp-thumb${activeImg === i ? ' active' : ''}`} onClick={() => setActiveImg(i)}>
+                  <CoverPlaceholder title={book.title} idx={idx+i} small image={book.image} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="bs-pdp-info">
@@ -107,7 +111,7 @@ const ProductPage = ({ navigate, bookId }) => {
             <span className={`bs-dot ${book.stock ? 'in' : 'out'}`} /> {book.stock ? 'In Stock - ready to ship' : 'Out of Stock'}
           </div>
           <p className="bs-pdp-desc">
-            {book.full || `${book.desc}. A trusted, classroom-ready edition used by schools across Ghana.`}
+            {book.short || book.full || `${book.desc}. A trusted, classroom-ready edition used by schools across Ghana.`}
           </p>
 
           <div className="bs-pdp-actions">
@@ -128,18 +132,19 @@ const ProductPage = ({ navigate, bookId }) => {
 
           <div className="bs-divider" />
           <dl className="bs-detail-list">
-            <dt>Publisher</dt><dd>{book.publisher}</dd>
-            <dt>ISBN</dt><dd className="bs-mono">{book.isbn}</dd>
-            <dt>Subject</dt><dd>{book.subject}</dd>
+            {/* rows only render when the product actually has the detail */}
+            {book.publisher && <><dt>Publisher</dt><dd>{book.publisher}</dd></>}
+            {book.isbn && book.isbn !== '-' && <><dt>ISBN</dt><dd className="bs-mono">{book.isbn}</dd></>}
+            {book.subject && <><dt>Subject</dt><dd>{book.subject}</dd></>}
             <dt>Grade Level</dt><dd>{book.grade || 'Not specified'}</dd>
           </dl>
           <div className="bs-divider" />
 
           <div className="bs-accordion">
             <Accordion title="Full description" defaultOpen>
-              This title follows its listed curriculum and is structured around clear learning
+              {book.full || `This title follows its listed curriculum and is structured around clear learning
               outcomes. Each unit opens with objectives, builds through worked examples, and closes with practice
-              exercises and revision questions - ideal for both classroom teaching and self-study at home.
+              exercises and revision questions - ideal for both classroom teaching and self-study at home.`}
             </Accordion>
             <Accordion title="Delivery information">
               Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Greater Accra delivery
