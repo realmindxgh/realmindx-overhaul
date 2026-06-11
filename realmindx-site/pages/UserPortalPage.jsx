@@ -1721,15 +1721,27 @@ const UserPortalPage = () => {
                 <span>Dashboard</span>
               </button>
             )}
-            {/* Mobile-only hamburger: hidden on desktop via inline style; media query overrides to flex */}
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="mobile-menu-toggle"
-              style={{ display: 'none' }}
-              aria-label="Open menu"
-            >
-              <Icon name="menu" size={18} stroke={2.2} />
-            </button>
+            {/* Mobile-only control: hamburger on the dashboard, SchoolMS-style
+                back button on every subpage (back to the dashboard) */}
+            {activeView === 'dashboard' ? (
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="mobile-menu-toggle"
+                style={{ display: 'none' }}
+                aria-label="Open menu"
+              >
+                <Icon name="menu" size={18} stroke={2.2} />
+              </button>
+            ) : (
+              <button
+                onClick={() => setActiveView('dashboard')}
+                className="mobile-menu-toggle"
+                style={{ display: 'none' }}
+                aria-label="Back to dashboard"
+              >
+                <Icon name="chevL" size={18} stroke={2.4} />
+              </button>
+            )}
             <h1 className="portal-page-title">{VIEW_TITLES[activeView]}</h1>
           </div>
           <div className="portal-topbar-actions">

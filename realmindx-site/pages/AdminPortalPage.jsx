@@ -2449,15 +2449,27 @@ const AdminPortalPage = () => {
                 <span>Dashboard</span>
               </button>
             )}
-            {/* Mobile-only hamburger */}
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="mobile-menu-toggle"
-              style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-              aria-label="Open menu"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
+            {/* Mobile-only control: hamburger on the dashboard, SchoolMS-style
+                back button on every subpage (back to the dashboard) */}
+            {activeView === 'dashboard' ? (
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="mobile-menu-toggle"
+                style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                aria-label="Open menu"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+              </button>
+            ) : (
+              <button
+                onClick={() => setActiveView('dashboard')}
+                className="mobile-menu-toggle"
+                style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                aria-label="Back to dashboard"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+            )}
             <h2 className="admin-topbar-title">
               {(NAV.find(n => n.key === activeView) || { label: 'Dashboard' }).label}
             </h2>
