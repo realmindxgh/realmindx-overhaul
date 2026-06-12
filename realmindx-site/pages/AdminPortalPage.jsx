@@ -7,6 +7,7 @@ import { API_BASE, api, isApiMode } from '../../src/lib/apiClient.js';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
 import logoWhite from '../assets/logo-white.png';
 import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
+import { TEACHING_CURRICULA } from '../../src/lib/teachingOptions.js';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
@@ -148,9 +149,10 @@ const CONFIG = {
     fields: [
       field('title', 'Job Title'),
       field('organisation', 'School / Organisation'),
-      field('location', 'Location'),
+      field('delivery_zone_id', 'Location', 'delivery-zone-select', { help: 'Uses the same canonical area list as bookshop delivery and teacher alerts.' }),
       field('subject', 'Subject', 'select', { options: JOB_SUBJECTS }),
       field('level', 'Level', 'select', { options: JOB_LEVELS }),
+      field('curriculum', 'Curriculum', 'select', { options: TEACHING_CURRICULA }),
       field('employment_type', 'Employment Type', 'select', { options: JOB_TYPES }),
       field('salary_min', 'Minimum Salary (GHS)', 'number', { help: 'Monthly salary range shown to applicants. Leave both blank to show "Available on request".' }),
       field('salary_max', 'Maximum Salary (GHS)', 'number'),
@@ -616,7 +618,7 @@ const normalizeFormValue = (value, itemField) => {
   if (itemField.type === 'checkbox') return Boolean(value);
   if (itemField.type === 'tags') return String(value || '').split(',').map(tag => tag.trim()).filter(Boolean);
   if (itemField.type === 'image') return value ? Number(value) : null; // stored as file ID (number)
-  if (itemField.type === 'category-select') return value ? Number(value) : null;
+  if (itemField.type === 'category-select' || itemField.type === 'delivery-zone-select') return value ? Number(value) : null;
   if (itemField.type === 'permission-list') return expandPermissionsForSave(value);
   if (itemField.type === 'article-sections') return Array.isArray(value) ? value : [];
   return value;
@@ -626,7 +628,7 @@ const valueForInput = (value, itemField) => {
   if (itemField.type === 'tags') return Array.isArray(value) ? value.join(', ') : value || '';
   if (itemField.type === 'checkbox') return Boolean(value);
   if (itemField.type === 'image') return value ?? ''; // stores file ID
-  if (itemField.type === 'category-select') return value ?? '';
+  if (itemField.type === 'category-select' || itemField.type === 'delivery-zone-select') return value ?? '';
   if (itemField.type === 'permission-list') return Array.isArray(value) ? value : [];
   if (itemField.type === 'article-sections') return Array.isArray(value) ? value : [];
   if (itemField.type === 'select' && (value === null || value === undefined || value === '') && itemField.options?.length) {
@@ -1041,6 +1043,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
   });
   const [saving, setSaving] = React.useState(false);
   const [categoryOptions, setCategoryOptions] = React.useState([]);
+  const [deliveryZoneOptions, setDeliveryZoneOptions] = React.useState([]);
   const [formError, setFormError] = React.useState('');
 
   React.useEffect(() => {
@@ -1056,6 +1059,23 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
       })
       .catch(() => {
         if (alive) setCategoryOptions([]);
+      });
+    return () => { alive = false; };
+  }, [config.fields]);
+
+  React.useEffect(() => {
+    if (!config.fields.some(itemField => itemField.type === 'delivery-zone-select')) return;
+    let alive = true;
+    api.fetchDeliveryZones()
+      .then(data => {
+        if (alive) {
+          setDeliveryZoneOptions(
+            (data.items || []).filter(zone => zone.is_active !== false && !/pickup/i.test(zone.name || '')),
+          );
+        }
+      })
+      .catch(() => {
+        if (alive) setDeliveryZoneOptions([]);
       });
     return () => { alive = false; };
   }, [config.fields]);
@@ -1149,7 +1169,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
                 value={form[itemField.name]}
                 onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.value }))}
               />
-            ) : (itemField.type === 'select' || itemField.type === 'category-select') ? (
+            ) : (itemField.type === 'select' || itemField.type === 'category-select' || itemField.type === 'delivery-zone-select') ? (
               <select
                 className="form-select"
                 value={form[itemField.name]}
@@ -1160,6 +1180,11 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
                       { value: '', label: categoryOptions.length ? 'Select a category, or type a new one below' : 'No categories yet - type a new one below' },
                       ...categoryOptions.map(category => ({ value: category.id, label: category.name })),
                     ]
+                  : itemField.type === 'delivery-zone-select'
+                    ? [
+                        { value: '', label: deliveryZoneOptions.length ? 'Select the exact teaching location' : 'No active delivery areas available' },
+                        ...deliveryZoneOptions.map(zone => ({ value: zone.id, label: zone.name })),
+                      ]
                   : itemField.options
                 ).map(option => (
                   <option key={optionValue(option)} value={optionValue(option)}>

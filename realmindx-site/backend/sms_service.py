@@ -13,8 +13,8 @@ import requests
 from flask import current_app
 
 
-def _normalise_phone(phone: str) -> str | None:
-    """Convert any Ghanaian number format to 233XXXXXXXXX."""
+def normalise_phone(phone: str) -> str | None:
+    """Convert a Ghanaian number to the canonical +233XXXXXXXXX format."""
     if not phone:
         return None
     p = phone.strip().replace(" ", "").replace("-", "")
@@ -24,7 +24,7 @@ def _normalise_phone(phone: str) -> str | None:
         p = "233" + p[1:]
     elif not p.startswith("233"):
         p = "233" + p  # best-effort for numbers without country code
-    return p if len(p) >= 11 else None
+    return f"+{p}" if len(p) == 12 and p.isdigit() else None
 
 
 def send_sms(phone: str, message: str, sender_id: str | None = None) -> bool:
@@ -37,7 +37,8 @@ def send_sms(phone: str, message: str, sender_id: str | None = None) -> bool:
         current_app.logger.debug("[sms] ARKESEL_API_KEY not set — skipping SMS to %s", phone)
         return False
 
-    to = _normalise_phone(phone)
+    normalised = normalise_phone(phone)
+    to = normalised.lstrip("+") if normalised else None
     if not to:
         current_app.logger.warning("[sms] Invalid phone number: %s", phone)
         return False

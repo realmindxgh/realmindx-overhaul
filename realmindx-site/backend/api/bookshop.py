@@ -14,6 +14,7 @@ from sqlalchemy import or_
 
 from ..audit import audit
 from ..email_service import OutboundEmail, bookshop_email_shell, send_email
+from ..location_data import GHANA_REGIONS
 from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
 from ..models import DeliveryZone, Order, OrderItem, Product, ProductCategory, ProductReview
@@ -297,8 +298,20 @@ def create_order():
         return jsonify(error="At least one order item is required."), 400
 
     delivery_method = payload.get("delivery_method") or payload.get("delivery") or "delivery"
+    if delivery_method not in {"delivery", "pickup"}:
+        return jsonify(error="Choose home delivery or pickup."), 400
+    payment_method = (payload.get("payment_method") or "online").strip().lower()
+    if payment_method not in {"online", "cash_on_delivery"}:
+        return jsonify(error="Choose online payment or payment on delivery."), 400
     delivery_zone = find_delivery_zone(payload)
     delivery_fee = Decimal("0") if delivery_method == "pickup" else Decimal(str(delivery_zone.fee if delivery_zone else 0))
+    location = (payload.get("location") or "").strip() or None
+    delivery_region = (payload.get("delivery_region") or "").strip() or None
+    custom_delivery_area = bool(payload.get("custom_delivery_area"))
+    if delivery_method == "delivery" and not location:
+        return jsonify(error="Delivery address is required."), 400
+    if delivery_method == "delivery" and custom_delivery_area and delivery_region not in GHANA_REGIONS:
+        return jsonify(error="Select a valid Ghana region for the custom delivery area."), 400
 
     order = Order(
         order_reference=new_order_reference(),
@@ -307,10 +320,15 @@ def create_order():
         phone=(payload.get("phone") or "").strip(),
         delivery_method=delivery_method,
         delivery_zone_id=delivery_zone.id if delivery_zone else None,
-        delivery_zone_name=delivery_zone.name if delivery_zone else None,
+        delivery_zone_name=delivery_zone.name if delivery_zone else ("Other" if custom_delivery_area else None),
         delivery_fee=delivery_fee,
-        location=(payload.get("location") or "").strip() or None,
+        location=location,
+        delivery_region=delivery_region,
         notes=(payload.get("notes") or "").strip() or None,
+        status="received",
+        payment_status="unpaid" if payment_method == "cash_on_delivery" else "pending",
+        payment_method=payment_method,
+        payment_provider="cash_on_delivery" if payment_method == "cash_on_delivery" else None,
     )
     if not order.customer_name or not order.phone:
         return jsonify(error="Customer name and phone are required."), 400
@@ -332,6 +350,8 @@ def create_order():
         "customer_email": email,
         "total": float(total + delivery_fee),
         "delivery_method": order.delivery_method,
+        "payment_method": order.payment_method,
+        "delivery_region": order.delivery_region,
         "items": len(items),
     })
     db.session.commit()
@@ -342,7 +362,9 @@ def create_order():
         send_sms(
             order.phone,
             f"Hi {first}, your RealMindX Bookshop order {order.order_reference} "
-            f"has been received! We'll contact you within 24 hrs to confirm. "
+            f"has been received! "
+            f"{'Payment is due on delivery. ' if order.payment_method == 'cash_on_delivery' else 'Online payment is pending. '}"
+            f"We'll contact you within 24 hrs to confirm. "
             f"Reply STOP to opt out."
         )
 
@@ -351,6 +373,11 @@ def create_order():
         "Pickup at our Dome Pillar 2 shop"
         if order.delivery_method == "pickup"
         else f"Delivery to: {order.location or 'address on file'}"
+    )
+    payment_info = (
+        "Payment on delivery"
+        if order.payment_method == "cash_on_delivery"
+        else "Online payment via Paystack"
     )
     items_list_html = "".join(
         f"<p style='margin:4px 0;'>&bull; {escape(i.product_name)} x{i.quantity} @ GH&#8373;{float(i.unit_price):,.2f}</p>"
@@ -381,6 +408,7 @@ def create_order():
 
             <p style="margin:0 0 6px;">
               <strong>Delivery:</strong> {escape(delivery_info)}<br/>
+              <strong>Payment:</strong> {escape(payment_info)}<br/>
               <strong>Contact number:</strong> {escape(order.phone or "not provided")}
             </p>
 
@@ -412,6 +440,7 @@ def create_order():
                 <a href="mailto:{escape(email)}" style="color:#0b1d38;">{escape(email)}</a></p>
               <p style="margin:0 0 6px;"><strong>Phone:</strong> {escape(order.phone or "not provided")}</p>
               <p style="margin:0 0 6px;"><strong>Delivery:</strong> {escape(delivery_info)}</p>
+              <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
               <p style="margin:10px 0 0;font-weight:800;">Total: GH&#8373;{float(order.total_amount):,.2f}</p>
             </div>
             {items_list_html}
@@ -428,6 +457,8 @@ def create_order():
 @limiter.limit("8/hour")
 def initialize_paystack_payment(order_id):
     order = db.get_or_404(Order, order_id)
+    if order.payment_method != "online":
+        return jsonify(error="This order is set for payment on delivery."), 400
     secret_key = current_app.config.get("PAYSTACK_SECRET_KEY")
     if not secret_key:
         return jsonify(error="Paystack is not configured for this environment."), 503
@@ -490,7 +521,7 @@ def paystack_webhook():
             order.payment_provider = "paystack"
             order.payment_status = "paid"
             order.paid_at = datetime.now(timezone.utc)
-            if order.status == "new":
+            if order.status in {"new", "received"}:
                 order.status = "confirmed"
             audit("paystack_payment_confirmed", "order", order.id, {
                 "order_reference": order.order_reference,

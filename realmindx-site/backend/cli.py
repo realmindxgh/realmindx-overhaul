@@ -166,7 +166,7 @@ def register_cli(app):
     @click.option("--region", default="greater-accra", help="Region to seed (default: greater-accra)")
     @click.option("--clear", is_flag=True, help="Remove existing zones first (use with caution)")
     def seed_delivery_zones_command(region, clear):
-        """Seed delivery zones with fee=0. Set fees via Admin → Delivery Zones."""
+        """Seed delivery zones with fee=0. Set fees via Admin > Delivery Zones."""
         if clear:
             count = DeliveryZone.query.delete()
             db.session.commit()
@@ -195,5 +195,5 @@ def register_cli(app):
         click.echo(
             f"Seeded {added} delivery zones (fee=0) for Greater Accra. "
             f"Skipped {skipped} that already existed. "
-            f"Go to Admin → Bookshop → Delivery Zones to set the fees."
+            f"Go to Admin > Bookshop > Delivery Zones to set the fees."
         )

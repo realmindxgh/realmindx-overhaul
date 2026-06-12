@@ -17,6 +17,7 @@ const AuthReturnActions = ({ navigate }) => !isLoggedIn() ? (
   </div>
 ) : null;
 import TurnstileField from '../src/lib/TurnstileField.jsx';
+import { GHANA_REGIONS } from '../src/lib/ghanaLocations.js';
 
 const StepBar = ({ step }) => {
   const labels = ['Delivery','Payment','Confirm'];
@@ -57,9 +58,18 @@ const MiniSummary = ({ detailed, total, delivery, subtotal }) => (
 
 const CheckoutPage = ({ navigate }) => {
   const { detailed, subtotal, count, clear, bulkSaving = 0, loading: cartLoading } = useCart();
+  const session = getDemoSession();
   const [step, setStep] = React.useState(0);
   const [method, setMethod] = React.useState('delivery');
-  const [form, setForm] = React.useState({ name:'', phone:'', email:'', address:'', city:'' });
+  const [paymentMethod, setPaymentMethod] = React.useState('online');
+  const [form, setForm] = React.useState(() => ({
+    name: [session?.firstName, session?.lastName].filter(Boolean).join(' '),
+    phone: session?.phone || '',
+    email: session?.email || '',
+    address: '',
+    city: '',
+    region: '',
+  }));
   const [errors, setErrors] = React.useState({});
   const [orderRef, setOrderRef] = React.useState('');
   const [placing, setPlacing] = React.useState(false);
@@ -80,12 +90,15 @@ const CheckoutPage = ({ navigate }) => {
     if (!isApiMode()) return;
     setLoadingZones(true);
     api.fetchDeliveryZones()
-      .then(data => setDeliveryZones(data.items || []))
+      .then(data => setDeliveryZones(
+        (data.items || []).filter(zone => zone.is_active !== false && !/pickup/i.test(zone.name || '')),
+      ))
       .catch(() => {})
       .finally(() => setLoadingZones(false));
   }, []);
 
   const selectedZone = deliveryZones.find(z => String(z.id) === selectedZoneId);
+  const customDeliveryArea = selectedZoneId === 'other';
   const deliveryFee = method !== 'delivery' ? 0
     : (isApiMode() && deliveryZones.length > 0)
       ? (selectedZone ? Number(selectedZone.fee) : 0)
@@ -144,13 +157,16 @@ const CheckoutPage = ({ navigate }) => {
         email: form.email,
         phone: form.phone,
         delivery_method: method,
-        location: method === 'delivery' ? [selectedZone?.name, form.address, form.city].filter(Boolean).join(', ') : 'Dome Pillar 2, Accra',
+        location: method === 'delivery'
+          ? [customDeliveryArea ? form.city : selectedZone?.name, form.address, form.region].filter(Boolean).join(', ')
+          : 'Dome Pillar 2, Accra',
         delivery_zone_id: selectedZone?.id || null,
+        delivery_region: method === 'delivery' ? form.region : '',
+        custom_delivery_area: customDeliveryArea,
+        payment_method: paymentMethod,
         promo_code: appliedPromo?.code || null,
         items: orderItems,
         // Signal that this is a payment-pending order (not yet confirmed)
-        payment_status: isApiMode() ? 'pending' : 'unpaid',
-        status: 'received',
         turnstileToken,
       });
 
@@ -161,7 +177,7 @@ const CheckoutPage = ({ navigate }) => {
       // The Paystack webhook marks the order paid; only THEN is it confirmed.
       // We do NOT advance to the confirmation step here - the user must
       // return from Paystack via the callback URL to see it.
-      if (isApiMode() && order?.id) {
+      if (paymentMethod === 'online' && isApiMode() && order?.id) {
         try {
           const callbackUrl = `${window.location.origin}/bookshop?order=${encodeURIComponent(ref)}&status=paid`;
           const payData = await api.initPaystackPayment(order.id, callbackUrl);
@@ -180,8 +196,8 @@ const CheckoutPage = ({ navigate }) => {
         }
       }
 
-      // Local mode (no API / no Paystack): this is a request, not a payment.
-      // The confirmation step makes clear it is an enquiry, not a paid order.
+      // Payment-on-delivery orders are registered immediately. Online payment
+      // only reaches this point in local mode where Paystack is unavailable.
       setStep(2);
     } catch (err) {
       const msg = err?.message || 'Could not place the order. Please try again.';
@@ -215,6 +231,8 @@ const CheckoutPage = ({ navigate }) => {
     if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Enter a valid email';
     if (method === 'delivery' && isApiMode() && deliveryZones.length > 0 && !selectedZoneId) e.address = 'Please select your delivery area first.';
     else if (method === 'delivery' && !form.address.trim()) e.address = 'Required for delivery';
+    if (method === 'delivery' && customDeliveryArea && !form.city.trim()) e.city = 'Enter your delivery town or area';
+    if (method === 'delivery' && customDeliveryArea && !form.region) e.region = 'Select your region';
     setErrors(e);
     const first = Object.keys(e)[0];
     if (first) {
@@ -236,7 +254,7 @@ const CheckoutPage = ({ navigate }) => {
       <StepBar step={2} />
       <div className="bs-confirm">
         <div className="bs-check-circle"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6"/></svg></div>
-        <h1 className="bs-h2">Order placed successfully!</h1>
+        <h1 className="bs-h2">{paymentMethod === 'cash_on_delivery' ? 'Order registered!' : 'Order placed successfully!'}</h1>
         <p className="bs-muted">Thank you, {form.name.split(' ')[0] || 'friend'}. A confirmation has been sent to {form.email || 'your email'}.</p>
         <div className="bs-order-num">Order No. {orderRef}</div>
         <div className="bs-confirm-summary">
@@ -249,7 +267,10 @@ const CheckoutPage = ({ navigate }) => {
               <span>{b.qty} x {b.title}</span><span style={{ fontFamily:'Montserrat', fontWeight:600 }}>{cedis(b.price*b.qty)}</span>
             </div>
           ))}
-          <div className="bs-summary-row bs-total" style={{ fontSize:18, marginTop:10 }}><span>Total paid</span><span>{cedis(total)}</span></div>
+          <div className="bs-summary-row bs-total" style={{ fontSize:18, marginTop:10 }}>
+            <span>{paymentMethod === 'cash_on_delivery' ? 'Due on delivery' : 'Total paid'}</span>
+            <span>{cedis(total)}</span>
+          </div>
           <div className="bs-secure-note" style={{ justifyContent:'flex-start', marginTop:14 }}>
             <Icon name="truck" size={16} /> {method === 'delivery' ? 'Estimated delivery: within 48 hours' : 'Ready for pickup at Dome Pillar 2 tomorrow'}
           </div>
@@ -300,14 +321,32 @@ const CheckoutPage = ({ navigate }) => {
                           {z.name} {Number(z.fee) > 0 ? `(${cedis(Number(z.fee))})` : '(Contact for quote)'}
                         </option>
                       ))}
+                      <option value="other">Other area</option>
                     </select>
                     {selectedZone?.description && (
                       <p style={{ fontSize:12, color:'var(--bs-muted)', marginTop:4 }}>{selectedZone.description}</p>
                     )}
                   </div>
                 )}
-                <div className={`bs-field${errors.address?' err':''}`} style={{ marginTop:18 }}><label>Delivery Address</label><textarea ref={addressRef} aria-invalid={Boolean(errors.address)} value={form.address} onChange={set('address')} placeholder="House number, street, landmark..." />{errors.address && <div className="bs-field-error">{errors.address}</div>}</div>
-                <div className="bs-field"><label>City / Region</label><input value={form.city} onChange={set('city')} placeholder="Accra, Greater Accra" /></div>
+                {customDeliveryArea && (
+                  <div className="bs-field-row" style={{ marginTop:18 }}>
+                    <div className={`bs-field${errors.city?' err':''}`}>
+                      <label>Town / Area *</label>
+                      <input value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" />
+                      {errors.city && <div className="bs-field-error">{errors.city}</div>}
+                    </div>
+                    <div className={`bs-field${errors.region?' err':''}`}>
+                      <label>Region *</label>
+                      <select value={form.region} onChange={set('region')}>
+                        <option value="">Select region</option>
+                        {GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}
+                      </select>
+                      {errors.region && <div className="bs-field-error">{errors.region}</div>}
+                    </div>
+                  </div>
+                )}
+                <div className={`bs-field${errors.address?' err':''}`} style={{ marginTop:customDeliveryArea ? 0 : 18 }}><label>Delivery Address</label><textarea ref={addressRef} aria-invalid={Boolean(errors.address)} value={form.address} onChange={set('address')} placeholder="House number, street, landmark..." />{errors.address && <div className="bs-field-error">{errors.address}</div>}</div>
+                {!customDeliveryArea && <div className="bs-field"><label>Region</label><select value={form.region} onChange={set('region')}><option value="">Select region (optional)</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div>}
               </>}
 
               <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:10 }} onClick={() => { if (validate()) setStep(1); }}>Continue to Payment <Icon name="arrow" size={16} /></button>
@@ -318,15 +357,27 @@ const CheckoutPage = ({ navigate }) => {
           {step === 1 && (
             <div className="bs-form-card">
               <h3 className="bs-h3">Payment</h3>
-              <p className="bs-muted" style={{ marginTop:-12, marginBottom:20 }}>Review your details. Payment is processed securely by Paystack.</p>
+              <p className="bs-muted" style={{ marginTop:-12, marginBottom:20 }}>Review your details and choose how you want to pay.</p>
               <div style={{ background:'var(--bs-off-white)', border:'1px solid var(--bs-border)', borderRadius:12, padding:'18px 20px', marginBottom:20 }}>
                 <div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)', marginBottom:12 }}>Billing details</div>
                 <div style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:'8px 18px', fontSize:14 }}>
                   <span className="bs-muted">Name</span><span style={{ fontWeight:600 }}>{form.name}</span>
                   <span className="bs-muted">Phone</span><span style={{ fontWeight:600 }}>{form.phone}</span>
                   <span className="bs-muted">Email</span><span style={{ fontWeight:600 }}>{form.email}</span>
-                  <span className="bs-muted">{method==='delivery'?'Deliver to':'Pickup'}</span><span style={{ fontWeight:600 }}>{method==='delivery'? (form.address + (form.city?', '+form.city:'')) : 'Dome Pillar 2, Accra'}</span>
+                  <span className="bs-muted">{method==='delivery'?'Deliver to':'Pickup'}</span><span style={{ fontWeight:600 }}>{method==='delivery'? ([form.address, customDeliveryArea ? form.city : selectedZone?.name, form.region].filter(Boolean).join(', ')) : 'Dome Pillar 2, Accra'}</span>
                 </div>
+              </div>
+              <div className="bs-payment-choice-grid">
+                <button type="button" className={`bs-payment-choice${paymentMethod === 'online' ? ' selected' : ''}`} onClick={() => setPaymentMethod('online')}>
+                  <span className="bs-radio-dot" />
+                  <span><strong>Pay online</strong><small>Continue securely to Paystack after confirmation.</small></span>
+                  <Icon name="lock" size={17} />
+                </button>
+                <button type="button" className={`bs-payment-choice${paymentMethod === 'cash_on_delivery' ? ' selected' : ''}`} onClick={() => setPaymentMethod('cash_on_delivery')}>
+                  <span className="bs-radio-dot" />
+                  <span><strong>Payment on delivery</strong><small>Register the order now and pay when it arrives.</small></span>
+                  <Icon name="truck" size={18} />
+                </button>
               </div>
               {/* Promo code */}
               <div className="bs-promo-row" style={{ marginBottom:4 }}>
@@ -360,12 +411,15 @@ const CheckoutPage = ({ navigate }) => {
               <div className="bs-summary-row bs-total" style={{ fontSize:22, borderTop:'1px solid var(--bs-border)', paddingTop:14, marginTop:0 }}><span>Total</span><span>{cedis(total)}</span></div>
               <TurnstileField className="bs-turnstile-wrap bs-checkout-turnstile" onVerify={setTurnstileToken} />
               {orderError && <p className="bs-track-error" role="alert" style={{ marginTop:14 }}>{orderError}</p>}
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}><Icon name="lock" size={17} /> {placing ? 'Placing order...' : `Pay ${cedis(total)} Now`}</button>
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}>
+                <Icon name={paymentMethod === 'online' ? 'lock' : 'truck'} size={17} />
+                {placing ? 'Placing order...' : paymentMethod === 'online' ? `Pay ${cedis(total)} Online` : `Confirm Order · Pay ${cedis(total)} on Delivery`}
+              </button>
               <AuthReturnActions navigate={navigate} />
               <div className="bs-trust-badges">
                 <span className="bs-trust-badge"><Icon name="lock" size={14} /> 256-bit SSL</span>
                 <span className="bs-trust-badge"><Icon name="shield" size={14} /> Buyer protection</span>
-                <span className="bs-trust-badge bs-mono" style={{ fontWeight:700, color:'var(--bs-navy)' }}>paystack</span>
+                {paymentMethod === 'online' && <span className="bs-trust-badge bs-mono" style={{ fontWeight:700, color:'var(--bs-navy)' }}>paystack</span>}
               </div>
               <button className="bs-btn bs-btn-outline-navy bs-btn-block" style={{ marginTop:16 }} onClick={() => setStep(0)}><Icon name="chevL" size={15} /> Back to details</button>
             </div>
@@ -407,6 +461,7 @@ const trackingTimeline = (order) => {
   const status = String(order?.status || 'new').toLowerCase();
   const payment = String(order?.payment_status || 'unpaid').toLowerCase();
   const paid = payment === 'paid';
+  const payOnDelivery = order?.payment_method === 'cash_on_delivery';
   const method = String(order?.delivery_method || '').toLowerCase();
   const deliveryLabel = method === 'pickup' ? 'Ready for Pickup' : 'Out for Delivery';
   const rank = statusRank[status] || (paid ? 2 : 1);
@@ -417,8 +472,8 @@ const trackingTimeline = (order) => {
     steps: [
       { label:'Order Received', time:formatOrderDate(order?.created_at), icon:'check' },
       {
-        label: paid ? 'Payment Confirmed' : 'Payment Pending',
-        time: paid ? formatOrderDate(order?.paid_at || order?.updated_at) : 'Awaiting payment confirmation',
+        label: paid ? 'Payment Confirmed' : payOnDelivery ? 'Payment on Delivery' : 'Payment Pending',
+        time: paid ? formatOrderDate(order?.paid_at || order?.updated_at) : payOnDelivery ? 'Payment will be collected when the order arrives' : 'Awaiting payment confirmation',
         icon:'lock',
       },
       {

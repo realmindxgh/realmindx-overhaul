@@ -153,7 +153,7 @@ const ReviewForm = ({ productId }) => {
 
 // Fallbacks if the Page Text entries are missing (e.g. stale local cache);
 // the live values are edited in admin under Content > Page Text (bookshop area).
-const PDP_DELIVERY_FALLBACK = 'Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Greater Accra delivery from GHS 15; other regions calculated at checkout. Free pickup available at our Dome Pillar 2 shop.';
+const PDP_DELIVERY_FALLBACK = 'Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Free pickup is available at our Dome Pillar 2 shop.';
 const PDP_RETURNS_FALLBACK = 'Unused items in original condition can be returned within 7 days for an exchange or store credit. Damaged or incorrect items are replaced free of charge - just reach out on WhatsApp.';
 
 const ProductPage = ({ navigate, bookId }) => {

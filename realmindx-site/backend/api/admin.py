@@ -25,6 +25,7 @@ from ..default_content import (
 )
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db
+from ..location_data import parse_location_ids
 from ..models import (
     AuditLog,
     ContactMessage,
@@ -469,22 +470,52 @@ def _matches_job_alert(job, preference):
     # entire joined list to appear verbatim inside a single-subject job
     # posting, which would never happen and would silently stop all subject
     # -based alerts for every multi-subject teacher.
-    pref_subjects = [s.strip().lower() for s in (preference.subject or "").split(",") if s.strip()]
+    def values(raw):
+        return {
+            re.sub(r"[^a-z0-9]+", " ", item.lower()).strip()
+            for item in (raw or "").split(",")
+            if item.strip()
+        }
+
+    def aliases(value):
+        normalised = re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+        alias_map = {
+            "english": "english language",
+            "jhs": "junior high lower secondary",
+            "shs": "senior high upper secondary",
+            "primary": "upper primary",
+            "full time": "full time",
+            "part time": "part time",
+        }
+        return alias_map.get(normalised, normalised)
+
+    pref_subjects = {aliases(item) for item in values(preference.subject)}
+    job_subject = aliases(job.subject)
     subject_match = not pref_subjects or (
-        job.subject and any(token in job.subject.lower() for token in pref_subjects)
+        job_subject and job_subject in pref_subjects
     )
-    location_match = not preference.location or (
-        job.location and preference.location.lower() in job.location.lower()
+    pref_location_ids = set(parse_location_ids(preference.location_ids))
+    if pref_location_ids:
+        location_match = job.delivery_zone_id in pref_location_ids
+    else:
+        pref_locations = values(preference.location)
+        location_match = not pref_locations or aliases(job.location) in {aliases(item) for item in pref_locations}
+    pref_levels = {aliases(item) for item in values(preference.preferred_level)}
+    job_level = aliases(job.level)
+    level_match = not pref_levels or (
+        job_level and job_level in pref_levels
     )
-    level_match = not preference.preferred_level or (
-        job.level and preference.preferred_level.lower() in job.level.lower()
+    pref_curricula = {aliases(item) for item in values(preference.curriculum)}
+    job_curriculum = aliases(job.curriculum)
+    curriculum_match = not pref_curricula or (
+        job_curriculum and job_curriculum in pref_curricula
     )
-    type_match = not preference.employment_type or (
-        job.employment_type and preference.employment_type.lower() == job.employment_type.lower()
+    pref_types = {aliases(item) for item in values(preference.employment_type)}
+    job_type = aliases(job.employment_type)
+    type_match = not pref_types or (
+        job_type and job_type in pref_types
     )
-    if pref_subjects:
-        return subject_match and type_match and (location_match or level_match)
-    return subject_match and location_match and level_match and type_match
+    return subject_match and location_match and level_match and curriculum_match and type_match
 
 
 def dispatch_job_alerts(job):
@@ -493,7 +524,12 @@ def dispatch_job_alerts(job):
     preferences = (
         JobAlertPreference.query
         .join(User, JobAlertPreference.user_id == User.id)
-        .filter(JobAlertPreference.alert_by_email.is_(True), User.is_active.is_(True), User.is_verified.is_(True))
+        .filter(
+            JobAlertPreference.alert_by_email.is_(True),
+            JobAlertPreference.frequency == "instant",
+            User.is_active.is_(True),
+            User.is_verified.is_(True),
+        )
         .all()
     )
     sent = 0
@@ -554,12 +590,17 @@ def list_jobs():
 @permission_required("jobs.create")
 def create_job():
     payload = request.get_json(silent=True) or {}
+    delivery_zone = db.session.get(DeliveryZone, payload.get("delivery_zone_id")) if payload.get("delivery_zone_id") else None
+    if not delivery_zone or not delivery_zone.is_active or "pickup" in delivery_zone.name.lower():
+        return jsonify(error="Choose a valid job location from the delivery-area list."), 400
     job = Job(
         title=payload.get("title"),
         organisation=payload.get("organisation") or payload.get("school"),
-        location=payload.get("location"),
+        location=delivery_zone.name,
+        delivery_zone_id=delivery_zone.id,
         subject=payload.get("subject"),
         level=payload.get("level"),
+        curriculum=payload.get("curriculum"),
         employment_type=payload.get("employment_type"),
         description=payload.get("description") or "",
         requirements=payload.get("requirements"),
@@ -588,7 +629,13 @@ def create_job():
 def update_job(job_id):
     job = db.get_or_404(Job, job_id)
     payload = request.get_json(silent=True) or {}
-    for field in ["title", "organisation", "location", "subject", "level", "employment_type", "description", "requirements", "responsibilities", "salary_min", "salary_max", "status"]:
+    if "delivery_zone_id" in payload:
+        delivery_zone = db.session.get(DeliveryZone, payload.get("delivery_zone_id")) if payload.get("delivery_zone_id") else None
+        if not delivery_zone or not delivery_zone.is_active or "pickup" in delivery_zone.name.lower():
+            return jsonify(error="Choose a valid job location from the delivery-area list."), 400
+        job.delivery_zone_id = delivery_zone.id
+        job.location = delivery_zone.name
+    for field in ["title", "organisation", "subject", "level", "curriculum", "employment_type", "description", "requirements", "responsibilities", "salary_min", "salary_max", "status"]:
         if field in payload:
             setattr(job, field, payload[field])
     if "deadline" in payload:

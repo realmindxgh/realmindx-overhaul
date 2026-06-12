@@ -6,6 +6,14 @@ import { signOut } from '../../src/lib/authClient.js';
 import { queueToast } from '../../src/lib/toast.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { useCropUpload } from '../../src/lib/useCropUpload.jsx';
+import VerifiedContactField from '../../src/lib/VerifiedContactField.jsx';
+import { splitLocationIds, teachingLocationsFromZones } from '../../src/lib/ghanaLocations.js';
+import {
+  TEACHING_CURRICULA,
+  TEACHING_LEVELS,
+  TEACHING_SUBJECTS,
+  TEACHING_WORK_TYPES,
+} from '../../src/lib/teachingOptions.js';
 
 // Splits a comma-joined multi-select value (e.g. "Mathematics, Physics, ICT")
 // into trimmed, non-empty parts. Mirrors the `.join(', ')` used whenever a
@@ -164,20 +172,23 @@ const normaliseApplication = item => {
 const normaliseAlert = pref => {
   if (!pref) return null;
   return {
-    id: 'primary',
+    id: pref.id || 'primary',
     subject: pref.subject || 'Any subject',
     level: pref.preferred_level || pref.level || 'Any level',
     location: pref.location || 'Any location',
+    locationIds: pref.location_ids || '',
+    curriculum: pref.curriculum || 'Any curriculum',
     employmentType: pref.employment_type || 'Any type',
     frequency: pref.frequency || 'instant',
     active: pref.alert_by_email !== false,
+    isDefault: Boolean(pref.is_default),
   };
 };
 
 const completionFromProfile = profile => {
   const checks = [
     profile?.email || profile?.first_name,
-    profile?.phone,
+    profile?.phone && profile?.phone_verified,
     profile?.location,
     profile?.teaching_subject,
     profile?.preferred_level,
@@ -193,7 +204,7 @@ const completionFromProfile = profile => {
 const ProfileChecklist = ({ user, setActive, onAction, hasJobAlert = false }) => {
   const steps = [
     { label: 'Email verified',            done: user.emailVerified, view: null,          icon: 'mail',  action: null            },
-    { label: 'Add your phone number',     done: !!user.phone,       view: 'profile',     icon: 'phone', action: 'edit-personal' },
+    { label: user.phone ? 'Verify your phone number' : 'Add your phone number', done: !!user.phone && user.phoneVerified, view: 'profile', icon: 'phone', action: null },
     { label: 'Set teaching subject',      done: !!user.subject,     view: 'profile',     icon: 'book',  action: 'edit-teaching' },
     { label: 'Upload your CV',            done: user.hasCV,         view: 'documents',   icon: 'file',  action: 'highlight-cv'  },
     { label: 'Add certificates',          done: user.hasCerts,      view: 'documents',   icon: 'award', action: 'highlight-cert'},
@@ -507,7 +518,7 @@ const ProfilePictureCard = ({ user, onPreviewAvatar, onUploadAvatar, avatarUploa
   );
 };
 
-const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, avatarUploading, uploadError }) => (
+const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, onContactUpdated, avatarUploading, uploadError }) => (
   <div>
     {/* Profile header */}
     <div className="profile-header-card">
@@ -550,8 +561,6 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, ava
         {[
           { label: 'First Name',    value: user.firstName  },
           { label: 'Last Name',     value: user.lastName   },
-          { label: 'Email Address', value: user.email      },
-          { label: 'Phone Number',  value: user.phone      },
           { label: 'Location',      value: user.location   },
         ].map(f => (
           <div key={f.label} className="profile-field">
@@ -559,6 +568,8 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, ava
             {f.value ? <div className="profile-field-value">{f.value}</div> : <div className="profile-field-empty">Not provided</div>}
           </div>
         ))}
+        <VerifiedContactField field="email" value={user.email} verified={user.emailVerified} onUpdated={onContactUpdated} />
+        <VerifiedContactField field="phone" value={user.phone} verified={user.phoneVerified} onUpdated={onContactUpdated} />
       </div>
 
       {/* Teaching Preferences */}
@@ -572,6 +583,7 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, ava
           { label: 'Preferred Level',     value: user.level    },
           { label: 'Work Type Preferred', value: user.preferredEmploymentType },
           { label: 'Curriculum Experience', value: user.curriculumExperience },
+          { label: 'Preferred Teaching Locations', value: user.preferredLocations },
           { label: 'Available From',      value: user.availableFrom },
         ].map(f => (
           <div key={f.label} className="profile-field">
@@ -620,28 +632,20 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
     setForm(prev => ({ ...prev, [key]: next.join(', ') }));
   };
+  const [locationOptions, setLocationOptions] = React.useState(() => teachingLocationsFromZones([]));
+  const [locationFilter, setLocationFilter] = React.useState('');
 
-  const SUBJECTS = [
-    'Accounting','Agricultural Science','Agriculture','Applied Technology','Arabic',
-    'Auto Mechanics','Autobody Works','Basketry','Biology','Building and Construction',
-    'Business Management','Business Studies','Career Technology','Catering / Hospitality','Ceramics',
-    'Chemistry','Christian Religious Studies','Clothing and Textiles','Commerce','Computer Science',
-    'Computing','Cosmetology','Cost Accounting','Creative Arts','Creative Arts and Design',
-    'Dance','Design and Technology','Diesel Mechanic / Heavy Engine','Drama / Theatre Arts','Early Childhood Learning Areas',
-    'Economics','Electrical Installation','Electronics','Engineering','English Language',
-    'Entrepreneurship','Environmental Science','Fashion Design','Financial Accounting','Food and Nutrition',
-    'French','General Knowledge in Art','General Science','Geography','Ghanaian Language',
-    'Global Perspectives','Government / Civics','Graphic Design','Health Education','Heavy Duty Industrial Mechanics',
-    'History','Home Economics','ICT','Integrated Science','Islamic Religious Studies',
-    'Jewellery','Law','Leatherwork','Life Skills','Literature',
-    'Management in Living','Mathematics','Mechanical Engineering Technology','Media Studies','Metalwork',
-    'Montessori Learning Areas','Motor Vehicle Engineering','Music','Other Foreign Languages','Our World Our People',
-    'Performing Arts','Philosophy','Physical and Health Education','Physical Education','Physics',
-    'Picture Making','Plumbing','Psychology','Refrigeration and Air Conditioning','Religious and Moral Education',
-    'Robotics','Science','Sculpture','Social Studies','Sociology',
-    'Spanish','Technical Drawing','Textiles','Welding and Fabrication','Woodwork / Carpentry and Joinery',
-    'Other',
-  ];
+  React.useEffect(() => {
+    if (section !== 'teaching' || !isApiMode()) return;
+    let active = true;
+    api.fetchDeliveryZones()
+      .then(data => {
+        if (active) setLocationOptions(teachingLocationsFromZones(data.items || []));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [section]);
+
   // A teacher can teach more than one subject, so this is multi-select, the
   // same tag pattern proven out for Curriculum Experience below: presets
   // render as checkboxes, anything saved that isn't a preset (a previously
@@ -650,7 +654,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
   // box lets a teacher append any subject not on the official list. A search
   // box narrows the ~90-option checklist down to a manageable handful — handy
   // since scrolling through all of them to find one would be its own bad UX.
-  const KNOWN_SUBJECTS = SUBJECTS.filter(s => s !== 'Other');
+  const KNOWN_SUBJECTS = TEACHING_SUBJECTS;
   const selectedSubjects = multiValues('teaching_subject');
   const [subjectFilter, setSubjectFilter] = React.useState('');
   const [newSubject, setNewSubject] = React.useState('');
@@ -665,8 +669,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     const q = subjectFilter.trim().toLowerCase();
     return q ? KNOWN_SUBJECTS.filter(s => s.toLowerCase().includes(q)) : KNOWN_SUBJECTS;
   })();
-  const LEVELS = ['Early Childhood / Daycare','Pre-School / Nursery','Kindergarten','Lower Primary','Upper Primary','Junior High / Lower Secondary','Senior High / Upper Secondary','Sixth Form / Pre-University','TVET / Vocational','Other'];
-  const KNOWN_LEVELS = LEVELS.filter(l => l !== 'Other');
+  const KNOWN_LEVELS = TEACHING_LEVELS;
   const selectedLevels = multiValues('preferred_level');
   const customLevels = selectedLevels.filter(l => !KNOWN_LEVELS.includes(l));
   const [newLevel, setNewLevel] = React.useState('');
@@ -678,8 +681,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     setNewLevel('');
   };
 
-  const WORK_TYPES = ['Full Time','Part Time','Contract','Volunteer','Remote / Online','Other'];
-  const KNOWN_WORK_TYPES = WORK_TYPES.filter(w => w !== 'Other');
+  const KNOWN_WORK_TYPES = TEACHING_WORK_TYPES;
   const selectedWorkTypes = multiValues('preferred_employment_type');
   const customWorkTypes = selectedWorkTypes.filter(w => !KNOWN_WORK_TYPES.includes(w));
   const [newWorkType, setNewWorkType] = React.useState('');
@@ -701,7 +703,6 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     return Boolean(v) && !AVAILABILITY_OPTIONS.includes(v);
   });
 
-  const CURRICULA = ['GES / NaCCA Curriculum','TVET / CTVET Curriculum','Cambridge International Curriculum','British / English National Curriculum','Pearson Edexcel Pathway','International Baccalaureate (IB) Curriculum','American Curriculum','Montessori Curriculum','Oxford International Curriculum','Other'];
   // Same dead end as Teaching Subject, but this list is multi-select: ticking
   // "Other" just added the literal word "Other" with no way to say what it was.
   // Fix: drop "Other" as a checkbox and let the teacher type any number of their
@@ -710,8 +711,18 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
   // preset names (e.g. a custom entry typed previously, or a stray "Other" left
   // over from the old broken checkbox) renders back as a tag too, so nothing
   // saved is ever silently dropped.
-  const KNOWN_CURRICULA = CURRICULA.filter(c => c !== 'Other');
+  const KNOWN_CURRICULA = TEACHING_CURRICULA;
   const selectedCurricula = multiValues('curriculum_experience');
+  const selectedLocationIds = splitLocationIds(form.preferred_location_ids);
+  const toggleLocation = locationId => {
+    const next = selectedLocationIds.includes(locationId)
+      ? selectedLocationIds.filter(id => id !== locationId)
+      : [...selectedLocationIds, locationId];
+    setForm(prev => ({ ...prev, preferred_location_ids: next.join(', ') }));
+  };
+  const filteredLocations = locationOptions.filter(location =>
+    location.name.toLowerCase().includes(locationFilter.trim().toLowerCase()),
+  );
   const customCurricula = selectedCurricula.filter(c => !KNOWN_CURRICULA.includes(c));
   const [newCurriculum, setNewCurriculum] = React.useState('');
   const addCustomCurriculum = () => {
@@ -732,7 +743,6 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
           ['next_of_kin_email', 'Email Address', 'Example: ama.mensah@example.com'],
         ]
       : [
-          ['phone', 'Phone Number', 'Example: +233 24 000 0000'],
           ['location', 'Location', 'Example: Accra, Tema, Kumasi'],
         ];
 
@@ -971,7 +981,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Curriculum checkboxes */}
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Curriculum Experience <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
-              <div className="portal-checkbox-grid">
+              <div className="portal-checkbox-grid portal-checkbox-grid-equal">
                 {KNOWN_CURRICULA.map(c => (
                   <label key={c} className="portal-checkbox-row">
                     <input type="checkbox" checked={selectedCurricula.includes(c)} onChange={() => toggleMulti('curriculum_experience', c)} />
@@ -1016,6 +1026,25 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomCurriculum(); } }}
                 />
                 <button type="button" className="btn btn-outline-navy btn-sm" onClick={addCustomCurriculum} style={{ flexShrink: 0 }}>Add</button>
+              </div>
+            </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">Preferred Teaching Locations <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(sets your default job alert)</span></label>
+              <p className="portal-field-help">This list is shared with the bookshop delivery areas so location names stay consistent across RealMindX.</p>
+              <input
+                className="form-input"
+                type="search"
+                placeholder="Search areas, for example Dodowa"
+                value={locationFilter}
+                onChange={event => setLocationFilter(event.target.value)}
+              />
+              <div className="portal-checkbox-grid portal-checkbox-grid-equal portal-location-grid">
+                {filteredLocations.map(location => (
+                  <label key={location.id} className="portal-checkbox-row">
+                    <input type="checkbox" checked={selectedLocationIds.includes(location.id)} onChange={() => toggleLocation(location.id)} />
+                    <span>{location.name}</span>
+                  </label>
+                ))}
               </div>
             </div>
           </>)}
@@ -1234,47 +1263,68 @@ const ApplicationsView = ({ applications = [] }) => (
 const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
   const [alerts, setAlerts] = useState(initialAlerts);
   const [showForm, setShowForm] = useState(false);
-  const blankForm = { subject: '', location: '', preferred_level: '', employment_type: '', frequency: 'instant', alert_by_email: true };
+  const [locationOptions, setLocationOptions] = useState(() => teachingLocationsFromZones([]));
+  const [locationFilter, setLocationFilter] = useState('');
+  const blankForm = { id: null, is_default: false, subject: '', location: '', location_ids: '', preferred_level: '', curriculum: '', employment_type: '', frequency: 'instant', alert_by_email: true };
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const openForm = () => {
-    // Pre-fill from the user's existing profile so they only need to
-    // change the fields that make this alert *different* from their default.
-    setForm({
+  React.useEffect(() => {
+    if (!isApiMode()) return;
+    api.fetchDeliveryZones()
+      .then(data => setLocationOptions(teachingLocationsFromZones(data.items || [])))
+      .catch(() => {});
+  }, []);
+
+  const openForm = alert => {
+    const isEditing = Boolean(alert);
+    setForm(isEditing ? {
+      id: alert.id,
+      is_default: alert.isDefault,
+      subject: alert.subject === 'Any subject' ? '' : alert.subject,
+      location: alert.location === 'Any location' ? '' : alert.location,
+      location_ids: alert.locationIds,
+      preferred_level: alert.level === 'Any level' ? '' : alert.level,
+      curriculum: alert.curriculum === 'Any curriculum' ? '' : alert.curriculum,
+      employment_type: alert.employmentType === 'Any type' ? '' : alert.employmentType,
+      frequency: alert.frequency,
+      alert_by_email: alert.active,
+    } : {
+      ...blankForm,
       subject: user?.subject || '',
-      location: user?.location || '',
+      location: '',
       preferred_level: user?.level || '',
       employment_type: user?.preferredEmploymentType || '',
-      frequency: 'instant',
-      alert_by_email: true,
     });
     setError('');
+    setLocationFilter('');
     setShowForm(true);
   };
 
   React.useEffect(() => setAlerts(initialAlerts), [initialAlerts]);
 
-  const toggleAlert = (id) => {
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
-  };
-
   const saveAlert = async event => {
     event.preventDefault();
     setError('');
-    if (!form.subject.trim()) {
-      setError('Choose or type the subject you want alerts for.');
+    if (!form.subject.trim() && splitLocationIds(form.location_ids).length === 0) {
+      setError('Choose at least a subject or preferred location.');
       return;
     }
     setSaving(true);
     try {
+      let result = null;
       if (isApiMode()) {
-        await api.saveJobAlerts(form);
+        if (form.is_default) result = await api.saveJobAlerts(form);
+        else if (form.id) result = await api.updateJobAlert(form.id, form);
+        else result = await api.createJobAlert(form);
       }
-      const next = normaliseAlert(form);
-      setAlerts(next ? [next] : []);
-      onSaved?.(next ? [next] : []);
+      const saved = normaliseAlert(result?.preference || { ...form, id: form.id || `local-${Date.now()}` });
+      const next = form.id
+        ? alerts.map(alert => String(alert.id) === String(form.id) ? saved : alert)
+        : [...alerts, saved];
+      setAlerts(next);
+      onSaved?.(next);
       setShowForm(false);
     } catch (err) {
       setError(err.message || 'Could not save alert preferences.');
@@ -1283,40 +1333,73 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
     }
   };
 
+  const deleteAlert = async alert => {
+    if (alert.isDefault) return;
+    try {
+      if (isApiMode()) await api.deleteJobAlert(alert.id);
+      const next = alerts.filter(item => String(item.id) !== String(alert.id));
+      setAlerts(next);
+      onSaved?.(next);
+    } catch (err) {
+      setError(err.message || 'Could not delete this alert.');
+    }
+  };
+
+  const selectedAlertLocationIds = splitLocationIds(form.location_ids);
+  const toggleAlertLocation = locationId => {
+    const next = selectedAlertLocationIds.includes(locationId)
+      ? selectedAlertLocationIds.filter(item => item !== locationId)
+      : [...selectedAlertLocationIds, locationId];
+    setForm(prev => ({ ...prev, location_ids: next.join(', ') }));
+  };
+  const toggleAlertValue = (field, value) => {
+    const current = splitMulti(form[field]);
+    const next = current.includes(value)
+      ? current.filter(item => item !== value)
+      : [...current, value];
+    setForm(prev => ({ ...prev, [field]: next.join(', ') }));
+  };
+  const filteredAlertLocations = locationOptions.filter(location =>
+    location.name.toLowerCase().includes(locationFilter.trim().toLowerCase()),
+  );
+
   return (
     <div>
       <div className="portal-view-header" style={{ alignItems: 'flex-start' }}>
         <div>
           <h2 className="portal-page-title">Job Alerts</h2>
           <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem', marginTop: 4 }}>
-            We email you instantly when a new teaching role matches your saved preferences. Your alert is set up automatically the first time you save your profile. You can edit it any time.
+            Your teaching profile maintains one default alert. Add separate alerts for other subjects, levels, or locations whenever you need them.
           </p>
         </div>
-        <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={openForm}>
-          {alerts.length === 0 ? 'Set Up Alert' : 'Edit Alert'}
+        <button className="btn btn-primary btn-sm" style={{ flexShrink: 0 }} onClick={() => openForm(null)}>
+          Add Another Alert
         </button>
       </div>
 
       {alerts.length === 0 ? (
-        <EmptyAlerts onAdd={openForm} />
+        <EmptyAlerts onAdd={() => openForm(null)} />
       ) : (
-        <div>
+        <div className="portal-alert-list">
           {alerts.map(alert => (
-            <div key={alert.id} style={{
-              background: 'var(--white)', borderRadius: 'var(--r-md)', padding: '20px 24px',
-              marginBottom: 12, border: '1px solid var(--gray-100)', boxShadow: 'var(--shadow-sm)',
-              display: 'flex', alignItems: 'center', gap: 16,
-            }}>
-              <span style={{ fontSize: '1.3rem', color: 'var(--yellow-dark)', display: 'inline-flex' }}><Icon name="bell" size={22} stroke={1.9} /></span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: 'var(--navy)', fontFamily: "'Montserrat', sans-serif", fontSize: '0.92rem' }}>
-                  {alert.subject} - {alert.level}
+            <div key={alert.id} className={`portal-alert-card${alert.isDefault ? ' is-default' : ''}`}>
+              <span className="portal-alert-icon"><Icon name="bell" size={22} stroke={1.9} /></span>
+              <div className="portal-alert-body">
+                <div className="portal-alert-title-row">
+                  <div className="portal-alert-title">{alert.subject} · {alert.level}</div>
+                  {alert.isDefault && <span className="portal-alert-default-badge">Profile default</span>}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 2 }}>
-                  {alert.location} - {alert.employmentType} - {alert.frequency}
+                <div className="portal-alert-meta">
+                  <span><Icon name="mapPin" size={13} /> {alert.location}</span>
+                  <span>{alert.curriculum}</span>
+                  <span>{alert.employmentType}</span>
+                  <span>{alert.frequency === 'instant' ? 'Immediate email' : alert.frequency}</span>
                 </div>
               </div>
-              <button className="btn btn-sm btn-outline-navy" onClick={openForm}>Edit</button>
+              <div className="portal-alert-actions">
+                <button className="btn btn-sm btn-outline-navy" onClick={() => openForm(alert)}>Edit</button>
+                {!alert.isDefault && <button className="portal-alert-delete" type="button" onClick={() => deleteAlert(alert)}>Delete</button>}
+              </div>
             </div>
           ))}
         </div>
@@ -1329,35 +1412,52 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
               <Icon name="x" size={16} stroke={2.1} />
               <span>Close</span>
             </button>
-            <h3 style={{ fontFamily: "'Montserrat', sans-serif", marginBottom: 8, fontSize: '1.25rem', color: 'var(--navy)' }}>Job Alert Preferences</h3>
+            <h3 style={{ fontFamily: "'Montserrat', sans-serif", marginBottom: 8, fontSize: '1.25rem', color: 'var(--navy)' }}>{form.id ? 'Edit Job Alert' : 'Create Job Alert'}</h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', marginBottom: 20, lineHeight: 1.6 }}>
-              Pre-filled from your profile. We will email you when a posted role matches these criteria. Adjust and save to update.
+              {form.is_default ? 'This default alert stays connected to your teaching profile.' : 'Choose a distinct combination for the roles you want to hear about.'}
             </p>
-            <div className="profile-sections-grid">
-              <div className="form-group">
-                <label className="form-label">Teaching Subject</label>
-                <input className="form-input" placeholder="Example: Mathematics, English, Science" value={form.subject} onChange={event => setForm(prev => ({ ...prev, subject: event.target.value }))} />
+            {[
+              ['subject', 'Teaching Subjects', TEACHING_SUBJECTS, 'portal-alert-option-grid is-subjects'],
+              ['preferred_level', 'Preferred Levels', TEACHING_LEVELS, 'portal-alert-option-grid'],
+              ['curriculum', 'Curricula', TEACHING_CURRICULA, 'portal-alert-option-grid'],
+              ['employment_type', 'Work Types', TEACHING_WORK_TYPES, 'portal-alert-option-grid'],
+            ].map(([field, label, options, className]) => (
+              <div className="form-group" key={field}>
+                <label className="form-label">{label} <span style={{ fontWeight: 400 }}>(select all that apply)</span></label>
+                <div className={`portal-checkbox-grid portal-checkbox-grid-equal ${className}`}>
+                  {options.map(option => (
+                    <label key={option} className="portal-checkbox-row">
+                      <input type="checkbox" checked={splitMulti(form[field]).includes(option)} onChange={() => toggleAlertValue(field, option)} />
+                      <span>{option}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Preferred Level</label>
-                <input className="form-input" placeholder="Example: Primary, JHS, SHS" value={form.preferred_level} onChange={event => setForm(prev => ({ ...prev, preferred_level: event.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Preferred Location</label>
-                <input className="form-input" placeholder="Example: Accra, Tema, Remote" value={form.location} onChange={event => setForm(prev => ({ ...prev, location: event.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Employment Type</label>
-                <input className="form-input" placeholder="Example: Full-time, Part-time, Contract" value={form.employment_type} onChange={event => setForm(prev => ({ ...prev, employment_type: event.target.value }))} />
+            ))}
+            <div className="form-group">
+              <label className="form-label">Preferred Locations <span style={{ fontWeight: 400 }}>(select all that apply)</span></label>
+              <input
+                className="form-input"
+                type="search"
+                placeholder="Search areas, for example Dodowa"
+                value={locationFilter}
+                onChange={event => setLocationFilter(event.target.value)}
+              />
+              <div className="portal-checkbox-grid portal-checkbox-grid-equal portal-location-grid">
+                {filteredAlertLocations.map(location => (
+                  <label key={location.id} className="portal-checkbox-row">
+                    <input type="checkbox" checked={selectedAlertLocationIds.includes(location.id)} onChange={() => toggleAlertLocation(location.id)} />
+                    <span>{location.name}</span>
+                  </label>
+                ))}
               </div>
             </div>
             <div className="form-group">
               <label className="form-label">Alert Frequency</label>
-              <select className="form-select" value={form.frequency} onChange={event => setForm(prev => ({ ...prev, frequency: event.target.value }))}>
-                <option value="instant">Immediately when a matching job is posted</option>
-                <option value="daily">Daily digest</option>
-                <option value="weekly">Weekly digest</option>
-              </select>
+              <div className="portal-alert-frequency-note">
+                <Icon name="bell" size={16} />
+                Email immediately when a published job matches every selected criterion.
+              </div>
             </div>
             <label className="permission-item" style={{ maxWidth: 260 }}>
               <span className="perm-label">Send alerts by email</span>
@@ -1594,7 +1694,7 @@ const UserPortalPage = () => {
       if (cancelled) return;
       if (profileData.profile) setApiProfile(prev => ({ ...(prev || {}), ...profileData.profile }));
       setApiApplications(applicationData.items || []);
-      setApiAlerts(alertData.preferences ? [normaliseAlert(alertData.preferences)].filter(Boolean) : []);
+      setApiAlerts((alertData.items || (alertData.preferences ? [alertData.preferences] : [])).map(normaliseAlert).filter(Boolean));
     }).catch(error => {
       if (!cancelled) setPortalLoadError(error.message || 'Please check your connection and try again.');
     }).finally(() => {
@@ -1660,7 +1760,10 @@ const UserPortalPage = () => {
         avatarUrl: profileSource.profile_picture_url || profileSource.avatar_url || null,
         preferredEmploymentType: profileSource.preferred_employment_type || '',
         curriculumExperience: profileSource.curriculum_experience || '',
+        preferredLocations: profileSource.preferred_locations || '',
+        preferredLocationIds: profileSource.preferred_location_ids || '',
         availableFrom: profileSource.available_from || '',
+        phoneVerified: Boolean(profileSource.phone_verified),
         nextOfKinName: profileSource.next_of_kin_name || '',
         nextOfKinPhone: profileSource.next_of_kin_phone || '',
         nextOfKinRelationship: profileSource.next_of_kin_relationship || '',
@@ -1724,6 +1827,8 @@ const UserPortalPage = () => {
       preferred_employment_type: profileSource.preferred_employment_type || '',
       available_from: profileSource.available_from || '',
       curriculum_experience: profileSource.curriculum_experience || '',
+      preferred_locations: profileSource.preferred_locations || '',
+      preferred_location_ids: profileSource.preferred_location_ids || '',
       next_of_kin_name: profileSource.next_of_kin_name || '',
       next_of_kin_phone: profileSource.next_of_kin_phone || '',
       next_of_kin_relationship: profileSource.next_of_kin_relationship || '',
@@ -1754,7 +1859,14 @@ const UserPortalPage = () => {
     try {
       if (isApiMode()) {
         const result = await api.updateProfile(profileForm);
-        setApiProfile(prev => ({ ...(prev || {}), ...(result.profile || {}), phone: profileForm.phone }));
+        setApiProfile(prev => ({ ...(prev || {}), ...(result.profile || {}) }));
+        if (profileEditSection === 'teaching') {
+          const alertResponse = await fetch('/api/me/job-alerts', { credentials: 'include' });
+          const alertData = await alertResponse.json().catch(() => ({}));
+          if (alertResponse.ok) {
+            setApiAlerts((alertData.items || []).map(normaliseAlert).filter(Boolean));
+          }
+        }
       } else {
         setApiProfile(prev => ({ ...(prev || {}), ...profileForm }));
       }
@@ -1766,6 +1878,15 @@ const UserPortalPage = () => {
     }
   };
 
+  const refreshProfileAfterContact = async () => {
+    if (!isApiMode()) return;
+    const response = await fetch('/api/me/profile', { credentials: 'include' });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.profile) {
+      setApiProfile(prev => ({ ...(prev || {}), ...data.profile }));
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     queueToast("You've been signed out.", 'success');
@@ -1774,7 +1895,7 @@ const UserPortalPage = () => {
 
   const renderView = () => {
     switch (activeView) {
-      case 'profile':      return <ProfileView      user={user} onPreviewAvatar={() => setAvatarPreview(true)} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} avatarUploading={avatarUploading} uploadError={uploadError} />;
+      case 'profile':      return <ProfileView      user={user} onPreviewAvatar={() => setAvatarPreview(true)} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} onContactUpdated={refreshProfileAfterContact} avatarUploading={avatarUploading} uploadError={uploadError} />;
       case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} highlight={pendingActionRef.current === 'highlight-cv' ? 'cv' : pendingActionRef.current === 'highlight-cert' ? 'cert' : null} />;
       case 'applications': return <ApplicationsView applications={applications} />;
       case 'alerts':       return <AlertsView initialAlerts={alerts} user={user} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;

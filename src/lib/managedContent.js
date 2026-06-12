@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import { isApiMode, api } from './apiClient.js';
+import { TEACHING_LEVELS, TEACHING_SUBJECTS, TEACHING_WORK_TYPES } from './teachingOptions.js';
 const bookshopHeroImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
 const homeTeachingImage = '/uploads/Redesign/hero/Home Teaching-1.jpg';
 const schoolStructuringImage = '/uploads/Redesign/hero/School Restructuring-3.jpg';
@@ -462,9 +463,9 @@ export const SAMPLE_PRODUCTS = SEED_CONTENT.products;
 
 // Canonical job-post vocabulary, shared by the admin job form and the public
 // jobs filter sidebar so admin-entered values always match a filter option.
-export const JOB_LEVELS = ['Nursery/KG', 'Primary', 'JHS', 'SHS'];
-export const JOB_SUBJECTS = ['Mathematics', 'English', 'Science', 'ICT', 'French', 'Social Studies', 'Special Needs', 'Art', 'Music', 'Physical Education'];
-export const JOB_TYPES = ['Full-time', 'Part-time', 'Contract', 'Volunteer'];
+export const JOB_LEVELS = TEACHING_LEVELS;
+export const JOB_SUBJECTS = TEACHING_SUBJECTS;
+export const JOB_TYPES = TEACHING_WORK_TYPES;
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -566,7 +567,21 @@ export const publicItems = items => (items || []).filter(item => item.status ===
 
 const localOrderReference = () => 'RMX-' + Math.random().toString(36).slice(2, 8).toUpperCase();
 
-export const submitOrder = async ({ customer_name, email, phone, delivery_method = 'delivery', location, items = [], notes, turnstileToken } = {}) => {
+export const submitOrder = async ({
+  customer_name,
+  email,
+  phone,
+  delivery_method = 'delivery',
+  delivery_zone_id = null,
+  delivery_region = '',
+  custom_delivery_area = false,
+  payment_method = 'online',
+  promo_code = null,
+  location,
+  items = [],
+  notes,
+  turnstileToken,
+} = {}) => {
   const cleanItems = items.map(item => ({
     product_id: item.product_id ?? null,
     product_name: item.product_name,
@@ -575,7 +590,20 @@ export const submitOrder = async ({ customer_name, email, phone, delivery_method
   }));
 
   if (isApiMode()) {
-    const payload = { customer_name, email, phone, delivery_method, location, notes, items: cleanItems };
+    const payload = {
+      customer_name,
+      email,
+      phone,
+      delivery_method,
+      delivery_zone_id,
+      delivery_region,
+      custom_delivery_area,
+      payment_method,
+      promo_code,
+      location,
+      notes,
+      items: cleanItems,
+    };
     if (turnstileToken) payload.turnstile_token = turnstileToken;
     const data = await api.createOrder(payload);
     return data.order || data;
@@ -592,6 +620,9 @@ export const submitOrder = async ({ customer_name, email, phone, delivery_method
     status: 'new',
     total_amount: total,
     delivery_method,
+    delivery_zone_id,
+    delivery_region,
+    payment_method,
     location: location || null,
     items: cleanItems.map(({ product_name, quantity, unit_price }) => ({ product_name, quantity, unit_price })),
   });

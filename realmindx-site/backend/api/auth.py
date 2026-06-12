@@ -16,6 +16,7 @@ from ..extensions import db, limiter
 from ..models import EmailVerificationToken, Role, User, UserProfile
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
+from ..sms_service import normalise_phone
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -88,18 +89,22 @@ def signup():
     password = payload.get("password") or ""
     first_name = (payload.get("first_name") or payload.get("name") or "").strip()
     last_name = (payload.get("last_name") or "").strip()
+    raw_phone = (payload.get("phone") or "").strip()
+    phone = normalise_phone(raw_phone) if raw_phone else None
     if not payload.get("accepted_terms"):
         return jsonify(error="You must agree to the Terms of Service and Privacy Policy."), 400
     if len(password) < 8:
         return jsonify(error="Password must be at least 8 characters."), 400
     if not first_name:
         return jsonify(error="First name is required."), 400
+    if raw_phone and not phone:
+        return jsonify(error="Enter a valid Ghana phone number."), 400
     if User.query.filter_by(email=email).first():
         return jsonify(error="An account with this email already exists."), 409
 
     role = Role.query.filter_by(name="user").first() or Role(name="user", description="Public account")
     db.session.add(role)
-    user = User(email=email, first_name=first_name, last_name=last_name, role=role)
+    user = User(email=email, first_name=first_name, last_name=last_name, phone=phone, role=role)
     user.set_password(password)
     db.session.add(user)
     db.session.flush()

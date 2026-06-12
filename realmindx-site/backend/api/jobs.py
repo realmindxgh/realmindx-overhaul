@@ -4,6 +4,7 @@ from flask_login import current_user, login_required
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
+from ..location_data import canonical_delivery_locations, joined_location_ids, joined_location_names
 from ..models import Job, JobAlertPreference, JobApplication
 from ..serializers import job_json
 
@@ -101,38 +102,130 @@ def my_applications():
 @jobs_bp.get("/me/job-alerts")
 @login_required
 def get_job_alerts():
-    pref = JobAlertPreference.query.filter_by(user_id=current_user.id).first()
-    if not pref:
-        return jsonify(preferences=None)
-    return jsonify(
-        preferences={
-            "subject": pref.subject,
-            "location": pref.location,
-            "preferred_level": pref.preferred_level,
-            "employment_type": pref.employment_type,
-            "alert_by_email": pref.alert_by_email,
-            "frequency": pref.frequency,
-        }
+    preferences = (
+        JobAlertPreference.query
+        .filter_by(user_id=current_user.id)
+        .order_by(JobAlertPreference.is_default.desc(), JobAlertPreference.created_at.asc())
+        .all()
     )
+    items = [_job_alert_json(pref) for pref in preferences]
+    return jsonify(items=items, preferences=items[0] if items else None)
+
+
+def _job_alert_json(pref):
+    return {
+        "id": pref.id,
+        "subject": pref.subject,
+        "location": pref.location,
+        "location_ids": pref.location_ids,
+        "preferred_level": pref.preferred_level,
+        "curriculum": pref.curriculum,
+        "employment_type": pref.employment_type,
+        "alert_by_email": pref.alert_by_email,
+        "frequency": pref.frequency,
+        "is_default": pref.is_default,
+    }
+
+
+def _apply_job_alert_payload(pref, payload):
+    pref.subject = (payload.get("subject") or "").strip() or None
+    zones, location_ids = canonical_delivery_locations(payload.get("location_ids"))
+    pref.location_ids = joined_location_ids(location_ids)
+    pref.location = joined_location_names(zones)
+    pref.preferred_level = (payload.get("preferred_level") or "").strip() or None
+    pref.curriculum = (payload.get("curriculum") or "").strip() or None
+    pref.employment_type = (payload.get("employment_type") or "").strip() or None
+    pref.alert_by_email = bool(payload.get("alert_by_email", True))
+    pref.frequency = "instant"
+
+
+def _sync_default_alert_to_profile(pref):
+    if not pref.is_default:
+        return
+    profile = current_user.profile
+    if not profile:
+        return
+    profile.teaching_subject = pref.subject
+    profile.preferred_locations = pref.location
+    profile.preferred_location_ids = pref.location_ids
+    profile.preferred_level = pref.preferred_level
+    profile.curriculum_experience = pref.curriculum
+    profile.preferred_employment_type = pref.employment_type
+
+
+def _save_job_alert(pref, payload, action):
+    try:
+        _apply_job_alert_payload(pref, payload)
+    except ValueError as exc:
+        return None, (jsonify(error=str(exc)), 400)
+    if not pref.subject and not pref.location:
+        return None, (jsonify(error="Choose at least a subject or preferred location."), 400)
+    db.session.add(pref)
+    db.session.flush()
+    _sync_default_alert_to_profile(pref)
+    audit(action, "job_alert_preference", pref.id, {
+        "subject": pref.subject,
+        "location": pref.location,
+        "location_ids": pref.location_ids,
+        "level": pref.preferred_level,
+        "curriculum": pref.curriculum,
+        "is_default": pref.is_default,
+    })
+    db.session.commit()
+    return pref, None
 
 
 @jobs_bp.put("/me/job-alerts")
 @login_required
 def save_job_alerts():
     payload = request.get_json(silent=True) or {}
-    pref = JobAlertPreference.query.filter_by(user_id=current_user.id).first()
+    pref = JobAlertPreference.query.filter_by(user_id=current_user.id, is_default=True).first()
     if not pref:
-        pref = JobAlertPreference(user_id=current_user.id)
-        db.session.add(pref)
-    pref.subject = payload.get("subject")
-    pref.location = payload.get("location")
-    pref.preferred_level = payload.get("preferred_level")
-    pref.employment_type = payload.get("employment_type")
-    pref.alert_by_email = bool(payload.get("alert_by_email", True))
-    pref.frequency = payload.get("frequency") or "instant"
-    audit("job_alerts_updated", "job_alert_preference", current_user.id, {
-        "subject": pref.subject, "location": pref.location, "level": pref.preferred_level,
-    })
-    db.session.commit()
-    return jsonify(message="Job alert preferences saved.")
+        pref = JobAlertPreference(user_id=current_user.id, is_default=True)
+    pref, error = _save_job_alert(pref, payload, "job_alert_default_updated")
+    if error:
+        return error
+    return jsonify(message="Default job alert saved.", preference=_job_alert_json(pref))
 
+
+@jobs_bp.post("/me/job-alerts")
+@login_required
+def create_job_alert():
+    payload = request.get_json(silent=True) or {}
+    pref = JobAlertPreference(user_id=current_user.id, is_default=False)
+    pref, error = _save_job_alert(pref, payload, "job_alert_created")
+    if error:
+        return error
+    return jsonify(message="Job alert created.", preference=_job_alert_json(pref)), 201
+
+
+@jobs_bp.put("/me/job-alerts/<int:preference_id>")
+@login_required
+def update_job_alert(preference_id):
+    pref = JobAlertPreference.query.filter_by(
+        id=preference_id,
+        user_id=current_user.id,
+    ).first_or_404()
+    pref, error = _save_job_alert(
+        pref,
+        request.get_json(silent=True) or {},
+        "job_alert_updated",
+    )
+    if error:
+        return error
+    return jsonify(message="Job alert updated.", preference=_job_alert_json(pref))
+
+
+@jobs_bp.delete("/me/job-alerts/<int:preference_id>")
+@login_required
+def delete_job_alert(preference_id):
+    pref = JobAlertPreference.query.filter_by(
+        id=preference_id,
+        user_id=current_user.id,
+    ).first_or_404()
+    if pref.is_default:
+        return jsonify(error="The default alert is managed from Teaching Preferences and cannot be deleted."), 400
+    audit("job_alert_deleted", "job_alert_preference", pref.id, {})
+    db.session.delete(pref)
+    db.session.commit()
+    return jsonify(message="Job alert deleted.")

@@ -294,7 +294,7 @@ DEFAULT_SITE_COPY = [
         "id": "bookshop_pdp_delivery_info",
         "key": "bookshop_pdp_delivery_info",
         "label": "Bookshop product delivery information",
-        "value": "Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Greater Accra delivery from GHS 15; other regions calculated at checkout. Free pickup available at our Dome Pillar 2 shop.",
+        "value": "Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Free pickup is available at our Dome Pillar 2 shop.",
         "area": "bookshop",
         "status": "published",
     },

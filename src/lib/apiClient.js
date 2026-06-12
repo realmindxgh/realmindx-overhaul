@@ -142,7 +142,13 @@ export const api = {
   },
 
   updateProfile: (payload) => apiFetch('/me/profile', { method: 'PUT', body: payload }),
+  updateAccount: (payload) => apiFetch('/me/account', { method: 'PUT', body: payload }),
+  requestContactChange: (payload) => apiFetch('/me/contact-change/request', { method: 'POST', body: payload }),
+  verifyContactChange: (payload) => apiFetch('/me/contact-change/verify', { method: 'POST', body: payload }),
   saveJobAlerts: (payload) => apiFetch('/me/job-alerts', { method: 'PUT', body: payload }),
+  createJobAlert: (payload) => apiFetch('/me/job-alerts', { method: 'POST', body: payload }),
+  updateJobAlert: (id, payload) => apiFetch(`/me/job-alerts/${id}`, { method: 'PUT', body: payload }),
+  deleteJobAlert: (id) => apiFetch(`/me/job-alerts/${id}`, { method: 'DELETE' }),
   applyForJob: (jobId, payload = {}) => apiFetch(`/jobs/${jobId}/apply`, { method: 'POST', body: payload }),
 
   // admin - file upload (multipart, no JSON content-type)

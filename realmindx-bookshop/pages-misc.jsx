@@ -9,6 +9,7 @@ import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { consumeBookshopAuthReturn } from './authReturn.js';
 import { api, isApiMode } from '../src/lib/apiClient.js';
+import VerifiedContactField from '../src/lib/VerifiedContactField.jsx';
 const bookshopHeroImage = '/bookshop-og.png';
 
 const AuthPage = ({ navigate, mode = 'login' }) => {
@@ -425,7 +426,7 @@ const InfoPage = ({ navigate }) => (
 
 const BOOKSHOP_PRIVACY_SECTIONS = [
   ['Who We Are', 'The RealMindX Bookshop at new.realmindxgh.com/bookshop is operated by RealMindX Education Limited, an education company based in Ghana. This Privacy Policy explains how we collect, use, store, and protect your personal information when you shop with us. For questions about this policy, contact us at info@realmindxgh.com.'],
-  ['Information We Collect', 'If you register an account we collect your name, email address, and password. If you sign in with Google or Facebook we receive your name and email from those providers only. When you place an order we collect your full name, delivery address, phone number, email address, order history, products purchased, quantities, prices, and delivery method. All payment processing is handled by Paystack. We do not store your card number, CVV, or mobile money PIN. We receive and store a payment reference number and confirmation of payment status from Paystack. If you purchase without registering, we collect the same delivery and contact information linked to your order. If you contact us about an order or send an enquiry, we retain that communication. We collect standard web access data including IP address, browser type, device information, and pages viewed for security monitoring. If you submit a product review, we retain your review text with your account name and the date.'],
+  ['Information We Collect', 'If you register an account we collect your name, email address, and password. If you sign in with Google or Facebook we receive your name and email from those providers only. When you place an order we collect your full name, delivery address, phone number, email address, order history, products purchased, quantities, prices, delivery method, and selected payment method. Online payment processing is handled by Paystack. We do not store your card number, CVV, or mobile money PIN. For online payments, we receive and store a payment reference number and confirmation of payment status from Paystack. If you purchase without registering, we collect the same delivery and contact information linked to your order. If you contact us about an order or send an enquiry, we retain that communication. We collect standard web access data including IP address, browser type, device information, and pages viewed for security monitoring. If you submit a product review, we retain your review text with your account name and the date.'],
   ['How We Use Your Information', 'We use the information we collect to process and fulfil your orders, to calculate and arrange delivery, to send you order confirmation, dispatch, and delivery notifications, to handle returns, refunds, and complaints, to manage your account and purchase history, to respond to your enquiries, to detect and prevent fraudulent orders, to send you bookshop updates and promotions if you have opted in, to comply with our legal obligations under Ghanaian law, and to improve the bookshop experience. We do not sell your personal information. We do not share your information with third-party advertisers.'],
   ['Who We Share Your Information With', 'We share your name, delivery address, and phone number with the delivery agent responsible for your order. We use Resend to send transactional emails including order confirmations and delivery notifications. We use Arkesel to send SMS notifications about your order status. We use Paystack for payment processing. Your data is stored on servers provided by Hostinger. We may disclose information if required by Ghanaian law or a valid court order. We do not share your information with any other party without your explicit consent.'],
   ['Order Data Retention', 'We retain order records including your personal and delivery details for seven years from the date of the order. This is required for financial record-keeping under Ghanaian law. After seven years, order records are permanently deleted. If you have a registered account and close it, your order history is retained for the seven-year period regardless of account closure. Guest checkout information is retained for the same seven-year period linked to the order record.'],
@@ -444,7 +445,7 @@ const BOOKSHOP_TERMS_SECTIONS = [
   ['Products', 'We sell educational books, textbooks, stationery, and learning materials primarily for the Ghanaian curriculum. We make every reasonable effort to ensure product information is accurate. Images of products are representative. Actual product appearance including cover editions may vary where a publisher has released an updated edition. We reserve the right to limit quantities, correct pricing errors, and withdraw any product from sale at any time without notice.'],
   ['Pricing', 'All prices are displayed in Ghana Cedis inclusive of applicable taxes. Delivery fees are additional and calculated at checkout. Prices are subject to change without notice. The price you pay is the price confirmed at the time you complete checkout.'],
   ['Orders', 'An order is placed when you complete checkout and receive an order reference number. Acceptance occurs when we confirm your order is being processed. You will receive an order confirmation email from bookshop@send.realmindxgh.com after successful payment. We reserve the right to cancel any order due to stock unavailability, pricing errors, suspected fraud, or inability to process payment. If we cancel your order after payment has been taken, you will receive a full refund. You may cancel your order before it has been dispatched by contacting us immediately at info@realmindxgh.com or +233 55 803 9190. Once an order has been dispatched it cannot be cancelled and the return policy applies.'],
-  ['Payment', 'All payments are processed securely through Paystack. We accept mobile money and debit or credit cards. We do not store your card number or mobile money credentials. Payment is required in full before an order is processed. If a payment fails but your account has been debited, contact us immediately with your bank reference and we will investigate and resolve within three working days.'],
+  ['Payment', 'You may pay online through Paystack or choose payment on delivery where that option is available. Online payments accept mobile money and debit or credit cards. We do not store your card number or mobile money credentials. Payment-on-delivery orders are registered as unpaid until payment is collected. If an online payment fails but your account has been debited, contact us immediately with your bank reference and we will investigate and resolve within three working days.'],
   ['Delivery', 'We deliver to addresses across Ghana. Delivery fees are calculated at checkout based on your location zone. Delivery is typically completed within 48 hours of order confirmation for Accra and selected urban areas. Free pickup is available at our location at Dome Pillar 2, Accra. When your order is ready for pickup we will notify you by SMS and email. Orders not collected within seven days of the pickup notification will be returned to stock and a refund issued. Once your order is handed to the delivery agent or collected by you, responsibility for the items passes to you.'],
   ['Returns and Refunds', 'If you receive an item that is damaged or different from what you ordered, contact us within 48 hours of delivery at info@realmindxgh.com with your order reference and photographs of the issue. We will arrange a replacement or full refund at no additional cost to you. We do not accept returns for change of mind on physical books and educational materials unless the item is sealed and unused. Return delivery costs are the responsibility of the buyer. Approved refunds are processed back to your original payment method through Paystack within five working days.'],
   ['Stock Availability', 'Products are sold subject to availability. If an item in your order becomes unavailable after you have placed the order and paid, we will contact you to offer a substitution or full refund for the unavailable item. The remainder of your order will be fulfilled as normal.'],
@@ -708,7 +709,7 @@ const OrderCard = ({ order, onOpen }) => {
           </span>
           <span className="bs-oc-sep">·</span>
           <span className="bs-oc-pay" style={{ textTransform: 'capitalize' }}>
-            {order.payment_provider || 'Paystack'}
+            {order.payment_method === 'cash_on_delivery' ? 'Pay on delivery' : order.payment_provider || 'Paystack'}
           </span>
           <span className="bs-oc-total">{cedis(order.total_amount || 0)}</span>
         </div>
@@ -744,6 +745,10 @@ const AccountPage = ({ navigate }) => {
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [modalOrder, setModalOrder] = React.useState(null);
+  const [editingName, setEditingName] = React.useState(false);
+  const [nameForm, setNameForm] = React.useState({ firstName: '', lastName: '' });
+  const [nameSaving, setNameSaving] = React.useState(false);
+  const [nameError, setNameError] = React.useState('');
 
   React.useEffect(() => {
     if (!session?.role || !isApiMode()) { setLoading(false); return; }
@@ -751,6 +756,13 @@ const AccountPage = ({ navigate }) => {
       setOrders(data.items || []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [session?.role]);
+
+  React.useEffect(() => {
+    setNameForm({
+      firstName: session?.firstName || '',
+      lastName: session?.lastName || '',
+    });
+  }, [session?.firstName, session?.lastName]);
 
   if (!session?.role) {
     return (
@@ -772,6 +784,33 @@ const AccountPage = ({ navigate }) => {
   const initials = session.initials || (
     [(session.firstName || '')[0], (session.lastName || '')[0]].filter(Boolean).join('').toUpperCase() || 'ME'
   );
+  const refreshAccount = async () => {
+    await syncSessionFromApi();
+  };
+  const saveName = async event => {
+    event.preventDefault();
+    setNameError('');
+    if (!nameForm.firstName.trim()) {
+      setNameError('First name is required.');
+      return;
+    }
+    setNameSaving(true);
+    try {
+      if (isApiMode()) {
+        await api.updateAccount({
+          first_name: nameForm.firstName.trim(),
+          last_name: nameForm.lastName.trim(),
+        });
+      }
+      await refreshAccount();
+      setEditingName(false);
+      globalToast.success('Account name updated.');
+    } catch (error) {
+      setNameError(error.message || 'Could not update your name.');
+    } finally {
+      setNameSaving(false);
+    }
+  };
 
   return (
     <div className="bs-fade-page">
@@ -784,11 +823,20 @@ const AccountPage = ({ navigate }) => {
                 {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : initials}
               </div>
               <div>
-                <p className="bs-eyebrow" style={{ color: 'var(--bs-gold-on-light)', marginBottom: 6 }}>Your Account</p>
-                <h1 className="bs-h1" style={{ margin: 0, fontSize: 'clamp(22px,3.5vw,32px)', color: 'var(--bs-navy)' }}>{displayName}</h1>
-                <p className="bs-muted" style={{ marginTop: 6 }}>{session.email}</p>
+                <p className="bs-account-kicker">RealMindX account</p>
+                <h1 className="bs-h1 bs-account-title">{displayName}</h1>
+                <div className="bs-account-hero-meta">
+                  <span><Icon name="mail" size={14} /> {session.email}</span>
+                  <span className={session.emailVerified ? 'is-verified' : ''}>
+                    <Icon name={session.emailVerified ? 'check' : 'shield'} size={14} />
+                    {session.emailVerified ? 'Email verified' : 'Verification needed'}
+                  </span>
+                </div>
               </div>
             </div>
+            <button className="bs-account-hero-action" type="button" onClick={() => navigate('shop')}>
+              Continue shopping <Icon name="arrow" size={15} />
+            </button>
             {/* Logo removed from account hero — prevents blurred watermark on mobile */}
           </div>
         </div>
@@ -827,27 +875,53 @@ const AccountPage = ({ navigate }) => {
           <div className="bs-account-panels">
 
             {/* Billing & contact */}
-            <section className="bs-account-section">
-              <h2 className="bs-h3" style={{ marginBottom: 20 }}>
-                <Icon name="user" size={17} className="bs-ci" /> Billing & Contact
-              </h2>
-              <div className="bs-billing-grid">
-                <div className="bs-billing-item">
-                  <span className="bs-billing-label">Full Name</span>
-                  <span className="bs-billing-val">{displayName}</span>
+            <section className="bs-account-section bs-profile-control-card">
+              <div className="bs-profile-card-heading">
+                <div>
+                  <p className="bs-account-section-kicker">Personal details</p>
+                  <h2 className="bs-h3">Profile & security</h2>
                 </div>
-                <div className="bs-billing-item">
-                  <span className="bs-billing-label">Email Address</span>
-                  <span className="bs-billing-val">{session.email}</span>
-                </div>
-                <div className="bs-billing-item">
-                  <span className="bs-billing-label">Phone</span>
-                  <span className="bs-billing-val">{session.phone || <em style={{ color: 'var(--bs-muted)', fontStyle: 'italic' }}>Not set</em>}</span>
-                </div>
+                <span className="bs-profile-security-mark"><Icon name="shield" size={18} /> Protected</span>
               </div>
-              <p className="bs-muted" style={{ marginTop: 14, fontSize: '0.82rem' }}>
-                To update your details, contact us at <a href="mailto:info@realmindxgh.com" style={{ color: 'var(--bs-gold-on-light)' }}>info@realmindxgh.com</a>.
-              </p>
+
+              <div className="bs-profile-name-block">
+                <div className="bs-profile-field-head">
+                  <div>
+                    <span className="bs-billing-label">Full name</span>
+                    {!editingName && <strong className="bs-billing-val">{displayName}</strong>}
+                  </div>
+                  {!editingName && (
+                    <button type="button" className="bs-profile-text-action" onClick={() => setEditingName(true)}>Edit</button>
+                  )}
+                </div>
+                {editingName && (
+                  <form className="bs-profile-name-form" onSubmit={saveName}>
+                    <div className="bs-field-row">
+                      <label className="bs-field">
+                        <span>First name</span>
+                        <input value={nameForm.firstName} onChange={event => setNameForm(prev => ({ ...prev, firstName: event.target.value }))} autoFocus />
+                      </label>
+                      <label className="bs-field">
+                        <span>Last name</span>
+                        <input value={nameForm.lastName} onChange={event => setNameForm(prev => ({ ...prev, lastName: event.target.value }))} />
+                      </label>
+                    </div>
+                    {nameError && <p className="verified-contact-feedback is-error">{nameError}</p>}
+                    <div className="bs-profile-form-actions">
+                      <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving}>{nameSaving ? 'Saving...' : 'Save name'}</button>
+                      <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingName(false)}>Cancel</button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              <VerifiedContactField field="email" value={session.email} verified={session.emailVerified} onUpdated={refreshAccount} />
+              <VerifiedContactField field="phone" value={session.phone} verified={session.phoneVerified} onUpdated={refreshAccount} />
+
+              <div className="bs-profile-security-note">
+                <Icon name="lock" size={16} />
+                Email and phone changes are applied only after the code sent to the new contact is verified.
+              </div>
             </section>
 
             {/* Recent orders — 2×2 grid */}

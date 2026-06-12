@@ -272,6 +272,7 @@
   width: min(1040px, calc(100vw - 32px));
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
+  overflow-x: hidden;
   border-radius: 12px;
   background: #ffffff;
   padding: 28px;
@@ -3004,8 +3005,7 @@
 .services-policy-hero p,
 .auth-panel-brand h1,
 .auth-panel-brand h2,
-.auth-panel-brand p,
-.auth-panel-form h2 { color: #fff !important; }
+.auth-panel-brand p { color: #fff !important; }
 
 /* Bookshop — hero and mobile menu (dark backgrounds only) */
 .bs-info-hero *,

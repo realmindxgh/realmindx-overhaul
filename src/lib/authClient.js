@@ -28,6 +28,9 @@ const toSession = (user = {}, roleHint = 'user') => {
   return {
     role: (user.role && (user.role.name || user.role)) || roleHint,
     email: user.email,
+    phone: user.phone || '',
+    phoneVerified: Boolean(user.phone_verified),
+    emailVerified: Boolean(user.is_verified),
     firstName: first,
     lastName: last,
     initials: user.initials || initialsFrom(first, last),
@@ -91,13 +94,14 @@ export const signIn = async ({ email, password, role = 'user', remember = false 
   return getDemoSession();
 };
 
-export const signUp = async ({ email, password, firstName, lastName, acceptedTerms = false, turnstileToken = '' }) => {
+export const signUp = async ({ email, phone = '', password, firstName, lastName, acceptedTerms = false, turnstileToken = '' }) => {
   if (isApiMode()) {
     const result = await api.signup({
       email,
       password,
       first_name: firstName,
       last_name: lastName,
+      phone,
       accepted_terms: acceptedTerms,
       turnstile_token: turnstileToken,
     });

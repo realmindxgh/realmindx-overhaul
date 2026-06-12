@@ -56,6 +56,7 @@ class User(UserMixin, TimestampMixin, db.Model):
     first_name = db.Column(db.String(120), nullable=False)
     last_name = db.Column(db.String(120), nullable=True)
     phone = db.Column(db.String(40), nullable=True)
+    phone_verified = db.Column(db.Boolean, default=False, nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey("roles.id"), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     is_verified = db.Column(db.Boolean, default=False, nullable=False)
@@ -114,6 +115,8 @@ class UserProfile(TimestampMixin, db.Model):
     preferred_employment_type = db.Column(db.Text, nullable=True)
     available_from = db.Column(db.String(80), nullable=True)
     curriculum_experience = db.Column(db.Text, nullable=True)
+    preferred_locations = db.Column(db.Text, nullable=True)
+    preferred_location_ids = db.Column(db.Text, nullable=True)
     bio = db.Column(db.Text, nullable=True)
     profile_picture_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
     cv_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
@@ -149,8 +152,10 @@ class Job(TimestampMixin, db.Model):
     title = db.Column(db.String(180), nullable=False, index=True)
     organisation = db.Column(db.String(180), nullable=True)
     location = db.Column(db.String(160), nullable=False, index=True)
+    delivery_zone_id = db.Column(db.Integer, db.ForeignKey("delivery_zones.id"), nullable=True, index=True)
     subject = db.Column(db.String(160), nullable=True, index=True)
     level = db.Column(db.String(120), nullable=True, index=True)
+    curriculum = db.Column(db.String(180), nullable=True, index=True)
     employment_type = db.Column(db.String(80), nullable=True, index=True)
     description = db.Column(db.Text, nullable=False)
     requirements = db.Column(db.Text, nullable=True)
@@ -161,6 +166,7 @@ class Job(TimestampMixin, db.Model):
     salary_currency = db.Column(db.String(10), default="GHS", nullable=False)
     status = db.Column(db.String(30), default="draft", nullable=False, index=True)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    delivery_zone = db.relationship("DeliveryZone")
 
 
 class JobApplication(TimestampMixin, db.Model):
@@ -188,11 +194,14 @@ class JobAlertPreference(TimestampMixin, db.Model):
     # directly from UserProfile.teaching_subject, which is now a comma-joined
     # multi-select value — it must be able to hold whatever that column holds.
     subject = db.Column(db.Text, nullable=True)
-    location = db.Column(db.String(160), nullable=True)
-    preferred_level = db.Column(db.String(120), nullable=True)
-    employment_type = db.Column(db.String(80), nullable=True)
+    location = db.Column(db.Text, nullable=True)
+    location_ids = db.Column(db.Text, nullable=True)
+    preferred_level = db.Column(db.Text, nullable=True)
+    curriculum = db.Column(db.Text, nullable=True)
+    employment_type = db.Column(db.Text, nullable=True)
     alert_by_email = db.Column(db.Boolean, default=True, nullable=False)
     frequency = db.Column(db.String(30), default="instant", nullable=False)
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
     last_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
@@ -255,9 +264,11 @@ class Order(TimestampMixin, db.Model):
     delivery_zone_name = db.Column(db.String(160), nullable=True)
     delivery_fee = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     location = db.Column(db.String(255), nullable=True)
+    delivery_region = db.Column(db.String(80), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(30), default="new", nullable=False, index=True)
     payment_status = db.Column(db.String(30), default="unpaid", nullable=False, index=True)
+    payment_method = db.Column(db.String(40), default="online", nullable=False, index=True)
     payment_provider = db.Column(db.String(40), nullable=True)
     payment_access_code = db.Column(db.String(120), nullable=True)
     payment_authorization_url = db.Column(db.String(500), nullable=True)
@@ -443,6 +454,18 @@ class EmailVerificationToken(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     token_hash = db.Column(db.String(255), nullable=False, index=True)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    used_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+
+class ContactChangeToken(TimestampMixin, db.Model):
+    __tablename__ = "contact_change_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    field = db.Column(db.String(20), nullable=False, index=True)
+    target_value = db.Column(db.String(255), nullable=False)
+    token_hash = db.Column(db.String(255), nullable=False)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     used_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
