@@ -228,8 +228,9 @@
 
 .portal-nav-item {
   width: 100% !important;
-  border-radius: 0 !important;
-  padding: 11px 24px !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  margin-bottom: 3px !important;
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
@@ -242,6 +243,11 @@
 .portal-nav-item.active {
   color: var(--yellow) !important;
   background: rgba(255, 204, 1, 0.14) !important;
+  box-shadow: inset 3px 0 0 var(--yellow) !important;
+}
+
+.portal-sidebar-footer .portal-nav-item:last-child {
+  color: #ffb9b9 !important;
 }
 
 .portal-kicker,
@@ -2522,10 +2528,25 @@
   color: var(--navy) !important;
 }
 
+.bs .bs-btn-navy,
+.bs a.bs-btn-navy {
+  color: #fff !important;
+  border: 1.5px solid var(--bs-navy) !important;
+  background: var(--bs-navy) !important;
+  box-shadow: 0 10px 22px rgba(20, 54, 112, 0.16) !important;
+}
+
+.bs .bs-btn-navy:not(:disabled):hover,
+.bs a.bs-btn-navy:hover {
+  color: #fff !important;
+  border-color: var(--bs-navy-light) !important;
+  background: var(--bs-navy-light) !important;
+}
+
 .btn-outline-navy,
 .bs-btn-outline-navy {
   color: var(--navy) !important;
-  border-color: rgba(20, 54, 112, 0.34) !important;
+  border: 1.5px solid rgba(20, 54, 112, 0.42) !important;
   background: linear-gradient(180deg, #ffffff 0%, #eaf1ff 100%) !important;
   box-shadow: 0 10px 24px rgba(20, 54, 112, 0.1) !important;
 }

@@ -17,6 +17,8 @@ def _upload_url(uploaded_file):
 
 def profile_json(profile):
     picture = db.session.get(UploadedFile, profile.profile_picture_file_id) if profile.profile_picture_file_id else None
+    cv = db.session.get(UploadedFile, profile.cv_file_id) if profile.cv_file_id else None
+    certificate = db.session.get(UploadedFile, profile.certificate_file_id) if profile.certificate_file_id else None
     return {
         "location": profile.location,
         "teaching_subject": profile.teaching_subject,
@@ -28,7 +30,11 @@ def profile_json(profile):
         "profile_picture_file_id": profile.profile_picture_file_id,
         "profile_picture_url": _upload_url(picture),
         "cv_file_id": profile.cv_file_id,
+        "cv_url": _upload_url(cv),
+        "cv_filename": cv.original_filename if cv else None,
         "certificate_file_id": profile.certificate_file_id,
+        "certificate_url": _upload_url(certificate),
+        "certificate_filename": certificate.original_filename if certificate else None,
         "next_of_kin_name": profile.next_of_kin_name,
         "next_of_kin_phone": profile.next_of_kin_phone,
         "next_of_kin_relationship": profile.next_of_kin_relationship,

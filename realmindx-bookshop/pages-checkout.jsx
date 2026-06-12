@@ -256,7 +256,7 @@ const CheckoutPage = ({ navigate }) => {
         </div>
         <div className="bs-confirm-actions">
           <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clear(); navigate('track'); }}>Track Your Order</button>
-          <button className="bs-btn bs-btn-outline-navy bs-btn-lg" onClick={() => { clear(); navigate('home'); }}>Continue Shopping</button>
+          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clear(); navigate('home'); }}>Continue Shopping</button>
         </div>
       </div>
     </div>

@@ -2324,6 +2324,62 @@ input, textarea, select { font-family: inherit; }
   background: var(--off-white);
 }
 
+.portal-loading-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(245,194,0,0.16), transparent 28%),
+    linear-gradient(145deg, var(--navy) 0%, #0c2857 100%);
+  text-align: center;
+}
+
+.portal-loading-screen > img {
+  position: fixed;
+  top: 28px;
+  left: 32px;
+  width: 150px;
+  height: auto;
+}
+
+.portal-loading-card {
+  width: min(100%, 460px);
+  padding: 38px 34px;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: var(--r-xl);
+  background: rgba(255,255,255,0.08);
+  color: var(--white);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.portal-loading-card h1 {
+  margin: 18px 0 10px;
+  color: var(--white);
+  font-size: 1.55rem;
+}
+
+.portal-loading-card p {
+  color: rgba(255,255,255,0.74);
+  line-height: 1.65;
+}
+
+.portal-loading-card .btn { margin-top: 20px; }
+
+.portal-loading-spinner {
+  display: inline-block;
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(255,255,255,0.25);
+  border-top-color: var(--yellow);
+  border-radius: 50%;
+  animation: portalSpin 0.8s linear infinite;
+}
+
+@keyframes portalSpin { to { transform: rotate(360deg); } }
+
 /* Portal checkbox grid for multi-select fields */
 .portal-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 6px; }
 .portal-checkbox-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--gray-200); border-radius: 8px; cursor: pointer; font-size: 0.85rem; color: var(--navy); transition: background .15s, border-color .15s; }
@@ -2405,6 +2461,11 @@ input, textarea, select { font-family: inherit; }
 .sidebar-user-role {
   font-size: 0.72rem;
   color: rgba(255,255,255,0.72);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .portal-nav {
@@ -2492,6 +2553,14 @@ input, textarea, select { font-family: inherit; }
   margin-left: 260px;
   flex: 1;
   padding: 32px;
+  min-width: 0;
+}
+
+.portal-main > * {
+  width: 100%;
+  max-width: 1480px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .portal-topbar {
@@ -2677,6 +2746,28 @@ input, textarea, select { font-family: inherit; }
   grid-template-columns: 1.4fr 1fr;
   gap: 20px;
   margin-bottom: 24px;
+}
+
+.portal-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.portal-setting-row:last-child { border-bottom: 0; }
+.portal-setting-row strong { color: var(--navy); font-size: 0.9rem; }
+.portal-setting-row p { margin-top: 4px; color: var(--gray-600); font-size: 0.8rem; line-height: 1.5; }
+.form-success {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #86efac;
+  border-radius: var(--r-sm);
+  background: var(--success-bg);
+  color: #166534;
+  font-size: 0.84rem;
 }
 
 /* Application status card */
@@ -3574,8 +3665,34 @@ input, textarea, select { font-family: inherit; }
     overflow-x: hidden;
   }
 
+  .portal-loading-screen {
+    place-items: center;
+    padding: 84px 18px 24px;
+  }
+  .portal-loading-screen > img {
+    top: 22px;
+    left: 22px;
+    width: 126px;
+  }
+  .portal-loading-card { padding: 30px 22px; }
+  .portal-setting-row { align-items: flex-start; flex-direction: column; gap: 10px; }
+
   /* ── Topbar ─────────────────────────────────────────── */
-  .portal-topbar, .admin-topbar { margin-bottom: 20px; gap: 10px; }
+  .portal-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    width: auto;
+    max-width: none;
+    margin: -16px -14px 18px;
+    padding: 14px;
+    gap: 10px;
+    background: rgba(247, 249, 252, 0.96);
+    border-bottom: 1px solid var(--gray-200);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .admin-topbar { margin-bottom: 20px; gap: 10px; }
 
   /* Left flex container: give it flex:1 + overflow so the title can truncate */
   .portal-topbar-left, .admin-topbar-left {
@@ -3591,8 +3708,8 @@ input, textarea, select { font-family: inherit; }
   .portal-page-title {
     font-size: 1.15rem;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   /* Admin topbar title: shown only on mobile */
@@ -3604,9 +3721,15 @@ input, textarea, select { font-family: inherit; }
     text-overflow: ellipsis;
   }
 
-  /* User chip: show only avatar on mobile, hide name + chevron */
+  /* The drawer already contains alerts and account actions. Keep the phone
+     header focused on navigation so page titles remain readable. */
+  .portal-topbar-actions > .topbar-icon-btn,
+  .portal-topbar-actions > .portal-user-chip,
+  .portal-topbar-actions > .portal-account-menu {
+    display: none !important;
+  }
+  .portal-topbar-actions { gap: 0; }
   .portal-user-chip-name, .admin-chip-name { display: none !important; }
-  .portal-user-chip { gap: 0; padding: 4px !important; border-radius: 50% !important; }
 
   /* Admin chip avatar only */
   .admin-chip-name { display: none !important; }
@@ -3615,16 +3738,28 @@ input, textarea, select { font-family: inherit; }
   .sidebar-overlay { display: block !important; }
 
   /* ── Portal cards & grids ────────────────────────────── */
-  .welcome-card { grid-template-columns: 1fr; }
+  .welcome-card {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
   .welcome-image-side {
     display: flex !important;
-    order: -1;
-    justify-content: center;
-    padding: 32px 24px 0;
+    position: absolute;
+    top: 22px;
+    right: 20px;
+    padding: 0;
   }
-  .welcome-avatar-large { width: 120px; height: 120px; }
-  .welcome-content { padding: 20px 24px 32px; order: 1; }
-  .welcome-content h2 { font-size: 1.6rem; }
+  .welcome-avatar-large {
+    width: 76px;
+    height: 76px;
+    border-width: 3px;
+    box-shadow: 0 0 0 5px rgba(245,194,0,0.08), 0 10px 28px rgba(0,0,0,0.28);
+  }
+  .welcome-content { padding: 28px 22px 24px; order: 1; }
+  .welcome-greeting,
+  .welcome-content h2 { padding-right: 92px; }
+  .welcome-content h2 { font-size: 1.55rem; }
+  .welcome-content p { color: rgba(255,255,255,0.72); line-height: 1.65; }
 
   /* Welcome CTAs: stack vertically, equal width, centered */
   .welcome-actions {
@@ -3657,8 +3792,8 @@ input, textarea, select { font-family: inherit; }
   /* Tighter admin stat cards so the 2x3 grid fits phone widths */
   .admin-stat { padding: 16px 14px; }
   /* Tighter stat cards on mobile — prevent label wrapping that causes unequal heights */
-  .portal-stat-card { padding: 18px 14px; }
-  .psc-label { font-size: 0.6rem; letter-spacing: 0.07em; }
+  .portal-stat-card { padding: 19px 16px; }
+  .psc-label { font-size: 0.64rem; letter-spacing: 0.06em; line-height: 1.35; }
   .psc-value { font-size: 1.75rem; }
 
   /* Profile header card: stack on mobile */

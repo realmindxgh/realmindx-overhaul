@@ -75,13 +75,23 @@
 .bs-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 13px 24px; border-radius: var(--bs-radius-sm); font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.3px; transition: all .25s var(--bs-ease); border: 1.5px solid transparent; white-space: nowrap; }
 .bs-btn-gold { background: var(--bs-gold-live); color: var(--bs-navy); border-color: var(--bs-gold-live); }
 .bs-btn-gold:not(:disabled):hover { background: var(--bs-gold-dark, #e6b800); border-color: var(--bs-gold-dark, #e6b800); transform: translateY(-2px); box-shadow: var(--bs-shadow-gold); }
-.bs-btn-navy,
-a.bs-btn-navy { background: var(--bs-navy); color: #fff !important; }
-.bs-btn-navy:not(:disabled):hover,
-a.bs-btn-navy:hover { background: var(--bs-navy-light); color: #fff !important; transform: translateY(-2px); box-shadow: var(--bs-shadow-md); }
+.bs .bs-btn-navy,
+.bs a.bs-btn-navy {
+  background: var(--bs-navy);
+  border-color: var(--bs-navy);
+  color: #fff !important;
+}
+.bs .bs-btn-navy:not(:disabled):hover,
+.bs a.bs-btn-navy:hover {
+  background: var(--bs-navy-light);
+  border-color: var(--bs-navy-light);
+  color: #fff !important;
+  transform: translateY(-2px);
+  box-shadow: var(--bs-shadow-md);
+}
 .bs-btn-outline-navy {
   background: linear-gradient(180deg, #ffffff 0%, #f4f7fc 100%);
-  border-color: rgba(20,54,112,.28);
+  border: 1.5px solid rgba(20,54,112,.38);
   color: var(--bs-navy);
   box-shadow: 0 10px 24px rgba(20,54,112,.08);
 }

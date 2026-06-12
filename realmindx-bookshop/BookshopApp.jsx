@@ -64,7 +64,7 @@ const PaystackReturnPage = ({ orderRef, navigate, clear }) => {
         <p className="bs-muted">Your order <strong>{orderRef}</strong> has been placed and payment confirmed. A confirmation email is on its way.</p>
         <div className="bs-confirm-actions" style={{ marginTop:28 }}>
           <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('track')}>Track Your Order</button>
-          <button className="bs-btn bs-btn-outline-navy bs-btn-lg" onClick={() => navigate('shop')}>Continue Shopping</button>
+          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('shop')}>Continue Shopping</button>
         </div>
       </div>
     </div>

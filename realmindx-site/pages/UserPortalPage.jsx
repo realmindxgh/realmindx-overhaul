@@ -190,14 +190,14 @@ const completionFromProfile = profile => {
 };
 
 /* â”€â”€ Profile completion checklist (new user) â”€â”€â”€â”€â”€â”€â”€ */
-const ProfileChecklist = ({ user, setActive, onAction }) => {
+const ProfileChecklist = ({ user, setActive, onAction, hasJobAlert = false }) => {
   const steps = [
     { label: 'Email verified',            done: user.emailVerified, view: null,          icon: 'mail',  action: null            },
     { label: 'Add your phone number',     done: !!user.phone,       view: 'profile',     icon: 'phone', action: 'edit-personal' },
     { label: 'Set teaching subject',      done: !!user.subject,     view: 'profile',     icon: 'book',  action: 'edit-teaching' },
     { label: 'Upload your CV',            done: user.hasCV,         view: 'documents',   icon: 'file',  action: 'highlight-cv'  },
     { label: 'Add certificates',          done: user.hasCerts,      view: 'documents',   icon: 'award', action: 'highlight-cert'},
-    { label: 'Set job alert preferences', done: false,              view: 'alerts',      icon: 'bell',  action: 'create-alert'  },
+    { label: 'Set job alert preferences', done: hasJobAlert,        view: 'alerts',      icon: 'bell',  action: 'create-alert'  },
   ];
   const doneCount = steps.filter(s => s.done).length;
 
@@ -396,7 +396,7 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
     {/* Main grid */}
     {user.isNew ? (
       <div className="portal-grid-2">
-        <ProfileChecklist user={user} setActive={setActive} onAction={onAction} />
+        <ProfileChecklist user={user} setActive={setActive} onAction={onAction} hasJobAlert={activeAlerts.length > 0} />
         <div className="profile-section-card">
           <h3>Recommended Jobs</h3>
           <div style={{ textAlign: 'center', padding: '40px 16px' }}>
@@ -1089,12 +1089,15 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
             <div className="document-row">
               <span className="doc-icon"><Icon name="file" size={18} stroke={1.9} /></span>
               <div style={{ flex: 1 }}>
-                <div className="doc-name">CV uploaded</div>
+                <div className="doc-name">{user.cvFilename || 'CV uploaded'}</div>
                 <div className="doc-size">Attached to your job applications automatically</div>
               </div>
               <div className="doc-actions">
-                <button className="btn btn-sm btn-outline-navy">View</button>
-                <button className="btn btn-sm btn-outline-navy">Replace</button>
+                {user.cvUrl && <a className="btn btn-sm btn-outline-navy" href={user.cvUrl} target="_blank" rel="noreferrer">View</a>}
+                <label className="btn btn-sm btn-outline-navy">
+                  {uploadingKind === 'cv' ? 'Uploading...' : 'Replace'}
+                  <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0])} />
+                </label>
               </div>
             </div>
           </div>
@@ -1122,7 +1125,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
         {user.hasCerts ? (
           <div>
             {[
-              { name: 'Degree Certificate uploaded', size: 'Stored securely', date: '' },
+              { name: user.certificateFilename || 'Certificate uploaded', size: 'Stored securely', date: '' },
             ].map(f => (
               <div key={f.name} className="document-row">
                 <span className="doc-icon"><Icon name="award" size={18} stroke={1.9} /></span>
@@ -1131,11 +1134,14 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
                   <div className="doc-size">{f.size}</div>
                 </div>
                 <div className="doc-actions">
-                  <button className="btn btn-sm btn-outline-navy">View</button>
+                  {user.certificateUrl && <a className="btn btn-sm btn-outline-navy" href={user.certificateUrl} target="_blank" rel="noreferrer">View</a>}
                 </div>
               </div>
             ))}
-            <button className="btn btn-outline-navy btn-sm" style={{ marginTop: 12 }}>+ Add Certificate</button>
+            <label className="btn btn-outline-navy btn-sm" style={{ marginTop: 12 }}>
+              {uploadingKind === 'certificate' ? 'Uploading...' : 'Replace Certificate'}
+              <input type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0])} />
+            </label>
           </div>
         ) : (
           <>
@@ -1373,38 +1379,101 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
 };
 
 /* â”€â”€ SETTINGS VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const SettingsView = () => (
-  <div>
-    <h2 className="portal-page-title" style={{ marginBottom: 24 }}>Account Settings</h2>
-    <div className="profile-sections-grid">
-      <div className="profile-section-card">
-        <h3>Change Password</h3>
-        <div className="form-group"><label className="form-label">Current Password</label><input type="password" className="form-input" placeholder="********" /></div>
-        <div className="form-group"><label className="form-label">New Password</label><input type="password" className="form-input" placeholder="Min 8 characters" /></div>
-        <div className="form-group"><label className="form-label">Confirm New Password</label><input type="password" className="form-input" placeholder="Repeat new password" /></div>
-        <button className="btn btn-primary btn-sm">Update Password</button>
-      </div>
-      <div className="profile-section-card">
-        <h3>Notification Preferences</h3>
-        {['Application status updates', 'New job matches', 'Newsletter and news'].map(p => (
-          <div key={p} className="permission-item" style={{ marginBottom: 8 }}>
-            <span className="perm-label">{p}</span>
-            <label className="toggle-switch">
-              <input type="checkbox" defaultChecked={p !== 'WhatsApp notifications'} />
-              <span className="toggle-slider" />
-            </label>
+const SettingsView = ({ onNavigate }) => {
+  const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const submitPassword = async event => {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (passwords.next.length < 8) {
+      setError('New password must be at least 8 characters.');
+      return;
+    }
+    if (passwords.next !== passwords.confirm) {
+      setError('New password and confirmation do not match.');
+      return;
+    }
+    setSaving(true);
+    try {
+      if (isApiMode()) {
+        const result = await api.changePassword({
+          current_password: passwords.current,
+          new_password: passwords.next,
+        });
+        setSuccess(result.message || 'Password updated successfully.');
+      } else {
+        setSuccess('Password form validated in demo mode.');
+      }
+      setPasswords({ current: '', next: '', confirm: '' });
+    } catch (err) {
+      setError(err.message || 'Could not update your password.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2 className="portal-page-title" style={{ marginBottom: 24 }}>Account Settings</h2>
+      <div className="profile-sections-grid">
+        <form className="profile-section-card" onSubmit={submitPassword}>
+          <h3>Change Password</h3>
+          <div className="form-group"><label className="form-label">Current Password</label><input type="password" className="form-input" autoComplete="current-password" value={passwords.current} onChange={event => setPasswords(prev => ({ ...prev, current: event.target.value }))} required /></div>
+          <div className="form-group"><label className="form-label">New Password</label><input type="password" className="form-input" autoComplete="new-password" placeholder="Minimum 8 characters" value={passwords.next} onChange={event => setPasswords(prev => ({ ...prev, next: event.target.value }))} required /></div>
+          <div className="form-group"><label className="form-label">Confirm New Password</label><input type="password" className="form-input" autoComplete="new-password" placeholder="Repeat new password" value={passwords.confirm} onChange={event => setPasswords(prev => ({ ...prev, confirm: event.target.value }))} required /></div>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          {success && <p className="form-success" role="status">{success}</p>}
+          <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>{saving ? 'Updating...' : 'Update Password'}</button>
+        </form>
+        <div className="profile-section-card">
+          <h3>Notifications</h3>
+          <div className="portal-setting-row">
+            <div>
+              <strong>Application updates</strong>
+              <p>Status changes are always sent to your account email.</p>
+            </div>
+            <span className="badge badge-success">Always on</span>
           </div>
-        ))}
+          <div className="portal-setting-row">
+            <div>
+              <strong>Matching job alerts</strong>
+              <p>Choose subjects, school levels, locations, and frequency.</p>
+            </div>
+            <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onNavigate?.('alerts')}>Manage Alerts</button>
+          </div>
+          <div className="portal-setting-row">
+            <div>
+              <strong>Newsletter</strong>
+              <p>Use the unsubscribe link in any newsletter to change this preference.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="profile-section-card" style={{ marginTop: 20, borderTop: '3px solid var(--danger)' }}>
+        <h3 style={{ color: 'var(--danger)' }}>Account Closure</h3>
+        <p style={{ fontSize: '0.88rem', color: 'var(--gray-600)', marginBottom: 16 }}>
+          Account closure is reviewed by support so applications and documents are not deleted accidentally.
+        </p>
+        <a className="btn btn-sm" href="/contact" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid #fca5a5' }}>
+          Request Account Closure
+        </a>
       </div>
     </div>
-    <div className="profile-section-card" style={{ marginTop: 20, borderTop: '3px solid var(--danger)' }}>
-      <h3 style={{ color: 'var(--danger)' }}>Danger Zone</h3>
-      <p style={{ fontSize: '0.88rem', color: 'var(--gray-600)', marginBottom: 16 }}>
-        Deleting your account is permanent. All your applications and documents will be removed.
-      </p>
-      <button className="btn btn-sm" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid #fca5a5' }}>
-        Delete My Account
-      </button>
+  );
+};
+
+const PortalLoadingState = ({ error = '' }) => (
+  <div className="portal-loading-screen" role="status" aria-live="polite">
+    <img src={logoWhite} alt="RealMindX Education" />
+    <div className="portal-loading-card">
+      {error ? <Icon name="warning" size={28} stroke={1.9} /> : <span className="portal-loading-spinner" aria-hidden="true" />}
+      <h1>{error ? 'We could not load your portal' : 'Loading your teacher portal'}</h1>
+      <p>{error || 'Getting your profile, applications, documents, and job alerts ready.'}</p>
+      {error && <button className="btn btn-primary" type="button" onClick={() => window.location.reload()}>Try Again</button>}
     </div>
   </div>
 );
@@ -1419,6 +1488,8 @@ const UserPortalPage = () => {
   const [apiProfile, setApiProfile] = React.useState(null);
   const [apiApplications, setApiApplications] = React.useState(null);
   const [apiAlerts, setApiAlerts] = React.useState(null);
+  const [portalLoading, setPortalLoading] = React.useState(isApiMode());
+  const [portalLoadError, setPortalLoadError] = React.useState('');
   const [avatarPreview, setAvatarPreview] = React.useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = React.useState(false);
   const [avatarUploading, setAvatarUploading] = React.useState(false);
@@ -1506,23 +1577,38 @@ const UserPortalPage = () => {
   // In API mode: fetch the real user profile and applications on mount.
   React.useEffect(() => {
     if (!sessionChecked || !session || ['admin', 'staff'].includes(session.role) || !isApiMode()) return;
-    fetch('/api/me/profile', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : {})
-      .then(data => {
-        if (data.profile) setApiProfile(prev => ({ ...(prev || {}), ...data.profile }));
-      }).catch(() => {});
-    fetch('/api/me/applications', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : {})
-      .then(data => setApiApplications(data.items || []))
-      .catch(() => {});
-    fetch('/api/me/job-alerts', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : {})
-      .then(data => setApiAlerts(data.preferences ? [normaliseAlert(data.preferences)].filter(Boolean) : []))
-      .catch(() => setApiAlerts([]));
+    let cancelled = false;
+    const fetchPortalData = async (path) => {
+      const response = await fetch(path, { credentials: 'include' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'The portal service did not respond.');
+      return data;
+    };
+    setPortalLoading(true);
+    setPortalLoadError('');
+    Promise.all([
+      fetchPortalData('/api/me/profile'),
+      fetchPortalData('/api/me/applications'),
+      fetchPortalData('/api/me/job-alerts'),
+    ]).then(([profileData, applicationData, alertData]) => {
+      if (cancelled) return;
+      if (profileData.profile) setApiProfile(prev => ({ ...(prev || {}), ...profileData.profile }));
+      setApiApplications(applicationData.items || []);
+      setApiAlerts(alertData.preferences ? [normaliseAlert(alertData.preferences)].filter(Boolean) : []);
+    }).catch(error => {
+      if (!cancelled) setPortalLoadError(error.message || 'Please check your connection and try again.');
+    }).finally(() => {
+      if (!cancelled) setPortalLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [session, sessionChecked]);
 
-  if (!sessionChecked || !session) return null;
+  if (!sessionChecked || !session) return <PortalLoadingState />;
   if (['admin', 'staff'].includes(session.role)) return null;
+  if (portalLoading) return <PortalLoadingState />;
+  if (portalLoadError) return <PortalLoadingState error={portalLoadError} />;
 
   const applications = isApiMode()
     ? (apiApplications || []).map(normaliseApplication)
@@ -1566,6 +1652,10 @@ const UserPortalPage = () => {
         emailVerified: Boolean(profileSource.is_verified),
         hasCV: Boolean(profileSource.cv_file_id),
         hasCerts: Boolean(profileSource.certificate_file_id),
+        cvUrl: profileSource.cv_url || '',
+        cvFilename: profileSource.cv_filename || '',
+        certificateUrl: profileSource.certificate_url || '',
+        certificateFilename: profileSource.certificate_filename || '',
         initials,
         avatarUrl: profileSource.profile_picture_url || profileSource.avatar_url || null,
         preferredEmploymentType: profileSource.preferred_employment_type || '',
@@ -1688,7 +1778,7 @@ const UserPortalPage = () => {
       case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} highlight={pendingActionRef.current === 'highlight-cv' ? 'cv' : pendingActionRef.current === 'highlight-cert' ? 'cert' : null} />;
       case 'applications': return <ApplicationsView applications={applications} />;
       case 'alerts':       return <AlertsView initialAlerts={alerts} user={user} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;
-      case 'settings':     return <SettingsView />;
+      case 'settings':     return <SettingsView onNavigate={setActiveView} />;
       default:             return <DashboardView user={user} setActive={setActiveView} onAction={handleChecklistAction} applications={applications} alerts={alerts} onPreviewAvatar={() => setAvatarPreview(true)} />;
     }
   };
@@ -1721,18 +1811,9 @@ const UserPortalPage = () => {
                 <span>Dashboard</span>
               </button>
             )}
-            {/* Mobile-only control: hamburger on the dashboard, SchoolMS-style
-                back button on every subpage (back to the dashboard) */}
-            {activeView === 'dashboard' ? (
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="mobile-menu-toggle"
-                style={{ display: 'none' }}
-                aria-label="Open menu"
-              >
-                <Icon name="menu" size={18} stroke={2.2} />
-              </button>
-            ) : (
+            {/* Mobile-only SchoolMS-style back button on subpages; the hamburger
+                lives at the far right of the topbar (always available) */}
+            {activeView !== 'dashboard' && (
               <button
                 onClick={() => setActiveView('dashboard')}
                 className="mobile-menu-toggle"
@@ -1785,6 +1866,15 @@ const UserPortalPage = () => {
                 </button>
               </div>
             )}
+            {/* Mobile-only hamburger at the far right corner; pushes the user pill left */}
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="mobile-menu-toggle"
+              style={{ display: 'none' }}
+              aria-label="Open menu"
+            >
+              <Icon name="menu" size={18} stroke={2.2} />
+            </button>
           </div>
         </div>
 

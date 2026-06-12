@@ -361,7 +361,7 @@ const CartPage = ({ navigate }) => {
           <div className="bs-summary-row bs-total"><span>Subtotal</span><span>{cedis(cartTotal)}</span></div>
           <div className="bs-cart-cta-row" style={{ marginTop:18 }}>
             <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-flex" onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
-            <button className="bs-btn bs-btn-outline-navy bs-btn-lg bs-btn-flex" onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
+            <button className="bs-btn bs-btn-navy bs-btn-lg bs-btn-flex" onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
           </div>
           <AuthReturnActions navigate={navigate} route="cart" />
           <div className="bs-secure-note"><Icon name="lock" size={14} /> Secure checkout powered by Paystack</div>

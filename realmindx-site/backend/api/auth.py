@@ -176,6 +176,27 @@ def logout():
     return jsonify(message="Logged out.")
 
 
+@auth_bp.post("/change-password")
+@login_required
+@limiter.limit("6/hour")
+def change_password():
+    payload = request.get_json(silent=True) or {}
+    current_password = payload.get("current_password") or ""
+    new_password = payload.get("new_password") or ""
+    if not current_password:
+        return jsonify(error="Enter your current password."), 400
+    if len(new_password) < 8:
+        return jsonify(error="New password must be at least 8 characters."), 400
+    if not current_user.check_password(current_password):
+        return jsonify(error="Current password is incorrect."), 403
+    if current_user.check_password(new_password):
+        return jsonify(error="Choose a password you have not already used here."), 400
+    current_user.set_password(new_password)
+    audit("password_changed", "user", current_user.id, {"email": current_user.email})
+    db.session.commit()
+    return jsonify(message="Password updated successfully.")
+
+
 @auth_bp.get("/me")
 def me():
     if not current_user.is_authenticated:
