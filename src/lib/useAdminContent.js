@@ -34,6 +34,7 @@ const COLLECTION_TO_ENDPOINT = {
   services: 'services',
   partners: 'partners',
   people: 'people',
+  testimonials: 'testimonials',
   homeHeroSlides: 'home-hero-slides',
   donationSlides: 'donation-slides',
   siteCopy: 'site-copy',

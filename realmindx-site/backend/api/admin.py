@@ -21,6 +21,7 @@ from ..default_content import (
     DEFAULT_PEOPLE,
     DEFAULT_SERVICES,
     DEFAULT_SITE_COPY,
+    DEFAULT_TESTIMONIALS,
 )
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db
@@ -2293,6 +2294,47 @@ def update_people_content(person_id):
 @permission_required("people.delete")
 def delete_people_content(person_id):
     return _delete_admin_collection_item("people", DEFAULT_PEOPLE, person_id, "person")
+
+
+@admin_bp.get("/testimonials")
+@login_required
+@permission_required("testimonials.view")
+def list_testimonials_content():
+    rows = _admin_collection_items("testimonials", DEFAULT_TESTIMONIALS)
+    return jsonify(items=sorted(rows, key=lambda item: (item.get("sort_order") or 0, item.get("name") or "")))
+
+
+@admin_bp.post("/testimonials")
+@login_required
+@permission_required("testimonials.create")
+def create_testimonial_content():
+    payload = request.get_json(silent=True) or {}
+    if not payload.get("quote"):
+        return jsonify(error="Testimonial quote is required."), 400
+    if not payload.get("name"):
+        return jsonify(error="Client name is required."), 400
+    row, error = _create_admin_collection_item("testimonials", DEFAULT_TESTIMONIALS, payload, "testimonial")
+    if error:
+        return error
+    return jsonify(row), 201
+
+
+@admin_bp.put("/testimonials/<string:testimonial_id>")
+@login_required
+@permission_required("testimonials.edit")
+def update_testimonial_content(testimonial_id):
+    payload = request.get_json(silent=True) or {}
+    row, error = _update_admin_collection_item("testimonials", DEFAULT_TESTIMONIALS, testimonial_id, payload, "testimonial")
+    if error:
+        return error
+    return jsonify(row)
+
+
+@admin_bp.delete("/testimonials/<string:testimonial_id>")
+@login_required
+@permission_required("testimonials.delete")
+def delete_testimonial_content(testimonial_id):
+    return _delete_admin_collection_item("testimonials", DEFAULT_TESTIMONIALS, testimonial_id, "testimonial")
 
 
 @admin_bp.get("/home-hero-slides")

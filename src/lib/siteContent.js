@@ -7,6 +7,7 @@ import {
   DEFAULT_PEOPLE,
   DEFAULT_SERVICES,
   DEFAULT_SITE_COPY,
+  DEFAULT_TESTIMONIALS,
   publicItems,
   useManagedContent,
 } from './managedContent.js';
@@ -260,6 +261,42 @@ export const usePublicPeople = () => {
   const source = isApiMode() ? (apiPeople ?? []) : localPeople;
   return publicItems(source)
     .map(normalisePerson)
+    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+};
+
+const normaliseTestimonial = (item, index = 0) => ({
+  ...item,
+  id: String(item.id || item.name || `testimonial-${index + 1}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || `testimonial-${index + 1}`,
+  quote: item.quote || '',
+  name: item.name || 'RealMindX Client',
+  role: item.role || '',
+  sort_order: Number(item.sort_order ?? index),
+  status: item.status || 'published',
+});
+
+export const useTestimonials = () => {
+  const localContent = useManagedContent();
+  const [apiTestimonials, setApiTestimonials] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!isApiMode()) return;
+    let alive = true;
+    api.fetchTestimonials()
+      .then(data => { if (alive) setApiTestimonials(data.items || []); })
+      .catch(() => { if (alive) setApiTestimonials([]); });
+    return () => { alive = false; };
+  }, []);
+
+  const localTestimonials = localContent.testimonials?.length ? localContent.testimonials : DEFAULT_TESTIMONIALS;
+  // While the API fetch is in flight, show the defaults (they mirror the
+  // seeded rows) so the section never flashes empty on the homepage.
+  const source = isApiMode() ? (apiTestimonials ?? DEFAULT_TESTIMONIALS) : localTestimonials;
+  return publicItems(source)
+    .map(normaliseTestimonial)
+    .filter(item => item.quote)
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 };
 

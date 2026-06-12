@@ -98,6 +98,7 @@ export const api = {
   fetchSettings: () => apiFetch('/settings'),
   fetchPartners: () => apiFetch('/partners'),
   fetchPeople: () => apiFetch('/people'),
+  fetchTestimonials: () => apiFetch('/testimonials'),
   fetchHomeHeroSlides: () => apiFetch('/home-hero-slides'),
   fetchDonationSlides: () => apiFetch('/donation-slides'),
   fetchNews: () => apiFetch('/news'),

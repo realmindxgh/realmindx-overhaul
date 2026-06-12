@@ -21,6 +21,7 @@ const NAV = [
   { key: 'services', label: 'Services', group: 'Content', icon: 'consulting' },
   { key: 'partners', label: 'Partners', group: 'Content', icon: 'users' },
   { key: 'people', label: 'The People', group: 'Content', icon: 'users' },
+  { key: 'testimonials', label: 'Testimonials', group: 'Content', icon: 'message' },
   { key: 'homeHeroSlides', label: 'Home Hero', group: 'Content', icon: 'image' },
   { key: 'donationSlides', label: 'Donation Slides', group: 'Content', icon: 'image' },
   { key: 'siteCopy', label: 'Page Text', group: 'Content', icon: 'file' },
@@ -122,12 +123,12 @@ const expandPermissionsForSave = permissions => {
   if ([...selected].some(key => key.startsWith('resources.'))) selected.add('manage_resources');
   if ([...selected].some(key => key.startsWith('messages.'))) selected.add('view_messages');
   if ([...selected].some(key => key.startsWith('newsletters.'))) selected.add('manage_newsletters');
-  if ([...selected].some(key => ['services.', 'partners.', 'people.', 'homeHeroSlides.', 'donationSlides.', 'siteCopy.', 'settings.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_settings');
+  if ([...selected].some(key => ['services.', 'partners.', 'people.', 'testimonials.', 'homeHeroSlides.', 'donationSlides.', 'siteCopy.', 'settings.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_settings');
   if ([...selected].some(key => key.startsWith('staff.'))) selected.add('manage_admins');
   return [...selected];
 };
 
-const PUBLISHABLE_COLLECTIONS = new Set(['jobs', 'products', 'categories', 'flyers', 'services', 'partners', 'people', 'homeHeroSlides', 'donationSlides', 'siteCopy', 'news', 'gallery', 'resources']);
+const PUBLISHABLE_COLLECTIONS = new Set(['jobs', 'products', 'categories', 'flyers', 'services', 'partners', 'people', 'testimonials', 'homeHeroSlides', 'donationSlides', 'siteCopy', 'news', 'gallery', 'resources']);
 
 const canAccessAdminItem = (item, session) => {
   const role = session?.role;
@@ -347,6 +348,23 @@ const CONFIG = {
     ],
     columns: ['image_url', 'name', 'position', 'sort_order', 'status'],
     columnLabels: { image_url: 'Photo', sort_order: 'Order' },
+  },
+  testimonials: {
+    title: 'Testimonials',
+    description: 'Client quotes shown in the rotating "What clients are saying" section on the homepage.',
+    collection: 'testimonials',
+    createLabel: 'Add Testimonial',
+    idField: 'id',
+    fields: [
+      field('id', 'Testimonial ID', 'text', { help: 'Stable identifier, e.g. mr-james-bright-minds. Leave blank to generate from the name.' }),
+      field('quote', 'Quote', 'textarea', { help: 'The client\'s words, shown as the large quote. Keep it to one or two sentences.' }),
+      field('name', 'Client Name', 'text', { help: 'E.g. Mrs. Grace. The avatar initials are generated from this name.' }),
+      field('role', 'Role / Organisation', 'text', { help: 'E.g. Principal, Elite High School.' }),
+      field('sort_order', 'Sort Order', 'number'),
+      field('status', 'Status', 'select', { options: ['draft', 'published'] }),
+    ],
+    columns: ['name', 'role', 'quote', 'sort_order', 'status'],
+    columnLabels: { sort_order: 'Order' },
   },
   homeHeroSlides: {
     title: 'Homepage Hero Slides',
@@ -742,17 +760,20 @@ const AdminSidebar = ({ active, setActive, open, setOpen, session }) => {
 };
 
 const DashboardView = ({ content, setActive }) => {
-  const [liveSummary, setLiveSummary] = React.useState(null);
+  // Keep the WHOLE dashboard payload — summary feeds the stat cards and
+  // recent_jobs/recent_orders feed the tables (they were being thrown
+  // away, leaving "Recent Job Posts"/"Recent Orders" permanently empty).
+  const [liveData, setLiveData] = React.useState(null);
 
   React.useEffect(() => {
     if (!isApiMode()) return;
     api.adminDashboard()
-      .then(data => setLiveSummary(data.summary || null))
+      .then(data => setLiveData(data || null))
       .catch(() => {});
   }, []);
 
   // In API mode use the live summary; in local mode derive from content arrays.
-  const s = liveSummary || {};
+  const s = liveData?.summary || {};
   const stats = isApiMode() ? [
     ['Total Users',           s.total_users            ?? 0, 'registered accounts',     'users'],
     ['Job Applications',      s.total_job_applications ?? 0, `${s.pending_applications ?? 0} pending`, 'clipboard'],
@@ -769,14 +790,16 @@ const DashboardView = ({ content, setActive }) => {
     ['Newsletter Subscribers', (content.newsletters||[]).length, 'managed list', 'mail'],
   ];
 
-  const recentJobs   = (content.jobs   || []).slice(0, 5);
-  const recentOrders = (content.orders || []).slice(0, 5);
+  const recentJobs   = (isApiMode() ? (liveData?.recent_jobs   || []) : (content.jobs   || [])).slice(0, 5);
+  const recentOrders = (isApiMode() ? (liveData?.recent_orders || []) : (content.orders || [])).slice(0, 5);
 
   return (
     <div>
       <div className="admin-stats-row">
         {stats.map(([label, value, note, icon]) => (
           <button key={label} className="admin-stat" onClick={() => {
+            if (label === 'Total Users') setActive('teachers');
+            if (label === 'Job Applications') setActive('applications');
             if (label === 'Products') setActive('products');
             if (label === 'New Orders') setActive('orders');
             if (label === 'New Tickets') setActive('messages');
@@ -2449,18 +2472,9 @@ const AdminPortalPage = () => {
                 <span>Dashboard</span>
               </button>
             )}
-            {/* Mobile-only control: hamburger on the dashboard, SchoolMS-style
-                back button on every subpage (back to the dashboard) */}
-            {activeView === 'dashboard' ? (
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="mobile-menu-toggle"
-                style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                aria-label="Open menu"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-              </button>
-            ) : (
+            {/* Mobile-only SchoolMS-style back button on subpages; the hamburger
+                stays available at the far right of the topbar */}
+            {activeView !== 'dashboard' && (
               <button
                 onClick={() => setActiveView('dashboard')}
                 className="mobile-menu-toggle"
@@ -2482,6 +2496,15 @@ const AdminPortalPage = () => {
               <div className="admin-chip-avatar">{adminInitials}</div>
               <span className="admin-chip-name">{adminName}</span>
             </div>
+            {/* Mobile-only hamburger at the far right corner; pushes the chip left */}
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="mobile-menu-toggle"
+              style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              aria-label="Open menu"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
           </div>
         </div>
         {view}

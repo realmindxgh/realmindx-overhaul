@@ -283,6 +283,30 @@ DEFAULT_SITE_COPY = [
         "status": "published",
     },
     {
+        "id": "home_impact_marquee",
+        "key": "home_impact_marquee",
+        "label": "Homepage impact marquee items",
+        "value": "30+ CPD Programs Delivered\n200+ Research Projects\n100+ Teachers Recruited\nTrusted Across Ghana\nHolistic Learning for Every Mind",
+        "area": "home",
+        "status": "published",
+    },
+    {
+        "id": "bookshop_pdp_delivery_info",
+        "key": "bookshop_pdp_delivery_info",
+        "label": "Bookshop product delivery information",
+        "value": "Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Greater Accra delivery from GHS 15; other regions calculated at checkout. Free pickup available at our Dome Pillar 2 shop.",
+        "area": "bookshop",
+        "status": "published",
+    },
+    {
+        "id": "bookshop_pdp_return_policy",
+        "key": "bookshop_pdp_return_policy",
+        "label": "Bookshop product return policy",
+        "value": "Unused items in original condition can be returned within 7 days for an exchange or store credit. Damaged or incorrect items are replaced free of charge - just reach out on WhatsApp.",
+        "area": "bookshop",
+        "status": "published",
+    },
+    {
         "id": "bookshop_terms_body",
         "key": "bookshop_terms_body",
         "label": "Bookshop terms body",
@@ -296,6 +320,41 @@ DEFAULT_SITE_COPY = [
         "label": "Bookshop privacy body",
         "value": "RealMindX Bookshop collects customer names, contact details, order items, delivery preferences, payment references, and enquiry notes only to process orders, provide support, send confirmations, and improve the bookshop experience.",
         "area": "bookshop",
+        "status": "published",
+    },
+]
+
+DEFAULT_TESTIMONIALS = [
+    {
+        "id": "mr-james-bright-minds",
+        "quote": "RealMindX transformed our school's teacher recruitment.",
+        "name": "Mr. James",
+        "role": "Principal, Bright Minds School",
+        "sort_order": 1,
+        "status": "published",
+    },
+    {
+        "id": "mrs-clara-head-of-research",
+        "quote": "Our research projects have improved greatly through RealMindX CPD programs.",
+        "name": "Mrs. Clara",
+        "role": "Head of Research",
+        "sort_order": 2,
+        "status": "published",
+    },
+    {
+        "id": "mr-daniel-training-coordinator",
+        "quote": "RealMindX made teacher development enjoyable.",
+        "name": "Mr. Daniel",
+        "role": "Training Coordinator",
+        "sort_order": 3,
+        "status": "published",
+    },
+    {
+        "id": "mrs-grace-elite-high",
+        "quote": "We recruited the best teachers easily through their platform.",
+        "name": "Mrs. Grace",
+        "role": "Principal, Elite High School",
+        "sort_order": 4,
         "status": "published",
     },
 ]

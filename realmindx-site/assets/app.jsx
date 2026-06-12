@@ -11,6 +11,8 @@ import {
   usePublicPartners,
   usePublicServices,
   usePublicSettings,
+  useSiteCopy,
+  useTestimonials,
 } from '../../src/lib/siteContent.js';
 
 // ====================== Nav ======================
@@ -437,11 +439,22 @@ const SERVICE_MARQUEE = [
   'Secretarial Services', 'Special Education', 'Educational Consulting',
   'Extracurricular Offers', 'Home Schooling', 'SchoolMS',
 ];
+// Fallback only — the live items come from the "Homepage impact marquee items"
+// Page Text entry (home_impact_marquee), one item per line, editable in admin.
 const IMPACT_MARQUEE = [
   '30+ CPD Programs Delivered', '200+ Research Projects',
   '100+ Teachers Recruited', 'Trusted Across Ghana',
   'Holistic Learning for Every Mind',
 ];
+
+const ImpactMarquee = () => {
+  const copy = useSiteCopy();
+  const items = String(copy.home_impact_marquee || '')
+    .split(/\r?\n/)
+    .map(item => item.trim())
+    .filter(Boolean);
+  return <Marquee items={items.length ? items : IMPACT_MARQUEE} variant="navy" />;
+};
 
 // ====================== Mission & Stats ======================
 const STATS = [
@@ -798,24 +811,23 @@ const WhyUs = () => (
 );
 
 // ====================== Testimonials ======================
-const TESTIMONIALS = [
-  { quote: 'RealMindX transformed our school\'s teacher recruitment.', name: 'Mr. James', role: 'Principal, Bright Minds School' },
-  { quote: 'Our research projects have improved greatly through RealMindX CPD programs.', name: 'Mrs. Clara', role: 'Head of Research' },
-  { quote: 'RealMindX made teacher development enjoyable.', name: 'Mr. Daniel', role: 'Training Coordinator' },
-  { quote: 'We recruited the best teachers easily through their platform.', name: 'Mrs. Grace', role: 'Principal, Elite High School' },
-];
-
+// Managed in the admin portal (Content > Testimonials); the defaults are
+// seeded from DEFAULT_TESTIMONIALS in src/lib/managedContent.js.
 const initials = (name) => name.replace(/(Mr|Mrs|Ms|Dr)\.?\s*/i, '').split(/\s+/).map(p => p[0]).join('').slice(0, 2).toUpperCase();
 
 const Testimonials = () => {
+  const testimonials = useTestimonials();
   const [idx, setIdx] = React.useState(0);
-  const total = TESTIMONIALS.length;
+  const total = testimonials.length;
   React.useEffect(() => {
+    setIdx(0);
+    if (total < 2) return undefined;
     const id = setInterval(() => setIdx(i => (i + 1) % total), 6000);
     return () => clearInterval(id);
   }, [total]);
+  if (!total) return null;
   const go = (n) => setIdx((n + total) % total);
-  const t = TESTIMONIALS[idx];
+  const t = testimonials[Math.min(idx, total - 1)];
   return (
     <section className="testimonials">
       <div className="testimonials-watermark" aria-hidden="true">REALMINDX</div>
@@ -854,7 +866,7 @@ const Testimonials = () => {
         </div>
 
         <div className="testimonial-controls">
-          {TESTIMONIALS.map((_, i) => (
+          {testimonials.map((_, i) => (
             <button
               key={i}
               className={`dot-btn${i === idx ? ' active' : ''}`}
@@ -1314,7 +1326,7 @@ const App = () => (
     <Marquee items={SERVICE_MARQUEE} variant="gold" />
     <MissionStats />
     <Services />
-    <Marquee items={IMPACT_MARQUEE} variant="navy" />
+    <ImpactMarquee />
     <WhyUs />
     <Gallery />
     <News />

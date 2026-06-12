@@ -3,6 +3,7 @@ import { Icon, Stars, LoadingState, cedis, CoverPlaceholder } from './shared.jsx
 import { useCart, useWishlist, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
+import { useSiteCopy } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
 import globalToast from '../src/lib/toast.js';
@@ -26,8 +27,138 @@ const QtyStepper = ({ qty, setQty, sm = false }) => (
   </div>
 );
 
+// Customer review submission. POSTs to the public reviews endpoint; the
+// review is created as status='pending' and only shows once admin approves
+// it, so on success we explain the moderation step instead of appending the
+// review to the list. Only rendered for real backend products (numeric id).
+const ReviewForm = ({ productId }) => {
+  const [form, setForm] = React.useState({ rating: 0, name: '', email: '', title: '', comment: '', order_reference: '' });
+  const [hoverStar, setHoverStar] = React.useState(0);
+  const [errors, setErrors] = React.useState({});
+  const [apiError, setApiError] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [done, setDone] = React.useState(false);
+
+  const set = (key, value) => {
+    setForm(f => ({ ...f, [key]: value }));
+    setErrors(e => (e[key] ? { ...e, [key]: '' } : e));
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const next = {};
+    if (!form.rating) next.rating = 'Choose a star rating.';
+    if (!form.name.trim()) next.name = 'Your name is required.';
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) next.email = 'Enter a valid email address.';
+    setErrors(next);
+    if (Object.keys(next).length) return;
+    setBusy(true);
+    setApiError('');
+    try {
+      await api.createProductReview(productId, {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        rating: form.rating,
+        title: form.title.trim(),
+        comment: form.comment.trim(),
+        order_reference: form.order_reference.trim(),
+      });
+      setDone(true);
+    } catch (err) {
+      setApiError(err.status === 429
+        ? 'Too many reviews submitted from this device. Please try again later.'
+        : (err.message || 'Could not submit your review. Please try again.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="bs-review-form" id="write-review">
+        <div className="bs-review-success">
+          <Icon name="check" size={20} />
+          <div>
+            <strong>Review received - thank you!</strong>
+            <p>It will appear here after our team approves it.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const lit = hoverStar || form.rating;
+  return (
+    <form className="bs-review-form" id="write-review" onSubmit={submit} noValidate>
+      <h3 className="bs-review-form-title">Write a review</h3>
+      <p className="bs-review-form-sub">Bought this product? Tell other parents, teachers, and schools what you think.</p>
+
+      <div className={`bs-field${errors.rating ? ' err' : ''}`}>
+        <label>Your rating</label>
+        <div className="bs-star-picker" role="radiogroup" aria-label="Star rating" onMouseLeave={() => setHoverStar(0)}>
+          {[1, 2, 3, 4, 5].map(i => (
+            <button
+              key={i} type="button" className={i <= lit ? 'lit' : ''}
+              role="radio" aria-checked={form.rating === i} aria-label={`${i} star${i === 1 ? '' : 's'}`}
+              onMouseEnter={() => setHoverStar(i)} onFocus={() => setHoverStar(i)} onBlur={() => setHoverStar(0)}
+              onClick={() => set('rating', i)}
+            >
+              <Icon name="star" size={26} stroke={0} />
+            </button>
+          ))}
+        </div>
+        {errors.rating && <div className="bs-field-error">{errors.rating}</div>}
+      </div>
+
+      <div className="bs-field-row">
+        <div className={`bs-field${errors.name ? ' err' : ''}`}>
+          <label htmlFor="rv-name">Name</label>
+          <input id="rv-name" value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Ama Mensah" autoComplete="name" />
+          {errors.name && <div className="bs-field-error">{errors.name}</div>}
+        </div>
+        <div className={`bs-field${errors.email ? ' err' : ''}`}>
+          <label htmlFor="rv-email">Email</label>
+          <input id="rv-email" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="you@example.com" autoComplete="email" />
+          {errors.email && <div className="bs-field-error">{errors.email}</div>}
+        </div>
+      </div>
+
+      <div className="bs-field">
+        <label htmlFor="rv-title">Review title <span className="bs-optional">(optional)</span></label>
+        <input id="rv-title" value={form.title} onChange={e => set('title', e.target.value)} placeholder="Sum it up in a few words" />
+      </div>
+
+      <div className="bs-field">
+        <label htmlFor="rv-comment">Your review <span className="bs-optional">(optional)</span></label>
+        <textarea id="rv-comment" rows={4} value={form.comment} onChange={e => set('comment', e.target.value)} placeholder="What did you like? How is the quality? Would you recommend it?" />
+      </div>
+
+      <div className="bs-field">
+        <label htmlFor="rv-order">Order reference <span className="bs-optional">(optional)</span></label>
+        <input id="rv-order" value={form.order_reference} onChange={e => set('order_reference', e.target.value)} placeholder="e.g. RMX-A1B2C3" />
+        <div className="bs-review-form-hint">If it matches an order placed with the email above, your review gets a "Verified purchase" tag.</div>
+      </div>
+
+      {apiError && <div className="bs-field-error" role="alert" style={{ marginBottom: 12 }}>{apiError}</div>}
+
+      <button type="submit" className="bs-btn bs-btn-gold" disabled={busy}>
+        {busy ? 'Submitting...' : 'Submit Review'}
+      </button>
+      <div className="bs-review-form-hint" style={{ marginTop: 10 }}>
+        Your email is never shown publicly. Reviews appear after moderation.
+      </div>
+    </form>
+  );
+};
+
+// Fallbacks if the Page Text entries are missing (e.g. stale local cache);
+// the live values are edited in admin under Content > Page Text (bookshop area).
+const PDP_DELIVERY_FALLBACK = 'Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Greater Accra delivery from GHS 15; other regions calculated at checkout. Free pickup available at our Dome Pillar 2 shop.';
+const PDP_RETURNS_FALLBACK = 'Unused items in original condition can be returned within 7 days for an exchange or store credit. Damaged or incorrect items are replaced free of charge - just reach out on WhatsApp.';
+
 const ProductPage = ({ navigate, bookId }) => {
   const { books, loading: catalogLoading } = useCatalog();
+  const siteCopy = useSiteCopy();
   const book = books.find(b => b.id === bookId) || (!bookId ? books[0] : null) || books[0] || null;
   const { add } = useCart();
   const wishlist = useWishlist();
@@ -39,7 +170,9 @@ const ProductPage = ({ navigate, bookId }) => {
   React.useEffect(() => { setQty(1); setActiveImg(0); window.scrollTo(0,0); }, [bookId]);
 
   // Approved reviews from the backend. Demo fallback books carry non-numeric
-  // ids ('b1') and have no backend rows — they just show the empty state.
+  // ids ('b1') and have no backend rows — they just show the empty state and
+  // no submission form (there is no product row to attach the review to).
+  const canReview = isApiMode() && /^\d+$/.test(String(book?.id ?? ''));
   const [productReviews, setProductReviews] = React.useState([]);
   React.useEffect(() => {
     setProductReviews([]);
@@ -171,12 +304,10 @@ const ProductPage = ({ navigate, bookId }) => {
               exercises and revision questions - ideal for both classroom teaching and self-study at home.`}
             </Accordion>
             <Accordion title="Delivery information">
-              Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Greater Accra delivery
-              from GHS 15; other regions calculated at checkout. Free pickup available at our Dome Pillar 2 shop.
+              <span style={{ whiteSpace: 'pre-line' }}>{siteCopy.bookshop_pdp_delivery_info || PDP_DELIVERY_FALLBACK}</span>
             </Accordion>
             <Accordion title="Return policy">
-              Unused items in original condition can be returned within 7 days for an exchange or store credit.
-              Damaged or incorrect items are replaced free of charge - just reach out on WhatsApp.
+              <span style={{ whiteSpace: 'pre-line' }}>{siteCopy.bookshop_pdp_return_policy || PDP_RETURNS_FALLBACK}</span>
             </Accordion>
           </div>
         </div>
@@ -244,6 +375,7 @@ const ProductPage = ({ navigate, bookId }) => {
                 <p className="bs-review-body">Buyer reviews will appear here after customers rate this product and admin approves the review.</p>
               </div>
             )}
+            {canReview && <ReviewForm key={book.id} productId={book.id} />}
           </div>
         </div>
       </section>

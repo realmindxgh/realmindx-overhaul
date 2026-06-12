@@ -226,8 +226,18 @@ export const DEFAULT_SITE_COPY = [
   { id: 'about_who_body', key: 'about_who_body', label: 'About who-we-are body', value: 'RealMindX Education Limited is a registered Ghanaian company with a clear purpose: to make quality education available to every school, teacher, and learner who needs it.\n\nWe are not a tutoring centre. We are not a staffing agency. We are a comprehensive educational services provider, covering the full lifecycle of learning, from finding the right teacher to structuring the school they work in, from training that teacher to supporting the students in their class.\n\nThat breadth is deliberate. Education does not fail at one point. It fails across many interconnected ones, and fixing just one rarely changes outcomes. RealMindX exists to fix them together.', area: 'about' },
   { id: 'terms_body', key: 'terms_body', label: 'Terms body', value: 'The service terms for using RealMindX Education, the job portal, user portal, and bookshop. Users must provide accurate information, keep login credentials secure, and use the RealMindX platform for genuine education, recruitment, bookshop, and support purposes.', area: 'legal' },
   { id: 'privacy_body', key: 'privacy_body', label: 'Privacy body', value: 'How RealMindX handles account, application, contact, and bookshop information. We collect only what is needed to provide services, manage accounts, process enquiries, and keep the platform secure.', area: 'legal' },
+  { id: 'home_impact_marquee', key: 'home_impact_marquee', label: 'Homepage impact marquee items', value: '30+ CPD Programs Delivered\n200+ Research Projects\n100+ Teachers Recruited\nTrusted Across Ghana\nHolistic Learning for Every Mind', area: 'home' },
+  { id: 'bookshop_pdp_delivery_info', key: 'bookshop_pdp_delivery_info', label: 'Bookshop product delivery information', value: 'Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Greater Accra delivery from GHS 15; other regions calculated at checkout. Free pickup available at our Dome Pillar 2 shop.', area: 'bookshop' },
+  { id: 'bookshop_pdp_return_policy', key: 'bookshop_pdp_return_policy', label: 'Bookshop product return policy', value: 'Unused items in original condition can be returned within 7 days for an exchange or store credit. Damaged or incorrect items are replaced free of charge - just reach out on WhatsApp.', area: 'bookshop' },
   { id: 'bookshop_terms_body', key: 'bookshop_terms_body', label: 'Bookshop terms body', value: 'These terms cover RealMindX Bookshop orders, enquiries, bulk requests, product availability, delivery, returns, and customer communication. Orders are confirmed only after staff review stock, payment, delivery destination, and any special instructions.', area: 'bookshop' },
   { id: 'bookshop_privacy_body', key: 'bookshop_privacy_body', label: 'Bookshop privacy body', value: 'RealMindX Bookshop collects customer names, contact details, order items, delivery preferences, payment references, and enquiry notes only to process orders, provide support, send confirmations, and improve the bookshop experience.', area: 'bookshop' },
+].map((item, index) => withAdminMeta({ status: 'published', ...item }, index));
+
+export const DEFAULT_TESTIMONIALS = [
+  { id: 'mr-james-bright-minds', quote: "RealMindX transformed our school's teacher recruitment.", name: 'Mr. James', role: 'Principal, Bright Minds School', sort_order: 1 },
+  { id: 'mrs-clara-head-of-research', quote: 'Our research projects have improved greatly through RealMindX CPD programs.', name: 'Mrs. Clara', role: 'Head of Research', sort_order: 2 },
+  { id: 'mr-daniel-training-coordinator', quote: 'RealMindX made teacher development enjoyable.', name: 'Mr. Daniel', role: 'Training Coordinator', sort_order: 3 },
+  { id: 'mrs-grace-elite-high', quote: 'We recruited the best teachers easily through their platform.', name: 'Mrs. Grace', role: 'Principal, Elite High School', sort_order: 4 },
 ].map((item, index) => withAdminMeta({ status: 'published', ...item }, index));
 
 export const DEFAULT_PARTNERS = [
@@ -372,6 +382,7 @@ export const SEED_CONTENT = {
   services: DEFAULT_SERVICES,
   siteCopy: DEFAULT_SITE_COPY,
   partners: DEFAULT_PARTNERS,
+  testimonials: DEFAULT_TESTIMONIALS,
   homeHeroSlides: DEFAULT_HOME_HERO_SLIDES,
   donationSlides: DEFAULT_DONATION_SLIDES,
   categories: [

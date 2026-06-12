@@ -14,6 +14,7 @@ from ..default_content import (
     DEFAULT_PEOPLE,
     DEFAULT_SERVICES,
     DEFAULT_SITE_COPY,
+    DEFAULT_TESTIMONIALS,
 )
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
@@ -433,6 +434,13 @@ def people():
     rows = setting_collection("people", DEFAULT_PEOPLE)
     rows = sorted(public_rows(rows), key=lambda item: (item.get("sort_order") or 0, item.get("name") or ""))
     return jsonify(items=enrich_service_media(rows))
+
+
+@public_bp.get("/testimonials")
+def testimonials():
+    rows = setting_collection("testimonials", DEFAULT_TESTIMONIALS)
+    rows = sorted(public_rows(rows), key=lambda item: (item.get("sort_order") or 0, item.get("name") or ""))
+    return jsonify(items=rows)
 
 
 @public_bp.get("/home-hero-slides")
