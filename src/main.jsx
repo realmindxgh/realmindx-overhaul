@@ -247,7 +247,7 @@ const NewsPage = ({ articleSlug = null }) => {
   if (articleSlug && newsState.loading) {
     return (
       <>
-        <Nav activePage="news" />
+        <Nav activePage="news" solid={true} />
         <main className="route-page">
           <section className="site-info-section">
             <div className="container">
@@ -267,7 +267,7 @@ const NewsPage = ({ articleSlug = null }) => {
   if (articleSlug && selectedItem) {
     return (
       <>
-        <Nav activePage="news" />
+        <Nav activePage="news" solid={true} />
         <main className="route-page">
           <article className="news-article-page">
             <div className="container" style={{ maxWidth: 860 }}>
