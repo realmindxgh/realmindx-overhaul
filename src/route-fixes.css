@@ -1,4 +1,4 @@
-﻿html {
+html {
   scroll-behavior: smooth;
 }
 
@@ -4085,3 +4085,15 @@
     height: 14px !important;
   }
 }
+
+/* Fix header navigation bar overlapping news article page content */
+.news-article-page {
+  padding-top: 120px !important;
+}
+
+@media (max-width: 960px) {
+  .news-article-page {
+    padding-top: 96px !important;
+  }
+}
+
