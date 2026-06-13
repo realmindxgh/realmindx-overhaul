@@ -120,6 +120,23 @@ const browseIntroHeading = (taxonomy) => {
   }
 };
 
+const browseSectionLabel = (taxonomy) => {
+  switch (taxonomy) {
+    case 'category':
+      return 'Item Types';
+    case 'subject':
+      return 'Subjects';
+    case 'level':
+      return 'Levels';
+    case 'curriculum':
+      return 'Curricula';
+    case 'publisher':
+      return 'Publishers';
+    default:
+      return 'Catalogue';
+  }
+};
+
 const browseIntroCopy = (taxonomy, browseItem) => {
   if (!taxonomy) return null;
   if (browseItem) {
@@ -129,14 +146,14 @@ const browseIntroCopy = (taxonomy, browseItem) => {
       title: label,
       body: browseItem.description || (
         taxonomy === 'subject'
-          ? `Find textbooks, readers, workbooks, and classroom materials for ${label}.`
+          ? `Showing all available ${label} books, readers, workbooks, and classroom materials.`
           : taxonomy === 'level'
-            ? `Browse books, revision guides, and learning materials matched to ${label}.`
+            ? `Showing books, revision guides, and learning materials matched to ${label}.`
             : taxonomy === 'curriculum'
-              ? `Explore titles that fit the ${label} pathway.`
+              ? `Showing titles that fit the ${label} pathway.`
               : taxonomy === 'publisher'
-                ? `See what is currently available from ${label}.`
-                : `Explore the latest ${label.toLowerCase()} items in the RealMindX Bookshop.`
+                ? `Showing what is currently available from ${label}.`
+                : `Showing the latest ${label.toLowerCase()} items in the RealMindX Bookshop.`
       ),
     };
   }
@@ -735,6 +752,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       : null),
     [initialBrowse.taxonomy, initialBrowse.value, taxonomies],
   );
+  const hasScopedBrowse = Boolean(initialBrowse.taxonomy && initialBrowse.value);
   const browseIntro = React.useMemo(() => browseIntroCopy(initialBrowse.taxonomy, browseItem), [browseItem, initialBrowse.taxonomy]);
   const browseGroup = React.useMemo(() => filterGroupForTaxonomy(initialBrowse.taxonomy), [initialBrowse.taxonomy]);
   const browseLinks = React.useMemo(
@@ -758,7 +776,21 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     <div className="bs-container bs-fade-page">
       <div className="bs-breadcrumb">
         <a href={hrefForRoute('home')} onClick={(event) => { event.preventDefault(); navigate('home'); }}>Home</a>
-        <span className="bs-sep">/</span><span className="bs-cur">Shop</span>
+        <span className="bs-sep">/</span>
+        <a href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>Shop</a>
+        {initialBrowse.taxonomy && (
+          <>
+            <span className="bs-sep">/</span>
+            <span className={hasScopedBrowse ? '' : 'bs-cur'}>{browseSectionLabel(initialBrowse.taxonomy)}</span>
+          </>
+        )}
+        {hasScopedBrowse && browseItem && (
+          <>
+            <span className="bs-sep">/</span>
+            <span className="bs-cur">{browseItem.label}</span>
+          </>
+        )}
+        {!initialBrowse.taxonomy && <><span className="bs-sep">/</span><span className="bs-cur">All Books</span></>}
       </div>
 
       <div className="bs-shop-layout">
@@ -771,11 +803,11 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
 
         <div>
           {browseIntro && !filters.query.trim() && (
-            <section className="bs-category-intro">
+            <section className={`bs-category-intro${hasScopedBrowse ? ' compact' : ''}`}>
               <span className="bs-eyebrow">{browseIntro.eyebrow}</span>
               <h1 className="bs-h2">{browseIntro.title}</h1>
               <p>{browseIntro.body}</p>
-              {browseLinks.length > 0 && (
+              {!hasScopedBrowse && browseLinks.length > 0 && (
                 <div className="bs-browse-link-grid">
                   {browseLinks.map((item) => {
                     const active = item.id === initialBrowse.value;
@@ -798,7 +830,16 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               )}
               <div className="bs-category-intro-meta">
                 <span><strong>{list.length}</strong> result{list.length !== 1 ? 's' : ''}</span>
-                <span>Use the left filters to narrow the list further.</span>
+                <span>{hasScopedBrowse ? `${browseIntroHeading(initialBrowse.taxonomy)} filter already applied.` : 'Choose a starting point, then refine with the filters.'}</span>
+                {hasScopedBrowse && (
+                  <button
+                    type="button"
+                    className="bs-search-clear"
+                    onClick={() => navigate('shop', { taxonomy: initialBrowse.taxonomy })}
+                  >
+                    <Icon name="close" size={12} /> Clear {browseIntroHeading(initialBrowse.taxonomy)}
+                  </button>
+                )}
               </div>
             </section>
           )}
