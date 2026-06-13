@@ -4305,14 +4305,20 @@ input, textarea, select { font-family: inherit; }
 
 /* Single article page */
 .news-article-page { padding: 40px 0 72px; }
-.news-article-breadcrumb { display: flex; gap: 10px; margin-bottom: 28px; }
+.news-article-metahead { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gray-500); }
+.news-article-backlink { color: var(--navy); text-decoration: none; }
+.news-article-backlink:hover { color: var(--navy-hover); }
 .news-article-hero-img { width: 100%; max-height: 460px; object-fit: cover; border-radius: var(--r-lg); margin-bottom: 12px; }
 .news-article-title { font-family: 'Montserrat', sans-serif; font-weight: 900; font-size: clamp(1.6rem, 3.5vw, 2.4rem); color: var(--navy); line-height: 1.15; margin: 14px 0 18px; }
 .news-article-lead { font-size: 1.05rem; color: var(--navy); font-weight: 600; line-height: 1.7; margin-bottom: 24px; }
 .news-article-body p { font-size: 1rem; color: #1a2540; line-height: 1.82; margin-bottom: 18px; }
 .news-article-body h3 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 1.1rem; color: var(--navy); margin: 28px 0 10px; }
 .news-article-section { margin-top: 28px; }
-.news-article-footer-ctas { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 48px; padding-top: 28px; border-top: 1px solid var(--gray-100); }
+.news-article-footer-ctas { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-top: 48px; padding-top: 28px; border-top: 1px solid var(--gray-100); }
+.news-article-home-link { font-family: 'Montserrat', sans-serif; font-size: 0.84rem; font-weight: 700; color: var(--navy); text-decoration: none; }
+.news-article-home-link:hover { color: var(--navy-hover); }
+.news-article-related { margin-top: 42px; padding-top: 8px; }
+.news-card-grid-related { padding-top: 0; }
 
 /* ============================================================
    INVISIBLE CTA FIXES

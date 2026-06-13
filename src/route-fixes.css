@@ -1700,6 +1700,16 @@
   text-transform: uppercase;
 }
 
+.service-doc-kicker-link {
+  text-decoration: none;
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.service-doc-kicker-link:hover {
+  color: #b57600;
+  transform: translateY(-1px);
+}
+
 .service-doc-icon {
   display: inline-flex;
   color: #d4920a; /* matches kicker */
@@ -1722,6 +1732,15 @@
   bottom: 0.14em;
   width: 4px;
   background: var(--yellow, #ffcc01); /* same yellow as primary buttons */
+}
+
+.service-doc-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.service-doc-title-link:hover {
+  color: var(--navy-hover, #0d2550);
 }
 
 .service-doc-summary {
@@ -1765,6 +1784,10 @@
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 28px;
+}
+
+.service-doc-image-link {
+  display: block;
 }
 
 .home-services-controls {

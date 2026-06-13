@@ -102,6 +102,13 @@ const App = () => {
     ? categories.find(category => category.id === params.cat)
     : null;
   const categoryLabel = activeCategory?.name || (params.cat && params.cat !== 'all' ? params.cat : null);
+  const activeCategoryCount = route === 'shop' && params.cat && params.cat !== 'all'
+    ? books.filter(book => (
+      params.cat === 'curriculum'
+        ? Boolean(book.curriculum || book.curriculumName)
+        : book.cat === params.cat || book.curriculum === params.cat || book.curriculumName === params.cat
+    )).length
+    : null;
   const canonicalParams = route === 'product' && activeProduct
     ? { slug: productPathSegment(activeProduct) }
     : route === 'shop'
@@ -190,10 +197,15 @@ const App = () => {
         robots = 'noindex,follow';
       }
     } else if (route === 'shop' && categoryLabel && !params.q) {
+      const categoryDescription = activeCategory?.description
+        || (params.cat === 'curriculum'
+          ? 'Browse books grouped by curriculum, with useful category content and live product listings.'
+          : `Browse ${categoryLabel.toLowerCase()} textbooks, learning materials, and school supplies from the RealMindX Bookshop.`);
       currentMeta = {
         title: `${categoryLabel} | RealMindX Bookshop`,
-        desc: `Browse ${categoryLabel.toLowerCase()} textbooks, learning materials, and school supplies from the RealMindX Bookshop.`,
+        desc: categoryDescription,
       };
+      if (!activeCategoryCount) robots = 'noindex,follow';
       structuredData = {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
@@ -224,7 +236,7 @@ const App = () => {
     setHeadMeta('twitter:image', image);
     setHeadLink('canonical', canonicalUrl);
     setStructuredData('bookshop-route-seo', structuredData);
-  }, [route, params.cat, params.id, params.q, params.slug, activeProduct, categoryLabel, canonicalUrl]);
+  }, [route, params.cat, params.id, params.q, params.slug, activeProduct, activeCategory, activeCategoryCount, categoryLabel, canonicalUrl, books]);
 
   React.useEffect(() => {
     document.body.classList.add('bs-has-bottomnav');

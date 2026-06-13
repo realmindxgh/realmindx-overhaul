@@ -69,6 +69,8 @@ const SIMPLE_SETTINGS = new Set([
   'map_embed',
 ]);
 
+const STATUS_ENDPOINT_COLLECTIONS = new Set(['applications', 'orders']);
+
 // Normalise a row from the API so the status field the admin table
 // uses is always present (the API uses is_published/is_active booleans
 // on some models, status strings on others).
@@ -152,6 +154,8 @@ function useApiContent() {
     // Settings use PUT /admin/settings/{key} - id is the key string
     if (collection === 'settings') {
       await api.adminUpsertSetting(id, payload.value, payload.public);
+    } else if (STATUS_ENDPOINT_COLLECTIONS.has(collection) && payload && typeof payload === 'object' && 'status' in payload) {
+      await api.adminUpdateStatus(endpoint, id, payload);
     } else {
       await api.adminUpdate(endpoint, id, payload);
     }

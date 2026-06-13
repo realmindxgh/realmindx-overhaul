@@ -241,9 +241,11 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
   const { books, categories } = useCatalog();
   const [open, setOpen] = React.useState({ cat:true, price:true, rating:true, avail:true });
   const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
-  const matchesCategory = React.useCallback((book, id) =>
-    book.cat === id || book.curriculum === id || book.curriculumName === id,
-  []);
+  const matchesCategory = React.useCallback((book, id) => (
+    id === 'curriculum'
+      ? Boolean(book.curriculum || book.curriculumName)
+      : book.cat === id || book.curriculum === id || book.curriculumName === id
+  ), []);
   const counts = {};
   categories.forEach(c => { counts[c.id] = c.id === 'all' ? books.length : books.filter(b => matchesCategory(b, c.id)).length; });
 
@@ -389,7 +391,10 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
   React.useEffect(() => { setVisible(BATCH); setLoading(false); loadingRef.current = false; }, [filters, sort]);
   React.useEffect(() => { document.body.style.overflow = drawer ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [drawer]);
 
-  const matchesCategory = (book, id) => book.cat === id || book.curriculum === id || book.curriculumName === id;
+  const matchesCategory = (book, id) => {
+    if (id === 'curriculum') return Boolean(book.curriculum || book.curriculumName);
+    return book.cat === id || book.curriculum === id || book.curriculumName === id;
+  };
   // Compare against the *rounded* star value — that's what the ★ icons (and the
   // picker itself) display, so "min 3 / max 4" reliably shows only books whose
   // visible star rating falls in [3,4], with no confusing rounding edge-cases.
@@ -477,6 +482,23 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
       .sort((a, b) => (b.rating * (b.reviews || 1)) - (a.rating * (a.reviews || 1)))
       .slice(0, 6);
   }, [books, list, filters]);
+  const selectedCategory = React.useMemo(
+    () => (filters.cats.length === 1 ? categories.find(category => category.id === filters.cats[0]) || null : null),
+    [categories, filters.cats],
+  );
+  const categoryIntro = React.useMemo(() => {
+    if (!selectedCategory) return null;
+    if (selectedCategory.id === 'curriculum') {
+      return {
+        title: selectedCategory.name,
+        body: 'Browse books grouped by curriculum, with real product listings that schools and families can order immediately.',
+      };
+    }
+    return {
+      title: selectedCategory.name,
+      body: selectedCategory.description || `Explore ${selectedCategory.name.toLowerCase()} currently available in the RealMindX Bookshop.`,
+    };
+  }, [selectedCategory]);
 
   if (catalogLoading && books.length === 0) {
     return (
@@ -507,6 +529,17 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
         </aside>
 
         <div>
+          {categoryIntro && !filters.query && (
+            <section className="bs-category-intro">
+              <span className="bs-eyebrow">{selectedCategory?.type === 'curriculum-group' ? 'Curriculum Collection' : 'Bookshop Category'}</span>
+              <h1 className="bs-h2">{categoryIntro.title}</h1>
+              <p>{categoryIntro.body}</p>
+              <div className="bs-category-intro-meta">
+                <span><strong>{list.length}</strong> result{list.length !== 1 ? 's' : ''}</span>
+                <span>Indexable catalogue page</span>
+              </div>
+            </section>
+          )}
           {filters.query && (
             <div className="bs-search-banner">
               <span className="bs-search-banner-label">

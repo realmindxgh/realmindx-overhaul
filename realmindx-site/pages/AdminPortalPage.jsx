@@ -275,7 +275,7 @@ const CONFIG = {
   },
   services: {
     title: 'Services',
-    description: 'Every service shown on the homepage strip and services page can be edited, reordered, published, or deleted here.',
+    description: 'Every service shown on the homepage strip, services page, and dedicated service routes can be edited, reordered, published, or deleted here.',
     collection: 'services',
     createLabel: 'Add Service',
     fields: [
@@ -290,6 +290,15 @@ const CONFIG = {
       field('primary_cta_href', 'Primary CTA Link'),
       field('secondary_cta_label', 'Secondary CTA Label'),
       field('secondary_cta_href', 'Secondary CTA Link'),
+      field('detail_tag', 'Dedicated Page Eyebrow', 'text', { help: 'Optional. Falls back to the listing eyebrow above.' }),
+      field('detail_title', 'Dedicated Page Title', 'textarea', { help: 'Optional. Leave blank to reuse the listing title.' }),
+      field('detail_summary', 'Dedicated Page Summary', 'textarea', { help: 'Optional. Leave blank to reuse the listing summary.' }),
+      field('detail_body', 'Dedicated Page Body', 'textarea', { help: 'Optional. Separate paragraphs with a blank line. Falls back to the listing body.' }),
+      field('detail_features', 'Dedicated Page Feature List', 'textarea', { help: 'Optional. One feature per line. Falls back to the listing features.' }),
+      field('detail_primary_cta_label', 'Dedicated Page Primary CTA Label'),
+      field('detail_primary_cta_href', 'Dedicated Page Primary CTA Link'),
+      field('detail_secondary_cta_label', 'Dedicated Page Secondary CTA Label'),
+      field('detail_secondary_cta_href', 'Dedicated Page Secondary CTA Link'),
       field('icon', 'Service Icon', 'select', { options: SERVICE_ICON_OPTIONS }),
       field('image_file_id', 'Service Image', 'image', { aspectRatio: 16/9, cropTitle: 'Crop Service Image (16:9)', guide: [
         { icon: 'target',   text: 'Ideal ratio: 16:9. This is the standard widescreen format used on the services detail page.' },
@@ -297,8 +306,15 @@ const CONFIG = {
         { icon: 'camera',   text: 'Minimum size: 1200 x 675 px.' },
         { icon: 'check',    text: 'This image appears alongside the service description and feature list. Pick one that immediately communicates what the service delivers.' },
       ] }),
+      field('detail_image_file_id', 'Dedicated Page Image', 'image', { aspectRatio: 16/9, cropTitle: 'Crop Dedicated Service Image (16:9)', guide: [
+        { icon: 'target',   text: 'Optional. Use this when the dedicated page needs a richer, more specific hero image than the services listing.' },
+        { icon: 'image',    text: 'If left blank, the dedicated page automatically reuses the main service image.' },
+        { icon: 'camera',   text: 'Minimum size: 1200 x 675 px.' },
+        { icon: 'check',    text: 'Choose an image that gives the dedicated page its own story while staying true to the service.' },
+      ] }),
       field('image_key', 'Default Image if no upload', 'select', { options: FALLBACK_IMAGE_OPTIONS }),
       field('badge', 'Badge'),
+      field('detail_badge', 'Dedicated Page Badge'),
       field('sort_order', 'Sort Order', 'number'),
       field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
@@ -514,7 +530,8 @@ const CONFIG = {
     allowCreate: false,
     allowEdit: false,       // orders are view-only; use status actions only
     statusOnly: true,       // only status changes and archiving allowed
-    statusOptions: ['received', 'shipped', 'complete', 'cancelled'],
+    allowArchive: true,
+    statusOptions: ['new', 'received', 'shipped', 'complete', 'cancelled'],
     requireCancelReason: true,
     emptyTitle: 'No Bookshop Orders Yet',
     emptyBody: 'Customer orders from the bookshop will appear here.',
@@ -1037,7 +1054,9 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
   const [imageUrls, setImageUrls] = React.useState(() => {
     const urls = {};
     config.fields.forEach(f => {
-      if (f.type === 'image' && initialItem?.image_url) urls[f.name] = initialItem.image_url;
+      if (f.type !== 'image') return;
+      const fieldUrl = initialItem?.[`${String(f.name).replace(/_file_id$/, '')}_url`] || initialItem?.image_url;
+      if (fieldUrl) urls[f.name] = fieldUrl;
     });
     return urls;
   });
@@ -1387,21 +1406,48 @@ const NewsletterComposer = ({ onSent }) => {
 
 // Inline order status selector — default is current status or 'received'
 const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
-  const [val, setVal] = React.useState(row.status || 'received');
+  const optionValues = React.useMemo(() => {
+    const current = String(row.status || '').trim();
+    const base = Array.isArray(options) ? options.filter(Boolean) : [];
+    return current && !base.includes(current) ? [current, ...base] : base;
+  }, [options, row.status]);
+  const [val, setVal] = React.useState(row.status || optionValues[0] || 'received');
   const [reason, setReason] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [dirty, setDirty] = React.useState(false);
+  const [error, setError] = React.useState('');
 
-  const handleChange = (e) => { setVal(e.target.value); setDirty(true); setReason(''); };
+  React.useEffect(() => {
+    setVal(row.status || optionValues[0] || 'received');
+    setDirty(false);
+    setReason('');
+    setError('');
+  }, [optionValues, row.id, row.status]);
+
+  const handleChange = (e) => {
+    setVal(e.target.value);
+    setDirty(true);
+    setReason('');
+    setError('');
+  };
 
   const save = async () => {
-    if (val === 'cancelled' && requireCancelReason && !reason.trim()) return;
+    if (val === 'cancelled' && requireCancelReason && !reason.trim()) {
+      setError('Add a cancellation reason before saving.');
+      return;
+    }
     setSaving(true);
     const patch = { status: val };
     if (val === 'cancelled' && reason.trim()) patch.cancel_reason = reason.trim();
-    await onSave(patch);
-    setSaving(false);
-    setDirty(false);
+    try {
+      await onSave(patch);
+      setDirty(false);
+      setError('');
+    } catch (err) {
+      setError(err?.message || 'Could not save this status change.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1413,7 +1459,7 @@ const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
           value={val}
           onChange={handleChange}
         >
-          {options.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+          {optionValues.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
         </select>
         {dirty && (
           <button className="btn btn-primary btn-sm" style={{ padding:'3px 10px', fontSize:'0.75rem', height:30 }} disabled={saving} onClick={save}>
@@ -1427,9 +1473,10 @@ const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
           style={{ fontSize:'0.78rem', height:28 }}
           placeholder="Cancellation reason (required) *"
           value={reason}
-          onChange={e => setReason(e.target.value)}
+          onChange={e => { setReason(e.target.value); setError(''); }}
         />
       )}
+      {error ? <p className="form-error" style={{ margin: 0 }}>{error}</p> : null}
     </div>
   );
 };
@@ -1569,12 +1616,13 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
   const isLoading = isApiMode() && loading[config.collection];
   const loadError = isApiMode() && errors?.[config.collection];
   const canCreate = config.allowCreate !== false && Boolean(config.createLabel);
-  const canUpdate = config.allowCreate !== false && config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly;
+  const canUpdate = config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly;
   const canDelete = config.allowDelete !== false && !config.readOnly;
   const canReply = config.collection === 'messages' && !config.readOnly;
   const canPublish = PUBLISHABLE_COLLECTIONS.has(config.collection) && !config.readOnly && !config.statusOnly;
   const isStatusOnly = Boolean(config.statusOnly);          // orders: status + archive only
   const isModerationOnly = Boolean(config.moderationOnly);  // reviews: approve/reject/delete
+  const allowArchive = Boolean(config.allowArchive);
   const hasActions = canUpdate || canDelete || canReply || canPublish || isStatusOnly || isModerationOnly;
 
   // Status modal for orders
@@ -1601,13 +1649,23 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
     setStatusModal(null);
   };
 
-  const handleArchive = (row) => {
-    updateItem(config.collection, getItemId(row), { archived: true, status: 'archived' });
+  const handleArchive = async (row) => {
+    try {
+      await updateItem(config.collection, getItemId(row), { archived: true, status: 'archived' });
+      setActionStatus({ type: 'success', message: `Archived ${labelForRow(row)}.` });
+    } catch (err) {
+      setActionStatus({ type: 'error', message: err?.message || `Could not archive ${labelForRow(row)}.` });
+    }
   };
 
   // Moderation shortcut for reviews
-  const handleModerate = (row, decision) => {
-    updateItem(config.collection, getItemId(row), { status: decision });
+  const handleModerate = async (row, decision) => {
+    try {
+      await updateItem(config.collection, getItemId(row), { status: decision });
+      setActionStatus({ type: 'success', message: `${decision === 'approved' ? 'Approved' : 'Rejected'} ${labelForRow(row)}.` });
+    } catch (err) {
+      setActionStatus({ type: 'error', message: err?.message || `Could not update ${labelForRow(row)}.` });
+    }
   };
   const createAction = canCreate ? config.createLabel : '';
   const closeFormModal = () => { setCreating(false); setEditing(null); };
@@ -1628,6 +1686,18 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
   }, [creating, editing]);
 
   const renderCell = (row, column, isPrimary) => {
+    if (config.collection === 'applications') {
+      if (column === 'name') {
+        return <span className={isPrimary ? 'td-primary' : ''}>{row.user?.full_name || row.user?.email || 'Unknown applicant'}</span>;
+      }
+      if (column === 'email') {
+        return <span>{row.user?.email || '-'}</span>;
+      }
+      if (column === 'job') {
+        return <span>{row.job?.title || '-'}</span>;
+      }
+    }
+
     if (column === 'image_url' || column === 'image') {
       const src = rowImageUrl(row);
       return src ? (
@@ -1826,7 +1896,7 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
                         {canReply && <button className="table-action-btn" onClick={() => { setReplying(row); setReplyText(''); setReplyError(''); setEditing(null); setCreating(false); }}>Reply</button>}
                         {'status' in row && canPublish && <button className="table-action-btn" onClick={() => togglePublish(row)}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</button>}
 
-                        {/* Orders: inline status selector + archive */}
+                        {/* Status-only tables: inline status selector, with archive where enabled */}
                         {isStatusOnly && row.status !== 'archived' && (
                           <OrderStatusSelector
                             row={row}
@@ -1835,7 +1905,7 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
                             onSave={(patch) => updateItem(config.collection, getItemId(row), patch)}
                           />
                         )}
-                        {isStatusOnly && row.status !== 'archived' && (
+                        {isStatusOnly && allowArchive && row.status !== 'archived' && (
                           <button className="table-action-btn" onClick={() => handleArchive(row)}>Archive</button>
                         )}
 
@@ -1930,15 +2000,14 @@ const ApplicationsView = ({ content }) => (
       collection: 'applications',
       createLabel: '',
       allowCreate: false,
+      allowEdit: false,
+      statusOnly: true,
+      allowArchive: false,
+      statusOptions: ['pending', 'reviewed', 'shortlisted', 'accepted', 'rejected'],
       note: false,
       emptyTitle: 'No Applications Yet',
       emptyBody: 'When users apply for jobs, their submissions will appear here for review, shortlisting, and status updates.',
-      fields: [
-        field('name', 'Applicant Name'),
-        field('email', 'Email'),
-        field('job', 'Job'),
-        field('status', 'Status', 'select', { options: ['pending', 'reviewed', 'shortlisted', 'accepted', 'rejected'] }),
-      ],
+      fields: [],
       columns: ['name', 'email', 'job', 'status'],
     }}
     rows={content.applications || (isApiMode() ? [] : [

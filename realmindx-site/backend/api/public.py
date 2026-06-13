@@ -25,6 +25,9 @@ from ..security import require_turnstile
 
 public_bp = Blueprint("public", __name__)
 
+MAIN_SITE_BASE_URL = "https://realmindxgh.com"
+BOOKSHOP_SITE_BASE_URL = "https://bookshop.realmindxgh.com"
+
 
 def collection_item_id(item):
     if not isinstance(item, dict):
@@ -98,6 +101,11 @@ def enrich_service_media(items):
         for item in items
         if str(item.get("image_file_id") or "").isdigit()
     }
+    file_ids.update(
+        int(item.get("detail_image_file_id"))
+        for item in items
+        if str(item.get("detail_image_file_id") or "").isdigit()
+    )
     files = {
         row.id: row
         for row in UploadedFile.query.filter(UploadedFile.id.in_(file_ids)).all()
@@ -108,6 +116,9 @@ def enrich_service_media(items):
         file_id = row.get("image_file_id")
         if str(file_id or "").isdigit():
             row["image_url"] = upload_public_url(files.get(int(file_id))) or row.get("image_url")
+        detail_file_id = row.get("detail_image_file_id")
+        if str(detail_file_id or "").isdigit():
+            row["detail_image_url"] = upload_public_url(files.get(int(detail_file_id))) or row.get("detail_image_url")
         enriched.append(row)
     return enriched
 
@@ -157,6 +168,179 @@ def sitemap_row(loc, lastmod=None, changefreq=None, priority=None):
 
 def xml_response(body):
     return Response(body, mimetype="application/xml")
+
+
+def request_hostname(host=None):
+    return str(host or request.host or "").split(":", 1)[0].lower()
+
+
+def is_bookshop_host(host=None):
+    return request_hostname(host).startswith("bookshop.")
+
+
+def build_main_sitemap_xml():
+    base_url = MAIN_SITE_BASE_URL
+    urls = [
+        sitemap_row(f"{base_url}/", changefreq="weekly", priority=1.0),
+        sitemap_row(f"{base_url}/about", changefreq="monthly", priority=0.8),
+        sitemap_row(f"{base_url}/services", changefreq="weekly", priority=0.9),
+        sitemap_row(f"{base_url}/jobs", changefreq="daily", priority=0.9),
+        sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.7),
+        sitemap_row(f"{base_url}/news", changefreq="weekly", priority=0.8),
+        sitemap_row(f"{base_url}/gallery", changefreq="monthly", priority=0.6),
+        sitemap_row(f"{base_url}/donate", changefreq="monthly", priority=0.7),
+        sitemap_row(f"{base_url}/privacy", changefreq="yearly", priority=0.3),
+        sitemap_row(f"{base_url}/terms", changefreq="yearly", priority=0.3),
+    ]
+
+    service_rows = setting_collection("services", DEFAULT_SERVICES)
+    for item in public_rows(service_rows):
+        slug = slugify(item.get("id") or item.get("slug") or item.get("label") or item.get("title"))
+        urls.append(sitemap_row(f"{base_url}/services/{slug}", changefreq="monthly", priority=0.8))
+
+    news_rows = (
+        News.query
+        .filter_by(status="published")
+        .order_by(News.published_at.desc().nullslast(), News.created_at.desc())
+        .all()
+    )
+    for row in news_rows:
+        lastmod = (row.updated_at or row.published_at or row.created_at)
+        urls.append(
+            sitemap_row(
+                f"{base_url}/news/{escape(row.slug)}",
+                lastmod=lastmod.date().isoformat() if lastmod else None,
+                changefreq="monthly",
+                priority=0.7,
+            )
+        )
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{chr(10).join(urls)}\n"
+        '</urlset>\n'
+    )
+
+
+def build_bookshop_sitemap_xml():
+    base_url = BOOKSHOP_SITE_BASE_URL
+    urls = [
+        sitemap_row(f"{base_url}/", changefreq="daily", priority=1.0),
+        sitemap_row(f"{base_url}/products", changefreq="daily", priority=0.9),
+        sitemap_row(f"{base_url}/about", changefreq="monthly", priority=0.6),
+        sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.6),
+        sitemap_row(f"{base_url}/privacy", changefreq="yearly", priority=0.3),
+        sitemap_row(f"{base_url}/terms", changefreq="yearly", priority=0.3),
+    ]
+
+    categories = (
+        ProductCategory.query
+        .join(Product, Product.category_id == ProductCategory.id)
+        .filter(ProductCategory.is_active.is_(True), Product.is_active.is_(True))
+        .distinct()
+        .order_by(ProductCategory.sort_order.asc(), ProductCategory.name.asc())
+        .all()
+    )
+    for category in categories:
+        lastmod = category.updated_at or category.created_at
+        urls.append(
+            sitemap_row(
+                f"{base_url}/categories/{escape(category.slug)}",
+                lastmod=lastmod.date().isoformat() if lastmod else None,
+                changefreq="weekly",
+                priority=0.7,
+            )
+        )
+
+    curricula = [
+        row[0].strip()
+        for row in db.session.query(Product.curriculum)
+        .filter(Product.is_active.is_(True), Product.curriculum.isnot(None), Product.curriculum != "")
+        .distinct()
+        .order_by(Product.curriculum.asc())
+        .all()
+        if row[0] and row[0].strip()
+    ]
+    if curricula:
+        urls.append(sitemap_row(f"{base_url}/categories/curriculum", changefreq="weekly", priority=0.7))
+    for curriculum in curricula:
+        urls.append(
+            sitemap_row(
+                f"{base_url}/categories/curriculum-{slugify(curriculum)}",
+                changefreq="weekly",
+                priority=0.6,
+            )
+        )
+
+    products = (
+        Product.query
+        .filter(Product.is_active.is_(True))
+        .order_by(Product.featured.desc(), Product.updated_at.desc(), Product.created_at.desc())
+        .all()
+    )
+    for product in products:
+        lastmod = product.updated_at or product.created_at
+        urls.append(
+            sitemap_row(
+                f"{base_url}/products/{escape(product.slug)}",
+                lastmod=lastmod.date().isoformat() if lastmod else None,
+                changefreq="weekly",
+                priority=0.8,
+            )
+        )
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{chr(10).join(urls)}\n"
+        '</urlset>\n'
+    )
+
+
+def host_sitemap_response(host=None):
+    body = build_bookshop_sitemap_xml() if is_bookshop_host(host) else build_main_sitemap_xml()
+    return xml_response(body)
+
+
+def host_robots_response(host=None):
+    if is_bookshop_host(host):
+        body = "\n".join([
+            "User-agent: *",
+            "Allow: /",
+            "",
+            "Disallow: /api/",
+            "Disallow: /cart",
+            "Disallow: /checkout",
+            "Disallow: /wishlist",
+            "Disallow: /track",
+            "Disallow: /track-order",
+            "Disallow: /track-your-order",
+            "Disallow: /login",
+            "Disallow: /signup",
+            "Disallow: /account",
+            "Disallow: /orders",
+            "",
+            f"Sitemap: {BOOKSHOP_SITE_BASE_URL}/sitemap.xml",
+        ]) + "\n"
+    else:
+        body = "\n".join([
+            "User-agent: *",
+            "Allow: /",
+            "",
+            "Disallow: /api/",
+            "Disallow: /login",
+            "Disallow: /register",
+            "Disallow: /signup",
+            "Disallow: /portal",
+            "Disallow: /admin",
+            "Disallow: /admin/",
+            "Disallow: /oauth/",
+            "Disallow: /unsubscribe",
+            "",
+            f"Sitemap: {MAIN_SITE_BASE_URL}/sitemap.xml",
+        ]) + "\n"
+    return Response(body, mimetype="text/plain")
 
 
 
@@ -514,114 +698,9 @@ def resources():
 
 @public_bp.get("/seo/main-sitemap.xml")
 def main_sitemap():
-    base_url = "https://realmindxgh.com"
-    urls = [
-        sitemap_row(f"{base_url}/", changefreq="weekly", priority=1.0),
-        sitemap_row(f"{base_url}/about", changefreq="monthly", priority=0.8),
-        sitemap_row(f"{base_url}/services", changefreq="weekly", priority=0.9),
-        sitemap_row(f"{base_url}/jobs", changefreq="daily", priority=0.9),
-        sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.7),
-        sitemap_row(f"{base_url}/news", changefreq="weekly", priority=0.8),
-        sitemap_row(f"{base_url}/gallery", changefreq="monthly", priority=0.6),
-        sitemap_row(f"{base_url}/donate", changefreq="monthly", priority=0.7),
-        sitemap_row(f"{base_url}/privacy", changefreq="yearly", priority=0.3),
-        sitemap_row(f"{base_url}/terms", changefreq="yearly", priority=0.3),
-    ]
-
-    service_rows = setting_collection("services", DEFAULT_SERVICES)
-    for item in public_rows(service_rows):
-        slug = slugify(item.get("id") or item.get("slug") or item.get("label") or item.get("title"))
-        urls.append(sitemap_row(f"{base_url}/services/{slug}", changefreq="monthly", priority=0.8))
-
-    news_rows = (
-        News.query
-        .filter_by(status="published")
-        .order_by(News.published_at.desc().nullslast(), News.created_at.desc())
-        .all()
-    )
-    for row in news_rows:
-        lastmod = (row.updated_at or row.published_at or row.created_at)
-        urls.append(
-            sitemap_row(
-                f"{base_url}/news/{escape(row.slug)}",
-                lastmod=lastmod.date().isoformat() if lastmod else None,
-                changefreq="monthly",
-                priority=0.7,
-            )
-        )
-
-    xml = (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"{chr(10).join(urls)}\n"
-        '</urlset>\n'
-    )
-    return xml_response(xml)
+    return xml_response(build_main_sitemap_xml())
 
 
 @public_bp.get("/seo/bookshop-sitemap.xml")
 def bookshop_sitemap():
-    base_url = "https://bookshop.realmindxgh.com"
-    urls = [
-        sitemap_row(f"{base_url}/", changefreq="daily", priority=1.0),
-        sitemap_row(f"{base_url}/products", changefreq="daily", priority=0.9),
-        sitemap_row(f"{base_url}/about", changefreq="monthly", priority=0.6),
-        sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.6),
-        sitemap_row(f"{base_url}/privacy", changefreq="yearly", priority=0.3),
-        sitemap_row(f"{base_url}/terms", changefreq="yearly", priority=0.3),
-    ]
-
-    categories = ProductCategory.query.filter_by(is_active=True).order_by(ProductCategory.sort_order.asc(), ProductCategory.name.asc()).all()
-    for category in categories:
-        lastmod = category.updated_at or category.created_at
-        urls.append(
-            sitemap_row(
-                f"{base_url}/categories/{escape(category.slug)}",
-                lastmod=lastmod.date().isoformat() if lastmod else None,
-                changefreq="weekly",
-                priority=0.7,
-            )
-        )
-
-    curricula = [
-        row[0].strip()
-        for row in db.session.query(Product.curriculum)
-        .filter(Product.is_active.is_(True), Product.curriculum.isnot(None), Product.curriculum != "")
-        .distinct()
-        .order_by(Product.curriculum.asc())
-        .all()
-        if row[0] and row[0].strip()
-    ]
-    for curriculum in curricula:
-        urls.append(
-            sitemap_row(
-                f"{base_url}/categories/curriculum-{slugify(curriculum)}",
-                changefreq="weekly",
-                priority=0.6,
-            )
-        )
-
-    products = (
-        Product.query
-        .filter(Product.is_active.is_(True))
-        .order_by(Product.featured.desc(), Product.updated_at.desc(), Product.created_at.desc())
-        .all()
-    )
-    for product in products:
-        lastmod = product.updated_at or product.created_at
-        urls.append(
-            sitemap_row(
-                f"{base_url}/products/{escape(product.slug)}",
-                lastmod=lastmod.date().isoformat() if lastmod else None,
-                changefreq="weekly",
-                priority=0.8,
-            )
-        )
-
-    xml = (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"{chr(10).join(urls)}\n"
-        '</urlset>\n'
-    )
-    return xml_response(xml)
+    return xml_response(build_bookshop_sitemap_xml())

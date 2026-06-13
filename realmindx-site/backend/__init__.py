@@ -2,6 +2,7 @@ from flask import Flask, jsonify, redirect, request, send_from_directory
 from flask_wtf.csrf import CSRFError
 
 from .api import register_api_blueprints
+from .api.public import host_robots_response, host_sitemap_response
 from .cli import register_cli
 from .config import Config
 from .extensions import cors, csrf, db, limiter, login_manager, migrate
@@ -48,6 +49,14 @@ def create_app(config_object=Config):
     @app.get("/health")
     def health():
         return jsonify(status="ok", service="realmindx-api")
+
+    @app.get("/sitemap.xml")
+    def sitemap():
+        return host_sitemap_response()
+
+    @app.get("/robots.txt")
+    def robots():
+        return host_robots_response()
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):

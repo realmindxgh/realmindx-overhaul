@@ -217,7 +217,13 @@ export const api = {
     return data;
   },
   // admin - status shortcuts
-  adminUpdateStatus: (collection, id, status) => apiFetch(`/admin/${collection}/${id}/status`, { method: 'PUT', body: { status } }),
+  adminUpdateStatus: (collection, id, payload) => apiFetch(
+    `/admin/${collection}/${id}/status`,
+    {
+      method: 'PUT',
+      body: (payload && typeof payload === 'object') ? payload : { status: payload },
+    },
+  ),
   // admin - settings (key-based)
   adminUpsertSetting: (key, value, isPublic) => apiFetch(`/admin/settings/${key}`, { method: 'PUT', body: { value, public: isPublic } }),
 

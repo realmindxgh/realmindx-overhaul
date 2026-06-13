@@ -190,6 +190,11 @@ def _enrich_service_media(items):
         for item in items
         if str(item.get("image_file_id") or "").isdigit()
     }
+    file_ids.update(
+        int(item.get("detail_image_file_id"))
+        for item in items
+        if str(item.get("detail_image_file_id") or "").isdigit()
+    )
     files = {
         row.id: row
         for row in UploadedFile.query.filter(UploadedFile.id.in_(file_ids)).all()
@@ -200,6 +205,9 @@ def _enrich_service_media(items):
         file_id = row.get("image_file_id")
         if str(file_id or "").isdigit():
             row["image_url"] = _upload_public_url(files.get(int(file_id))) or row.get("image_url")
+        detail_file_id = row.get("detail_image_file_id")
+        if str(detail_file_id or "").isdigit():
+            row["detail_image_url"] = _upload_public_url(files.get(int(detail_file_id))) or row.get("detail_image_url")
         enriched.append(row)
     return enriched
 

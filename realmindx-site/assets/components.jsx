@@ -126,13 +126,23 @@ export const DatePickerField = ({ value, onChange, placeholder, min, max, ariaLa
     const el = triggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setCoords({ top: rect.bottom + 8, left: rect.left, width: rect.width });
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const estimatedHeight = popRef.current?.offsetHeight || 356;
+    const minWidth = Math.max(rect.width, 272);
+    const left = Math.min(Math.max(12, rect.left), Math.max(12, viewportWidth - minWidth - 12));
+    const openAbove = rect.bottom + 8 + estimatedHeight > viewportHeight - 12 && rect.top - 8 - estimatedHeight >= 12;
+    const top = openAbove
+      ? Math.max(12, rect.top - estimatedHeight - 8)
+      : Math.min(rect.bottom + 8, Math.max(12, viewportHeight - estimatedHeight - 12));
+    setCoords({ top, left, width: rect.width });
   }, []);
 
   React.useEffect(() => {
     if (!open) return undefined;
     setViewDate(preferredView);
     reposition();
+    const frame = window.requestAnimationFrame(reposition);
     const handlePointerDown = event => {
       if (wrapRef.current?.contains(event.target) || popRef.current?.contains(event.target)) return;
       setOpen(false);
@@ -153,6 +163,7 @@ export const DatePickerField = ({ value, onChange, placeholder, min, max, ariaLa
     document.addEventListener('mousedown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      window.cancelAnimationFrame(frame);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
       document.removeEventListener('mousedown', handlePointerDown);
@@ -185,7 +196,7 @@ export const DatePickerField = ({ value, onChange, placeholder, min, max, ariaLa
 
   const popover = open && ReactDOM.createPortal(
     <div ref={popRef} className="dx-datepicker-pop" role="dialog" aria-label={`${ariaLabel || 'Date'} picker`}
-         style={{ position: 'fixed', top: coords.top, left: coords.left, minWidth: Math.max(coords.width, 272) }}>
+         style={{ position: 'fixed', top: coords.top, left: coords.left, minWidth: Math.max(coords.width, 272), maxHeight: 'calc(100vh - 24px)', overflowY: 'auto' }}>
       <div className="dx-datepicker-head">
         <button type="button" className="dx-datepicker-nav" aria-label="Previous month"
                 onClick={() => setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>

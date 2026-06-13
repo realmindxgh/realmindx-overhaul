@@ -60,7 +60,14 @@ def find_delivery_zone(payload):
 
 @bookshop_bp.get("/products/categories")
 def list_product_categories():
-    categories = ProductCategory.query.filter_by(is_active=True).order_by(ProductCategory.sort_order.asc(), ProductCategory.name.asc()).all()
+    categories = (
+        ProductCategory.query
+        .join(Product, Product.category_id == ProductCategory.id)
+        .filter(ProductCategory.is_active.is_(True), Product.is_active.is_(True))
+        .distinct()
+        .order_by(ProductCategory.sort_order.asc(), ProductCategory.name.asc())
+        .all()
+    )
     items = [category_json(category) | {"type": "category"} for category in categories]
     curricula = [
         row[0].strip()
@@ -71,6 +78,17 @@ def list_product_categories():
         .all()
         if row[0] and row[0].strip()
     ]
+    if curricula:
+        items.append(
+            {
+                "id": "curriculum",
+                "name": "Curriculum Books",
+                "slug": "curriculum",
+                "description": "Browse all books grouped by curriculum.",
+                "sort_order": 999,
+                "type": "curriculum-group",
+            }
+        )
     existing_slugs = {item["slug"] for item in items}
     for name in curricula:
         slug = f"curriculum-{slugify(name)}"
@@ -113,7 +131,9 @@ def list_products():
             )
         )
     if category:
-        if category.startswith("curriculum-"):
+        if category == "curriculum":
+            query = query.filter(Product.curriculum.isnot(None), Product.curriculum != "")
+        elif category.startswith("curriculum-"):
             matching = [
                 name
                 for (name,) in db.session.query(Product.curriculum).filter(Product.curriculum.isnot(None)).distinct().all()

@@ -89,7 +89,8 @@ const fromApiProduct = (p) => {
 const fromApiCategory = (c) => ({
   id: c.slug || slugifyCat(c.name || ''),
   name: c.name,
-  icon: c.type === 'curriculum' ? 'cap' : 'book',
+  description: c.description || '',
+  icon: String(c.type || '').startsWith('curriculum') ? 'cap' : 'book',
   type: c.type || 'category',
 });
 

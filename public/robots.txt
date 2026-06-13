@@ -2,6 +2,7 @@ User-agent: *
 Allow: /
 
 # Keep portals, auth, and OAuth callback surfaces private
+Disallow: /api/
 Disallow: /login
 Disallow: /register
 Disallow: /signup

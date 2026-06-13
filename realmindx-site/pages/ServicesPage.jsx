@@ -5,61 +5,101 @@ import { Icon } from '../assets/components.jsx';
 import { usePublicServices, useSiteCopy } from '../../src/lib/siteContent.js';
 import { servicePath, slugify } from '../../src/lib/seoRoutes.js';
 
-const ServiceDocContent = ({ service, showDetailLink = false }) => (
-  <div className="service-doc-layout">
-    <div className="service-doc-copy">
-      <div className="service-doc-kicker">
-        <span className="service-doc-icon"><Icon name={service.icon} size={18} stroke={1.9} /></span>
-        <span>{service.tag}</span>
-      </div>
-      <h2>{service.title}</h2>
+const serviceDocVariant = (service, variant = 'overview') => {
+  if (variant === 'detail') {
+    return {
+      tag: service.detailTag,
+      title: service.detailTitle,
+      summary: service.detailSummary,
+      body: service.detailBody,
+      features: service.detailFeatures,
+      badge: service.detailBadge,
+      img: service.detailImg,
+      ctas: service.detailCtas,
+    };
+  }
+  return {
+    tag: service.tag,
+    title: service.title,
+    summary: service.summary,
+    body: service.body,
+    features: service.features,
+    badge: service.badge,
+    img: service.img,
+    ctas: service.ctas,
+  };
+};
 
-      {service.img && (
-        <figure className="service-doc-image-card">
-          <img src={service.img} alt={`${service.label} service`} loading="lazy" />
-          {service.badge && <figcaption>{service.badge}</figcaption>}
-        </figure>
-      )}
+const ServiceDocContent = ({ service, variant = 'overview' }) => {
+  const doc = serviceDocVariant(service, variant);
+  const detailHref = servicePath(service.id);
+  const isOverview = variant === 'overview';
 
-      {service.summary && <p className="service-doc-summary">{service.summary}</p>}
-      {showDetailLink && (
-        <p>
-          <Link to={servicePath(service.id)} className="btn btn-outline-navy btn-sm">
-            View dedicated {service.label} page
+  return (
+    <div className="service-doc-layout">
+      <div className="service-doc-copy">
+        {isOverview ? (
+          <Link to={detailHref} className="service-doc-kicker service-doc-kicker-link">
+            <span className="service-doc-icon"><Icon name={service.icon} size={18} stroke={1.9} /></span>
+            <span>{doc.tag}</span>
           </Link>
-        </p>
-      )}
-      {service.body.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+        ) : (
+          <div className="service-doc-kicker">
+            <span className="service-doc-icon"><Icon name={service.icon} size={18} stroke={1.9} /></span>
+            <span>{doc.tag}</span>
+          </div>
+        )}
 
-      {service.features.length > 0 && (
-        <div className="service-doc-features">
-          {service.features.map(feature => (
-            <div className="service-doc-feature" key={feature}>
-              <Icon name="check" size={15} stroke={2.4} />
-              <span>{feature}</span>
-            </div>
-          ))}
-        </div>
-      )}
+        <h2>
+          {isOverview ? <Link to={detailHref} className="service-doc-title-link">{doc.title}</Link> : doc.title}
+        </h2>
 
-      {service.ctas.length > 0 && (
-        <div className="service-doc-actions">
-          {service.ctas.map(cta => (
-            <a
-              key={`${service.id}-${cta.label}`}
-              className={`btn btn-${cta.style}`}
-              href={cta.href}
-              target={cta.href.startsWith('http') ? '_blank' : undefined}
-              rel={cta.href.startsWith('http') ? 'noreferrer' : undefined}
-            >
-              {cta.label}
-            </a>
-          ))}
-        </div>
-      )}
+        {doc.img && (
+          <figure className="service-doc-image-card">
+            {isOverview ? (
+              <Link to={detailHref} className="service-doc-image-link">
+                <img src={doc.img} alt={`${service.label} service`} loading="lazy" />
+              </Link>
+            ) : (
+              <img src={doc.img} alt={`${service.label} service`} loading="lazy" />
+            )}
+            {doc.badge && <figcaption>{doc.badge}</figcaption>}
+          </figure>
+        )}
+
+        {doc.summary && <p className="service-doc-summary">{doc.summary}</p>}
+        {doc.body.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+
+        {doc.features.length > 0 && (
+          <div className="service-doc-features">
+            {doc.features.map(feature => (
+              <div className="service-doc-feature" key={feature}>
+                <Icon name="check" size={15} stroke={2.4} />
+                <span>{feature}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {doc.ctas.length > 0 && (
+          <div className="service-doc-actions">
+            {doc.ctas.map(cta => (
+              <a
+                key={`${service.id}-${cta.label}`}
+                className={`btn btn-${cta.style}`}
+                href={cta.href}
+                target={cta.href.startsWith('http') ? '_blank' : undefined}
+                rel={cta.href.startsWith('http') ? 'noreferrer' : undefined}
+              >
+                {cta.label}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ServicesPage = () => {
   const services = usePublicServices();
@@ -246,7 +286,7 @@ const ServicesPage = () => {
                 key={service.id}
                 ref={el => { sectionRefs.current[service.id] = el; }}
               >
-                <ServiceDocContent service={service} showDetailLink />
+                <ServiceDocContent service={service} />
               </section>
             ))}
           </main>
@@ -322,9 +362,9 @@ export const ServiceDetailPage = () => {
               <span>&gt;</span>
               <span>{service.label}</span>
             </div>
-            <p className="overline">{service.tag}</p>
-            <h1>{service.title}</h1>
-            <p>{service.summary || service.body[0]}</p>
+            <p className="overline">{service.detailTag}</p>
+            <h1>{service.detailTitle}</h1>
+            <p>{service.detailSummary || service.detailBody[0] || service.summary || service.body[0]}</p>
             <div className="services-effective-pill">
               <Icon name={service.icon} size={15} stroke={2} />
               <span>Built for Ghanaian schools, teachers, parents, and learners.</span>
@@ -348,7 +388,7 @@ export const ServiceDetailPage = () => {
 
             <main className="services-document">
               <section className="service-doc-section">
-                <ServiceDocContent service={service} />
+                <ServiceDocContent service={service} variant="detail" />
               </section>
             </main>
           </div>
