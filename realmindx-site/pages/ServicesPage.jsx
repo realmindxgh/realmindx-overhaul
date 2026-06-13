@@ -317,7 +317,7 @@ export const ServiceDetailPage = () => {
   const { serviceSlug = '' } = useParams();
   const services = usePublicServices();
   const service = services.find(item => slugify(item.id) === slugify(serviceSlug));
-  const related = services.filter(item => item.id !== service?.id).slice(0, 5);
+  const related = services.filter(item => item.id !== service?.id);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
@@ -408,7 +408,7 @@ export const ServiceDetailPage = () => {
                     <p className="overline">{item.tag}</p>
                     <h2>{item.label}</h2>
                     <p>{item.summary}</p>
-                    <Link className="btn btn-outline-navy btn-sm" to={servicePath(item.id)}>
+                    <Link className="btn btn-navy btn-sm" to={servicePath(item.id)}>
                       View Service
                     </Link>
                   </article>

@@ -924,7 +924,7 @@ const SchoolMS = () => (
           <a className="btn btn-primary" href="https://schoolms.realmindxgh.com/" target="_blank" rel="noreferrer">
             Visit SchoolMS <Icon name="arrow" size={16} />
           </a>
-          <a className="btn btn-outline" href="/contact">
+          <a className="btn btn-white" href="/contact">
             Book a Demo
           </a>
         </div>

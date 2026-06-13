@@ -285,7 +285,7 @@ const NewsPage = ({ articleSlug = null }) => {
               <NewsArticleBody item={selectedItem} />
               <div className="news-article-footer-ctas">
                 <Link to="/news" className="btn btn-primary">More News</Link>
-                <Link to="/" className="news-article-home-link">Visit Homepage</Link>
+                <Link to="/" className="btn btn-navy">Visit Homepage</Link>
               </div>
               {relatedItems.length > 0 && (
                 <section className="news-article-related">
@@ -318,7 +318,7 @@ const NewsPage = ({ articleSlug = null }) => {
               <p>That news link does not match a currently published RealMindX article.</p>
               <div className="btn-row" style={{ marginTop: 24 }}>
                 <Link to="/news" className="btn btn-primary btn-lg">Browse News</Link>
-                <Link to="/" className="btn btn-outline btn-lg">Back to Homepage</Link>
+                <Link to="/" className="btn btn-navy btn-lg">Back to Homepage</Link>
               </div>
             </div>
           </section>
