@@ -6,6 +6,8 @@ import { isApiMode, api } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
+const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
+const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 
 const AuthReturnActions = ({ navigate }) => !isLoggedIn() ? (
   <div className="bs-auth-return-actions">
@@ -179,7 +181,7 @@ const CheckoutPage = ({ navigate }) => {
       // return from Paystack via the callback URL to see it.
       if (paymentMethod === 'online' && isApiMode() && order?.id) {
         try {
-          const callbackUrl = `${window.location.origin}/bookshop?order=${encodeURIComponent(ref)}&status=paid`;
+          const callbackUrl = `${window.location.origin}${PREFIX}/?order=${encodeURIComponent(ref)}&status=paid`;
           const payData = await api.initPaystackPayment(order.id, callbackUrl);
           const authUrl = payData?.payment?.authorization_url;
           if (authUrl) {

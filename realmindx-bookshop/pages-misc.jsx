@@ -10,7 +10,12 @@ import globalToast from '../src/lib/toast.js';
 import { consumeBookshopAuthReturn } from './authReturn.js';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import VerifiedContactField from '../src/lib/VerifiedContactField.jsx';
+import { bookshopPathForRoute } from './urls.js';
 const bookshopHeroImage = '/bookshop-og.png';
+
+const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
+const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
+const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
 
 const AuthPage = ({ navigate, mode = 'login' }) => {
   const isLogin = mode === 'login';
@@ -261,7 +266,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
                 <span className="bs-cbox"><Icon name="check" size={12} /></span>
                 Remember me
               </label>
-              <a href="#" className="bs-link-gold" onClick={(event) => { event.preventDefault(); globalToast.info('Reset link sent.'); }}>
+              <a href={hrefForRoute('login')} className="bs-link-gold" onClick={(event) => { event.preventDefault(); globalToast.info('Reset link sent.'); }}>
                 Forgot password?
               </a>
             </div>
@@ -270,7 +275,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
             <label className="bs-checkbox-line" ref={termsRef} tabIndex={-1}>
               <input type="checkbox" checked={form.acceptedTerms} onChange={set('acceptedTerms')} />
               <span className="bs-cbox"><Icon name="check" size={12} /></span>
-              <span>I agree to the <a className="bs-link-gold" href="/bookshop/terms">Bookshop Terms of Service</a> and <a className="bs-link-gold" href="/bookshop/privacy">Bookshop Privacy Policy</a>.</span>
+              <span>I agree to the <a className="bs-link-gold" href={hrefForRoute('terms')}>Bookshop Terms of Service</a> and <a className="bs-link-gold" href={hrefForRoute('privacy')}>Bookshop Privacy Policy</a>.</span>
             </label>
             <TurnstileField key={turnstileKey} className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
             </>
@@ -282,9 +287,9 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
 
           <div className="bs-auth-alt">
             {isLogin ? (
-              <>Do not have an account? <a href="#" className="bs-link-gold" onClick={(event) => { event.preventDefault(); navigate('signup'); }}>Sign Up</a></>
+              <>Do not have an account? <a href={hrefForRoute('signup')} className="bs-link-gold" onClick={(event) => { event.preventDefault(); navigate('signup'); }}>Sign Up</a></>
             ) : (
-              <>Already have an account? <a href="#" className="bs-link-gold" onClick={(event) => { event.preventDefault(); navigate('login'); }}>Sign In</a></>
+              <>Already have an account? <a href={hrefForRoute('login')} className="bs-link-gold" onClick={(event) => { event.preventDefault(); navigate('login'); }}>Sign In</a></>
             )}
           </div>
         </form>
@@ -322,7 +327,7 @@ const ContactPage = ({ navigate }) => {
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-breadcrumb">
-        <a href="#" onClick={(event) => { event.preventDefault(); navigate('home'); }}>Home</a>
+        <a href={hrefForRoute('home')} onClick={(event) => { event.preventDefault(); navigate('home'); }}>Home</a>
         <span className="bs-sep">/</span><span className="bs-cur">Contact</span>
       </div>
       <div style={{ padding: '8px 0 4px' }}>
@@ -521,8 +526,8 @@ const BookshopLegalPage = ({ type = 'privacy' }) => {
               </section>
             ))}
             <div style={{ display:'flex', gap:12, marginTop:32, flexWrap:'wrap' }}>
-              <a href="/bookshop" className="bs-btn bs-btn-navy">Back to Bookshop</a>
-              <a href="/contact" className="bs-btn bs-btn-outline-navy">Contact Us</a>
+              <a href={hrefForRoute('home')} className="bs-btn bs-btn-navy">Back to Bookshop</a>
+              <a href={hrefForRoute('contact')} className="bs-btn bs-btn-outline-navy">Contact Us</a>
             </div>
           </article>
         </div>

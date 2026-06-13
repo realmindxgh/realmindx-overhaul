@@ -5,6 +5,11 @@ import { useCatalog } from './catalog.jsx';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
+import { bookshopPathForRoute } from './urls.js';
+
+const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
+const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
+const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
 
 // ---------- Flyer hero slideshow (admin-managed) ----------
 const FLYER_GRADIENTS = [
@@ -189,7 +194,7 @@ const HomePage = ({ navigate }) => {
             <span className="bs-eyebrow">Just Arrived</span>
             <h2 className="bs-h2">New in the shop</h2>
           </div>
-          <a className="bs-see-all" href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>View all <Icon name="arrow" size={14} /></a>
+          <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>View all <Icon name="arrow" size={14} /></a>
         </Reveal>
         <div className="bs-product-grid bs-home-new-grid">
           {featured.map((b, i) => (
@@ -206,7 +211,7 @@ const HomePage = ({ navigate }) => {
             <span className="bs-eyebrow">Exam Season</span>
             <h2 className="bs-h2">BECE & WASSCE picks</h2>
           </div>
-          <a className="bs-see-all" href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>Browse the catalogue <Icon name="arrow" size={14} /></a>
+          <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Browse the catalogue <Icon name="arrow" size={14} /></a>
         </Reveal>
         <div className="bs-product-grid">
           {examPicks.map((b, i) => (
@@ -477,7 +482,7 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
     return (
       <div className="bs-container bs-fade-page">
         <div className="bs-breadcrumb">
-          <a href="#" onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
+          <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
           <span className="bs-sep">/</span><span className="bs-cur">Shop</span>
         </div>
         <LoadingState
@@ -491,7 +496,7 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-breadcrumb">
-        <a href="#" onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
+        <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
         <span className="bs-sep">/</span><span className="bs-cur">Shop</span>
       </div>
 
@@ -581,7 +586,7 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
                       <span className="bs-eyebrow">While you're here</span>
                       <h2 className="bs-h2" style={{ fontSize:'clamp(20px,4vw,26px)', margin:0 }}>Top picks from across the shop</h2>
                     </div>
-                    <a className="bs-see-all" href="#" onClick={(e) => {
+                    <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(e) => {
                       e.preventDefault();
                       setFilters({ cats:[], min:0, max:priceCeiling, ratingMin:'', ratingMax:'', inStock:false, query:'' });
                       window.scrollTo({ top:0, behavior:'smooth' });

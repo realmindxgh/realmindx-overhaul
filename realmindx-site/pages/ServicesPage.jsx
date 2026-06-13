@@ -1,7 +1,65 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { Nav, Footer } from '../components/NavFooter';
 import { Icon } from '../assets/components.jsx';
 import { usePublicServices, useSiteCopy } from '../../src/lib/siteContent.js';
+import { servicePath, slugify } from '../../src/lib/seoRoutes.js';
+
+const ServiceDocContent = ({ service, showDetailLink = false }) => (
+  <div className="service-doc-layout">
+    <div className="service-doc-copy">
+      <div className="service-doc-kicker">
+        <span className="service-doc-icon"><Icon name={service.icon} size={18} stroke={1.9} /></span>
+        <span>{service.tag}</span>
+      </div>
+      <h2>{service.title}</h2>
+
+      {service.img && (
+        <figure className="service-doc-image-card">
+          <img src={service.img} alt={`${service.label} service`} loading="lazy" />
+          {service.badge && <figcaption>{service.badge}</figcaption>}
+        </figure>
+      )}
+
+      {service.summary && <p className="service-doc-summary">{service.summary}</p>}
+      {showDetailLink && (
+        <p>
+          <Link to={servicePath(service.id)} className="btn btn-outline-navy btn-sm">
+            View dedicated {service.label} page
+          </Link>
+        </p>
+      )}
+      {service.body.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+
+      {service.features.length > 0 && (
+        <div className="service-doc-features">
+          {service.features.map(feature => (
+            <div className="service-doc-feature" key={feature}>
+              <Icon name="check" size={15} stroke={2.4} />
+              <span>{feature}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {service.ctas.length > 0 && (
+        <div className="service-doc-actions">
+          {service.ctas.map(cta => (
+            <a
+              key={`${service.id}-${cta.label}`}
+              className={`btn btn-${cta.style}`}
+              href={cta.href}
+              target={cta.href.startsWith('http') ? '_blank' : undefined}
+              rel={cta.href.startsWith('http') ? 'noreferrer' : undefined}
+            >
+              {cta.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+);
 
 const ServicesPage = () => {
   const services = usePublicServices();
@@ -188,53 +246,7 @@ const ServicesPage = () => {
                 key={service.id}
                 ref={el => { sectionRefs.current[service.id] = el; }}
               >
-                <div className="service-doc-layout">
-                  <div className="service-doc-copy">
-                    <div className="service-doc-kicker">
-                      <span className="service-doc-icon"><Icon name={service.icon} size={18} stroke={1.9} /></span>
-                      <span>{service.tag}</span>
-                    </div>
-                    <h2>{service.title}</h2>
-
-                    {/* Image between heading and summary */}
-                    {service.img && (
-                      <figure className="service-doc-image-card">
-                        <img src={service.img} alt={`${service.label} service`} loading="lazy" />
-                        {service.badge && <figcaption>{service.badge}</figcaption>}
-                      </figure>
-                    )}
-
-                    {service.summary && <p className="service-doc-summary">{service.summary}</p>}
-                    {service.body.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-
-                    {service.features.length > 0 && (
-                      <div className="service-doc-features">
-                        {service.features.map(feature => (
-                          <div className="service-doc-feature" key={feature}>
-                            <Icon name="check" size={15} stroke={2.4} />
-                            <span>{feature}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {service.ctas.length > 0 && (
-                      <div className="service-doc-actions">
-                        {service.ctas.map(cta => (
-                          <a
-                            key={`${service.id}-${cta.label}`}
-                            className={`btn btn-${cta.style}`}
-                            href={cta.href}
-                            target={cta.href.startsWith('http') ? '_blank' : undefined}
-                            rel={cta.href.startsWith('http') ? 'noreferrer' : undefined}
-                          >
-                            {cta.label}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <ServiceDocContent service={service} showDetailLink />
               </section>
             ))}
           </main>
@@ -256,6 +268,116 @@ const ServicesPage = () => {
         </div>
       </section>
 
+      <Footer />
+    </>
+  );
+};
+
+export const ServiceDetailPage = () => {
+  const { serviceSlug = '' } = useParams();
+  const services = usePublicServices();
+  const service = services.find(item => slugify(item.id) === slugify(serviceSlug));
+  const related = services.filter(item => item.id !== service?.id).slice(0, 5);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+  }, [serviceSlug]);
+
+  if (!service) {
+    return (
+      <>
+        <Nav activePage="services" />
+        <main className="route-page">
+          <section className="page-hero route-page-hero">
+            <div className="container" style={{ position: 'relative', zIndex: 1 }}>
+              <p className="overline">RealMindX</p>
+              <h1>Service Not Found</h1>
+              <p>That service link does not match a currently published RealMindX service.</p>
+              <div className="btn-row" style={{ marginTop: 24 }}>
+                <Link to="/services" className="btn btn-primary btn-lg">View All Services</Link>
+                <Link to="/contact" className="btn btn-outline btn-lg">Contact RealMindX</Link>
+              </div>
+            </div>
+          </section>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  if (slugify(serviceSlug) !== slugify(service.id)) {
+    return <Navigate to={servicePath(service.id)} replace />;
+  }
+
+  return (
+    <>
+      <Nav activePage="services" />
+      <main className="route-page">
+        <section className="services-policy-hero">
+          <div className="container">
+            <div className="legal-breadcrumb">
+              <Link to="/">RealMindX</Link>
+              <span>&gt;</span>
+              <Link to="/services">Services</Link>
+              <span>&gt;</span>
+              <span>{service.label}</span>
+            </div>
+            <p className="overline">{service.tag}</p>
+            <h1>{service.title}</h1>
+            <p>{service.summary || service.body[0]}</p>
+            <div className="services-effective-pill">
+              <Icon name={service.icon} size={15} stroke={2} />
+              <span>Built for Ghanaian schools, teachers, parents, and learners.</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="services-policy-body">
+          <div className="container services-policy-grid">
+            <aside className="services-contents services-contents-desktop" aria-label="Related services">
+              <p>Other Services</p>
+              <nav>
+                <Link className="active" to={servicePath(service.id)}>{service.label}</Link>
+                {related.map(item => (
+                  <Link key={item.id} to={servicePath(item.id)}>
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            </aside>
+
+            <main className="services-document">
+              <section className="service-doc-section">
+                <ServiceDocContent service={service} />
+              </section>
+            </main>
+          </div>
+        </section>
+
+        {related.length > 0 && (
+          <section className="site-info-section">
+            <div className="container">
+              <div className="section-heading" style={{ marginBottom: 28 }}>
+                <p className="overline">Explore More</p>
+                <h2 className="section-title">Related RealMindX Services</h2>
+              </div>
+              <div className="managed-card-grid">
+                {related.map(item => (
+                  <article key={item.id} className="managed-card">
+                    {item.img && <img src={item.img} alt={`${item.label} service`} />}
+                    <p className="overline">{item.tag}</p>
+                    <h2>{item.label}</h2>
+                    <p>{item.summary}</p>
+                    <Link className="btn btn-outline-navy btn-sm" to={servicePath(item.id)}>
+                      View Service
+                    </Link>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+      </main>
       <Footer />
     </>
   );

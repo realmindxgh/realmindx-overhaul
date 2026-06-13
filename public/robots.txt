@@ -1,9 +1,14 @@
 User-agent: *
 Allow: /
 
-# Keep portals and admin private
+# Keep portals, auth, and OAuth callback surfaces private
+Disallow: /login
+Disallow: /register
+Disallow: /signup
 Disallow: /portal
 Disallow: /admin
 Disallow: /admin/
+Disallow: /oauth/
+Disallow: /unsubscribe
 
 Sitemap: https://realmindxgh.com/sitemap.xml

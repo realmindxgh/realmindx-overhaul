@@ -5,6 +5,13 @@ import logoWhite from '../realmindx-site/assets/logo-white.png';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 import globalToast from '../src/lib/toast.js';
+import { bookshopPathForRoute, categoryHref, productHref, productPathSegment } from './urls.js';
+
+const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
+const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
+const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
+const hrefForCategory = (category) => `${PREFIX}${categoryHref(category)}`;
+const hrefForProduct = (book) => `${PREFIX}${productHref(book)}`;
 
 // ---------- Wishlist store ----------
 const WishlistCtx = React.createContext(null);
@@ -299,7 +306,7 @@ const Navbar = ({ route, navigate }) => {
     <>
       <nav className={`bs-nav${searching ? ' bs-searching' : ''}`}>
         <div className="bs-nav-inner">
-          <Logo onClick={(e) => go('home', e)} />
+          <Logo href={hrefForRoute('home')} onClick={(e) => go('home', e)} />
 
           {/* Search wrapper — always in DOM; hidden on mobile until searching */}
           <div className="bs-nav-search-wrap" ref={searchWrapRef}>
@@ -327,14 +334,15 @@ const Navbar = ({ route, navigate }) => {
             {showSuggestions && (
               <div className="bs-search-suggestions" role="listbox">
                 {suggestions.map(b => (
-                  <button
+                  <a
                     key={b.id}
-                    type="button"
+                    href={hrefForProduct(b)}
                     role="option"
                     className="bs-search-sug-item"
                     onMouseDown={e => e.preventDefault()} /* prevent input blur before click */
-                    onClick={() => {
-                      navigate('product', { id: b.id });
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate('product', { id: b.id, slug: productPathSegment(b) });
                       setSearching(false);
                       setSearchFocused(false);
                       setQ('');
@@ -343,7 +351,7 @@ const Navbar = ({ route, navigate }) => {
                     <Icon name="book" size={13} className="bs-ci" style={{ color: 'var(--bs-navy)', opacity: 0.45, flexShrink: 0 }} />
                     <span className="bs-sug-title">{b.title}</span>
                     {b.catName && <span className="bs-sug-cat">{b.catName}</span>}
-                  </button>
+                  </a>
                 ))}
                 <button
                   type="button"
@@ -375,7 +383,7 @@ const Navbar = ({ route, navigate }) => {
               </button>
               <div className={`bs-cats-menu${catsOpen ? ' open' : ''}`}>
                 {categories.map(c => (
-                  <a key={c.id} href="#" onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { cat: c.id }); }}>
+                  <a key={c.id} href={hrefForCategory(c.id)} onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { cat: c.id }); }}>
                     <Icon name={c.icon} size={18} className="bs-ci" /> {c.name}
                   </a>
                 ))}
@@ -413,7 +421,7 @@ const Navbar = ({ route, navigate }) => {
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
         <nav className="bs-mm-links">
           {[['home','Home'],['shop','Shop'],['wishlist','Wishlist'],['cart','Cart'],['track','Track Order'],['contact','Contact'],['about','About']].map(([r,l]) => (
-            <a key={r} href="#" className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
+            <a key={r} href={hrefForRoute(r)} className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
               {l}
             </a>
           ))}
@@ -441,11 +449,11 @@ const Footer = ({ navigate }) => (
         <div>
           <h4>Quick Links</h4>
           <div className="bs-footer-links">
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>All Curricula</a>
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>
+            <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
+            <a href={hrefForCategory('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { cat: 'curriculum' });}}>All Curricula</a>
+            <a href={hrefForRoute('track')} onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
+            <a href={hrefForRoute('about')} onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
+            <a href={hrefForRoute('contact')} onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>
           </div>
         </div>
         <div>
@@ -460,8 +468,8 @@ const Footer = ({ navigate }) => (
         <div>
           <h4>Legal</h4>
           <div className="bs-footer-links">
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('privacy');}}>Bookshop Privacy Policy</a>
-            <a href="#" onClick={(e)=>{e.preventDefault();navigate('terms');}}>Bookshop Terms</a>
+            <a href={hrefForRoute('privacy')} onClick={(e)=>{e.preventDefault();navigate('privacy');}}>Bookshop Privacy Policy</a>
+            <a href={hrefForRoute('terms')} onClick={(e)=>{e.preventDefault();navigate('terms');}}>Bookshop Terms</a>
             <a href="https://schoolms.realmindxgh.com/">SchoolMS</a>
             <a href="https://realmindxgh.com/donate">Donate</a>
           </div>
@@ -508,7 +516,7 @@ const BottomNav = ({ route, navigate }) => {
   return (
     <nav className="bs-bottom-nav">
       {items.map(([r,l,icn]) => (
-        <a key={r} href="#" className={(r === 'account' ? route === 'login' || route === 'signup' : route === r) ? 'active' : ''} onClick={(e) => {
+        <a key={r} href={hrefForRoute(r)} className={(r === 'account' ? route === 'login' || route === 'signup' : route === r) ? 'active' : ''} onClick={(e) => {
           e.preventDefault();
           if (r === 'account') {
             navigate(session?.role ? 'account' : 'login');
@@ -545,6 +553,7 @@ const ProductCard = ({ book, idx = 0, navigate }) => {
   const { add } = useCart();
   const wishlist = useWishlist();
   const [added, setAdded] = React.useState(false);
+  const productUrl = hrefForProduct(book);
   const onAdd = (e) => {
     e.stopPropagation();
     add(book.id);
@@ -556,7 +565,7 @@ const ProductCard = ({ book, idx = 0, navigate }) => {
   };
   const wishlisted = wishlist?.has(book.id);
   return (
-    <div className={`bs-pcard${book.stock ? '' : ' bs-oos'}`} onClick={() => navigate('product', { id: book.id })} style={{ cursor:'pointer' }}>
+    <div className={`bs-pcard${book.stock ? '' : ' bs-oos'}`} onClick={() => navigate('product', { id: book.id, slug: productPathSegment(book) })} style={{ cursor:'pointer' }}>
       <div className="bs-pcard-cover">
         {book.badge && <span className="bs-cover-badge">{book.badge}</span>}
         <button
@@ -567,14 +576,32 @@ const ProductCard = ({ book, idx = 0, navigate }) => {
         >
           <Icon name="heart" size={16} />
         </button>
-        <CoverPlaceholder title={book.title} idx={idx} image={book.image} />
+        <a
+          href={productUrl}
+          className="bs-product-link"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate('product', { id: book.id, slug: productPathSegment(book) });
+          }}
+        >
+          <CoverPlaceholder title={book.title} idx={idx} image={book.image} />
+        </a>
       </div>
       <div className="bs-pcard-body">
         <div className={`bs-pcard-stock ${book.stock ? 'bs-stock-in' : 'bs-stock-out'}`}>
           <span className={`bs-dot ${book.stock ? 'in' : 'out'}`} />
           {book.stock ? 'In Stock' : 'Out of Stock'}
         </div>
-        <div className="bs-pcard-title">{book.title}</div>
+        <a
+          href={productUrl}
+          className="bs-pcard-title bs-product-link"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate('product', { id: book.id, slug: productPathSegment(book) });
+          }}
+        >
+          {book.title}
+        </a>
         <div className="bs-pcard-desc">{book.desc}</div>
         {(book.publisher || book.author) && (
           <div className="bs-pcard-meta">{book.publisher || book.author}</div>
@@ -596,12 +623,31 @@ const ProductCard = ({ book, idx = 0, navigate }) => {
 // ---------- List-view card ----------
 const ListCard = ({ book, idx = 0, navigate }) => {
   const { add } = useCart();
+  const productUrl = hrefForProduct(book);
   return (
-    <div className="bs-lcard" onClick={() => navigate('product', { id: book.id })} style={{ cursor:'pointer' }}>
-      <div className="bs-lcard-cover"><CoverPlaceholder title={book.title} idx={idx} small image={book.image} /></div>
+    <div className="bs-lcard" onClick={() => navigate('product', { id: book.id, slug: productPathSegment(book) })} style={{ cursor:'pointer' }}>
+      <a
+        href={productUrl}
+        className="bs-lcard-cover bs-product-link"
+        onClick={(e) => {
+          e.preventDefault();
+          navigate('product', { id: book.id, slug: productPathSegment(book) });
+        }}
+      >
+        <CoverPlaceholder title={book.title} idx={idx} small image={book.image} />
+      </a>
       <div className="bs-lcard-mid">
         <span className="bs-cat-badge">{book.catName}</span>
-        <div className="bs-cart-item-title">{book.title}</div>
+        <a
+          href={productUrl}
+          className="bs-cart-item-title bs-product-link"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate('product', { id: book.id, slug: productPathSegment(book) });
+          }}
+        >
+          {book.title}
+        </a>
         <div className="bs-pcard-desc" style={{ whiteSpace:'normal' }}>{book.desc}</div>
         <div className={`bs-list-stock-row ${book.stock ? 'bs-stock-in' : 'bs-stock-out'}`}>
           <span className={`bs-dot ${book.stock ? 'in' : 'out'}`} />

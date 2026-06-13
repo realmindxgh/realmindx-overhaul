@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 
 import '../realmindx-site/assets/styles.css';
 import '../realmindx-site/styles/pages.css';
@@ -9,7 +9,7 @@ import './route-fixes.css';
 
 import HomePage from '../realmindx-site/assets/app.jsx';
 import AboutPage from '../realmindx-site/pages/AboutPage.jsx';
-import ServicesPage from '../realmindx-site/pages/ServicesPage.jsx';
+import ServicesPage, { ServiceDetailPage } from '../realmindx-site/pages/ServicesPage.jsx';
 import ContactPage from '../realmindx-site/pages/ContactPage.jsx';
 import JobsPage from '../realmindx-site/pages/JobsPage.jsx';
 import UserPortalPage from '../realmindx-site/pages/UserPortalPage.jsx';
@@ -17,8 +17,10 @@ import AdminPortalPage from '../realmindx-site/pages/AdminPortalPage.jsx';
 import { AdminLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
 import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
-import { usePublicGalleryState, usePublicNewsState, useSiteCopy } from './lib/siteContent.js';
+import { usePublicGalleryState, usePublicNewsState, usePublicServices, useSiteCopy } from './lib/siteContent.js';
 import { API_BASE, api, isApiMode } from './lib/apiClient.js';
+import { setHeadLink, setHeadMeta, setStructuredData } from './lib/head.js';
+import { newsPath, servicePath, SITE_BASE_URL, SITE_DEFAULT_IMAGE, slugify } from './lib/seoRoutes.js';
 
 import BookshopApp from '../realmindx-bookshop/BookshopApp.jsx';
 import DonatePage from '../realmindx-site/pages/DonatePage.jsx';
@@ -205,59 +207,61 @@ const NewsArticleBody = ({ item }) => {
 
 const NEWS_PER_PAGE = 15;
 
-const NewsCard = ({ item, onClick }) => (
-  <article className="news-card news-card-clickable" onClick={onClick} style={{ cursor:'pointer' }} tabIndex={0} onKeyDown={e => e.key === 'Enter' && onClick()}>
-    {newsAssetUrl(item.img || item.image_url) && (
-      <div className="news-card-img-wrap">
-        <img src={newsAssetUrl(item.img || item.image_url)} alt={item.title} />
+const NewsCard = ({ item }) => (
+  <article className="news-card news-card-clickable">
+    <Link to={newsPath(item)} className="news-card-link">
+      {newsAssetUrl(item.img || item.image_url) && (
+        <div className="news-card-img-wrap">
+          <img src={newsAssetUrl(item.img || item.image_url)} alt={item.title} />
+        </div>
+      )}
+      <div className="news-card-body">
+        <p className="overline">{item.cat || 'Update'}{item.date ? ` · ${item.date}` : ''}</p>
+        <h2 className="news-card-title">{item.title}</h2>
+        <p className="news-card-excerpt">{item.excerpt || item.summary || ''}</p>
+        <span className="news-card-read-more">Read more <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
       </div>
-    )}
-    <div className="news-card-body">
-      <p className="overline">{item.cat || 'Update'}{item.date ? ` · ${item.date}` : ''}</p>
-      <h2 className="news-card-title">{item.title}</h2>
-      <p className="news-card-excerpt">{item.excerpt || item.summary || ''}</p>
-      <span className="news-card-read-more">Read more <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-    </div>
+    </Link>
   </article>
 );
 
-const NewsPage = () => {
+const NewsPage = ({ articleSlug = null }) => {
   const newsState = usePublicNewsState(200);
   const allItems = newsState.items;
   const [page, setPage] = React.useState(1);
-  const [selectedSlug, setSelectedSlug] = React.useState(() => {
-    // Support direct URL like /news#slug
-    if (typeof window !== 'undefined' && window.location.hash) {
-      return window.location.hash.replace('#', '').replace('post-', '');
-    }
-    return null;
-  });
 
   const totalPages = Math.max(1, Math.ceil(allItems.length / NEWS_PER_PAGE));
   const paginated = allItems.slice((page - 1) * NEWS_PER_PAGE, page * NEWS_PER_PAGE);
 
-  const openArticle = (item) => {
-    setSelectedSlug(item.slug || String(item.id));
-    window.scrollTo(0, 0);
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', `/news#post-${item.slug || item.id}`);
-    }
-  };
-
-  const closeArticle = () => {
-    setSelectedSlug(null);
-    window.scrollTo(0, 0);
-    if (typeof window !== 'undefined') {
-      window.history.pushState({}, '', '/news');
-    }
-  };
-
-  const selectedItem = selectedSlug
-    ? allItems.find(i => (i.slug || String(i.id)) === selectedSlug)
+  const selectedItem = articleSlug
+    ? allItems.find(i => slugify(i.slug || i.id) === slugify(articleSlug) || slugify(String(i.id)) === slugify(articleSlug))
     : null;
 
+  if (articleSlug && selectedItem && slugify(articleSlug) !== slugify(selectedItem.slug || selectedItem.id)) {
+    return <Navigate to={newsPath(selectedItem)} replace />;
+  }
+
+  if (articleSlug && newsState.loading) {
+    return (
+      <>
+        <Nav activePage="news" />
+        <main className="route-page">
+          <section className="site-info-section">
+            <div className="container">
+              <div className="managed-empty">
+                <h2>Loading Article</h2>
+                <p>Checking the latest published RealMindX update.</p>
+              </div>
+            </div>
+          </section>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
   // Single article view
-  if (selectedItem) {
+  if (articleSlug && selectedItem) {
     return (
       <>
         <Nav activePage="news" />
@@ -265,8 +269,8 @@ const NewsPage = () => {
           <article className="news-article-page">
             <div className="container" style={{ maxWidth: 860 }}>
               <div className="news-article-breadcrumb">
-                <button onClick={closeArticle} className="btn btn-outline-navy btn-sm">← Back to News</button>
-                <a href="/" className="btn btn-outline-navy btn-sm">Back to Homepage</a>
+                <Link to="/news" className="btn btn-outline-navy btn-sm">← Back to News</Link>
+                <Link to="/" className="btn btn-outline-navy btn-sm">Back to Homepage</Link>
               </div>
               {newsAssetUrl(selectedItem.img || selectedItem.image_url) && (
                 <img className="news-article-hero-img" src={newsAssetUrl(selectedItem.img || selectedItem.image_url)} alt={selectedItem.title} />
@@ -276,11 +280,33 @@ const NewsPage = () => {
               {selectedItem.excerpt && <p className="news-article-lead">{selectedItem.excerpt}</p>}
               <NewsArticleBody item={selectedItem} />
               <div className="news-article-footer-ctas">
-                <button onClick={closeArticle} className="btn btn-primary">← Back to News</button>
-                <a href="/" className="btn btn-outline-navy">Back to Homepage</a>
+                <Link to="/news" className="btn btn-primary">← Back to News</Link>
+                <Link to="/" className="btn btn-outline-navy">Back to Homepage</Link>
               </div>
             </div>
           </article>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  if (articleSlug && !selectedItem) {
+    return (
+      <>
+        <Nav activePage="news" />
+        <main className="route-page">
+          <section className="page-hero route-page-hero">
+            <div className="container" style={{ position: 'relative', zIndex: 1 }}>
+              <p className="overline">RealMindX News</p>
+              <h1>Article Not Found</h1>
+              <p>That news link does not match a currently published RealMindX article.</p>
+              <div className="btn-row" style={{ marginTop: 24 }}>
+                <Link to="/news" className="btn btn-primary btn-lg">Browse News</Link>
+                <Link to="/" className="btn btn-outline btn-lg">Back to Homepage</Link>
+              </div>
+            </div>
+          </section>
         </main>
         <Footer />
       </>
@@ -315,7 +341,7 @@ const NewsPage = () => {
               <>
                 <div className="news-card-grid">
                   {paginated.map(item => (
-                    <NewsCard key={item.id} item={item} onClick={() => openArticle(item)} />
+                    <NewsCard key={item.id} item={item} />
                   ))}
                 </div>
                 {totalPages > 1 && (
@@ -533,10 +559,14 @@ const NotFoundPage = () => (
 );
 
 const RegisterRoute = () => <UserLoginPage initialMode="register" />;
+const NewsArticleRoute = () => {
+  const { articleSlug = '' } = useParams();
+  return <NewsPage articleSlug={articleSlug} />;
+};
 
 // ── Per-route meta (title + description + OG) ─────────────────
-const BASE_URL = 'https://realmindxgh.com';
-const DEFAULT_IMG = `${BASE_URL}/og-image.png`;
+const BASE_URL = SITE_BASE_URL;
+const DEFAULT_IMG = SITE_DEFAULT_IMAGE;
 
 const PAGE_META = {
   '/': {
@@ -549,7 +579,7 @@ const PAGE_META = {
   },
   '/services': {
     title: 'Educational Services | RealMindX Education Ghana',
-    desc: 'Teacher recruitment, professional development, school structuring, after-school tutoring, special education, home schooling support and more. All in one place.',
+    desc: 'Explore RealMindX education services in Ghana, including teacher recruitment, teacher development, school structuring, tutoring, special education, SchoolMS, and more.',
   },
   '/jobs': {
     title: 'Teaching Jobs in Ghana | RealMindX Jobs Board',
@@ -577,33 +607,123 @@ const PAGE_META = {
   '/register':{ title: 'Create a Teacher Account | RealMindX', desc: 'Join thousands of teachers on the RealMindX platform. Create your profile, upload your CV, and apply for teaching positions across Ghana.' },
 };
 
-const setMeta = (name, content) => {
-  let el = document.querySelector(`meta[name="${name}"]`) || document.querySelector(`meta[property="${name}"]`);
-  if (!el) { el = document.createElement('meta'); el.setAttribute(name.startsWith('og:') || name.startsWith('twitter:') ? 'property' : 'name', name); document.head.appendChild(el); }
-  el.setAttribute('content', content);
-};
+const shouldNoIndexPath = (path) => (
+  path === '/unsubscribe'
+  || path === '/login'
+  || path === '/register'
+  || path === '/signup'
+  || path.startsWith('/portal')
+  || path.startsWith('/admin')
+);
+
+const serviceMeta = (service) => ({
+  title: `${service.label} | RealMindX Education Ghana`,
+  desc: service.summary || service.body?.[0] || `Learn how RealMindX delivers ${service.label.toLowerCase()} services across Ghana.`,
+  image: service.img || DEFAULT_IMG,
+});
+
+const newsMeta = (item) => ({
+  title: `${item.title} | RealMindX News`,
+  desc: item.excerpt || item.summary || item.body || 'Latest RealMindX news and updates from Ghana.',
+  image: newsAssetUrl(item.img || item.image_url) || DEFAULT_IMG,
+});
 
 const RouteTitle = () => {
   const location = useLocation();
+  const services = usePublicServices();
+  const newsState = usePublicNewsState(200);
   React.useEffect(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
     if (path.startsWith('/bookshop')) return; // handled by BookshopApp
-    if (path.startsWith('/admin')) { document.title = 'Admin | RealMindX'; return; }
-    const meta = PAGE_META[path] || { title: 'RealMindX Education', desc: "Ghana's educational services provider: teacher recruitment, bookshop, CPD, school transformation and more." };
+    let meta = PAGE_META[path] || { title: 'RealMindX Education', desc: "Ghana's educational services provider: teacher recruitment, bookshop, CPD, school transformation and more." };
+    let canonicalPath = path;
+    let image = DEFAULT_IMG;
+    let structuredData = null;
+    let robots = shouldNoIndexPath(path) ? 'noindex,follow' : 'index,follow';
+
+    if (path.startsWith('/services/')) {
+      const serviceSlug = path.split('/services/')[1] || '';
+      const service = services.find(item => slugify(item.id) === slugify(serviceSlug));
+      if (service) {
+        meta = serviceMeta(service);
+        canonicalPath = servicePath(service.id);
+        image = service.img || DEFAULT_IMG;
+        structuredData = {
+          '@context': 'https://schema.org',
+          '@type': 'Service',
+          name: service.label,
+          description: meta.desc,
+          provider: {
+            '@type': 'EducationalOrganization',
+            name: 'RealMindX Education Limited',
+            url: SITE_BASE_URL,
+          },
+          areaServed: {
+            '@type': 'Country',
+            name: 'Ghana',
+          },
+          url: `${SITE_BASE_URL}${servicePath(service.id)}`,
+        };
+      } else {
+        meta = {
+          title: 'Service Not Found | RealMindX Education',
+          desc: 'That RealMindX service link does not match a currently published service.',
+        };
+        robots = 'noindex,follow';
+      }
+    } else if (path.startsWith('/news/')) {
+      const articleSlug = path.split('/news/')[1] || '';
+      const article = newsState.items.find(item => slugify(item.slug || item.id) === slugify(articleSlug) || slugify(String(item.id)) === slugify(articleSlug));
+      if (article) {
+        meta = newsMeta(article);
+        canonicalPath = newsPath(article);
+        image = newsAssetUrl(article.img || article.image_url) || DEFAULT_IMG;
+        structuredData = {
+          '@context': 'https://schema.org',
+          '@type': 'NewsArticle',
+          headline: article.title,
+          description: meta.desc,
+          image,
+          datePublished: article.published_at || undefined,
+          author: {
+            '@type': 'Organization',
+            name: 'RealMindX Education Limited',
+          },
+          publisher: {
+            '@type': 'Organization',
+            name: 'RealMindX Education Limited',
+            logo: {
+              '@type': 'ImageObject',
+              url: `${SITE_BASE_URL}/logo-white.png`,
+            },
+          },
+          mainEntityOfPage: `${SITE_BASE_URL}${newsPath(article)}`,
+        };
+      } else if (!newsState.loading) {
+        meta = {
+          title: 'Article Not Found | RealMindX News',
+          desc: 'That RealMindX news link does not match a currently published article.',
+        };
+        robots = 'noindex,follow';
+      }
+    }
+
     document.title = meta.title;
-    const url = `${BASE_URL}${path}`;
-    setMeta('description', meta.desc);
-    setMeta('og:title', meta.title);
-    setMeta('og:description', meta.desc);
-    setMeta('og:url', url);
-    setMeta('og:image', DEFAULT_IMG);
-    setMeta('twitter:title', meta.title);
-    setMeta('twitter:description', meta.desc);
-    // Canonical
-    let canon = document.querySelector('link[rel="canonical"]');
-    if (!canon) { canon = document.createElement('link'); canon.rel = 'canonical'; document.head.appendChild(canon); }
-    canon.href = url;
-  }, [location.pathname]);
+    const url = `${BASE_URL}${canonicalPath}`;
+    setHeadMeta('description', meta.desc);
+    setHeadMeta('robots', robots);
+    setHeadMeta('og:type', path.startsWith('/news/') ? 'article' : 'website', { property: true });
+    setHeadMeta('og:title', meta.title, { property: true });
+    setHeadMeta('og:description', meta.desc, { property: true });
+    setHeadMeta('og:url', url, { property: true });
+    setHeadMeta('og:image', image, { property: true });
+    setHeadMeta('twitter:card', 'summary_large_image');
+    setHeadMeta('twitter:title', meta.title);
+    setHeadMeta('twitter:description', meta.desc);
+    setHeadMeta('twitter:image', image);
+    setHeadLink('canonical', url);
+    setStructuredData('route-seo', structuredData);
+  }, [location.pathname, newsState.items, newsState.loading, services]);
   return null;
 };
 
@@ -695,6 +815,7 @@ const AppRoutes = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/services" element={<ServicesPage />} />
+        <Route path="/services/:serviceSlug" element={<ServiceDetailPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/login" element={<UserLoginPage />} />
@@ -704,6 +825,8 @@ const AppRoutes = () => {
         <Route path="/user/signup" element={<Navigate to="/register" replace />} />
         <Route path="/user/register" element={<Navigate to="/register" replace />} />
         <Route path="/user/login" element={<Navigate to="/login" replace />} />
+        <Route path="/forgot-password" element={<Navigate to="/login" replace />} />
+        <Route path="/book_service" element={<Navigate to="/contact" replace />} />
         <Route path="/portal/*" element={<UserPortalPage />} />
 
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
@@ -713,10 +836,8 @@ const AppRoutes = () => {
 
         <Route path="/bookshop/*" element={<BookshopApp />} />
 
-        <Route
-          path="/news"
-          element={<NewsPage />}
-        />
+        <Route path="/news" element={<NewsPage />} />
+        <Route path="/news/:articleSlug" element={<NewsArticleRoute />} />
         <Route
           path="/gallery"
           element={<SiteCollectionPage activePage="gallery" collection="gallery" title="Gallery" body="Images and moments from RealMindX programmes, school visits, and community work." />}

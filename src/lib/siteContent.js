@@ -11,6 +11,7 @@ import {
   publicItems,
   useManagedContent,
 } from './managedContent.js';
+import { newsPath, servicePath } from './seoRoutes.js';
 const bookshopImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
 const homeTeachingImage = '/uploads/Redesign/hero/Home Teaching-1.jpg';
 const schoolStructuringImage = '/uploads/Redesign/hero/School Restructuring-3.jpg';
@@ -88,6 +89,7 @@ const normaliseService = (service, index = 0) => {
     features: lines(service.features),
     ctas,
     img: apiAssetUrl(service.image_url) || service.image || serviceImages[service.image_key] || serviceImages.school,
+    href: servicePath(id),
     sort_order: Number(service.sort_order ?? index),
     status: service.status || 'published',
   };
@@ -97,6 +99,27 @@ const sortServices = items =>
   publicItems(items)
     .map(normaliseService)
     .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
+
+const useApiItems = loader => {
+  const [state, setState] = React.useState({ items: null, failed: false });
+
+  React.useEffect(() => {
+    if (!isApiMode()) return undefined;
+    let alive = true;
+    loader()
+      .then(data => {
+        if (alive) setState({ items: data.items || [], failed: false });
+      })
+      .catch(() => {
+        if (alive) setState({ items: [], failed: true });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [loader]);
+
+  return state;
+};
 
 const normalisePartner = (partner, index = 0) => ({
   ...partner,
@@ -183,7 +206,7 @@ const normaliseNews = (item, index = 0) => {
         }))
       : [],
     img: apiAssetUrl(item.image_url) || item.image || previewImages[String(item.category || '').toLowerCase()] || previewImages.announcement,
-    href: `/news#post-${slug || item.id}`,
+    href: newsPath({ slug, id: item.id, title: item.title }),
     sort_date: Number.isNaN(Date.parse(dateValue)) ? 0 : Date.parse(dateValue),
     status: item.status || 'published',
   };
@@ -208,37 +231,23 @@ const normaliseGallery = (item, index = 0) => {
 
 export const usePublicServices = () => {
   const localContent = useManagedContent();
-  const [apiServices, setApiServices] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!isApiMode()) return;
-    let alive = true;
-    api.fetchServices()
-      .then(data => { if (alive) setApiServices(data.items || []); })
-      .catch(() => { if (alive) setApiServices([]); });
-    return () => { alive = false; };
-  }, []);
+  const { items: apiServices, failed } = useApiItems(api.fetchServices);
 
   const localServices = localContent.services?.length ? localContent.services : DEFAULT_SERVICES;
-  const source = isApiMode() ? (apiServices ?? []) : localServices;
+  const source = isApiMode()
+    ? (failed ? localServices : (apiServices ?? localServices))
+    : localServices;
   return sortServices(source);
 };
 
 export const usePublicPartners = () => {
   const localContent = useManagedContent();
-  const [apiPartners, setApiPartners] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!isApiMode()) return;
-    let alive = true;
-    api.fetchPartners()
-      .then(data => { if (alive) setApiPartners(data.items || []); })
-      .catch(() => { if (alive) setApiPartners([]); });
-    return () => { alive = false; };
-  }, []);
+  const { items: apiPartners, failed } = useApiItems(api.fetchPartners);
 
   const localPartners = localContent.partners?.length ? localContent.partners : DEFAULT_PARTNERS;
-  const source = isApiMode() ? (apiPartners ?? []) : localPartners;
+  const source = isApiMode()
+    ? (failed ? localPartners : (apiPartners ?? localPartners))
+    : localPartners;
   return publicItems(source)
     .map(normalisePartner)
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
@@ -246,19 +255,12 @@ export const usePublicPartners = () => {
 
 export const usePublicPeople = () => {
   const localContent = useManagedContent();
-  const [apiPeople, setApiPeople] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!isApiMode()) return;
-    let alive = true;
-    api.fetchPeople()
-      .then(data => { if (alive) setApiPeople(data.items || []); })
-      .catch(() => { if (alive) setApiPeople([]); });
-    return () => { alive = false; };
-  }, []);
+  const { items: apiPeople, failed } = useApiItems(api.fetchPeople);
 
   const localPeople = localContent.people?.length ? localContent.people : DEFAULT_PEOPLE;
-  const source = isApiMode() ? (apiPeople ?? []) : localPeople;
+  const source = isApiMode()
+    ? (failed ? localPeople : (apiPeople ?? localPeople))
+    : localPeople;
   return publicItems(source)
     .map(normalisePerson)
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
@@ -279,21 +281,14 @@ const normaliseTestimonial = (item, index = 0) => ({
 
 export const useTestimonials = () => {
   const localContent = useManagedContent();
-  const [apiTestimonials, setApiTestimonials] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!isApiMode()) return;
-    let alive = true;
-    api.fetchTestimonials()
-      .then(data => { if (alive) setApiTestimonials(data.items || []); })
-      .catch(() => { if (alive) setApiTestimonials([]); });
-    return () => { alive = false; };
-  }, []);
+  const { items: apiTestimonials, failed } = useApiItems(api.fetchTestimonials);
 
   const localTestimonials = localContent.testimonials?.length ? localContent.testimonials : DEFAULT_TESTIMONIALS;
   // While the API fetch is in flight, show the defaults (they mirror the
   // seeded rows) so the section never flashes empty on the homepage.
-  const source = isApiMode() ? (apiTestimonials ?? DEFAULT_TESTIMONIALS) : localTestimonials;
+  const source = isApiMode()
+    ? (failed ? localTestimonials : (apiTestimonials ?? localTestimonials))
+    : localTestimonials;
   return publicItems(source)
     .map(normaliseTestimonial)
     .filter(item => item.quote)
@@ -302,19 +297,12 @@ export const useTestimonials = () => {
 
 const usePublicCollection = (collection, loader, fallback) => {
   const localContent = useManagedContent();
-  const [apiItems, setApiItems] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!isApiMode()) return;
-    let alive = true;
-    loader()
-      .then(data => { if (alive) setApiItems(data.items || []); })
-      .catch(() => { if (alive) setApiItems([]); });
-    return () => { alive = false; };
-  }, [loader]);
+  const { items: apiItems, failed } = useApiItems(loader);
 
   const localItems = localContent[collection]?.length ? localContent[collection] : fallback;
-  return isApiMode() ? (apiItems ?? []) : localItems;
+  return isApiMode()
+    ? (failed ? localItems : (apiItems ?? localItems))
+    : localItems;
 };
 
 export const useHomeHeroSlides = () => {
@@ -329,19 +317,12 @@ export const useDonationSlides = () => {
 
 export const usePublicNewsState = (limit = 3) => {
   const localContent = useManagedContent();
-  const [apiNews, setApiNews] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!isApiMode()) return;
-    let alive = true;
-    api.fetchNews()
-      .then(data => { if (alive) setApiNews(data.items || []); })
-      .catch(() => { if (alive) setApiNews([]); });
-    return () => { alive = false; };
-  }, []);
+  const { items: apiNews, failed } = useApiItems(api.fetchNews);
 
   const localNews = localContent.news?.length ? localContent.news : [];
-  const source = isApiMode() ? (apiNews || []) : localNews;
+  const source = isApiMode()
+    ? (failed ? localNews : (apiNews ?? localNews))
+    : localNews;
   const visible = isApiMode() ? source : publicItems(source);
   const items = visible
     .map(normaliseNews)
@@ -349,7 +330,7 @@ export const usePublicNewsState = (limit = 3) => {
     .slice(0, limit);
   return {
     items,
-    loading: isApiMode() && apiNews === null,
+    loading: isApiMode() && apiNews === null && !failed,
   };
 };
 
@@ -359,19 +340,12 @@ export const usePublicNews = (limit = 3) => {
 
 export const usePublicGalleryState = (limit = 6) => {
   const localContent = useManagedContent();
-  const [apiGallery, setApiGallery] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!isApiMode()) return;
-    let alive = true;
-    api.fetchGallery()
-      .then(data => { if (alive) setApiGallery(data.items || []); })
-      .catch(() => { if (alive) setApiGallery([]); });
-    return () => { alive = false; };
-  }, []);
+  const { items: apiGallery, failed } = useApiItems(api.fetchGallery);
 
   const localGallery = localContent.gallery?.length ? localContent.gallery : [];
-  const source = isApiMode() ? (apiGallery || []) : localGallery;
+  const source = isApiMode()
+    ? (failed ? localGallery : (apiGallery ?? localGallery))
+    : localGallery;
   const visible = isApiMode() ? source : publicItems(source);
   const items = visible
     .map(normaliseGallery)
@@ -379,7 +353,7 @@ export const usePublicGalleryState = (limit = 6) => {
     .slice(0, limit);
   return {
     items,
-    loading: isApiMode() && apiGallery === null,
+    loading: isApiMode() && apiGallery === null && !failed,
   };
 };
 
@@ -422,19 +396,10 @@ export const usePublicSettings = () => {
 
 export const useSiteCopy = () => {
   const localContent = useManagedContent();
-  const [apiCopy, setApiCopy] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!isApiMode()) return;
-    let alive = true;
-    api.fetchSiteCopy()
-      .then(data => { if (alive) setApiCopy(data.items || []); })
-      .catch(() => { if (alive) setApiCopy([]); });
-    return () => { alive = false; };
-  }, []);
+  const { items: apiCopy, failed } = useApiItems(api.fetchSiteCopy);
 
   const localCopy = localContent.siteCopy?.length ? localContent.siteCopy : DEFAULT_SITE_COPY;
-  const source = isApiMode() && apiCopy?.length ? apiCopy : localCopy;
+  const source = isApiMode() && !failed && apiCopy?.length ? apiCopy : localCopy;
   return publicItems(source).reduce((acc, item) => {
     acc[item.key] = item.value;
     return acc;

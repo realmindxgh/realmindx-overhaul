@@ -68,8 +68,8 @@ const BrainMark = ({ size = 22 }) => (
   </svg>
 );
 
-const Logo = ({ onClick }) => (
-  <a className="bs-logo bs-logo-img" href="#home" onClick={onClick} aria-label="RealMindX Bookshop home">
+const Logo = ({ href = '#home', onClick }) => (
+  <a className="bs-logo bs-logo-img" href={href} onClick={onClick} aria-label="RealMindX Bookshop home">
     <img src={bookshopLogo} alt="RealMindX Bookshop" className="bs-navbar-logo-img"
       onError={e => { e.target.style.display='none'; }} />
   </a>

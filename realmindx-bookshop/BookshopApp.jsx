@@ -4,8 +4,11 @@ import { HomePage, ShopPage } from './pages-shop.jsx';
 import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
 import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage } from './pages-misc.jsx';
-import { CatalogProvider } from './catalog.jsx';
+import { CatalogProvider, useCatalog } from './catalog.jsx';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
+import { setHeadLink, setHeadMeta, setStructuredData } from '../src/lib/head.js';
+import { BOOKSHOP_BASE_URL, BOOKSHOP_DEFAULT_IMAGE } from '../src/lib/seoRoutes.js';
+import { bookshopPathForRoute, canonicalBookshopBase, categoryHref, productHref, productMatchesSegment, productPathSegment } from './urls.js';
 
 const GOLD_ACCENT = '#ffcc01';
 
@@ -14,15 +17,24 @@ const GOLD_ACCENT = '#ffcc01';
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 
+const prefixedPath = (path) => `${PREFIX}${path}`;
+const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'track', 'login', 'signup', 'account', 'orders']);
+const canonicalUrlForRoute = (route, params = {}) => `${canonicalBookshopBase}${bookshopPathForRoute(route, params)}`;
+
 const routeFromPath = () => {
   if (typeof window === 'undefined') return { route: 'home', params: {} };
   const path = window.location.pathname.replace(/\/+$/, '');
-  const p = ON_SUBDOMAIN ? path : path.replace('/bookshop', '');
-  if (p === '/products' || p.startsWith('/products/')) return { route: 'shop', params: {} };
+  const search = new URLSearchParams(window.location.search);
+  const p = ON_SUBDOMAIN ? path : path.replace('/bookshop', '') || '/';
+  const searchQuery = search.get('q') || '';
+  const categoryQuery = search.get('category') || search.get('cat') || '';
+  if (p === '/products') return { route: 'shop', params: { cat: categoryQuery || 'all', q: searchQuery } };
+  if (p.startsWith('/products/')) return { route: 'product', params: { slug: decodeURIComponent(p.split('/products/')[1] || '') } };
+  if (p.startsWith('/categories/')) return { route: 'shop', params: { cat: decodeURIComponent(p.split('/categories/')[1] || ''), q: searchQuery } };
   if (p === '/cart')      return { route: 'cart',     params: {} };
   if (p === '/wishlist')  return { route: 'wishlist', params: {} };
   if (p === '/checkout') return { route: 'checkout', params: {} };
-  if (p === '/track')    return { route: 'track',    params: {} };
+  if (p === '/track' || p === '/track-order' || p === '/track-your-order') return { route: 'track', params: {} };
   if (p === '/login')    return { route: 'login',    params: {} };
   if (p === '/signup')   return { route: 'signup',   params: {} };
   if (p === '/contact')  return { route: 'contact',  params: {} };
@@ -34,22 +46,7 @@ const routeFromPath = () => {
   return { route: 'home', params: {} };
 };
 
-const pathForRoute = route => ({
-  home:     `${PREFIX}/`,
-  shop:     `${PREFIX}/products`,
-  cart:     `${PREFIX}/cart`,
-  wishlist: `${PREFIX}/wishlist`,
-  checkout: `${PREFIX}/checkout`,
-  track:    `${PREFIX}/track`,
-  login:    `${PREFIX}/login`,
-  signup:   `${PREFIX}/signup`,
-  contact:  `${PREFIX}/contact`,
-  about:    `${PREFIX}/about`,
-  privacy:  `${PREFIX}/privacy`,
-  terms:    `${PREFIX}/terms`,
-  account:  `${PREFIX}/account`,
-  orders:   `${PREFIX}/orders`,
-}[route] || `${PREFIX}/`);
+const pathForRoute = (route, params = {}) => prefixedPath(bookshopPathForRoute(route, params));
 
 // Paystack confirmation page: shown when user returns from Paystack payment
 const PaystackReturnPage = ({ orderRef, navigate, clear }) => {
@@ -72,6 +69,7 @@ const PaystackReturnPage = ({ orderRef, navigate, clear }) => {
 };
 
 const App = () => {
+  const { books, categories } = useCatalog();
   const initialRoute = React.useMemo(routeFromPath, []);
   const [route, setRoute] = React.useState(initialRoute.route);
   const [params, setParams] = React.useState(initialRoute.params);
@@ -88,10 +86,38 @@ const App = () => {
   const navigate = (r, p = {}) => {
     setRoute(r);
     setParams(p);
-    const nextPath = pathForRoute(r);
-    if (window.location.pathname !== nextPath) window.history.pushState({}, '', nextPath);
+    const nextPath = pathForRoute(r, p);
+    if (`${window.location.pathname}${window.location.search}` !== nextPath) {
+      window.history.pushState({}, '', nextPath);
+    }
     window.scrollTo(0, 0);
   };
+
+  const activeProduct = route === 'product'
+    ? books.find(book => String(book.id) === String(params.id))
+      || books.find(book => productMatchesSegment(book, params.slug))
+      || null
+    : null;
+  const activeCategory = route === 'shop' && params.cat && params.cat !== 'all'
+    ? categories.find(category => category.id === params.cat)
+    : null;
+  const categoryLabel = activeCategory?.name || (params.cat && params.cat !== 'all' ? params.cat : null);
+  const canonicalParams = route === 'product' && activeProduct
+    ? { slug: productPathSegment(activeProduct) }
+    : route === 'shop'
+      ? { cat: params.cat, q: params.q }
+      : params;
+  const canonicalPath = bookshopPathForRoute(route, canonicalParams);
+  const canonicalUrl = `${canonicalBookshopBase}${canonicalPath}`;
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const preferredPath = `${PREFIX}${canonicalPath}`;
+    const currentPath = `${window.location.pathname}${window.location.search}`;
+    if (currentPath !== preferredPath) {
+      window.history.replaceState({}, '', preferredPath);
+    }
+  }, [canonicalPath]);
 
   React.useEffect(() => {
     document.documentElement.style.setProperty('--bs-gold-live', GOLD_ACCENT);
@@ -107,7 +133,6 @@ const App = () => {
 
   // Page titles + OG meta per bookshop route
   React.useEffect(() => {
-    const BASE = ON_SUBDOMAIN ? 'https://bookshop.realmindxgh.com' : 'https://realmindxgh.com';
     const meta = {
       home:     { title: 'RealMindX Bookshop | Educational Books & Stationery Ghana', desc: 'Shop textbooks, curricula, stationery and learning materials. Fast delivery across Ghana. Wholesale pricing for schools.' },
       shop:     { title: 'Browse Educational Books & Textbooks | RealMindX Bookshop', desc: 'Find BECE, WASSCE, primary and JHS textbooks, curricula and stationery. In-stock items with delivery across Ghana.' },
@@ -125,15 +150,81 @@ const App = () => {
       account:  { title: 'My Account | RealMindX Bookshop', desc: 'Manage your RealMindX Bookshop account, view billing info, and access your order history.' },
       orders:   { title: 'My Orders | RealMindX Bookshop', desc: 'View all your past orders, track deliveries, and see order details.' },
     };
-    const m = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
-    document.title = m.title;
-    const paths = { home:'/', shop:'/products', product:'/products', cart:'/cart', wishlist:'/wishlist', checkout:'/checkout', track:'/track', login:'/login', signup:'/signup', contact:'/contact', about:'/about', privacy:'/privacy', terms:'/terms', account:'/account', orders:'/orders' };
-    const url = `${BASE}${paths[route] || '/bookshop'}`;
-    const setM = (k, v) => { if (!v) return; let el = document.querySelector(`meta[name="${k}"]`) || document.querySelector(`meta[property="${k}"]`); if (!el) { el = document.createElement('meta'); el.setAttribute(k.startsWith('og:') ? 'property' : 'name', k); document.head.appendChild(el); } el.setAttribute('content', v); };
-    if (m.desc) { setM('description', m.desc); setM('og:description', m.desc); setM('twitter:description', m.desc); }
-    setM('og:title', m.title); setM('og:url', url); setM('og:image', `${BASE}/og-image-bookshop.png`); setM('og:site_name', 'RealMindX Bookshop'); setM('twitter:title', m.title); setM('twitter:image', `${BASE}/og-image-bookshop.png`);
-    let canon = document.querySelector('link[rel="canonical"]'); if (!canon) { canon = document.createElement('link'); canon.rel = 'canonical'; document.head.appendChild(canon); } canon.href = url;
-  }, [route]);
+    let currentMeta = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
+    let image = BOOKSHOP_DEFAULT_IMAGE;
+    let structuredData = null;
+    let robots = ON_SUBDOMAIN && !SHOP_ROBOTS_NOINDEX.has(route) ? 'index,follow' : 'noindex,follow';
+
+    if (route === 'product') {
+      if (activeProduct) {
+        currentMeta = {
+          title: `${activeProduct.title} | RealMindX Bookshop`,
+          desc: activeProduct.short || activeProduct.desc || activeProduct.full || meta.product.desc,
+        };
+        image = activeProduct.image || BOOKSHOP_DEFAULT_IMAGE;
+        structuredData = {
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: activeProduct.title,
+          description: currentMeta.desc,
+          image: image ? [image] : undefined,
+          sku: String(activeProduct.id),
+          category: activeProduct.catName,
+          brand: {
+            '@type': 'Brand',
+            name: activeProduct.publisher || 'RealMindX Bookshop',
+          },
+          offers: {
+            '@type': 'Offer',
+            priceCurrency: 'GHS',
+            price: activeProduct.price,
+            availability: activeProduct.stock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+            url: canonicalUrl,
+          },
+        };
+      } else {
+        currentMeta = {
+          title: 'Product Not Found | RealMindX Bookshop',
+          desc: 'That product link does not match a currently published RealMindX Bookshop item.',
+        };
+        robots = 'noindex,follow';
+      }
+    } else if (route === 'shop' && categoryLabel && !params.q) {
+      currentMeta = {
+        title: `${categoryLabel} | RealMindX Bookshop`,
+        desc: `Browse ${categoryLabel.toLowerCase()} textbooks, learning materials, and school supplies from the RealMindX Bookshop.`,
+      };
+      structuredData = {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: currentMeta.title,
+        description: currentMeta.desc,
+        url: canonicalUrl,
+      };
+    } else if (route === 'shop' && params.q) {
+      currentMeta = {
+        title: `Search results for "${params.q}" | RealMindX Bookshop`,
+        desc: `Browse RealMindX Bookshop results for ${params.q}.`,
+      };
+      robots = 'noindex,follow';
+    }
+
+    document.title = currentMeta.title;
+    setHeadMeta('description', currentMeta.desc);
+    setHeadMeta('robots', robots);
+    setHeadMeta('og:type', route === 'product' ? 'product' : 'website', { property: true });
+    setHeadMeta('og:title', currentMeta.title, { property: true });
+    setHeadMeta('og:description', currentMeta.desc, { property: true });
+    setHeadMeta('og:url', canonicalUrl, { property: true });
+    setHeadMeta('og:image', image, { property: true });
+    setHeadMeta('og:site_name', 'RealMindX Bookshop', { property: true });
+    setHeadMeta('twitter:card', 'summary_large_image');
+    setHeadMeta('twitter:title', currentMeta.title);
+    setHeadMeta('twitter:description', currentMeta.desc);
+    setHeadMeta('twitter:image', image);
+    setHeadLink('canonical', canonicalUrl);
+    setStructuredData('bookshop-route-seo', structuredData);
+  }, [route, params.cat, params.id, params.q, params.slug, activeProduct, categoryLabel, canonicalUrl]);
 
   React.useEffect(() => {
     document.body.classList.add('bs-has-bottomnav');
@@ -154,7 +245,7 @@ const App = () => {
   switch (route) {
     case 'home':     page = <HomePage navigate={navigate} />; break;
     case 'shop':     page = <ShopPage navigate={navigate} initialCat={params.cat || 'all'} initialQuery={params.q || ''} key={`${params.cat || 'all'}::${params.q || ''}::${params.sq || ''}`} />; break;
-    case 'product':  page = <ProductPage navigate={navigate} bookId={params.id} key={params.id} />; break;
+    case 'product':  page = <ProductPage navigate={navigate} bookId={activeProduct?.id} bookSlug={params.slug} key={activeProduct?.id || params.slug} />; break;
     case 'cart':     page = <CartPage navigate={navigate} />; break;
     case 'wishlist': page = <WishlistPage navigate={navigate} />; break;
     case 'checkout': page = <CheckoutPage navigate={navigate} />; break;
@@ -175,8 +266,8 @@ const App = () => {
 
   // Show Paystack confirmation if returning from payment
   if (paystackReturn) {
-    return (
-      <div className="bs">
+      return (
+        <div className="bs">
         <Navbar route="home" navigate={(r) => { setPaystackReturn(null); navigate(r); }} />
         <main className={mainClassName}>
           <PaystackReturnPage

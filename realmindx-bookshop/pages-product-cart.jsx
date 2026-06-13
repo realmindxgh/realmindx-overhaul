@@ -7,7 +7,14 @@ import { useSiteCopy } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
 import globalToast from '../src/lib/toast.js';
+import { bookshopPathForRoute, categoryHref, productHref, productMatchesSegment, productPathSegment } from './urls.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
+
+const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
+const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
+const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
+const hrefForCategory = (category) => `${PREFIX}${categoryHref(category)}`;
+const hrefForProduct = (book) => `${PREFIX}${productHref(book)}`;
 
 const Accordion = ({ title, children, defaultOpen = false }) => {
   const [open, setOpen] = React.useState(defaultOpen);
@@ -156,10 +163,10 @@ const ReviewForm = ({ productId }) => {
 const PDP_DELIVERY_FALLBACK = 'Orders are dispatched within 24 hours and delivered nationwide within 48 hours. Free pickup is available at our Dome Pillar 2 shop.';
 const PDP_RETURNS_FALLBACK = 'Unused items in original condition can be returned within 7 days for an exchange or store credit. Damaged or incorrect items are replaced free of charge - just reach out on WhatsApp.';
 
-const ProductPage = ({ navigate, bookId }) => {
+const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
   const { books, loading: catalogLoading } = useCatalog();
   const siteCopy = useSiteCopy();
-  const book = books.find(b => b.id === bookId) || (!bookId ? books[0] : null) || books[0] || null;
+  const book = books.find(b => b.id === bookId) || books.find(b => productMatchesSegment(b, bookSlug)) || null;
   const { add } = useCart();
   const wishlist = useWishlist();
   const [qty, setQty] = React.useState(1);
@@ -232,9 +239,9 @@ const ProductPage = ({ navigate, bookId }) => {
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-breadcrumb">
-        <a href="#" onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span>
-        <a href="#" onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop</a><span className="bs-sep">/</span>
-        <a href="#" onClick={(e)=>{e.preventDefault();navigate('shop',{cat:book.cat});}}>{book.catName}</a><span className="bs-sep">/</span>
+        <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span>
+        <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop</a><span className="bs-sep">/</span>
+        <a href={hrefForCategory(book.cat)} onClick={(e)=>{e.preventDefault();navigate('shop',{cat:book.cat});}}>{book.catName}</a><span className="bs-sep">/</span>
         <span className="bs-cur">{book.title}</span>
       </div>
 
@@ -438,7 +445,7 @@ const CartPage = ({ navigate }) => {
   return (
     <div className="bs-container-narrow bs-fade-page" style={{ maxWidth: 980 }}>
       <div className="bs-breadcrumb">
-        <a href="#" onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span><span className="bs-cur">Cart</span>
+        <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span><span className="bs-cur">Cart</span>
       </div>
       <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:32, margin:'8px 0 8px' }}>Your Cart</h1>
       <p className="bs-muted" style={{ marginBottom:20 }}>{count} item{count>1?'s':''} ready for checkout.</p>
@@ -555,7 +562,7 @@ const WishlistPage = ({ navigate }) => {
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-breadcrumb">
-        <a href="#" onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
+        <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
         <span className="bs-sep">/</span>
         <span className="bs-cur">Wishlist</span>
       </div>
@@ -569,12 +576,28 @@ const WishlistPage = ({ navigate }) => {
       <div className="bs-wishlist-grid">
         {wishlisted.map((b, i) => (
           <div className="bs-wishlist-card" key={b.id}>
-            <div className="bs-wishlist-cover" onClick={() => navigate('product', { id: b.id })} style={{ cursor:'pointer' }}>
+            <a
+              className="bs-wishlist-cover bs-product-link"
+              href={hrefForProduct(b)}
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('product', { id: b.id, slug: productPathSegment(b) });
+              }}
+            >
               <CoverPlaceholder title={b.title} idx={i} image={b.image} />
-            </div>
+            </a>
             <div className="bs-wishlist-body">
               <span className="bs-cat-badge" style={{ marginBottom:6 }}>{b.catName}</span>
-              <div className="bs-wishlist-title" onClick={() => navigate('product', { id: b.id })} style={{ cursor:'pointer' }}>{b.title}</div>
+              <a
+                className="bs-wishlist-title bs-product-link"
+                href={hrefForProduct(b)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('product', { id: b.id, slug: productPathSegment(b) });
+                }}
+              >
+                {b.title}
+              </a>
               <div className="bs-wishlist-price">{cedis(b.price)}</div>
               <div className={`bs-pcard-stock ${b.stock ? 'bs-stock-in' : 'bs-stock-out'}`} style={{ fontSize:12, marginBottom:10 }}>
                 <span className={`bs-dot ${b.stock ? 'in' : 'out'}`} /> {b.stock ? 'In Stock' : 'Out of Stock'}

@@ -1,0 +1,68 @@
+import { BOOKSHOP_BASE_URL, slugify } from '../src/lib/seoRoutes.js';
+
+export const canonicalBookshopBase = BOOKSHOP_BASE_URL;
+
+const cleanId = (value) => slugify(String(value || '').replace(/^0+/, '') || value || '');
+
+export const productPathSegment = (book) => {
+  if (!book) return '';
+  if (book.slug) return slugify(book.slug);
+  const titleSlug = slugify(book.title || book.name || '');
+  const id = cleanId(book.id);
+  if (!titleSlug) return id;
+  return id ? `${titleSlug}-${id}` : titleSlug;
+};
+
+export const productHref = (book) => `/products/${productPathSegment(book)}`;
+
+export const categoryHref = (category) => `/categories/${slugify(category)}`;
+
+export const productMatchesSegment = (book, segment) => {
+  if (!book || !segment) return false;
+  const candidate = slugify(segment);
+  return [
+    slugify(book.slug || ''),
+    productPathSegment(book),
+    slugify(book.id),
+  ].filter(Boolean).includes(candidate);
+};
+
+export const bookshopPathForRoute = (route, params = {}) => {
+  switch (route) {
+    case 'home':
+      return '/';
+    case 'shop':
+      if (params.cat && params.q) return `/products?category=${encodeURIComponent(params.cat)}&q=${encodeURIComponent(params.q)}`;
+      if (params.q) return `/products?q=${encodeURIComponent(params.q)}`;
+      if (params.cat && params.cat !== 'all') return categoryHref(params.cat);
+      return '/products';
+    case 'product':
+      return params.slug ? `/products/${params.slug}` : '/products';
+    case 'cart':
+      return '/cart';
+    case 'wishlist':
+      return '/wishlist';
+    case 'checkout':
+      return '/checkout';
+    case 'track':
+      return '/track';
+    case 'login':
+      return '/login';
+    case 'signup':
+      return '/signup';
+    case 'contact':
+      return '/contact';
+    case 'about':
+      return '/about';
+    case 'privacy':
+      return '/privacy';
+    case 'terms':
+      return '/terms';
+    case 'account':
+      return '/account';
+    case 'orders':
+      return '/orders';
+    default:
+      return '/';
+  }
+};
