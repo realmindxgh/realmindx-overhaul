@@ -79,7 +79,7 @@ const SERVICE_ICON_OPTIONS = [
   { value: 'schoolms', label: 'SchoolMS' },
 ];
 
-const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 'orders', 'newsletters', 'gallery', 'resources', 'auditLogs']);
+const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 'orders']);
 const PERMISSION_GROUPS = NAV
   .filter(item => item.key !== 'dashboard' && item.key !== 'admins' && item.key !== 'auditLogs')
   .map(item => {

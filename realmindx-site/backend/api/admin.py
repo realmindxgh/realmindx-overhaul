@@ -7,6 +7,8 @@ import zipfile
 from datetime import date, datetime, timezone
 from html import escape
 from pathlib import Path
+from threading import Thread
+from types import SimpleNamespace
 from uuid import uuid4
 
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
@@ -65,6 +67,28 @@ def log_action(action, entity_type=None, entity_id=None, metadata=None):
     """Backward-compat wrapper — delegates to the shared audit() helper."""
     from ..audit import audit as _audit
     _audit(action, entity_type, entity_id, metadata)
+
+
+def _run_in_background(task_name, func, *args):
+    app = current_app._get_current_object()
+
+    def runner():
+        with app.app_context():
+            try:
+                func(*args)
+            except Exception:
+                app.logger.exception("%s failed.", task_name)
+
+    Thread(target=runner, daemon=True).start()
+
+
+def _order_contact_snapshot(order):
+    return SimpleNamespace(
+        order_reference=order.order_reference,
+        customer_name=order.customer_name,
+        email=order.email,
+        phone=order.phone,
+    )
 
 
 def _collection_item_id(item):
@@ -1652,6 +1676,125 @@ def orders():
     return jsonify(items=[order_json(order) for order in rows])
 
 
+@admin_bp.get("/orders/export")
+@login_required
+@permission_required("orders.export")
+def export_orders():
+    export_format = (request.args.get("format") or "csv").lower()
+    rows = Order.query.order_by(Order.created_at.desc()).all()
+    headers = [
+        "id",
+        "order_reference",
+        "customer_name",
+        "email",
+        "phone",
+        "delivery_method",
+        "delivery_zone_name",
+        "delivery_region",
+        "location",
+        "payment_method",
+        "payment_status",
+        "status",
+        "subtotal_amount",
+        "delivery_fee",
+        "total_amount",
+        "items",
+        "notes",
+        "created_at",
+        "updated_at",
+    ]
+    data_rows = [
+        {
+            "id": order.id,
+            "order_reference": order.order_reference,
+            "customer_name": order.customer_name,
+            "email": order.email,
+            "phone": order.phone,
+            "delivery_method": order.delivery_method,
+            "delivery_zone_name": order.delivery_zone_name or "",
+            "delivery_region": order.delivery_region or "",
+            "location": order.location or "",
+            "payment_method": order.payment_method or "",
+            "payment_status": order.payment_status or "",
+            "status": order.status,
+            "subtotal_amount": float(order.subtotal_amount or 0) if order.subtotal_amount is not None else "",
+            "delivery_fee": float(order.delivery_fee or 0),
+            "total_amount": float(order.total_amount or 0) if order.total_amount is not None else "",
+            "items": "; ".join(
+                f"{item.product_name} x{item.quantity} @ GHS {float(item.unit_price or 0):.2f}"
+                for item in order.items
+            ),
+            "notes": order.notes or "",
+            "created_at": str(order.created_at.date()) if order.created_at else "",
+            "updated_at": str(order.updated_at.date()) if order.updated_at else "",
+        }
+        for order in rows
+    ]
+
+    if export_format == "csv":
+        out = io.StringIO()
+        writer = csv.DictWriter(out, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(data_rows)
+        return Response(
+            out.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=realmindx-orders.csv"},
+        )
+
+    if export_format == "xlsx":
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            return jsonify(error="XLSX export requires openpyxl."), 501
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Orders"
+        sheet.append(headers)
+        for row in data_rows:
+            sheet.append([row[header] for header in headers])
+        stream = io.BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+        return send_file(
+            stream,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name="realmindx-orders.xlsx",
+        )
+
+    if export_format == "pdf":
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas as rl_canvas
+        except ImportError:
+            return jsonify(error="PDF export requires reportlab."), 501
+        stream = io.BytesIO()
+        pdf = rl_canvas.Canvas(stream, pagesize=A4)
+        _, height = A4
+        y = height - 48
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(40, y, "RealMindX Bookshop Orders")
+        y -= 28
+        pdf.setFont("Helvetica", 8)
+        for order in rows:
+            line = (
+                f"{order.order_reference} | {order.customer_name} | "
+                f"GHS {float(order.total_amount or 0):.2f} | {order.status} | {order.payment_status}"
+            )
+            pdf.drawString(40, y, line[:135])
+            y -= 14
+            if y < 44:
+                pdf.showPage()
+                y = height - 48
+                pdf.setFont("Helvetica", 8)
+        pdf.save()
+        stream.seek(0)
+        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name="realmindx-orders.pdf")
+
+    return jsonify(error="Unsupported format. Use csv, xlsx, or pdf."), 400
+
+
 @admin_bp.put("/orders/<int:order_id>/status")
 @login_required
 @permission_required("orders.edit")
@@ -1671,11 +1814,12 @@ def update_order_status(order_id):
     log_action("update_order_status", "order", order.id, {"status": status, "prev": old_status})
     db.session.commit()
 
-    # Send branded status-update email to customer
-    if order.email and status != old_status:
-        _send_order_status_email(order, status, cancel_reason)
-    if order.phone and status != old_status:
-        _send_order_status_sms(order, status, cancel_reason)
+    if status != old_status:
+        snapshot = _order_contact_snapshot(order)
+        if snapshot.email:
+            _run_in_background("Order status email", _send_order_status_email, snapshot, status, cancel_reason)
+        if snapshot.phone:
+            _run_in_background("Order status SMS", _send_order_status_sms, snapshot, status, cancel_reason)
 
     return jsonify(order=order_json(order))
 
