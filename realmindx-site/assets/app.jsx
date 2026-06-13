@@ -1,9 +1,10 @@
-﻿import React from 'react';
+import React from 'react';
 import { Icon, Reveal, CountUp } from './components.jsx';
 import logoWhite from './logo-white.png';
 import { getDemoSession } from '../../src/lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from '../../src/lib/authClient.js';
 import toast from '../../src/lib/toast.js';
+import { servicePath } from '../../src/lib/seoRoutes.js';
 import {
   useHomeHeroSlides,
   usePublicGallery,
@@ -13,22 +14,23 @@ import {
   usePublicSettings,
   useSiteCopy,
   useTestimonials,
+  renderTextWithLinks,
 } from '../../src/lib/siteContent.js';
 
 // ====================== Nav ======================
 const SERVICE_NAV_ITEMS = [
-  { label: 'Teacher Recruitment', href: '/services#teacher-recruitment' },
-  { label: 'Teacher Development', href: '/services#teacher-development' },
-  { label: 'School Structuring', href: '/services#school-structuring' },
+  { label: 'Teacher Recruitment', href: servicePath('teacher-recruitment') },
+  { label: 'Teacher Development', href: servicePath('teacher-development') },
+  { label: 'School Structuring', href: servicePath('school-structuring') },
   { label: 'Bookshop', href: 'https://bookshop.realmindxgh.com' },
-  { label: 'After-School Tutoring', href: '/services#tutoring' },
-  { label: 'Research & Assignments', href: '/services#research' },
-  { label: 'Secretarial Services', href: '/services#secretarial' },
-  { label: 'Special Education', href: '/services#special-education' },
-  { label: 'Educational Consulting', href: '/services#consulting' },
-  { label: 'Extracurricular Offers', href: '/services#extracurricular' },
-  { label: 'Home Schooling Support', href: '/services#home-schooling' },
-  { label: 'SchoolMS', href: '/services#schoolms' },
+  { label: 'After-School Tutoring', href: servicePath('tutoring') },
+  { label: 'Research & Assignments', href: servicePath('research') },
+  { label: 'Secretarial Services', href: servicePath('secretarial') },
+  { label: 'Special Education', href: servicePath('special-education') },
+  { label: 'Educational Consulting', href: servicePath('consulting') },
+  { label: 'Extracurricular Offers', href: servicePath('extracurricular') },
+  { label: 'Home Schooling Support', href: servicePath('home-schooling') },
+  { label: 'SchoolMS', href: servicePath('schoolms') },
 ];
 
 const ABOUT_NAV_ITEMS = [
@@ -190,7 +192,7 @@ export const Nav = ({ activePage, solid = false }) => {
     const serviceChildren = managedServices.length
       ? managedServices.map(service => ({
           label: service.label,
-          href: `/services#${service.id}`,
+          href: servicePath(service.id),
         }))
       : SERVICE_NAV_ITEMS;
     const jobChildren = isLoggedIn ? JOB_NAV_ITEMS_AUTH : JOB_NAV_ITEMS_GUEST;
@@ -382,7 +384,7 @@ const Hero = () => {
             <a className="btn btn-ghost-light" href="/bookshop">
               Visit the Bookshop <Icon name="arrow" size={16} />
             </a>
-            <a className="btn btn-ghost-light" href="/services#schoolms">
+            <a className="btn btn-ghost-light" href={servicePath('schoolms')}>
               Explore SchoolMS <Icon name="arrow" size={16} />
             </a>
             <a className="btn btn-ghost-light hero-cta-end" href="/jobs">
@@ -1160,7 +1162,7 @@ const News = () => {
               <h2>{activeNews.title}</h2>
               {activeNews.excerpt && <p className="news-modal-summary">{activeNews.excerpt}</p>}
               {String(activeNews.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => (
-                <p key={`intro-${index}`}>{paragraph}</p>
+                <p key={`intro-${index}`}>{renderTextWithLinks(paragraph)}</p>
               ))}
               {(activeNews.sections || []).map((section, index) => (
                 <section className="news-modal-section" key={section.id || index}>
@@ -1172,7 +1174,7 @@ const News = () => {
                     </figure>
                   )}
                   {String(section.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, paragraphIndex) => (
-                    <p key={`section-${index}-${paragraphIndex}`}>{paragraph}</p>
+                    <p key={`section-${index}-${paragraphIndex}`}>{renderTextWithLinks(paragraph)}</p>
                   ))}
                 </section>
               ))}

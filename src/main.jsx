@@ -17,7 +17,7 @@ import AdminPortalPage from '../realmindx-site/pages/AdminPortalPage.jsx';
 import { AdminLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
 import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
-import { usePublicGalleryState, usePublicNewsState, usePublicServices, useSiteCopy } from './lib/siteContent.js';
+import { usePublicGalleryState, usePublicNewsState, usePublicServices, useSiteCopy, renderTextWithLinks } from './lib/siteContent.js';
 import { API_BASE, api, isApiMode } from './lib/apiClient.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from './lib/head.js';
 import { newsPath, servicePath, SITE_BASE_URL, SITE_DEFAULT_IMAGE, slugify } from './lib/seoRoutes.js';
@@ -186,7 +186,7 @@ const NewsArticleBody = ({ item }) => {
     .filter(Boolean);
   return (
     <div className="news-article-body">
-      {introParagraphs.map((paragraph, index) => <p key={`intro-${index}`}>{paragraph}</p>)}
+      {introParagraphs.map((paragraph, index) => <p key={`intro-${index}`}>{renderTextWithLinks(paragraph)}</p>)}
       {sections.map((section, index) => (
         <section className="news-article-section" key={section.id || `${item.id}-section-${index}`}>
           {section.heading && <h3>{section.heading}</h3>}
@@ -197,7 +197,7 @@ const NewsArticleBody = ({ item }) => {
             </figure>
           )}
           {String(section.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, paragraphIndex) => (
-            <p key={`section-${index}-p-${paragraphIndex}`}>{paragraph}</p>
+            <p key={`section-${index}-p-${paragraphIndex}`}>{renderTextWithLinks(paragraph)}</p>
           ))}
         </section>
       ))}
@@ -236,6 +236,9 @@ const NewsPage = ({ articleSlug = null }) => {
   const selectedItem = articleSlug
     ? allItems.find(i => slugify(i.slug || i.id) === slugify(articleSlug) || slugify(String(i.id)) === slugify(articleSlug))
     : null;
+  const relatedItems = articleSlug && selectedItem
+    ? allItems.filter(item => item.id !== selectedItem.id).slice(0, 3)
+    : [];
 
   if (articleSlug && selectedItem && slugify(articleSlug) !== slugify(selectedItem.slug || selectedItem.id)) {
     return <Navigate to={newsPath(selectedItem)} replace />;
@@ -268,9 +271,10 @@ const NewsPage = ({ articleSlug = null }) => {
         <main className="route-page">
           <article className="news-article-page">
             <div className="container" style={{ maxWidth: 860 }}>
-              <div className="news-article-breadcrumb">
-                <Link to="/news" className="btn btn-outline-navy btn-sm">← Back to News</Link>
-                <Link to="/" className="btn btn-outline-navy btn-sm">Back to Homepage</Link>
+              <div className="news-article-metahead">
+                <Link to="/news" className="news-article-backlink">Newsroom</Link>
+                <span>/</span>
+                <span>{selectedItem.cat || 'Update'}</span>
               </div>
               {newsAssetUrl(selectedItem.img || selectedItem.image_url) && (
                 <img className="news-article-hero-img" src={newsAssetUrl(selectedItem.img || selectedItem.image_url)} alt={selectedItem.title} />
@@ -280,9 +284,20 @@ const NewsPage = ({ articleSlug = null }) => {
               {selectedItem.excerpt && <p className="news-article-lead">{selectedItem.excerpt}</p>}
               <NewsArticleBody item={selectedItem} />
               <div className="news-article-footer-ctas">
-                <Link to="/news" className="btn btn-primary">← Back to News</Link>
-                <Link to="/" className="btn btn-outline-navy">Back to Homepage</Link>
+                <Link to="/news" className="btn btn-primary">More News</Link>
+                <Link to="/" className="news-article-home-link">Visit Homepage</Link>
               </div>
+              {relatedItems.length > 0 && (
+                <section className="news-article-related">
+                  <div className="section-heading" style={{ marginBottom: 22 }}>
+                    <p className="overline">Keep Reading</p>
+                    <h2 className="section-title">More RealMindX News</h2>
+                  </div>
+                  <div className="news-card-grid news-card-grid-related">
+                    {relatedItems.map(item => <NewsCard key={item.id} item={item} />)}
+                  </div>
+                </section>
+              )}
             </div>
           </article>
         </main>

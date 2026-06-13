@@ -73,9 +73,24 @@ const normaliseService = (service, index = 0) => {
       ? { label: service.primary_cta_label, href: service.primary_cta_href, style: 'primary' }
       : null,
     service.secondary_cta_label && service.secondary_cta_href
-      ? { label: service.secondary_cta_label, href: service.secondary_cta_href, style: 'outline-navy' }
+      ? { label: service.secondary_cta_label, href: service.secondary_cta_href, style: 'navy' }
       : null,
   ].filter(Boolean);
+  const detailCtas = [
+    service.detail_primary_cta_label && service.detail_primary_cta_href
+      ? { label: service.detail_primary_cta_label, href: service.detail_primary_cta_href, style: 'primary' }
+      : null,
+    service.detail_secondary_cta_label && service.detail_secondary_cta_href
+      ? { label: service.detail_secondary_cta_label, href: service.detail_secondary_cta_href, style: 'navy' }
+      : null,
+  ].filter(Boolean);
+  const detailImg = apiAssetUrl(service.detail_image_url)
+    || service.detail_image
+    || apiAssetUrl(service.image_url)
+    || service.image
+    || serviceImages[service.detail_image_key]
+    || serviceImages[service.image_key]
+    || serviceImages.school;
 
   return {
     ...service,
@@ -89,6 +104,14 @@ const normaliseService = (service, index = 0) => {
     features: lines(service.features),
     ctas,
     img: apiAssetUrl(service.image_url) || service.image || serviceImages[service.image_key] || serviceImages.school,
+    detailTag: service.detail_tag || service.tag || 'RealMindX Service',
+    detailTitle: service.detail_title || service.title || service.label || 'RealMindX Service',
+    detailSummary: service.detail_summary || service.summary || '',
+    detailBody: paragraphs(service.detail_body || service.body),
+    detailFeatures: lines(service.detail_features || service.features),
+    detailBadge: service.detail_badge || service.badge || '',
+    detailImg,
+    detailCtas: detailCtas.length ? detailCtas : ctas,
     href: servicePath(id),
     sort_order: Number(service.sort_order ?? index),
     status: service.status || 'published',
@@ -405,3 +428,56 @@ export const useSiteCopy = () => {
     return acc;
   }, {});
 };
+
+export const renderTextWithLinks = (text) => {
+  if (!text) return '';
+  // Match markdown [link text](url) only
+  const regex = /\[([^\]]+)\]\(([^)]+)\)/gi;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  let hasMatches = false;
+
+  while ((match = regex.exec(text)) !== null) {
+    hasMatches = true;
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+
+    const linkText = match[1];
+    const linkUrl = match[2];
+    const key = `link-${match.index}`;
+
+    // Determine if URL is external
+    let isExternal = false;
+    if (/^https?:\/\//i.test(linkUrl)) {
+      if (typeof window !== 'undefined') {
+        isExternal = !linkUrl.startsWith(window.location.origin);
+      } else {
+        isExternal = true;
+      }
+    }
+
+    parts.push(
+      React.createElement(
+        'a',
+        {
+          key,
+          href: linkUrl,
+          target: isExternal ? '_blank' : undefined,
+          rel: isExternal ? 'noopener noreferrer' : undefined,
+        },
+        linkText
+      )
+    );
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+
+  return hasMatches ? parts : text;
+};
+
