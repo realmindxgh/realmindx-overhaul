@@ -1,9 +1,26 @@
 ﻿import React from 'react';
 import { API_BASE, isApiMode, api } from '../src/lib/apiClient.js';
 import { useManagedContent, publicItems } from '../src/lib/managedContent.js';
+import { buildBookshopTaxonomies, normalizeBookshopTaxonomyValue } from '../src/lib/bookshopTaxonomy.js';
 import { BOOKS as DEMO_BOOKS, CATEGORIES as FALLBACK_CATEGORIES } from './shared.jsx';
 
-const FALLBACK_BOOKS = DEMO_BOOKS;
+const normalizeCatalogBook = (book) => {
+  const rawCurriculum = book.curriculumName || book.curriculum || '';
+  const rawLevel = book.levelName || book.grade || book.level || '';
+  const rawSubject = book.subject || '';
+  const curriculumName = normalizeBookshopTaxonomyValue('curriculum', rawCurriculum) || rawCurriculum;
+  const levelName = normalizeBookshopTaxonomyValue('level', rawLevel) || rawLevel;
+  const subject = normalizeBookshopTaxonomyValue('subject', rawSubject) || rawSubject;
+  return {
+    ...book,
+    curriculumName,
+    levelName,
+    grade: levelName || book.grade || '',
+    subject,
+  };
+};
+
+const FALLBACK_BOOKS = DEMO_BOOKS.map(normalizeCatalogBook);
 
 // ============================================================
 // Catalog adapter - two modes:
@@ -24,6 +41,7 @@ const FALLBACK_FLYERS = [
 const CatalogCtx = React.createContext({
   books: FALLBACK_BOOKS,
   categories: FALLBACK_CATEGORIES,
+  taxonomies: buildBookshopTaxonomies(FALLBACK_BOOKS, FALLBACK_CATEGORIES),
   flyers: FALLBACK_FLYERS,
   priceCeiling: 80,
   loading: false,
@@ -53,25 +71,28 @@ const apiAssetUrl = value => {
 //   short_description, image_url, stock_status, featured, tags }
 const fromApiProduct = (p) => {
   const tags = Array.isArray(p.tags) ? p.tags : [];
-  const curriculumName = p.curriculum || '';
+  const curriculumName = normalizeBookshopTaxonomyValue('curriculum', p.curriculum) || p.curriculum || '';
+  const levelName = normalizeBookshopTaxonomyValue('level', p.level) || p.level || '';
+  const subject = normalizeBookshopTaxonomyValue('subject', p.subject) || p.subject || '';
   const curriculum = curriculumName ? `curriculum-${slugifyCat(curriculumName)}` : '';
-  return {
+  return normalizeCatalogBook({
     id: String(p.id),
     title: p.name,
     cat: p.category_slug || slugifyCat(p.category || ''),
     catName: p.category || 'General',
     curriculum,
     curriculumName,
+    levelName,
     price: Number(p.price) || 0,
     old: p.old_price ? Number(p.old_price) : undefined,
-    desc: [curriculumName, p.level, p.subject].filter(Boolean).join(' - ') || p.short_description || 'Available in store',
+    desc: [curriculumName, levelName, subject].filter(Boolean).join(' - ') || p.short_description || 'Available in store',
     short: p.short_description || '',
     full: p.full_description || p.short_description || '',
     rating: Number(p.rating_average) || 0,
     reviews: Number(p.rating_count) || 0,
     stock: p.stock_status !== 'out_of_stock',
-    grade: p.level || '',
-    subject: p.subject || '',
+    grade: levelName,
+    subject,
     author: p.author || '',
     publisher: p.publisher || '',
     isbn: p.isbn || '',
@@ -82,7 +103,7 @@ const fromApiProduct = (p) => {
     // Bulk discount — set on the category (bulk_discount_percent field, min qty = 10)
     bulkDiscountPct: Number(p.bulk_discount_percent || p.category_bulk_discount_percent) || 0,
     bulkMinQty: Number(p.bulk_min_qty) || 10,
-  };
+  });
 };
 
 // Categories from API: { id, name, slug }
@@ -135,25 +156,27 @@ const mapProducts = (products, cats) => {
   });
   return publicItems(products).map(p => {
     const catInfo = lookup[p.category] || { slug: slugifyCat(p.category || ''), name: p.category || 'General' };
-    const curriculumName = p.curriculum || '';
+    const curriculumName = normalizeBookshopTaxonomyValue('curriculum', p.curriculum) || p.curriculum || '';
+    const levelName = normalizeBookshopTaxonomyValue('level', p.level) || p.level || '';
+    const subject = normalizeBookshopTaxonomyValue('subject', p.subject) || p.subject || '';
     const curriculum = curriculumName ? `curriculum-${slugifyCat(curriculumName)}` : '';
     const badges = Array.isArray(p.badges) ? p.badges : [];
-    return {
+    return normalizeCatalogBook({
       id: String(p.id), title: p.name,
       cat: catInfo.slug, catName: catInfo.name,
       curriculum, curriculumName,
       price: Number(p.price) || 0,
       old: p.oldPrice ? Number(p.oldPrice) : undefined,
-      desc: [curriculumName, p.level, p.subject].filter(Boolean).join(' - ') || p.author || 'Available in store',
+      desc: [curriculumName, levelName, subject].filter(Boolean).join(' - ') || p.author || 'Available in store',
       short: p.shortDescription || p.short_description || '',
       full: p.fullDescription || p.full_description || p.description || '',
       rating: Number(p.rating_average || p.rating) || 0, reviews: Number(p.rating_count || p.reviews) || 0,
       stock: p.stock !== 'out',
-      grade: p.level || '', subject: p.subject || '', author: p.author || '', publisher: p.publisher || p.author || '',
+      grade: levelName, levelName, subject, author: p.author || '', publisher: p.publisher || p.author || '',
       isbn: p.isbn || '-',
       badge: badges.length ? (BADGE_LABEL[badges[0]] || badges[0]) : undefined,
       featured: badges.length > 0, image: p.image || null,
-    };
+    });
   });
 };
 
@@ -161,6 +184,7 @@ const mapProducts = (products, cats) => {
 const ApiCatalogProvider = ({ children }) => {
   const [books, setBooks] = React.useState([]);
   const [categories, setCategories] = React.useState([{ id: 'all', name: 'All Books', icon: 'grid' }]);
+  const [taxonomies, setTaxonomies] = React.useState(buildBookshopTaxonomies(FALLBACK_BOOKS, FALLBACK_CATEGORIES));
   const [flyers, setFlyers] = React.useState([]);
   const [priceCeiling, setPriceCeiling] = React.useState(80);
   const [loading, setLoading] = React.useState(true);
@@ -183,11 +207,13 @@ const ApiCatalogProvider = ({ children }) => {
           ...(cats.items || []).map(fromApiCategory),
         ];
         const mappedFlyers = (flyerData.items || []).map(fromApiFlyer);
+        const mappedTaxonomies = buildBookshopTaxonomies(mappedBooks, mappedCats);
 
         // In API mode, show only admin-backed products. Demo catalog data is kept
         // strictly as an offline fallback when the API is unavailable altogether.
         setBooks(mappedBooks);
         setCategories(mappedCats.length ? mappedCats : [{ id: 'all', name: 'All Books', icon: 'grid' }]);
+        setTaxonomies(mappedTaxonomies);
         setFlyers(mappedFlyers);
 
         const maxPrice = mappedBooks.reduce((m, b) => Math.max(m, b.price), 0);
@@ -197,6 +223,7 @@ const ApiCatalogProvider = ({ children }) => {
         if (cancelled) return;
         setBooks(FALLBACK_BOOKS);
         setCategories(FALLBACK_CATEGORIES);
+        setTaxonomies(buildBookshopTaxonomies(FALLBACK_BOOKS, FALLBACK_CATEGORIES));
         setFlyers(FALLBACK_FLYERS);
         const fallbackMax = FALLBACK_BOOKS.reduce((m, b) => Math.max(m, b.price), 0);
         setPriceCeiling(Math.max(80, Math.ceil(fallbackMax / 10) * 10));
@@ -209,7 +236,7 @@ const ApiCatalogProvider = ({ children }) => {
   }, []);
 
   return (
-    <CatalogCtx.Provider value={{ books, categories, flyers, priceCeiling, loading }}>
+    <CatalogCtx.Provider value={{ books, categories, taxonomies, flyers, priceCeiling, loading }}>
       {children}
     </CatalogCtx.Provider>
   );
@@ -226,9 +253,10 @@ const LocalCatalogProvider = ({ children }) => {
     const books = mappedBooks.length ? mappedBooks : FALLBACK_BOOKS;
     const categories = mappedCats.length > 1 ? mappedCats : FALLBACK_CATEGORIES;
     const flyers = mappedFlyers.length ? mappedFlyers : FALLBACK_FLYERS;
+    const taxonomies = buildBookshopTaxonomies(books, categories);
     const maxPrice = books.reduce((m, b) => Math.max(m, b.price), 0);
     const priceCeiling = Math.max(80, Math.ceil(maxPrice / 10) * 10);
-    return { books, categories, flyers, priceCeiling, loading: false };
+    return { books, categories, taxonomies, flyers, priceCeiling, loading: false };
   }, [content]);
 
   return <CatalogCtx.Provider value={value}>{children}</CatalogCtx.Provider>;

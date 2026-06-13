@@ -228,6 +228,11 @@ def build_bookshop_sitemap_xml():
     urls = [
         sitemap_row(f"{base_url}/", changefreq="daily", priority=1.0),
         sitemap_row(f"{base_url}/products", changefreq="daily", priority=0.9),
+        sitemap_row(f"{base_url}/categories", changefreq="weekly", priority=0.7),
+        sitemap_row(f"{base_url}/subjects", changefreq="weekly", priority=0.7),
+        sitemap_row(f"{base_url}/levels", changefreq="weekly", priority=0.7),
+        sitemap_row(f"{base_url}/curricula", changefreq="weekly", priority=0.7),
+        sitemap_row(f"{base_url}/publishers", changefreq="weekly", priority=0.6),
         sitemap_row(f"{base_url}/about", changefreq="monthly", priority=0.6),
         sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.6),
         sitemap_row(f"{base_url}/privacy", changefreq="yearly", priority=0.3),
@@ -253,25 +258,29 @@ def build_bookshop_sitemap_xml():
             )
         )
 
-    curricula = [
-        row[0].strip()
-        for row in db.session.query(Product.curriculum)
-        .filter(Product.is_active.is_(True), Product.curriculum.isnot(None), Product.curriculum != "")
-        .distinct()
-        .order_by(Product.curriculum.asc())
-        .all()
-        if row[0] and row[0].strip()
-    ]
-    if curricula:
-        urls.append(sitemap_row(f"{base_url}/categories/curriculum", changefreq="weekly", priority=0.7))
-    for curriculum in curricula:
-        urls.append(
-            sitemap_row(
-                f"{base_url}/categories/curriculum-{slugify(curriculum)}",
-                changefreq="weekly",
-                priority=0.6,
+    def append_distinct_taxonomy_rows(column, route_prefix, priority):
+        values = [
+            row[0].strip()
+            for row in db.session.query(column)
+            .filter(Product.is_active.is_(True), column.isnot(None), column != "")
+            .distinct()
+            .order_by(column.asc())
+            .all()
+            if row[0] and row[0].strip()
+        ]
+        for value in values:
+            urls.append(
+                sitemap_row(
+                    f"{base_url}/{route_prefix}/{slugify(value)}",
+                    changefreq="weekly",
+                    priority=priority,
+                )
             )
-        )
+
+    append_distinct_taxonomy_rows(Product.subject, "subjects", 0.6)
+    append_distinct_taxonomy_rows(Product.level, "levels", 0.6)
+    append_distinct_taxonomy_rows(Product.curriculum, "curricula", 0.6)
+    append_distinct_taxonomy_rows(Product.publisher, "publishers", 0.5)
 
     products = (
         Product.query

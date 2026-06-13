@@ -8,6 +8,7 @@ import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib
 import logoWhite from '../assets/logo-white.png';
 import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
 import { TEACHING_CURRICULA } from '../../src/lib/teachingOptions.js';
+import { PRODUCT_CURRICULUM_OPTIONS, PRODUCT_LEVEL_OPTIONS, PRODUCT_SUBJECT_OPTIONS } from '../../src/lib/bookshopTaxonomy.js';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
@@ -171,18 +172,18 @@ const CONFIG = {
     createLabel: 'Add Product',
     fields: [
       field('name', 'Product Name'),
-      field('category_id', 'Product Category', 'category-select', { help: 'Choose an existing category.' }),
-      field('category_name', 'New Category (Optional)', 'text', { help: 'If the category is not listed, type it here and it will be created automatically.' }),
+      field('category_id', 'Item Type', 'category-select', { help: 'Choose an existing item type.' }),
+      field('category_name', 'New Item Type (Optional)', 'text', { help: 'If the item type is not listed, type it here and it will be created automatically.' }),
       field('short_description', 'Short Description'),
       field('price', 'Price (GHS)', 'number'),
       field('old_price', 'Old Price (GHS)', 'number'),
       field('source', 'Supplier / Source', 'text', { help: 'Admin-only supplier, vendor, or source note. This is never shown in the public bookshop.' }),
       field('stock_status', 'Stock', 'select', { options: ['in_stock', 'low_stock', 'out_of_stock'] }),
-      field('curriculum', 'Curriculum Name', 'text', { help: 'Optional: e.g. Cambridge, IB, Montessori, GES, Pearson Edexcel, WAEC.' }),
+      field('curriculum', 'Curriculum', 'select', { options: PRODUCT_CURRICULUM_OPTIONS, help: 'Choose a curriculum, All Curricula, or Other Curricula for neutral items.' }),
       field('author', 'Author'),
       field('publisher', 'Publisher'),
-      field('level', 'Level', 'text', { help: 'e.g. JHS 1, SHS, Primary 4' }),
-      field('subject', 'Subject'),
+      field('level', 'Level', 'select', { options: PRODUCT_LEVEL_OPTIONS, help: 'Choose a level, All Levels, or Other Levels for neutral items.' }),
+      field('subject', 'Subject', 'select', { options: PRODUCT_SUBJECT_OPTIONS, help: 'Choose a subject, All Subjects, or Other Subjects for neutral items.' }),
       field('image_file_id', 'Product Image', 'image', { aspectRatio: 3/4, cropTitle: 'Crop Product Cover (3:4)', guide: [
         { icon: 'target',   text: 'Ideal ratio: 3:4 portrait, matching the proportions of a standard book cover.' },
         { icon: 'image',    text: 'Crop tip: centre the title and author name. Do not cut off the spine or barcode area at the bottom.' },

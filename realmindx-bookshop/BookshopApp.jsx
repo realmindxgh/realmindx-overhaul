@@ -8,7 +8,8 @@ import { CatalogProvider, useCatalog } from './catalog.jsx';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from '../src/lib/head.js';
 import { BOOKSHOP_BASE_URL, BOOKSHOP_DEFAULT_IMAGE } from '../src/lib/seoRoutes.js';
-import { bookshopPathForRoute, canonicalBookshopBase, categoryHref, productHref, productMatchesSegment, productPathSegment } from './urls.js';
+import { findTaxonomyItem, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
+import { bookshopPathForRoute, canonicalBookshopBase, productHref, productMatchesSegment, productPathSegment } from './urls.js';
 
 const GOLD_ACCENT = '#ffcc01';
 
@@ -20,6 +21,24 @@ const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const prefixedPath = (path) => `${PREFIX}${path}`;
 const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'track', 'login', 'signup', 'account', 'orders']);
 const canonicalUrlForRoute = (route, params = {}) => `${canonicalBookshopBase}${bookshopPathForRoute(route, params)}`;
+const browseParam = (taxonomy, value = '') => ({ taxonomy, value });
+
+const queryBrowseParam = (search) => {
+  const mappings = [
+    ['category', 'category'],
+    ['cat', 'category'],
+    ['subject', 'subject'],
+    ['level', 'level'],
+    ['curriculum', 'curriculum'],
+    ['publisher', 'publisher'],
+  ];
+  const match = mappings.find(([queryKey]) => cleanQueryValue(search.get(queryKey)));
+  if (!match) return null;
+  const [queryKey, taxonomy] = match;
+  return browseParam(taxonomy, cleanQueryValue(search.get(queryKey)));
+};
+
+const cleanQueryValue = (value) => String(value || '').trim();
 
 const routeFromPath = () => {
   if (typeof window === 'undefined') return { route: 'home', params: {} };
@@ -27,10 +46,24 @@ const routeFromPath = () => {
   const search = new URLSearchParams(window.location.search);
   const p = ON_SUBDOMAIN ? path : path.replace('/bookshop', '') || '/';
   const searchQuery = search.get('q') || '';
-  const categoryQuery = search.get('category') || search.get('cat') || '';
-  if (p === '/products') return { route: 'shop', params: { cat: categoryQuery || 'all', q: searchQuery } };
+  const queryBrowse = queryBrowseParam(search);
+  if (p === '/products') return { route: 'shop', params: { ...(queryBrowse || {}), q: searchQuery } };
   if (p.startsWith('/products/')) return { route: 'product', params: { slug: decodeURIComponent(p.split('/products/')[1] || '') } };
-  if (p.startsWith('/categories/')) return { route: 'shop', params: { cat: decodeURIComponent(p.split('/categories/')[1] || ''), q: searchQuery } };
+  if (p === '/categories') return { route: 'shop', params: { ...browseParam('category'), q: searchQuery } };
+  if (p.startsWith('/categories/')) {
+    const value = decodeURIComponent(p.split('/categories/')[1] || '');
+    if (value === 'curriculum') return { route: 'shop', params: { ...browseParam('curriculum'), q: searchQuery } };
+    if (value.startsWith('curriculum-')) return { route: 'shop', params: { ...browseParam('curriculum', value.replace(/^curriculum-/, '')), q: searchQuery } };
+    return { route: 'shop', params: { ...browseParam('category', value), q: searchQuery } };
+  }
+  if (p === '/subjects') return { route: 'shop', params: { ...browseParam('subject'), q: searchQuery } };
+  if (p.startsWith('/subjects/')) return { route: 'shop', params: { ...browseParam('subject', decodeURIComponent(p.split('/subjects/')[1] || '')), q: searchQuery } };
+  if (p === '/levels') return { route: 'shop', params: { ...browseParam('level'), q: searchQuery } };
+  if (p.startsWith('/levels/')) return { route: 'shop', params: { ...browseParam('level', decodeURIComponent(p.split('/levels/')[1] || '')), q: searchQuery } };
+  if (p === '/curricula') return { route: 'shop', params: { ...browseParam('curriculum'), q: searchQuery } };
+  if (p.startsWith('/curricula/')) return { route: 'shop', params: { ...browseParam('curriculum', decodeURIComponent(p.split('/curricula/')[1] || '')), q: searchQuery } };
+  if (p === '/publishers') return { route: 'shop', params: { ...browseParam('publisher'), q: searchQuery } };
+  if (p.startsWith('/publishers/')) return { route: 'shop', params: { ...browseParam('publisher', decodeURIComponent(p.split('/publishers/')[1] || '')), q: searchQuery } };
   if (p === '/cart')      return { route: 'cart',     params: {} };
   if (p === '/wishlist')  return { route: 'wishlist', params: {} };
   if (p === '/checkout') return { route: 'checkout', params: {} };
@@ -69,7 +102,7 @@ const PaystackReturnPage = ({ orderRef, navigate, clear }) => {
 };
 
 const App = () => {
-  const { books, categories } = useCatalog();
+  const { books, categories, taxonomies, loading: catalogLoading } = useCatalog();
   const initialRoute = React.useMemo(routeFromPath, []);
   const [route, setRoute] = React.useState(initialRoute.route);
   const [params, setParams] = React.useState(initialRoute.params);
@@ -98,21 +131,22 @@ const App = () => {
       || books.find(book => productMatchesSegment(book, params.slug))
       || null
     : null;
-  const activeCategory = route === 'shop' && params.cat && params.cat !== 'all'
-    ? categories.find(category => category.id === params.cat)
-    : null;
-  const categoryLabel = activeCategory?.name || (params.cat && params.cat !== 'all' ? params.cat : null);
-  const activeCategoryCount = route === 'shop' && params.cat && params.cat !== 'all'
-    ? books.filter(book => (
-      params.cat === 'curriculum'
-        ? Boolean(book.curriculum || book.curriculumName)
-        : book.cat === params.cat || book.curriculum === params.cat || book.curriculumName === params.cat
-    )).length
+  const activeBrowse = route === 'shop' && params.taxonomy
+    ? findTaxonomyItem(taxonomies, params.taxonomy, params.value)
+    : route === 'shop' && params.cat && params.cat !== 'all'
+      ? findTaxonomyItem(taxonomies, 'category', params.cat)
+      : null;
+  const browseTaxonomy = params.taxonomy || (params.cat && params.cat !== 'all' ? 'category' : '');
+  const requestedBrowseValue = params.value || params.cat || '';
+  const browseValue = browseTaxonomy && requestedBrowseValue && !catalogLoading && !activeBrowse ? '' : requestedBrowseValue;
+  const browseLabel = activeBrowse?.name || activeBrowse?.label || (browseValue ? taxonomyLabel(browseTaxonomy) : null);
+  const activeBrowseCount = route === 'shop' && browseTaxonomy
+    ? books.filter((book) => matchesTaxonomy(book, browseTaxonomy, browseValue)).length
     : null;
   const canonicalParams = route === 'product' && activeProduct
     ? { slug: productPathSegment(activeProduct) }
     : route === 'shop'
-      ? { cat: params.cat, q: params.q }
+      ? { taxonomy: browseTaxonomy, value: browseValue, q: params.q }
       : params;
   const canonicalPath = bookshopPathForRoute(route, canonicalParams);
   const canonicalUrl = `${canonicalBookshopBase}${canonicalPath}`;
@@ -196,16 +230,26 @@ const App = () => {
         };
         robots = 'noindex,follow';
       }
-    } else if (route === 'shop' && categoryLabel && !params.q) {
-      const categoryDescription = activeCategory?.description
-        || (params.cat === 'curriculum'
-          ? 'Browse books grouped by curriculum, with useful category content and live product listings.'
-          : `Browse ${categoryLabel.toLowerCase()} textbooks, learning materials, and school supplies from the RealMindX Bookshop.`);
+    } else if (route === 'shop' && browseTaxonomy && !params.q) {
+      const taxonomyName = taxonomyLabel(browseTaxonomy);
+      const browseName = activeBrowse?.name || activeBrowse?.label || taxonomyName;
+      const categoryDescription = activeBrowse?.description
+        || (browseTaxonomy === 'category' && !browseValue
+          ? 'Shop textbooks, readers, stationery, and other learning materials by item type.'
+          : browseTaxonomy === 'curriculum' && !browseValue
+            ? 'Shop by curriculum and quickly reach the books that match your school pathway.'
+            : browseTaxonomy === 'subject' && !browseValue
+              ? 'Shop textbooks, workbooks, and learning materials by subject.'
+              : browseTaxonomy === 'level' && !browseValue
+                ? 'Shop books and learning materials by school level.'
+                : browseTaxonomy === 'publisher' && !browseValue
+                  ? 'Compare educational titles by publisher.'
+                  : `Shop ${browseName.toLowerCase()} resources in the RealMindX Bookshop.`);
       currentMeta = {
-        title: `${categoryLabel} | RealMindX Bookshop`,
+        title: browseValue ? `${browseName} | RealMindX Bookshop` : `Shop by ${taxonomyName} | RealMindX Bookshop`,
         desc: categoryDescription,
       };
-      if (!activeCategoryCount) robots = 'noindex,follow';
+      if (!activeBrowseCount) robots = 'noindex,follow';
       structuredData = {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
@@ -236,7 +280,7 @@ const App = () => {
     setHeadMeta('twitter:image', image);
     setHeadLink('canonical', canonicalUrl);
     setStructuredData('bookshop-route-seo', structuredData);
-  }, [route, params.cat, params.id, params.q, params.slug, activeProduct, activeCategory, activeCategoryCount, categoryLabel, canonicalUrl, books]);
+  }, [route, params.cat, params.id, params.q, params.slug, params.taxonomy, params.value, activeProduct, activeBrowse, activeBrowseCount, browseTaxonomy, browseValue, canonicalUrl, books, catalogLoading]);
 
   React.useEffect(() => {
     document.body.classList.add('bs-has-bottomnav');
@@ -256,7 +300,7 @@ const App = () => {
   let page;
   switch (route) {
     case 'home':     page = <HomePage navigate={navigate} />; break;
-    case 'shop':     page = <ShopPage navigate={navigate} initialCat={params.cat || 'all'} initialQuery={params.q || ''} key={`${params.cat || 'all'}::${params.q || ''}::${params.sq || ''}`} />; break;
+    case 'shop':     page = <ShopPage navigate={navigate} initialBrowse={{ taxonomy: browseTaxonomy, value: browseValue }} initialQuery={params.q || ''} key={`${browseTaxonomy || 'all'}::${browseValue || 'all'}::${params.q || ''}::${params.sq || ''}`} />; break;
     case 'product':  page = <ProductPage navigate={navigate} bookId={activeProduct?.id} bookSlug={params.slug} key={activeProduct?.id || params.slug} />; break;
     case 'cart':     page = <CartPage navigate={navigate} />; break;
     case 'wishlist': page = <WishlistPage navigate={navigate} />; break;

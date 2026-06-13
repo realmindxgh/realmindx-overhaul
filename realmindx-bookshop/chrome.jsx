@@ -5,13 +5,30 @@ import logoWhite from '../realmindx-site/assets/logo-white.png';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 import globalToast from '../src/lib/toast.js';
-import { bookshopPathForRoute, categoryHref, productHref, productPathSegment } from './urls.js';
+import { bookshopPathForRoute, productHref, productPathSegment } from './urls.js';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
-const hrefForCategory = (category) => `${PREFIX}${categoryHref(category)}`;
 const hrefForProduct = (book) => `${PREFIX}${productHref(book)}`;
+const hrefForBrowse = (taxonomy, value = '') => `${PREFIX}${bookshopPathForRoute('shop', { taxonomy, value })}`;
+
+const bookMatchesSearchTerm = (book, query) => {
+  const haystack = [
+    book.title,
+    book.short,
+    book.desc,
+    book.full,
+    book.catName,
+    book.author,
+    book.publisher,
+    book.subject,
+    book.levelName || book.grade || book.level,
+    book.curriculumName || book.curriculum,
+    ...(book.tags || []),
+  ].filter(Boolean).join(' ').toLowerCase();
+  return haystack.includes(query);
+};
 
 // ---------- Wishlist store ----------
 const WishlistCtx = React.createContext(null);
@@ -228,7 +245,7 @@ const NavUserMenu = ({ navigate }) => {
 const Navbar = ({ route, navigate }) => {
   const { count } = useCart();
   const { count: wishlistCount } = useWishlist();
-  const { categories, books } = useCatalog();
+  const { books, taxonomies } = useCatalog();
   const [catsOpen, setCatsOpen] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
@@ -286,19 +303,23 @@ const Navbar = ({ route, navigate }) => {
     setSearchFocused(false);
   };
 
-  // Live suggestions — filter books by query (title or category name match)
+  // Live suggestions now search the same fields that power the dedicated
+  // browse pages and sidebar taxonomy filters.
   const suggestions = React.useMemo(() => {
     const t = q.trim();
     if (t.length < 2) return [];
     const lower = t.toLowerCase();
     return books
-      .filter(b =>
-        b.title.toLowerCase().includes(lower) ||
-        (b.catName || '').toLowerCase().includes(lower) ||
-        (b.author || '').toLowerCase().includes(lower)
-      )
+      .filter((book) => bookMatchesSearchTerm(book, lower))
       .slice(0, 6);
   }, [books, q]);
+
+  const browseGroups = [
+    { title: 'Subject', allLabel: 'Subjects', taxonomy: 'subject', icon: 'book', items: taxonomies.preview.subjects || [] },
+    { title: 'Level', allLabel: 'Levels', taxonomy: 'level', icon: 'cap', items: taxonomies.levels || [] },
+    { title: 'Curriculum', allLabel: 'Curricula', taxonomy: 'curriculum', icon: 'files', items: taxonomies.curricula || [] },
+    { title: 'Item Type', allLabel: 'Item Types', taxonomy: 'category', icon: 'box', items: taxonomies.categories || [] },
+  ];
 
   const showSuggestions = suggestions.length > 0 && (searching || searchFocused);
 
@@ -333,7 +354,7 @@ const Navbar = ({ route, navigate }) => {
             {/* Live suggestions dropdown */}
             {showSuggestions && (
               <div className="bs-search-suggestions" role="listbox">
-                {suggestions.map(b => (
+                {suggestions.map((b) => (
                   <a
                     key={b.id}
                     href={hrefForProduct(b)}
@@ -350,7 +371,7 @@ const Navbar = ({ route, navigate }) => {
                   >
                     <Icon name="book" size={13} className="bs-ci" style={{ color: 'var(--bs-navy)', opacity: 0.45, flexShrink: 0 }} />
                     <span className="bs-sug-title">{b.title}</span>
-                    {b.catName && <span className="bs-sug-cat">{b.catName}</span>}
+                    <span className="bs-sug-cat">{[b.subject, b.levelName || b.grade || b.level, b.catName].filter(Boolean).slice(0, 2).join(' · ') || b.catName}</span>
                   </a>
                 ))}
                 <button
@@ -382,10 +403,38 @@ const Navbar = ({ route, navigate }) => {
                 <span>Categories</span> <Icon name="chevDown" size={15} />
               </button>
               <div className={`bs-cats-menu${catsOpen ? ' open' : ''}`}>
-                {categories.map(c => (
-                  <a key={c.id} href={hrefForCategory(c.id)} onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { cat: c.id }); }}>
-                    <Icon name={c.icon} size={18} className="bs-ci" /> {c.name}
-                  </a>
+                <a className="bs-cats-menu-entry" href={hrefForRoute('shop')} onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop'); }}>
+                  <Icon name="grid" size={18} className="bs-ci" /> All Books
+                </a>
+                {browseGroups.map((group) => (
+                  <div className="bs-cats-flyout" key={group.taxonomy}>
+                    <a
+                      className="bs-cats-menu-entry has-submenu"
+                      href={hrefForBrowse(group.taxonomy)}
+                      onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { taxonomy: group.taxonomy }); }}
+                    >
+                      <span className="bs-cats-menu-label"><Icon name={group.icon} size={17} className="bs-ci" /> {group.title}</span>
+                      <Icon name="chevR" size={14} className="bs-ci" />
+                    </a>
+                    <div className="bs-cats-submenu">
+                      {group.items.map((item) => (
+                        <a
+                          key={`${group.taxonomy}-${item.id}`}
+                          href={hrefForBrowse(group.taxonomy, item.id)}
+                          onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { taxonomy: group.taxonomy, value: item.id }); }}
+                        >
+                          {item.label}
+                        </a>
+                      ))}
+                      <a
+                        className="bs-cats-submenu-viewall"
+                        href={hrefForBrowse(group.taxonomy)}
+                        onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { taxonomy: group.taxonomy }); }}
+                      >
+                        See all {group.allLabel.toLowerCase()}
+                      </a>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -450,7 +499,7 @@ const Footer = ({ navigate }) => (
           <h4>Quick Links</h4>
           <div className="bs-footer-links">
             <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
-            <a href={hrefForCategory('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { cat: 'curriculum' });}}>All Curricula</a>
+            <a href={hrefForBrowse('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { taxonomy: 'curriculum' });}}>All Curricula</a>
             <a href={hrefForRoute('track')} onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
             <a href={hrefForRoute('about')} onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
             <a href={hrefForRoute('contact')} onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>

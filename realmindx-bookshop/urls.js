@@ -15,7 +15,31 @@ export const productPathSegment = (book) => {
 
 export const productHref = (book) => `/products/${productPathSegment(book)}`;
 
-export const categoryHref = (category) => `/categories/${slugify(category)}`;
+export const taxonomyBasePath = (taxonomy) => {
+  switch (taxonomy) {
+    case 'category':
+      return '/categories';
+    case 'subject':
+      return '/subjects';
+    case 'level':
+      return '/levels';
+    case 'curriculum':
+      return '/curricula';
+    case 'publisher':
+      return '/publishers';
+    default:
+      return '/products';
+  }
+};
+
+export const taxonomyHref = (taxonomy, value = '') => {
+  const basePath = taxonomyBasePath(taxonomy);
+  const rawValue = String(value || '').trim();
+  const segment = rawValue ? slugify(rawValue) : '';
+  return segment ? `${basePath}/${segment}` : basePath;
+};
+
+export const categoryHref = (category) => taxonomyHref('category', category);
 
 export const productMatchesSegment = (book, segment) => {
   if (!book || !segment) return false;
@@ -32,6 +56,9 @@ export const bookshopPathForRoute = (route, params = {}) => {
     case 'home':
       return '/';
     case 'shop':
+      if (params.taxonomy && params.value && params.q) return `/products?${encodeURIComponent(params.taxonomy)}=${encodeURIComponent(params.value)}&q=${encodeURIComponent(params.q)}`;
+      if (params.taxonomy && params.value) return taxonomyHref(params.taxonomy, params.value);
+      if (params.taxonomy) return taxonomyHref(params.taxonomy);
       if (params.cat && params.q) return `/products?category=${encodeURIComponent(params.cat)}&q=${encodeURIComponent(params.q)}`;
       if (params.q) return `/products?q=${encodeURIComponent(params.q)}`;
       if (params.cat && params.cat !== 'all') return categoryHref(params.cat);

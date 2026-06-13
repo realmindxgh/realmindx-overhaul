@@ -68,44 +68,7 @@ def list_product_categories():
         .order_by(ProductCategory.sort_order.asc(), ProductCategory.name.asc())
         .all()
     )
-    items = [category_json(category) | {"type": "category"} for category in categories]
-    curricula = [
-        row[0].strip()
-        for row in db.session.query(Product.curriculum)
-        .filter(Product.is_active.is_(True), Product.curriculum.isnot(None), Product.curriculum != "")
-        .distinct()
-        .order_by(Product.curriculum.asc())
-        .all()
-        if row[0] and row[0].strip()
-    ]
-    if curricula:
-        items.append(
-            {
-                "id": "curriculum",
-                "name": "Curriculum Books",
-                "slug": "curriculum",
-                "description": "Browse all books grouped by curriculum.",
-                "sort_order": 999,
-                "type": "curriculum-group",
-            }
-        )
-    existing_slugs = {item["slug"] for item in items}
-    for name in curricula:
-        slug = f"curriculum-{slugify(name)}"
-        if slug in existing_slugs:
-            continue
-        items.append(
-            {
-                "id": slug,
-                "name": name,
-                "slug": slug,
-                "description": "Curriculum filter",
-                "sort_order": 1000 + len(items),
-                "type": "curriculum",
-            }
-        )
-        existing_slugs.add(slug)
-    return jsonify(items=items)
+    return jsonify(items=[category_json(category) | {"type": "category"} for category in categories])
 
 
 @bookshop_bp.get("/products")
@@ -115,6 +78,8 @@ def list_products():
     category = request.args.get("category")
     subject = request.args.get("subject")
     level = request.args.get("level")
+    curriculum = request.args.get("curriculum")
+    publisher = request.args.get("publisher")
     if q:
         like = f"%{q}%"
         query = query.outerjoin(ProductCategory).filter(
@@ -146,6 +111,10 @@ def list_products():
         query = query.filter(Product.subject == subject)
     if level:
         query = query.filter(Product.level == level)
+    if curriculum:
+        query = query.filter(Product.curriculum == curriculum)
+    if publisher:
+        query = query.filter(Product.publisher == publisher)
     products = query.order_by(Product.featured.desc(), Product.created_at.desc()).limit(100).all()
     return jsonify(items=[product_json(product) for product in products])
 

@@ -1,8 +1,9 @@
 import React from 'react';
 import { Icon, Reveal, LoadingState, cedis } from './shared.jsx';
-import { ProductCard, ListCard, useCart } from './chrome.jsx';
+import { ProductCard, ListCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
+import { findTaxonomyItem, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute } from './urls.js';
@@ -11,12 +12,169 @@ const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.s
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
 
-// ---------- Flyer hero slideshow (admin-managed) ----------
 const FLYER_GRADIENTS = [
-  'linear-gradient(135deg,#0d2550,#1c4a96)',
-  'linear-gradient(135deg,#143670,#26417a)',
-  'linear-gradient(135deg,#0d2550,#143670)',
+  '#0d2550',
+  '#143670',
+  '#1c4a96',
 ];
+
+const FILTER_GROUPS = [
+  { key: 'categories', taxonomy: 'category', label: 'Item Type', searchLabel: 'Search item types' },
+  { key: 'subjects', taxonomy: 'subject', label: 'Subject', searchLabel: 'Search subjects' },
+  { key: 'levels', taxonomy: 'level', label: 'Level', searchLabel: 'Search levels' },
+  { key: 'curricula', taxonomy: 'curriculum', label: 'Curriculum', searchLabel: 'Search curricula' },
+  { key: 'publishers', taxonomy: 'publisher', label: 'Publisher', searchLabel: 'Search publishers' },
+];
+
+const FILTER_PREVIEW_LIMIT = 5;
+const BATCH = 40;
+
+const filterGroupForTaxonomy = (taxonomy) => FILTER_GROUPS.find((group) => group.taxonomy === taxonomy) || null;
+const safeCeilingValue = (value) => Math.max(2, Math.ceil(Number(value) || 0));
+
+const createFilterState = (ceiling, browse = {}, query = '') => {
+  const base = {
+    categories: [],
+    subjects: [],
+    levels: [],
+    curricula: [],
+    publishers: [],
+    min: 0,
+    max: safeCeilingValue(ceiling),
+    ratingMin: '',
+    ratingMax: '',
+    inStock: false,
+    query,
+  };
+  const group = filterGroupForTaxonomy(browse.taxonomy);
+  if (group && browse.value) base[group.key] = [browse.value];
+  return base;
+};
+
+const bookSearchFields = (book) => ([
+  book.title,
+  book.short,
+  book.desc,
+  book.full,
+  book.catName,
+  book.author,
+  book.publisher,
+  book.subject,
+  book.levelName || book.grade || book.level,
+  book.curriculumName || book.curriculum,
+  ...(book.tags || []),
+]).filter(Boolean).join(' ').toLowerCase();
+
+const matchesRatingFilters = (book, filters) => {
+  const stars = Math.round(book.rating || 0);
+  return (filters.ratingMin === '' || stars >= filters.ratingMin)
+    && (filters.ratingMax === '' || stars <= filters.ratingMax);
+};
+
+const matchesQueryFilters = (book, query) => {
+  const trimmed = String(query || '').trim().toLowerCase();
+  if (!trimmed) return true;
+  return bookSearchFields(book).includes(trimmed);
+};
+
+const matchesCatalogueFilters = (book, filters, options = {}) => {
+  const ignoreTaxonomy = options.ignoreTaxonomy || '';
+  const taxonomyMatch = FILTER_GROUPS.every((group) => {
+    if (group.taxonomy === ignoreTaxonomy) return true;
+    const selected = filters[group.key] || [];
+    return selected.length === 0 || selected.some((value) => matchesTaxonomy(book, group.taxonomy, value));
+  });
+  return taxonomyMatch
+    && book.price >= filters.min
+    && book.price <= filters.max
+    && matchesRatingFilters(book, filters)
+    && matchesQueryFilters(book, filters.query)
+    && (!filters.inStock || book.stock);
+};
+
+const activeSelectionCount = (filters) => FILTER_GROUPS.reduce(
+  (total, group) => total + ((filters[group.key] || []).length),
+  0,
+);
+
+const selectedLabelList = (filters, taxonomies) => FILTER_GROUPS.flatMap((group) => (
+  (filters[group.key] || [])
+    .map((value) => findTaxonomyItem(taxonomies, group.taxonomy, value)?.label || value)
+    .filter(Boolean)
+));
+
+const browseIntroHeading = (taxonomy) => {
+  switch (taxonomy) {
+    case 'category':
+      return 'Item Type';
+    case 'subject':
+      return 'Subject';
+    case 'level':
+      return 'Level';
+    case 'curriculum':
+      return 'Curriculum';
+    case 'publisher':
+      return 'Publisher';
+    default:
+      return 'Catalogue';
+  }
+};
+
+const browseIntroCopy = (taxonomy, browseItem) => {
+  if (!taxonomy) return null;
+  if (browseItem) {
+    const label = String(browseItem.label || browseItem.name || '').trim();
+    return {
+      eyebrow: browseIntroHeading(taxonomy),
+      title: label,
+      body: browseItem.description || (
+        taxonomy === 'subject'
+          ? `Find textbooks, readers, workbooks, and classroom materials for ${label}.`
+          : taxonomy === 'level'
+            ? `Browse books, revision guides, and learning materials matched to ${label}.`
+            : taxonomy === 'curriculum'
+              ? `Explore titles that fit the ${label} pathway.`
+              : taxonomy === 'publisher'
+                ? `See what is currently available from ${label}.`
+                : `Explore the latest ${label.toLowerCase()} items in the RealMindX Bookshop.`
+      ),
+    };
+  }
+  switch (taxonomy) {
+    case 'category':
+      return {
+        eyebrow: 'Item Type',
+        title: 'Shop by Item Type',
+        body: 'Choose the kind of learning material you want first, then narrow the list by subject, level, curriculum, publisher, price, or stock.',
+      };
+    case 'subject':
+      return {
+        eyebrow: 'Subject Finder',
+        title: 'Shop by Subject',
+        body: 'Start with the subject your learner needs, then narrow the results by level, curriculum, publisher, or item type.',
+      };
+    case 'level':
+      return {
+        eyebrow: 'Level Finder',
+        title: 'Shop by Level',
+        body: 'Pick the learner stage first and refine the matching books using subject, curriculum, publisher, or item type filters.',
+      };
+    case 'curriculum':
+      return {
+        eyebrow: 'Curriculum Finder',
+        title: 'Shop by Curriculum',
+        body: 'Choose the curriculum your school follows so you can reach the most relevant books faster.',
+      };
+    case 'publisher':
+      return {
+        eyebrow: 'Publisher Finder',
+        title: 'Shop by Publisher',
+        body: 'Compare available titles by publisher, then narrow them by curriculum, subject, level, or item type.',
+      };
+    default:
+      return null;
+  }
+};
 
 const HeroSlideshow = ({ navigate }) => {
   const { flyers } = useCatalog();
@@ -25,89 +183,109 @@ const HeroSlideshow = ({ navigate }) => {
   const touch = React.useRef(null);
 
   React.useEffect(() => {
-    if (total < 2) return;
-    const t = setInterval(() => setIdx(i => (i + 1) % total), 5000);
-    return () => clearInterval(t);
+    if (total < 2) return undefined;
+    const timer = setInterval(() => setIdx((value) => (value + 1) % total), 5000);
+    return () => clearInterval(timer);
   }, [total]);
 
-  // Keep the active index valid if the admin removes flyers.
-  React.useEffect(() => { setIdx(i => (i >= total ? 0 : i)); }, [total]);
+  React.useEffect(() => {
+    setIdx((value) => (value >= total ? 0 : value));
+  }, [total]);
 
-  // Natural aspect ratio of the active flyer's artwork. On phones the hero
-  // box adopts it (via --bs-hero-ratio) so the banner fits edge-to-edge at
-  // its natural height — no cropping, stretching, or letterbox bars.
   const [imgRatio, setImgRatio] = React.useState(null);
   const activeImage = flyers[idx]?.image || null;
   React.useEffect(() => {
-    if (!activeImage) { setImgRatio(null); return undefined; }
+    if (!activeImage) {
+      setImgRatio(null);
+      return undefined;
+    }
     let alive = true;
     const probe = new Image();
-    probe.onload = () => { if (alive && probe.naturalHeight) setImgRatio(probe.naturalWidth / probe.naturalHeight); };
+    probe.onload = () => {
+      if (alive && probe.naturalHeight) setImgRatio(probe.naturalWidth / probe.naturalHeight);
+    };
     probe.src = activeImage;
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [activeImage]);
 
   if (total === 0) return null;
 
-  const go = (n) => setIdx((n + total) % total);
-  const onTouchStart = (e) => { touch.current = e.touches[0].clientX; };
-  const onTouchEnd = (e) => {
+  const go = (value) => setIdx((value + total) % total);
+  const onTouchStart = (event) => {
+    touch.current = event.touches[0].clientX;
+  };
+  const onTouchEnd = (event) => {
     if (touch.current == null) return;
-    const dx = e.changedTouches[0].clientX - touch.current;
-    if (Math.abs(dx) > 40) go(idx + (dx < 0 ? 1 : -1));
+    const delta = event.changedTouches[0].clientX - touch.current;
+    if (Math.abs(delta) > 40) go(idx + (delta < 0 ? 1 : -1));
     touch.current = null;
   };
 
   return (
     <>
-      <section className="bs-hero" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+      <section
+        className="bs-hero"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
         onClick={() => navigate('shop')}
         style={{ cursor: 'pointer', ...(imgRatio ? { '--bs-hero-ratio': String(imgRatio) } : {}) }}
-        aria-label="Promotional flyers">
-        {flyers.map((f, i) => {
-          const bg = f.image
-            ? { backgroundImage: `url(${f.image})`, backgroundSize: f.imageFit || 'cover', backgroundPosition: f.imagePosition || 'center', backgroundRepeat: 'no-repeat' }
-            : { background: FLYER_GRADIENTS[i % FLYER_GRADIENTS.length] };
+        aria-label="Promotional flyers"
+      >
+        {flyers.map((flyer, index) => {
+          const bg = flyer.image
+            ? {
+                backgroundImage: `url(${flyer.image})`,
+                backgroundSize: flyer.imageFit || 'cover',
+                backgroundPosition: flyer.imagePosition || 'center',
+                backgroundRepeat: 'no-repeat',
+              }
+            : { background: FLYER_GRADIENTS[index % FLYER_GRADIENTS.length] };
           return (
-            <div className={`bs-hero-slide${i === idx ? ' active' : ''}`} key={f.id}>
-              <div className={`bs-hero-flyer${f.image ? ' has-img' : ''}${f.showOverlay === true ? ' has-overlay' : ''}`} style={bg}>
-                <div className="bs-fl-head">{f.headline}{f.accent && <><br/><span className="bs-gold">{f.accent}</span></>}</div>
-                {f.subline && <div className="bs-fl-sub">{f.subline}</div>}
-                {f.badge && <span className="bs-fl-badge">{f.badge}</span>}
+            <div className={`bs-hero-slide${index === idx ? ' active' : ''}`} key={flyer.id}>
+              <div className={`bs-hero-flyer${flyer.image ? ' has-img' : ''}${flyer.showOverlay === true ? ' has-overlay' : ''}`} style={bg}>
+                <div className="bs-fl-head">{flyer.headline}{flyer.accent && <><br /><span className="bs-gold">{flyer.accent}</span></>}</div>
+                {flyer.subline && <div className="bs-fl-sub">{flyer.subline}</div>}
+                {flyer.badge && <span className="bs-fl-badge">{flyer.badge}</span>}
               </div>
             </div>
           );
         })}
         <div className={`bs-hero-vignette${flyers[idx]?.showOverlay === true ? ' active' : ''}`} />
-        {total > 1 && <>
-          <button className="bs-hero-arrow prev" aria-label="Previous flyer" onClick={(e)=>{e.stopPropagation();go(idx-1);}}><Icon name="chevL" size={22} /></button>
-          <button className="bs-hero-arrow next" aria-label="Next flyer" onClick={(e)=>{e.stopPropagation();go(idx+1);}}><Icon name="chevR" size={22} /></button>
-          <div className="bs-hero-dots">
-            {flyers.map((_, i) => (
-              <button key={i} className={`bs-hero-dot${i === idx ? ' active' : ''}`} aria-label={`Flyer ${i+1}`} onClick={(e)=>{e.stopPropagation();go(i);}} />
-            ))}
-          </div>
-        </>}
+        {total > 1 && (
+          <>
+            <button className="bs-hero-arrow prev" aria-label="Previous flyer" onClick={(event) => { event.stopPropagation(); go(idx - 1); }}><Icon name="chevL" size={22} /></button>
+            <button className="bs-hero-arrow next" aria-label="Next flyer" onClick={(event) => { event.stopPropagation(); go(idx + 1); }}><Icon name="chevR" size={22} /></button>
+            <div className="bs-hero-dots">
+              {flyers.map((_, index) => (
+                <button key={index} className={`bs-hero-dot${index === idx ? ' active' : ''}`} aria-label={`Flyer ${index + 1}`} onClick={(event) => { event.stopPropagation(); go(index); }} />
+              ))}
+            </div>
+          </>
+        )}
       </section>
       <div className="bs-gold-rule" />
     </>
   );
 };
 
-// ---------- Category strip ----------
 const CategoryStrip = ({ active = 'all', navigate }) => {
   const { categories } = useCatalog();
   return (
-  <div className="bs-cat-strip-wrap">
-    <div className="bs-cat-strip">
-      {categories.map(c => (
-        <button key={c.id} className={`bs-cat-pill${active === c.id ? ' active' : ''}`}
-          onClick={() => navigate('shop', { cat: c.id })}>
-          <Icon name={c.icon} size={16} /> {c.name}
-        </button>
-      ))}
+    <div className="bs-cat-strip-wrap">
+      <div className="bs-cat-strip">
+        {categories.map((category) => (
+          <button
+            key={category.id}
+            className={`bs-cat-pill${active === category.id ? ' active' : ''}`}
+            onClick={() => navigate('shop', { cat: category.id })}
+          >
+            <Icon name={category.icon} size={16} /> {category.name}
+          </button>
+        ))}
+      </div>
     </div>
-  </div>
   );
 };
 
@@ -133,52 +311,43 @@ const CategoryMarquee = ({ navigate }) => {
   );
 };
 
-// ---------- Homepage ----------
 const HomePage = ({ navigate }) => {
   const { books, loading: catalogLoading } = useCatalog();
   const [turnstileToken, setTurnstileToken] = React.useState('');
-  const onSubscribe = async (e) => {
-    e.preventDefault();
-    const formEl = e.currentTarget;
+
+  const onSubscribe = async (event) => {
+    event.preventDefault();
+    const formEl = event.currentTarget;
     const email = new FormData(formEl).get('email');
     try {
-      const res = await subscribeNewsletter(email, 'bookshop', turnstileToken);
+      const response = await subscribeNewsletter(email, 'bookshop', turnstileToken);
       formEl.reset();
       setTurnstileToken('');
-      globalToast.success(res?.status === 'already_subscribed' ? "You're already subscribed" : 'Subscribed - thank you!');
+      globalToast.success(response?.status === 'already_subscribed' ? "You're already subscribed" : 'Subscribed - thank you!');
     } catch (err) {
       globalToast.error(err?.message || 'Could not subscribe.');
     }
   };
-  const featuredPool = books.filter(b => b.featured);
-  // featured first, then top up from the rest of the catalogue so the
-  // 5x2 grid fills even when fewer than 10 products are flagged featured
-  const featured = [...featuredPool, ...books.filter(b => !b.featured)].slice(0, 10);
 
-  // BECE/WASSCE picks — admin-curated via the 'exam-pick' tag on individual products
-  // (set in the admin product editor under Tags), or featured products in exam categories.
-  // Fallback to category-name heuristic when nothing is explicitly tagged.
-  const examTagged = books.filter(b => (b.tags || []).includes('exam-pick'));
-  const examCatFeatured = books.filter(b =>
-    b.featured && /bece|wassce|exam|past[\s-]?questions?|textbook/i.test(`${b.cat || ''} ${b.catName || ''}`)
+  const featuredPool = books.filter((book) => book.featured);
+  const featured = [...featuredPool, ...books.filter((book) => !book.featured)].slice(0, 10);
+
+  const examTagged = books.filter((book) => (book.tags || []).includes('exam-pick'));
+  const examCatFeatured = books.filter((book) =>
+    book.featured && /bece|wassce|exam|past[\s-]?questions?|textbook/i.test(`${book.cat || ''} ${book.catName || ''}`)
   );
-  const examFallback = books.filter(b =>
-    /exam|past|textbook/i.test(b.cat || '') || /exam|past|textbook/i.test(b.catName || '')
+  const examFallback = books.filter((book) =>
+    /exam|past|textbook/i.test(book.cat || '') || /exam|past|textbook/i.test(book.catName || '')
   );
   const examPool = examTagged.length ? examTagged : examCatFeatured.length ? examCatFeatured : examFallback;
-  // curated picks first, then top up from the rest of the catalogue so this
-  // section also fills its 5x2 grid instead of leaving holes
-  const examPicks = [...examPool, ...books.filter(b => !examPool.includes(b))].slice(0, 10);
+  const examPicks = [...examPool, ...books.filter((book) => !examPool.includes(book))].slice(0, 10);
 
   if (catalogLoading && books.length === 0) {
     return (
       <div className="bs-fade-page">
         <HeroSlideshow navigate={navigate} />
         <section className="bs-section bs-container">
-          <LoadingState
-            title="Loading the bookshop"
-            body="Fetching the latest books, categories, and offers."
-          />
+          <LoadingState title="Loading the bookshop" body="Fetching the latest books, categories, and offers." />
         </section>
       </div>
     );
@@ -194,11 +363,11 @@ const HomePage = ({ navigate }) => {
             <span className="bs-eyebrow">Just Arrived</span>
             <h2 className="bs-h2">New in the shop</h2>
           </div>
-          <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>View all <Icon name="arrow" size={14} /></a>
+          <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>View all <Icon name="arrow" size={14} /></a>
         </Reveal>
         <div className="bs-product-grid bs-home-new-grid">
-          {featured.map((b, i) => (
-            <Reveal key={b.id} delay={(i % 4) + 1}><ProductCard book={b} idx={i} navigate={navigate} /></Reveal>
+          {featured.map((book, index) => (
+            <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index} navigate={navigate} /></Reveal>
           ))}
         </div>
       </section>
@@ -209,13 +378,13 @@ const HomePage = ({ navigate }) => {
         <Reveal className="bs-section-head-row">
           <div>
             <span className="bs-eyebrow">Exam Season</span>
-            <h2 className="bs-h2">BECE & WASSCE picks</h2>
+            <h2 className="bs-h2">BECE &amp; WASSCE picks</h2>
           </div>
-          <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Browse the catalogue <Icon name="arrow" size={14} /></a>
+          <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>Browse the catalogue <Icon name="arrow" size={14} /></a>
         </Reveal>
         <div className="bs-product-grid">
-          {examPicks.map((b, i) => (
-            <Reveal key={b.id} delay={(i % 4) + 1}><ProductCard book={b} idx={i+4} navigate={navigate} /></Reveal>
+          {examPicks.map((book, index) => (
+            <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index + 4} navigate={navigate} /></Reveal>
           ))}
         </div>
       </section>
@@ -236,98 +405,182 @@ const HomePage = ({ navigate }) => {
   );
 };
 
-// ---------- Filter panel ----------
 const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
-  const { books, categories } = useCatalog();
-  const [open, setOpen] = React.useState({ cat:true, price:true, rating:true, avail:true });
-  const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
-  const matchesCategory = React.useCallback((book, id) => (
-    id === 'curriculum'
-      ? Boolean(book.curriculum || book.curriculumName)
-      : book.cat === id || book.curriculum === id || book.curriculumName === id
-  ), []);
-  const counts = {};
-  categories.forEach(c => { counts[c.id] = c.id === 'all' ? books.length : books.filter(b => matchesCategory(b, c.id)).length; });
-
-  const toggleCat = (id) => setFilters(f => {
-    const has = f.cats.includes(id);
-    return { ...f, cats: has ? f.cats.filter(x => x !== id) : [...f.cats, id] };
+  const { books, taxonomies } = useCatalog();
+  const [open, setOpen] = React.useState({
+    categories: true,
+    subjects: true,
+    levels: true,
+    curricula: true,
+    publishers: true,
+    price: true,
+    rating: true,
+    availability: true,
+  });
+  const [searchTerms, setSearchTerms] = React.useState({
+    categories: '',
+    subjects: '',
+    levels: '',
+    curricula: '',
+    publishers: '',
   });
 
-  // Star-range picker: clicking an active chip clears it back to "Any" (empty).
-  // Picking a bound that would conflict with the other one (min > max) carries
-  // the other bound along so the range stays valid — e.g. Min=4 while Max=2 is
-  // set pulls Max up to 4, rather than silently producing zero results.
-  const setRatingBound = (key, n) => setFilters(f => {
+  const toggleSection = (key) => setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleTaxonomyValue = (taxonomy, value) => {
+    const group = filterGroupForTaxonomy(taxonomy);
+    if (!group) return;
+    setFilters((prev) => {
+      const selected = prev[group.key] || [];
+      const hasValue = selected.includes(value);
+      return {
+        ...prev,
+        [group.key]: hasValue ? selected.filter((item) => item !== value) : [...selected, value],
+      };
+    });
+  };
+
+  const setRatingBound = (key, rating) => setFilters((prev) => {
     const other = key === 'ratingMin' ? 'ratingMax' : 'ratingMin';
-    const value = f[key] === n ? '' : n;
-    const conflicts = value !== '' && f[other] !== '' &&
-      (key === 'ratingMin' ? f[other] < value : f[other] > value);
-    return { ...f, [key]: value, [other]: conflicts ? value : f[other] };
+    const value = prev[key] === rating ? '' : rating;
+    const conflicts = value !== '' && prev[other] !== ''
+      && (key === 'ratingMin' ? prev[other] < value : prev[other] > value);
+    return { ...prev, [key]: value, [other]: conflicts ? value : prev[other] };
   });
-  // Live hover/focus preview for the star pickers below — while the pointer (or
-  // keyboard focus) rests on star N, stars 1..N preview as filled, exactly like
-  // the selection itself would look, the same "rate up to here" convention every
-  // star-rating control uses. Falls back to the actual committed value otherwise.
+
   const [hoverMin, setHoverMin] = React.useState(null);
   const [hoverMax, setHoverMax] = React.useState(null);
-  const starFilled = (value, hover, n) => hover !== null ? n <= hover : (value !== '' && n <= value);
+  const starFilled = (value, hover, rating) => hover !== null ? rating <= hover : (value !== '' && rating <= value);
   const { ratingMin, ratingMax } = filters;
-  const ratingHint =
-    ratingMin === '' && ratingMax === '' ? 'Any rating'
+  const ratingHint = ratingMin === '' && ratingMax === ''
+    ? 'Any rating'
     : ratingMin !== '' && ratingMax !== ''
-      ? (ratingMin === ratingMax ? `${ratingMin} star${ratingMin > 1 ? 's' : ''} only` : `${ratingMin}–${ratingMax} stars`)
-    : ratingMin !== '' ? `${ratingMin}+ stars`
-    : `${ratingMax} stars or fewer`;
+      ? (ratingMin === ratingMax ? `${ratingMin} star${ratingMin > 1 ? 's' : ''} only` : `${ratingMin}-${ratingMax} stars`)
+      : ratingMin !== '' ? `${ratingMin}+ stars` : `${ratingMax} stars or fewer`;
+
+  const availableCounts = React.useMemo(() => {
+    const nextCounts = {};
+    FILTER_GROUPS.forEach((group) => {
+      const scopedBooks = books.filter((book) => matchesCatalogueFilters(book, filters, { ignoreTaxonomy: group.taxonomy }));
+      nextCounts[group.key] = new Map(
+        (taxonomies[group.key] || []).map((item) => [
+          item.id,
+          scopedBooks.filter((book) => matchesTaxonomy(book, group.taxonomy, item.id)).length,
+        ]),
+      );
+    });
+    return nextCounts;
+  }, [books, filters, taxonomies]);
+
+  const rangeMax = safeCeilingValue(ceiling);
 
   return (
     <>
       <h3 className="bs-h3">Filter Books</h3>
-      <div className={`bs-filter-sec${open.cat ? '' : ' collapsed'}`}>
-        <button className="bs-filter-sec-head" onClick={() => toggle('cat')}>Categories <Icon name="chevDown" size={16} className="bs-chev" /></button>
-        <div className="bs-filter-sec-body">
-          {categories.filter(c => c.id !== 'all').map(c => (
-            <label className="bs-check-row" key={c.id}>
-              <input type="checkbox" checked={filters.cats.includes(c.id)} onChange={() => toggleCat(c.id)} />
-              <span className="bs-cbox"><Icon name="check" size={13} /></span>
-              {c.name} <span className="bs-cnt">{counts[c.id]}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      {FILTER_GROUPS.map((group) => {
+        const items = taxonomies[group.key] || [];
+        if (items.length === 0) return null;
+        const query = searchTerms[group.key].trim().toLowerCase();
+        const filteredItems = query ? items.filter((item) => item.label.toLowerCase().includes(query)) : items;
+        const visibleItems = query ? filteredItems : filteredItems.slice(0, FILTER_PREVIEW_LIMIT);
+        const hiddenCount = query ? 0 : Math.max(0, items.length - visibleItems.length);
+        const selected = filters[group.key] || [];
+
+        return (
+          <div className={`bs-filter-sec${open[group.key] ? '' : ' collapsed'}`} key={group.key}>
+            <button className="bs-filter-sec-head" onClick={() => toggleSection(group.key)}>
+              {group.label}
+              <Icon name="chevDown" size={16} className="bs-chev" />
+            </button>
+            <div className="bs-filter-sec-body">
+              {items.length > FILTER_PREVIEW_LIMIT && (
+                <input
+                  type="search"
+                  className="bs-filter-search"
+                  placeholder={group.searchLabel}
+                  value={searchTerms[group.key]}
+                  onChange={(event) => setSearchTerms((prev) => ({ ...prev, [group.key]: event.target.value }))}
+                  aria-label={group.searchLabel}
+                />
+              )}
+              <div className="bs-filter-checklist">
+                {visibleItems.map((item) => (
+                  <label className="bs-check-row" key={item.id}>
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(item.id)}
+                      onChange={() => toggleTaxonomyValue(group.taxonomy, item.id)}
+                    />
+                    <span className="bs-cbox"><Icon name="check" size={13} /></span>
+                    <span className="bs-filter-item-label">{item.label}</span>
+                    <span className="bs-cnt">{availableCounts[group.key]?.get(item.id) || 0}</span>
+                  </label>
+                ))}
+                {visibleItems.length === 0 && (
+                  <p className="bs-filter-hint">No matches yet.</p>
+                )}
+              </div>
+              {hiddenCount > 0 && (
+                <p className="bs-filter-hint">Showing {visibleItems.length} of {items.length}. Search to reveal the rest.</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
       <div className={`bs-filter-sec${open.price ? '' : ' collapsed'}`}>
-        <button className="bs-filter-sec-head" onClick={() => toggle('price')}>Price Range <Icon name="chevDown" size={16} className="bs-chev" /></button>
+        <button className="bs-filter-sec-head" onClick={() => toggleSection('price')}>
+          Price Range
+          <Icon name="chevDown" size={16} className="bs-chev" />
+        </button>
         <div className="bs-filter-sec-body">
           <div className="bs-range-wrap">
             <div className="bs-range-vals"><span>{cedis(filters.min)}</span><span>{cedis(filters.max)}</span></div>
             <div className="bs-range-track">
-              <div className="bs-range-fill" style={{ left: `${(filters.min/ceiling)*100}%`, right: `${100-(filters.max/ceiling)*100}%` }} />
-              <input type="range" min="0" max={ceiling} value={filters.min}
-                onChange={e => setFilters(f => ({ ...f, min: Math.min(+e.target.value, f.max - 2) }))} aria-label="Minimum price" />
-              <input type="range" min="0" max={ceiling} value={filters.max}
-                onChange={e => setFilters(f => ({ ...f, max: Math.max(+e.target.value, f.min + 2) }))} aria-label="Maximum price" />
+              <div className="bs-range-fill" style={{ left: `${(filters.min / rangeMax) * 100}%`, right: `${100 - (filters.max / rangeMax) * 100}%` }} />
+              <input
+                type="range"
+                min="0"
+                max={rangeMax}
+                value={filters.min}
+                onChange={(event) => setFilters((prev) => ({ ...prev, min: Math.min(+event.target.value, prev.max - 2) }))}
+                aria-label="Minimum price"
+              />
+              <input
+                type="range"
+                min="0"
+                max={rangeMax}
+                value={filters.max}
+                onChange={(event) => setFilters((prev) => ({ ...prev, max: Math.max(+event.target.value, prev.min + 2) }))}
+                aria-label="Maximum price"
+              />
             </div>
           </div>
         </div>
       </div>
+
       <div className={`bs-filter-sec${open.rating ? '' : ' collapsed'}`}>
-        <button className="bs-filter-sec-head" onClick={() => toggle('rating')}>Rating <Icon name="chevDown" size={16} className="bs-chev" /></button>
+        <button className="bs-filter-sec-head" onClick={() => toggleSection('rating')}>
+          Rating
+          <Icon name="chevDown" size={16} className="bs-chev" />
+        </button>
         <div className="bs-filter-sec-body bs-rating-filter">
           <p className="bs-rating-hint">{ratingHint}</p>
           <div className="bs-rating-range-row">
             <span className="bs-rating-range-label">Min</span>
-            <div className="bs-rating-stars" role="group" aria-label="Minimum star rating"
-              onMouseLeave={() => setHoverMin(null)}>
+            <div className="bs-rating-stars" role="group" aria-label="Minimum star rating" onMouseLeave={() => setHoverMin(null)}>
               <span className="bs-rating-endpoint" aria-hidden="true">1</span>
-              {[1,2,3,4,5].map(n => (
-                <button key={n} type="button"
-                  className={`bs-rating-star${starFilled(ratingMin, hoverMin, n) ? ' filled' : ''}`}
-                  aria-pressed={ratingMin === n}
-                  aria-label={`Set minimum rating to ${n} star${n > 1 ? 's' : ''}`}
-                  onMouseEnter={() => setHoverMin(n)}
-                  onFocus={() => setHoverMin(n)}
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  className={`bs-rating-star${starFilled(ratingMin, hoverMin, rating) ? ' filled' : ''}`}
+                  aria-pressed={ratingMin === rating}
+                  aria-label={`Set minimum rating to ${rating} star${rating > 1 ? 's' : ''}`}
+                  onMouseEnter={() => setHoverMin(rating)}
+                  onFocus={() => setHoverMin(rating)}
                   onBlur={() => setHoverMin(null)}
-                  onClick={() => setRatingBound('ratingMin', n)}>
+                  onClick={() => setRatingBound('ratingMin', rating)}
+                >
                   <Icon name="star" size={20} stroke={0} />
                 </button>
               ))}
@@ -336,18 +589,20 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
           </div>
           <div className="bs-rating-range-row">
             <span className="bs-rating-range-label">Max</span>
-            <div className="bs-rating-stars" role="group" aria-label="Maximum star rating"
-              onMouseLeave={() => setHoverMax(null)}>
+            <div className="bs-rating-stars" role="group" aria-label="Maximum star rating" onMouseLeave={() => setHoverMax(null)}>
               <span className="bs-rating-endpoint" aria-hidden="true">1</span>
-              {[1,2,3,4,5].map(n => (
-                <button key={n} type="button"
-                  className={`bs-rating-star${starFilled(ratingMax, hoverMax, n) ? ' filled' : ''}`}
-                  aria-pressed={ratingMax === n}
-                  aria-label={`Set maximum rating to ${n} star${n > 1 ? 's' : ''}`}
-                  onMouseEnter={() => setHoverMax(n)}
-                  onFocus={() => setHoverMax(n)}
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <button
+                  key={rating}
+                  type="button"
+                  className={`bs-rating-star${starFilled(ratingMax, hoverMax, rating) ? ' filled' : ''}`}
+                  aria-pressed={ratingMax === rating}
+                  aria-label={`Set maximum rating to ${rating} star${rating > 1 ? 's' : ''}`}
+                  onMouseEnter={() => setHoverMax(rating)}
+                  onFocus={() => setHoverMax(rating)}
                   onBlur={() => setHoverMax(null)}
-                  onClick={() => setRatingBound('ratingMax', n)}>
+                  onClick={() => setRatingBound('ratingMax', rating)}
+                >
                   <Icon name="star" size={20} stroke={0} />
                 </button>
               ))}
@@ -355,18 +610,27 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
             </div>
           </div>
           {(ratingMin !== '' || ratingMax !== '') && (
-            <button type="button" className="bs-rating-reset" onClick={() => setFilters(f => ({ ...f, ratingMin: '', ratingMax: '' }))}>
+            <button type="button" className="bs-rating-reset" onClick={() => setFilters((prev) => ({ ...prev, ratingMin: '', ratingMax: '' }))}>
               <Icon name="close" size={11} /> Clear rating filter
             </button>
           )}
         </div>
       </div>
-      <div className={`bs-filter-sec${open.avail ? '' : ' collapsed'}`}>
-        <button className="bs-filter-sec-head" onClick={() => toggle('avail')}>Availability <Icon name="chevDown" size={16} className="bs-chev" /></button>
+
+      <div className={`bs-filter-sec${open.availability ? '' : ' collapsed'}`}>
+        <button className="bs-filter-sec-head" onClick={() => toggleSection('availability')}>
+          Availability
+          <Icon name="chevDown" size={16} className="bs-chev" />
+        </button>
         <div className="bs-filter-sec-body">
-          <label className="bs-check-row" style={{ justifyContent:'space-between' }} onClick={(e)=>e.preventDefault()}>
+          <label className="bs-check-row" style={{ justifyContent: 'space-between' }} onClick={(event) => event.preventDefault()}>
             In stock only
-            <span className={`bs-toggle${filters.inStock ? ' on' : ''}`} onClick={() => setFilters(f => ({ ...f, inStock: !f.inStock }))} role="switch" aria-checked={filters.inStock} />
+            <span
+              className={`bs-toggle${filters.inStock ? ' on' : ''}`}
+              onClick={() => setFilters((prev) => ({ ...prev, inStock: !prev.inStock }))}
+              role="switch"
+              aria-checked={filters.inStock}
+            />
           </label>
         </div>
       </div>
@@ -374,11 +638,10 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
   );
 };
 
-const BATCH = 40;
-
-const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
-  const { books, categories, priceCeiling, loading: catalogLoading } = useCatalog();
-  const [filters, setFilters] = React.useState({ cats: initialCat !== 'all' ? [initialCat] : [], min:0, max:priceCeiling, ratingMin:'', ratingMax:'', inStock:false, query: initialQuery });
+const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
+  const { books, taxonomies, priceCeiling, loading: catalogLoading } = useCatalog();
+  const rangeCeiling = safeCeilingValue(priceCeiling);
+  const [filters, setFilters] = React.useState(() => createFilterState(rangeCeiling, initialBrowse, initialQuery));
   const [sort, setSort] = React.useState('newest');
   const [view, setView] = React.useState('grid');
   const [visible, setVisible] = React.useState(BATCH);
@@ -387,130 +650,106 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
   const sentinelRef = React.useRef(null);
   const loadingRef = React.useRef(false);
 
-  // Reset to first batch when filters or sort changes
-  React.useEffect(() => { setVisible(BATCH); setLoading(false); loadingRef.current = false; }, [filters, sort]);
-  React.useEffect(() => { document.body.style.overflow = drawer ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [drawer]);
+  React.useEffect(() => {
+    setFilters((prev) => ({
+      ...prev,
+      min: Math.min(prev.min, Math.max(0, rangeCeiling - 2)),
+      max: Math.max(Math.min(prev.max, rangeCeiling), Math.min(prev.min + 2, rangeCeiling)),
+    }));
+  }, [rangeCeiling]);
 
-  const matchesCategory = (book, id) => {
-    if (id === 'curriculum') return Boolean(book.curriculum || book.curriculumName);
-    return book.cat === id || book.curriculum === id || book.curriculumName === id;
-  };
-  // Compare against the *rounded* star value — that's what the ★ icons (and the
-  // picker itself) display, so "min 3 / max 4" reliably shows only books whose
-  // visible star rating falls in [3,4], with no confusing rounding edge-cases.
-  const matchesRating = (b) => {
-    const stars = Math.round(b.rating);
-    return (filters.ratingMin === '' || stars >= filters.ratingMin) &&
-           (filters.ratingMax === '' || stars <= filters.ratingMax);
-  };
-  // Same title/category/author substring matcher the navbar's live-suggestions
-  // dropdown uses (chrome.jsx) — "See all results for ..." should show exactly
-  // the books that matched there, not the unfiltered catalogue.
-  const trimmedQuery = filters.query.trim().toLowerCase();
-  const matchesQuery = (b) => {
-    if (!trimmedQuery) return true;
-    return b.title.toLowerCase().includes(trimmedQuery) ||
-           (b.catName || '').toLowerCase().includes(trimmedQuery) ||
-           (b.author || '').toLowerCase().includes(trimmedQuery);
-  };
-  let list = books.filter(b =>
-    (filters.cats.length === 0 || filters.cats.some(id => matchesCategory(b, id))) &&
-    b.price >= filters.min && b.price <= filters.max &&
-    matchesRating(b) &&
-    matchesQuery(b) &&
-    (!filters.inStock || b.stock)
-  );
-  if (sort === 'low') list = [...list].sort((a,b) => a.price - b.price);
-  if (sort === 'high') list = [...list].sort((a,b) => b.price - a.price);
-  if (sort === 'popular') list = [...list].sort((a,b) => (b.rating * (b.reviews||1)) - (a.rating * (a.reviews||1)));
+  React.useEffect(() => {
+    setVisible(BATCH);
+    setLoading(false);
+    loadingRef.current = false;
+  }, [filters, sort]);
+
+  React.useEffect(() => {
+    document.body.style.overflow = drawer ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [drawer]);
+
+  let list = books.filter((book) => matchesCatalogueFilters(book, filters));
+  if (sort === 'low') list = [...list].sort((left, right) => left.price - right.price);
+  if (sort === 'high') list = [...list].sort((left, right) => right.price - left.price);
+  if (sort === 'popular') list = [...list].sort((left, right) => (right.rating * (right.reviews || 1)) - (left.rating * (left.reviews || 1)));
 
   const shown = list.slice(0, visible);
   const allLoaded = shown.length >= list.length;
 
-  // ── Infinite scroll sentinel ──────────────────────────────────
   React.useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || allLoaded) return;
+    if (!sentinel || allLoaded) return undefined;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && !loadingRef.current) {
           loadingRef.current = true;
           setLoading(true);
           setTimeout(() => {
-            setVisible(v => v + BATCH);
+            setVisible((current) => current + BATCH);
             setLoading(false);
             loadingRef.current = false;
           }, 280);
         }
       },
-      { rootMargin: '300px' } // trigger 300px before sentinel reaches viewport
+      { rootMargin: '300px' },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [allLoaded, visible]);
 
-  // ── Context label for end-of-results message ─────────────────
+  const selectedLabels = React.useMemo(() => selectedLabelList(filters, taxonomies), [filters, taxonomies]);
   const contextLabel = React.useMemo(() => {
-    const catNames = filters.cats
-      .map(id => categories.find(c => c.id === id)?.name)
-      .filter(Boolean);
-    let base;
-    if (catNames.length === 1)      base = catNames[0];
-    else if (catNames.length > 1)   base = 'your selected categories';
-    else                             base = 'the full catalogue';
-    if (filters.query)               base = `"${filters.query.trim()}" search results${catNames.length ? ` in ${base}` : ''}`;
+    let base = 'the full catalogue';
+    if (filters.query.trim()) base = `search results for "${filters.query.trim()}"`;
+    else if (selectedLabels.length === 1) base = selectedLabels[0];
+    else if (selectedLabels.length > 1) base = 'your selected filters';
     const extras = [];
-    if (filters.inStock)             extras.push('in stock only');
-    const { ratingMin, ratingMax } = filters;
-    if (ratingMin !== '' && ratingMax !== '') {
-      extras.push(ratingMin === ratingMax ? `${ratingMin}★ only` : `${ratingMin}–${ratingMax}★`);
-    } else if (ratingMin !== '') {
-      extras.push(`${ratingMin}★ & up`);
-    } else if (ratingMax !== '') {
-      extras.push(`${ratingMax}★ or under`);
+    if (filters.inStock) extras.push('in stock only');
+    if (filters.ratingMin !== '' && filters.ratingMax !== '') {
+      extras.push(filters.ratingMin === filters.ratingMax ? `${filters.ratingMin} stars only` : `${filters.ratingMin}-${filters.ratingMax} stars`);
+    } else if (filters.ratingMin !== '') {
+      extras.push(`${filters.ratingMin}+ stars`);
+    } else if (filters.ratingMax !== '') {
+      extras.push(`${filters.ratingMax} stars or fewer`);
     }
     return extras.length ? `${base}: ${extras.join(', ')}` : base;
-  }, [filters, categories]);
+  }, [filters, selectedLabels]);
 
-  // ── Top picks: highest-rated in-stock books NOT in current filter ──
   const topPicks = React.useMemo(() => {
-    const isFiltered = filters.cats.length > 0 || filters.inStock || filters.ratingMin !== '' || filters.ratingMax !== '' || filters.query !== '';
-    if (!isFiltered) return []; // already showing all books — no need to suggest
-    const shownIds = new Set(list.map(b => b.id));
-    return books
-      .filter(b => !shownIds.has(b.id) && b.stock)
-      .sort((a, b) => (b.rating * (b.reviews || 1)) - (a.rating * (a.reviews || 1)))
-      .slice(0, 6);
-  }, [books, list, filters]);
-  const selectedCategory = React.useMemo(
-    () => (filters.cats.length === 1 ? categories.find(category => category.id === filters.cats[0]) || null : null),
-    [categories, filters.cats],
-  );
-  const categoryIntro = React.useMemo(() => {
-    if (!selectedCategory) return null;
-    if (selectedCategory.id === 'curriculum') {
-      return {
-        title: selectedCategory.name,
-        body: 'Browse books grouped by curriculum, with real product listings that schools and families can order immediately.',
-      };
+    if (activeSelectionCount(filters) === 0 && !filters.inStock && filters.ratingMin === '' && filters.ratingMax === '' && !filters.query.trim()) {
+      return [];
     }
-    return {
-      title: selectedCategory.name,
-      body: selectedCategory.description || `Explore ${selectedCategory.name.toLowerCase()} currently available in the RealMindX Bookshop.`,
-    };
-  }, [selectedCategory]);
+    const shownIds = new Set(list.map((book) => book.id));
+    return books
+      .filter((book) => !shownIds.has(book.id) && book.stock)
+      .sort((left, right) => (right.rating * (right.reviews || 1)) - (left.rating * (left.reviews || 1)))
+      .slice(0, 6);
+  }, [books, filters, list]);
+
+  const browseItem = React.useMemo(
+    () => (initialBrowse.taxonomy && initialBrowse.value
+      ? findTaxonomyItem(taxonomies, initialBrowse.taxonomy, initialBrowse.value)
+      : null),
+    [initialBrowse.taxonomy, initialBrowse.value, taxonomies],
+  );
+  const browseIntro = React.useMemo(() => browseIntroCopy(initialBrowse.taxonomy, browseItem), [browseItem, initialBrowse.taxonomy]);
+  const browseGroup = React.useMemo(() => filterGroupForTaxonomy(initialBrowse.taxonomy), [initialBrowse.taxonomy]);
+  const browseLinks = React.useMemo(
+    () => (browseGroup ? (taxonomies[browseGroup.key] || []) : []),
+    [browseGroup, taxonomies],
+  );
 
   if (catalogLoading && books.length === 0) {
     return (
       <div className="bs-container bs-fade-page">
         <div className="bs-breadcrumb">
-          <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
+          <a href={hrefForRoute('home')} onClick={(event) => { event.preventDefault(); navigate('home'); }}>Home</a>
           <span className="bs-sep">/</span><span className="bs-cur">Shop</span>
         </div>
-        <LoadingState
-          title="Loading the shop"
-          body="Fetching the latest catalog, categories, and pricing."
-        />
+        <LoadingState title="Loading the shop" body="Fetching the latest catalog, categories, and pricing." />
       </div>
     );
   }
@@ -518,41 +757,64 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-breadcrumb">
-        <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a>
+        <a href={hrefForRoute('home')} onClick={(event) => { event.preventDefault(); navigate('home'); }}>Home</a>
         <span className="bs-sep">/</span><span className="bs-cur">Shop</span>
       </div>
 
       <div className="bs-shop-layout">
         <aside className="bs-filter-card desktop">
-          <FilterPanel filters={filters} setFilters={setFilters} ceiling={priceCeiling} />
-          <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop:18 }} onClick={()=>{}}>Apply Filters</button>
+          <FilterPanel filters={filters} setFilters={setFilters} ceiling={rangeCeiling} />
+          <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop: 18 }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            Filters update instantly
+          </button>
         </aside>
 
         <div>
-          {categoryIntro && !filters.query && (
+          {browseIntro && !filters.query.trim() && (
             <section className="bs-category-intro">
-              <span className="bs-eyebrow">{selectedCategory?.type === 'curriculum-group' ? 'Curriculum Collection' : 'Bookshop Category'}</span>
-              <h1 className="bs-h2">{categoryIntro.title}</h1>
-              <p>{categoryIntro.body}</p>
+              <span className="bs-eyebrow">{browseIntro.eyebrow}</span>
+              <h1 className="bs-h2">{browseIntro.title}</h1>
+              <p>{browseIntro.body}</p>
+              {browseLinks.length > 0 && (
+                <div className="bs-browse-link-grid">
+                  {browseLinks.map((item) => {
+                    const active = item.id === initialBrowse.value;
+                    return (
+                      <a
+                        key={`${initialBrowse.taxonomy}-${item.id}`}
+                        className={`bs-browse-link-card${active ? ' active' : ''}`}
+                        href={hrefForRoute('shop', { taxonomy: initialBrowse.taxonomy, value: item.id })}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          navigate('shop', { taxonomy: initialBrowse.taxonomy, value: item.id });
+                        }}
+                      >
+                        <span>{item.label}</span>
+                        <strong>{item.count}</strong>
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
               <div className="bs-category-intro-meta">
                 <span><strong>{list.length}</strong> result{list.length !== 1 ? 's' : ''}</span>
-                <span>Indexable catalogue page</span>
+                <span>Use the left filters to narrow the list further.</span>
               </div>
             </section>
           )}
-          {filters.query && (
+          {filters.query.trim() && (
             <div className="bs-search-banner">
               <span className="bs-search-banner-label">
                 <Icon name="search" size={15} />
                 Search results for <strong>"{filters.query.trim()}"</strong>
               </span>
-              <button type="button" className="bs-search-clear" onClick={() => setFilters(f => ({ ...f, query: '' }))}>
+              <button type="button" className="bs-search-clear" onClick={() => setFilters((prev) => ({ ...prev, query: '' }))}>
                 <Icon name="close" size={12} /> Clear search
               </button>
             </div>
           )}
           <div className="bs-shop-toolbar">
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button className="bs-filter-mobile-btn" onClick={() => setDrawer(true)}><Icon name="filter" size={16} /> Filter</button>
               <span className="bs-shop-count">
                 {allLoaded
@@ -561,7 +823,7 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
               </span>
             </div>
             <div className="bs-toolbar-right">
-              <select className="bs-sort-select" value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort by">
+              <select className="bs-sort-select" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort by">
                 <option value="newest">Newest</option>
                 <option value="low">Price: Low to High</option>
                 <option value="high">Price: High to Low</option>
@@ -574,25 +836,25 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
             </div>
           </div>
 
-          {shown.length === 0
-            ? (
-              <div className="bs-empty-state">
-                <div className="bs-empty-icon"><Icon name="search" size={36} /></div>
-                <h2>No books match your {filters.query ? 'search' : 'filters'}.</h2>
-                <p>{filters.query
+          {shown.length === 0 ? (
+            <div className="bs-empty-state">
+              <div className="bs-empty-icon"><Icon name="search" size={36} /></div>
+              <h2>No books match your {filters.query.trim() ? 'search' : 'filters'}.</h2>
+              <p>
+                {filters.query.trim()
                   ? <>Nothing matched <strong>"{filters.query.trim()}"</strong>. Try a different term, or clear your search and filters.</>
-                  : 'Try a different category, adjust the price range, or remove stock/rating filters.'}</p>
-                <button className="bs-btn bs-btn-gold" onClick={() => setFilters({ cats:[], min:0, max:priceCeiling, ratingMin:'', ratingMax:'', inStock:false, query:'' })}>
-                  Clear all filters
-                </button>
-              </div>
-            )
-            : view === 'grid'
-              ? <div className="bs-product-grid">{shown.map((b,i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}</div>
-              : <div style={{ display:'flex', flexDirection:'column', gap:14 }}>{shown.map((b,i) => <ListCard key={b.id} book={b} idx={i} navigate={navigate} />)}</div>
-          }
+                  : 'Try a different subject, level, curriculum, publisher, item type, price range, or rating filter.'}
+              </p>
+              <button className="bs-btn bs-btn-gold" onClick={() => setFilters(createFilterState(rangeCeiling, initialBrowse, ''))}>
+                Clear all filters
+              </button>
+            </div>
+          ) : view === 'grid' ? (
+            <div className="bs-product-grid">{shown.map((book, index) => <ProductCard key={book.id} book={book} idx={index} navigate={navigate} />)}</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{shown.map((book, index) => <ListCard key={book.id} book={book} idx={index} navigate={navigate} />)}</div>
+          )}
 
-          {/* Infinite scroll sentinel + loading indicator */}
           {!allLoaded && shown.length > 0 && (
             <div ref={sentinelRef} className="bs-scroll-sentinel" aria-hidden="true">
               {loading && (
@@ -603,7 +865,6 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
             </div>
           )}
 
-          {/* End-of-results */}
           {allLoaded && list.length > 0 && (
             <div className="bs-end-of-results">
               <div className="bs-eor-divider" />
@@ -614,19 +875,25 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
 
               {topPicks.length >= 2 && (
                 <div className="bs-eor-picks">
-                  <div className="bs-section-head-row" style={{ marginBottom:18 }}>
+                  <div className="bs-section-head-row" style={{ marginBottom: 18 }}>
                     <div>
                       <span className="bs-eyebrow">While you're here</span>
-                      <h2 className="bs-h2" style={{ fontSize:'clamp(20px,4vw,26px)', margin:0 }}>Top picks from across the shop</h2>
+                      <h2 className="bs-h2" style={{ fontSize: 'clamp(20px,4vw,26px)', margin: 0 }}>Top picks from across the shop</h2>
                     </div>
-                    <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(e) => {
-                      e.preventDefault();
-                      setFilters({ cats:[], min:0, max:priceCeiling, ratingMin:'', ratingMax:'', inStock:false, query:'' });
-                      window.scrollTo({ top:0, behavior:'smooth' });
-                    }}>Browse all <Icon name="arrow" size={14} /></a>
+                    <a
+                      className="bs-see-all"
+                      href={hrefForRoute('shop')}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setFilters(createFilterState(rangeCeiling, {}, ''));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    >
+                      Browse all <Icon name="arrow" size={14} />
+                    </a>
                   </div>
                   <div className="bs-hscroll">
-                    {topPicks.map((b, i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}
+                    {topPicks.map((book, index) => <ProductCard key={book.id} book={book} idx={index} navigate={navigate} />)}
                   </div>
                 </div>
               )}
@@ -635,12 +902,11 @@ const ShopPage = ({ navigate, initialCat = 'all', initialQuery = '' }) => {
         </div>
       </div>
 
-      {/* Mobile filter drawer */}
       <div className={`bs-drawer-scrim${drawer ? ' open' : ''}`} onClick={() => setDrawer(false)} />
       <div className={`bs-filter-drawer${drawer ? ' open' : ''}`}>
         <div className="bs-drawer-handle" />
-        <FilterPanel filters={filters} setFilters={setFilters} ceiling={priceCeiling} />
-        <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop:18 }} onClick={() => setDrawer(false)}>
+        <FilterPanel filters={filters} setFilters={setFilters} ceiling={rangeCeiling} />
+        <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop: 18 }} onClick={() => setDrawer(false)}>
           Show {list.length} result{list.length !== 1 ? 's' : ''}
         </button>
       </div>
