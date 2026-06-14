@@ -1094,6 +1094,7 @@
 .bs-cr-label { font-family:'Montserrat',sans-serif; font-weight: 700; font-size: 13px; }
 .bs-cr-val { color: rgba(255,255,255,.75); font-size: 14px; }
 .bs-map-embed { aspect-ratio: 16/7; border-radius: var(--bs-radius-sm); margin-top: 20px; position: relative; overflow: hidden; background: var(--bs-navy-dark); }
+.bs-table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .bs-hours-table { width: 100%; font-size: 14px; }
 .bs-hours-table tr { border-bottom: 1px solid rgba(255,255,255,.1); }
 .bs-hours-table td { padding: 9px 0; }

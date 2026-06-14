@@ -60,6 +60,7 @@ class User(UserMixin, TimestampMixin, db.Model):
     role_id = db.Column(db.Integer, db.ForeignKey("roles.id"), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     is_verified = db.Column(db.Boolean, default=False, nullable=False)
+    must_change_password = db.Column(db.Boolean, default=False, nullable=False)
     failed_login_count = db.Column(db.Integer, default=0, nullable=False)
     locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -321,6 +322,22 @@ class ProductReview(TimestampMixin, db.Model):
 
     product = db.relationship("Product", backref=db.backref("reviews", cascade="all, delete-orphan"))
     order = db.relationship("Order")
+
+
+class OrderReview(TimestampMixin, db.Model):
+    __tablename__ = "order_reviews"
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False, unique=True, index=True)
+    customer_name = db.Column(db.String(160), nullable=False)
+    email = db.Column(db.String(255), nullable=False, index=True)
+    score = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(30), default="new", nullable=False, index=True)
+    source = db.Column(db.String(30), default="email", nullable=False)
+    admin_notes = db.Column(db.Text, nullable=True)
+
+    order = db.relationship("Order", backref=db.backref("review", uselist=False, cascade="all, delete-orphan"))
 
 
 class AnalyticsEvent(TimestampMixin, db.Model):

@@ -129,24 +129,25 @@ input, textarea, select { font-family: inherit; }
 }
 
 .btn-outline {
-  background: transparent;
+  background: var(--navy);
   color: var(--white);
-  border-color: rgba(255,255,255,0.5);
+  border-color: var(--navy);
 }
 .btn-outline:hover {
-  border-color: var(--yellow);
-  color: var(--yellow);
+  background: var(--navy-hover);
+  border-color: var(--navy-hover);
+  color: var(--white);
 }
 
 .btn-outline-navy {
-  background: transparent;
-  color: var(--navy);
-  border-color: var(--gray-200);
+  background: var(--navy);
+  color: var(--white);
+  border-color: var(--navy);
 }
 .btn-outline-navy:not(:disabled):hover {
-  border-color: var(--navy);
-  background: rgba(20,54,112,0.07);
-  color: var(--navy);
+  border-color: var(--navy-hover);
+  background: var(--navy-hover);
+  color: var(--white);
 }
 
 .btn-navy {
@@ -3248,6 +3249,12 @@ input, textarea, select { font-family: inherit; }
   margin-bottom: 20px;
 }
 
+.admin-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .atc-header {
   padding: 20px 24px;
   border-bottom: 1px solid var(--gray-100);
@@ -3277,7 +3284,7 @@ input, textarea, select { font-family: inherit; }
   color: var(--navy);
 }
 
-.admin-table { width: 100%; border-collapse: collapse; }
+.admin-table { width: 100%; min-width: 720px; border-collapse: collapse; }
 .admin-table th {
   padding: 10px 16px;
   text-align: left;
@@ -4325,35 +4332,69 @@ input, textarea, select { font-family: inherit; }
    ============================================================ */
 /* btn-outline on dark/navy backgrounds — override to white */
 .page-hero .btn-outline,
+.page-hero .btn-outline-navy,
+.page-hero .btn-navy,
 .route-page-hero .btn-outline,
+.route-page-hero .btn-outline-navy,
+.route-page-hero .btn-navy,
 .services-policy-hero .btn-outline,
+.services-policy-hero .btn-outline-navy,
+.services-policy-hero .btn-navy,
 .services-cta-banner .btn-outline,
+.services-cta-banner .btn-outline-navy,
+.services-cta-banner .btn-navy,
 .about-cta .btn-outline,
+.about-cta .btn-outline-navy,
+.about-cta .btn-navy,
 .cta-section .btn-outline,
+.cta-section .btn-outline-navy,
+.cta-section .btn-navy,
 .jobs-alert-banner .btn-outline,
-.donate-body .btn-outline {
-  border-color: rgba(255,255,255,0.5);
-  color: #fff;
+.jobs-alert-banner .btn-outline-navy,
+.jobs-alert-banner .btn-navy,
+.donate-body .btn-outline,
+.donate-body .btn-outline-navy,
+.donate-body .btn-navy {
+  border-color: #fff;
+  background: #fff;
+  color: var(--navy);
 }
 .page-hero .btn-outline:hover,
+.page-hero .btn-outline-navy:hover,
+.page-hero .btn-navy:hover,
 .route-page-hero .btn-outline:hover,
+.route-page-hero .btn-outline-navy:hover,
+.route-page-hero .btn-navy:hover,
 .services-policy-hero .btn-outline:hover,
+.services-policy-hero .btn-outline-navy:hover,
+.services-policy-hero .btn-navy:hover,
 .services-cta-banner .btn-outline:hover,
+.services-cta-banner .btn-outline-navy:hover,
+.services-cta-banner .btn-navy:hover,
 .about-cta .btn-outline:hover,
+.about-cta .btn-outline-navy:hover,
+.about-cta .btn-navy:hover,
 .cta-section .btn-outline:hover,
+.cta-section .btn-outline-navy:hover,
+.cta-section .btn-navy:hover,
 .jobs-alert-banner .btn-outline:hover,
-.donate-body .btn-outline:hover {
-  border-color: #fff;
-  background: rgba(255,255,255,0.12);
+.jobs-alert-banner .btn-outline-navy:hover,
+.jobs-alert-banner .btn-navy:hover,
+.donate-body .btn-outline:hover,
+.donate-body .btn-outline-navy:hover,
+.donate-body .btn-navy:hover {
+  border-color: rgba(255,255,255,0.92);
+  background: rgba(255,255,255,0.92);
+  color: var(--navy);
 }
 
 /* btn-outline-navy on grey/white — ensure visible */
 .btn-outline-navy {
   border-color: var(--navy);
-  color: var(--navy);
-  background: transparent;
+  color: #fff;
+  background: var(--navy);
 }
 .btn-outline-navy:hover {
-  background: var(--navy);
+  background: var(--navy-hover);
   color: #fff;
 }

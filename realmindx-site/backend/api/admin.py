@@ -35,6 +35,7 @@ from ..email_service import (
 )
 from ..extensions import db
 from ..location_data import parse_location_ids
+from ..order_status import normalize_order_status
 from ..models import (
     AuditLog,
     ContactMessage,
@@ -46,6 +47,7 @@ from ..models import (
     NewsletterSubscriber,
     News,
     Order,
+    OrderReview,
     Permission,
     Product,
     ProductCategory,
@@ -59,7 +61,7 @@ from ..models import (
     UploadedFile,
 )
 from ..security import admin_or_staff_required, admin_required, permission_required
-from ..serializers import delivery_zone_json, job_json, order_json, product_json, user_json
+from ..serializers import delivery_zone_json, job_json, order_json, order_review_json, product_json, user_json
 from ..upload_utils import save_upload
 
 admin_bp = Blueprint("admin", __name__)
@@ -95,6 +97,24 @@ def _order_contact_snapshot(order):
         customer_name=order.customer_name,
         email=order.email,
         phone=order.phone,
+        delivery_method=order.delivery_method,
+        delivery_zone_name=order.delivery_zone_name,
+        location=order.location,
+        payment_method=order.payment_method,
+        payment_status=order.payment_status,
+        subtotal_amount=order.subtotal_amount,
+        delivery_fee=order.delivery_fee,
+        total_amount=order.total_amount,
+        notes=order.notes,
+        items=[
+            SimpleNamespace(
+                product_id=item.product_id,
+                product_name=item.product_name,
+                unit_price=item.unit_price,
+                quantity=item.quantity,
+            )
+            for item in order.items
+        ],
     )
 
 
@@ -260,6 +280,13 @@ def _admin_payload(user):
     row = user_json(user)
     row["status"] = "active" if user.is_active else "inactive"
     return row
+
+
+def _can_view_dashboard_metric(permission_key):
+    role_name = current_user.role.name if current_user.role else ""
+    if role_name == "admin":
+        return True
+    return current_user.has_permission(permission_key)
 
 
 def _boolish(value):
@@ -599,17 +626,17 @@ def dispatch_job_alerts(job):
 @login_required
 @admin_or_staff_required
 def dashboard():
-    recent_jobs = Job.query.order_by(Job.created_at.desc()).limit(5).all()
-    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(5).all()
+    recent_jobs = Job.query.order_by(Job.created_at.desc()).limit(5).all() if _can_view_dashboard_metric("jobs.view") else []
+    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(5).all() if _can_view_dashboard_metric("orders.view") else []
     return jsonify(
         summary={
-            "total_users": db.session.scalar(db.select(func.count(User.id))),
-            "total_job_applications": db.session.scalar(db.select(func.count(JobApplication.id))),
-            "pending_applications": JobApplication.query.filter_by(status="pending").count(),
-            "new_orders": Order.query.filter_by(status="new").count(),
-            "new_contact_messages": ContactMessage.query.filter_by(status="new").count(),
-            "total_products": Product.query.count(),
-            "newsletter_subscribers": NewsletterSubscriber.query.filter_by(is_active=True).count(),
+            "total_users": db.session.scalar(db.select(func.count(User.id))) if _can_view_dashboard_metric("teachers.view") else None,
+            "total_job_applications": db.session.scalar(db.select(func.count(JobApplication.id))) if _can_view_dashboard_metric("applications.view") else None,
+            "pending_applications": JobApplication.query.filter_by(status="pending").count() if _can_view_dashboard_metric("applications.view") else None,
+            "new_orders": Order.query.filter_by(status="new").count() if _can_view_dashboard_metric("orders.view") else None,
+            "new_contact_messages": ContactMessage.query.filter_by(status="new").count() if _can_view_dashboard_metric("messages.view") else None,
+            "total_products": Product.query.count() if _can_view_dashboard_metric("products.view") else None,
+            "newsletter_subscribers": NewsletterSubscriber.query.filter_by(is_active=True).count() if _can_view_dashboard_metric("newsletters.view") else None,
         },
         recent_jobs=[job_json(job) for job in recent_jobs],
         recent_orders=[order_json(order) for order in recent_orders],
@@ -872,6 +899,7 @@ def admin_change_password():
     if not current_user.check_password(current_pw):
         return jsonify(error="Current password is incorrect."), 403
     current_user.set_password(new_pw)
+    current_user.must_change_password = False
     log_action("change_password", "admin_user", current_user.id)
     db.session.commit()
     return jsonify(message="Password updated successfully.")
@@ -879,7 +907,7 @@ def admin_change_password():
 
 @admin_bp.get("/users")
 @login_required
-@admin_required
+@permission_required("teachers.view")
 def users():
     # Return only regular-user accounts (i.e. teachers); admin/staff excluded.
     rows = (
@@ -895,7 +923,7 @@ def users():
 
 @admin_bp.patch("/users/<int:user_id>")
 @login_required
-@admin_required
+@permission_required("teachers.edit")
 def update_user(user_id):
     """Toggle a regular-user account active / inactive."""
     user = db.get_or_404(User, user_id)
@@ -912,7 +940,7 @@ def update_user(user_id):
 
 @admin_bp.get("/users/<int:user_id>")
 @login_required
-@admin_required
+@permission_required("teachers.view")
 def get_user(user_id):
     """Return a single teacher's full profile data for the admin detail modal."""
     user = db.get_or_404(User, user_id)
@@ -992,7 +1020,15 @@ def create_staff():
         return jsonify(error="User already exists."), 409
     role = Role.query.filter_by(name="staff").first() or Role(name="staff", description="Staff")
     permissions = Permission.query.filter(Permission.key.in_(payload.get("permissions") or [])).all()
-    user = User(email=email, first_name=payload.get("first_name") or "Staff", last_name=payload.get("last_name"), role=role, is_verified=True)
+    user = User(
+        email=email,
+        first_name=payload.get("first_name") or "Staff",
+        last_name=payload.get("last_name"),
+        role=role,
+        is_verified=True,
+        is_active=payload.get("status", "active") != "inactive",
+        must_change_password=True,
+    )
     user.set_password(password)
     user.direct_permissions = permissions
     db.session.add_all([role, user])
@@ -1041,6 +1077,7 @@ def update_staff(user_id):
         if len(payload["password"]) < 8:
             return jsonify(error="Password must be at least 8 characters."), 400
         user.set_password(payload["password"])
+        user.must_change_password = True
     if "permissions" in payload:
         user.direct_permissions = Permission.query.filter(Permission.key.in_(payload.get("permissions") or [])).all()
     if "status" in payload:
@@ -1091,6 +1128,7 @@ def create_admin():
         role=role,
         is_verified=True,
         is_active=payload.get("status", "active") != "inactive",
+        must_change_password=True,
     )
     user.set_password(password)
     db.session.add_all([role, user])
@@ -1123,6 +1161,7 @@ def update_admin(user_id):
         if len(payload["password"]) < 8:
             return jsonify(error="Password must be at least 8 characters."), 400
         user.set_password(payload["password"])
+        user.must_change_password = True
     if "status" in payload:
         if user.id == current_user.id and payload["status"] != "active":
             return jsonify(error="You cannot deactivate the admin account you are currently using."), 400
@@ -1325,6 +1364,43 @@ def delete_product_review(review_id):
     return jsonify(message="Review deleted.")
 
 
+@admin_bp.get("/order-reviews")
+@login_required
+@permission_required("orderReviews.view")
+def list_order_reviews():
+    rows = OrderReview.query.order_by(OrderReview.created_at.desc()).limit(300).all()
+    return jsonify(items=[order_review_json(row) for row in rows])
+
+
+@admin_bp.put("/order-reviews/<int:review_id>")
+@login_required
+@permission_required("orderReviews.edit")
+def update_order_review(review_id):
+    review = db.get_or_404(OrderReview, review_id)
+    payload = request.get_json(silent=True) or {}
+    if "status" in payload:
+        status = str(payload["status"] or "").strip().lower()
+        if status not in {"new", "reviewed", "follow_up", "archived"}:
+            return jsonify(error="Choose new, reviewed, follow_up, or archived."), 400
+        review.status = status
+    if "admin_notes" in payload:
+        review.admin_notes = (payload.get("admin_notes") or "").strip() or None
+    log_action("update_order_review", "order_review", review.id, {"status": review.status})
+    db.session.commit()
+    return jsonify(order_review_json(review))
+
+
+@admin_bp.delete("/order-reviews/<int:review_id>")
+@login_required
+@permission_required("orderReviews.delete")
+def delete_order_review(review_id):
+    review = db.get_or_404(OrderReview, review_id)
+    log_action("delete_order_review", "order_review", review.id, {"order_id": review.order_id})
+    db.session.delete(review)
+    db.session.commit()
+    return jsonify(message="Order review deleted.")
+
+
 @admin_bp.post("/products/import")
 @login_required
 @permission_required("products.create")
@@ -1480,7 +1556,7 @@ def export_products():
 
 @admin_bp.get("/users/export")
 @login_required
-@admin_required
+@permission_required("teachers.export")
 def export_users():
     """Export registered teachers/users as Excel or CSV."""
     from openpyxl import Workbook as XlsxWorkbook
@@ -1751,7 +1827,7 @@ def delete_category(category_id):
 
 @admin_bp.get("/delivery-zones")
 @login_required
-@permission_required("orders.view")
+@permission_required("priceAdjustment.view")
 def delivery_zones():
     rows = DeliveryZone.query.order_by(DeliveryZone.sort_order.asc(), DeliveryZone.name.asc()).all()
     return jsonify(items=[delivery_zone_json(row) for row in rows])
@@ -1759,7 +1835,7 @@ def delivery_zones():
 
 @admin_bp.post("/delivery-zones")
 @login_required
-@permission_required("orders.create")
+@permission_required("priceAdjustment.edit")
 def create_delivery_zone():
     payload = request.get_json(silent=True) or {}
     zone = DeliveryZone(
@@ -1780,7 +1856,7 @@ def create_delivery_zone():
 
 @admin_bp.put("/delivery-zones/<int:zone_id>")
 @login_required
-@permission_required("orders.edit")
+@permission_required("priceAdjustment.edit")
 def update_delivery_zone(zone_id):
     zone = db.get_or_404(DeliveryZone, zone_id)
     payload = request.get_json(silent=True) or {}
@@ -1794,7 +1870,7 @@ def update_delivery_zone(zone_id):
 
 @admin_bp.delete("/delivery-zones/<int:zone_id>")
 @login_required
-@permission_required("orders.delete")
+@permission_required("priceAdjustment.edit")
 def delete_delivery_zone(zone_id):
     zone = db.get_or_404(DeliveryZone, zone_id)
     log_action("delete_delivery_zone", "delivery_zone", zone.id, {"name": zone.name})
@@ -1936,13 +2012,15 @@ def export_orders():
 def update_order_status(order_id):
     order = db.get_or_404(Order, order_id)
     payload = request.get_json(silent=True) or {}
-    status = payload.get("status")
+    raw_status = payload.get("status")
+    if raw_status in {None, ""}:
+        return jsonify(error="Select a valid order status."), 400
+    status = normalize_order_status(raw_status)
     cancel_reason = (payload.get("cancel_reason") or "").strip()
-    valid_statuses = {"new", "received", "shipped", "complete", "cancelled", "archived",
-                      "confirmed", "processing", "completed"}
+    valid_statuses = {"new", "confirmed", "shipped", "complete", "cancelled", "archived"}
     if status not in valid_statuses:
         return jsonify(error="Invalid order status."), 400
-    old_status = order.status
+    old_status = normalize_order_status(order.status)
     order.status = status
     if cancel_reason:
         order.notes = cancel_reason
@@ -1966,10 +2044,15 @@ def _send_order_status_sms(order, status, cancel_reason=""):
         return
     first_name = (order.customer_name or "").split()[0] or "there"
     ref = order.order_reference
+    status = normalize_order_status(status)
     messages = {
-        "received": (
+        "new": (
+            f"Hi {first_name}, your RealMindX Bookshop order {ref} has been placed. "
+            f"Our team will contact you within 1 business day to arrange receipt of your package."
+        ),
+        "confirmed": (
             f"Hi {first_name}, your RealMindX Bookshop order {ref} is confirmed "
-            f"and being prepared. We'll be in touch shortly."
+            f"and being packaged. We will contact you shortly with any final receipt details."
         ),
         "shipped": (
             f"Hi {first_name}, great news! Your order {ref} is on its way. "
@@ -1977,7 +2060,7 @@ def _send_order_status_sms(order, status, cancel_reason=""):
         ),
         "complete": (
             f"Hi {first_name}, your order {ref} has been delivered. "
-            f"Thank you for choosing RealMindX Bookshop!"
+            f"Thank you for choosing RealMindX Bookshop. Please check your email to rate your experience."
         ),
         "cancelled": (
             f"Hi {first_name}, your order {ref} has been cancelled."
@@ -1996,6 +2079,7 @@ def _send_order_status_email(order, status, cancel_reason=""):
     ref = order.order_reference
     base_url = current_app.config["BASE_URL"].rstrip("/")
     bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop").rstrip("/")
+    status = normalize_order_status(status)
     delivery_info = (
         "Pickup from our Dome Pillar 2 shop"
         if order.delivery_method == "pickup"
@@ -2015,9 +2099,46 @@ def _send_order_status_email(order, status, cancel_reason=""):
     </div>
     """
     order_summary_html = bookshop_order_summary_table(order)
+    feedback_url = f"{bookshop_url}/review?ref={escape(ref, quote=True)}"
+    feedback_rows = []
+    for group in (range(0, 6), range(6, 11)):
+        feedback_rows.append(
+            "<tr>"
+            + "".join(
+                f'<td style="padding:0 4px 8px;"><a href="{feedback_url}&score={score}" '
+                f'style="display:inline-block;min-width:34px;padding:10px 0;border-radius:8px;'
+                f'background:#143670;color:#ffffff;font-weight:800;font-family:Arial,Helvetica,sans-serif;'
+                f'font-size:14px;text-decoration:none;text-align:center;">{score}</a></td>'
+                for score in group
+            )
+            + "</tr>"
+        )
+    feedback_scale_html = f"""
+    <div style="margin:22px 0 6px;">
+      <p style="margin:0 0 12px;font-weight:700;color:#143670;">How likely are you to recommend RealMindX Bookshop to others?</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
+        {''.join(feedback_rows)}
+      </table>
+      <p style="margin:8px 0 0;color:#53657d;font-size:13px;">0 = Not likely at all, 10 = Extremely likely.</p>
+    </div>
+    """
 
     status_messages = {
-        "received": {
+        "new": {
+            "subject": f"Your RealMindX Bookshop order has been placed: {ref}",
+            "title": "Your order has been placed!",
+            "body": (
+                f"<p>Hello {escape(first_name)},</p>"
+                f"<p>Your order <strong>{escape(ref)}</strong> has been placed successfully and our team is reviewing it now.</p>"
+                f"{order_meta_html}"
+                f"{order_summary_html}"
+                f"<p>Our team will contact you within <strong>1 business day</strong> to ensure you receive your order.</p>"
+                f"<p>If you need anything sooner, reply to this email or contact us on WhatsApp and we&rsquo;ll help right away.</p>"
+            ),
+            "cta_label": "Track Your Order",
+            "cta_url": "track",
+        },
+        "confirmed": {
             "subject": f"Your RealMindX Bookshop order is confirmed: {ref}",
             "title": "Your order is confirmed!",
             "body": (
@@ -2050,12 +2171,14 @@ def _send_order_status_email(order, status, cancel_reason=""):
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
                 f"<p>Your order <strong>{escape(ref)}</strong> has been marked as delivered. We hope you&rsquo;re happy with your books!</p>"
+                f"{order_meta_html}"
                 f"{order_summary_html}"
                 f"<p>If anything is missing or not as expected, please reply to this email or reach us on WhatsApp and we&rsquo;ll make it right.</p>"
+                f"{feedback_scale_html}"
                 f"<p>Thank you for choosing RealMindX Bookshop. We look forward to serving you again.</p>"
             ),
-            "cta_label": "Shop Again",
-            "cta_url": bookshop_url,
+            "cta_label": "Rate Your Experience",
+            "cta_url": feedback_url,
         },
         "cancelled": {
             "subject": f"Your RealMindX order {ref} has been cancelled",
@@ -2911,7 +3034,7 @@ def delete_flyer(flyer_id):
 
 @admin_bp.get("/promo-codes")
 @login_required
-@permission_required("manage_products")
+@permission_required("priceAdjustment.view")
 def list_promo_codes():
     from ..models import PromoCode
     rows = PromoCode.query.order_by(PromoCode.created_at.desc()).all()
@@ -2920,7 +3043,7 @@ def list_promo_codes():
 
 @admin_bp.post("/promo-codes")
 @login_required
-@permission_required("manage_products")
+@permission_required("priceAdjustment.edit")
 def create_promo_code():
     from ..models import PromoCode
     payload = request.get_json(silent=True) or {}
@@ -2950,7 +3073,7 @@ def create_promo_code():
 
 @admin_bp.put("/promo-codes/<int:promo_id>")
 @login_required
-@permission_required("manage_products")
+@permission_required("priceAdjustment.edit")
 def update_promo_code(promo_id):
     from ..models import PromoCode
     row = db.get_or_404(PromoCode, promo_id)
@@ -2966,7 +3089,7 @@ def update_promo_code(promo_id):
 
 @admin_bp.delete("/promo-codes/<int:promo_id>")
 @login_required
-@permission_required("manage_products")
+@permission_required("priceAdjustment.edit")
 def delete_promo_code(promo_id):
     from ..models import PromoCode
     row = db.get_or_404(PromoCode, promo_id)
@@ -2994,7 +3117,7 @@ def _promo_json(r):
 
 @admin_bp.post("/products/bulk-price-adjust")
 @login_required
-@permission_required("manage_products")
+@permission_required("priceAdjustment.edit")
 def bulk_price_adjust():
     """Apply a percentage or fixed amount increase/decrease to ALL active product prices."""
     payload = request.get_json(silent=True) or {}
@@ -3031,7 +3154,7 @@ def bulk_price_adjust():
 
 @admin_bp.post("/delivery-zones/bulk-adjust")
 @login_required
-@permission_required("manage_orders")
+@permission_required("priceAdjustment.edit")
 def bulk_delivery_adjust():
     """Apply a percentage or fixed amount increase/decrease to ALL active delivery zone fees."""
     from ..models import DeliveryZone

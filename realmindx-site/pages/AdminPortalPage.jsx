@@ -5,6 +5,8 @@ import { resetManagedContent, JOB_LEVELS, JOB_SUBJECTS, JOB_TYPES } from '../../
 import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
 import { API_BASE, api, isApiMode } from '../../src/lib/apiClient.js';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
+import { signOut } from '../../src/lib/authClient.js';
+import { dashboardPathForRole, loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import AnalyticsView from '../../src/admin/AnalyticsView.jsx';
 import logoWhite from '../assets/logo-white.png';
 import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
@@ -22,6 +24,7 @@ const NAV = [
   { key: 'flyers', label: 'Flyers', group: 'Bookshop', icon: 'image' },
   { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
   { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
+  { key: 'orderReviews', label: 'Order Reviews', group: 'Bookshop', icon: 'message' },
   { key: 'services', label: 'Services', group: 'Content', icon: 'consulting' },
   { key: 'partners', label: 'Partners', group: 'Content', icon: 'users' },
   { key: 'people', label: 'The People', group: 'Content', icon: 'users' },
@@ -83,16 +86,18 @@ const SERVICE_ICON_OPTIONS = [
 
 const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 'orders']);
 const PERMISSION_GROUPS = NAV
-  .filter(item => item.key !== 'dashboard' && item.key !== 'admins' && item.key !== 'auditLogs')
+  .filter(item => !['dashboard', 'admins', 'auditLogs', 'account'].includes(item.key))
   .map(item => {
     const actions = item.key === 'analytics'
       ? ['view', 'export']
-      : item.key === 'auditLogs'
-      ? ['view']
       : item.key === 'alerts'
         ? ['view', 'edit']
         : item.key === 'staff'
           ? ['view', 'create', 'edit', 'delete']
+          : item.key === 'teachers'
+            ? ['view', 'edit', 'export']
+            : item.key === 'priceAdjustment'
+              ? ['view', 'edit']
           : ['view', 'create', 'edit', 'delete', ...(EXPORTABLE_PERMISSION_KEYS.has(item.key) ? ['export'] : [])];
     return { ...item, actions };
   });
@@ -112,6 +117,11 @@ const LEGACY_PERMISSION_OPTIONS = [
   'manage_settings',
   'manage_admins',
 ];
+const permissionSetFor = session => new Set(session?.permissions || []);
+const hasSessionPermission = (session, permissionKey) => {
+  if (session?.role === 'admin') return true;
+  return permissionSetFor(session).has(permissionKey);
+};
 const expandPermissionsForSave = permissions => {
   const selected = new Set(Array.isArray(permissions) ? permissions : []);
   const addLegacy = (group, legacyKey) => {
@@ -123,7 +133,7 @@ const expandPermissionsForSave = permissions => {
   addLegacy('applications', 'view_applications');
   if (selected.has('applications.edit')) selected.add('manage_applications');
   if ([...selected].some(key => ['products.', 'productReviews.', 'categories.', 'flyers.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_products');
-  if ([...selected].some(key => key.startsWith('orders.'))) selected.add('manage_orders');
+  if ([...selected].some(key => ['orders.', 'orderReviews.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_orders');
   if ([...selected].some(key => key.startsWith('news.'))) selected.add('manage_news');
   if ([...selected].some(key => key.startsWith('gallery.'))) selected.add('manage_gallery');
   if ([...selected].some(key => key.startsWith('resources.'))) selected.add('manage_resources');
@@ -139,10 +149,9 @@ const PUBLISHABLE_COLLECTIONS = new Set(['jobs', 'products', 'categories', 'flye
 const canAccessAdminItem = (item, session) => {
   const role = session?.role;
   if (role === 'admin') return true;
-  if (item.key === 'dashboard') return true;
+  if (item.key === 'dashboard' || item.key === 'account') return ['admin', 'staff'].includes(role);
   if (item.key === 'admins' || item.key === 'auditLogs') return false;
-  const permissions = new Set(session?.permissions || []);
-  return permissions.has(`${item.key}.view`);
+  return hasSessionPermission(session, `${item.key}.view`);
 };
 
 const CONFIG = {
@@ -220,6 +229,7 @@ const CONFIG = {
     title: 'Promo Codes',
     description: 'Create and manage discount codes for products and/or delivery. Codes are validated in real-time at checkout.',
     collection: 'promoCodes',
+    permissionKey: 'priceAdjustment',
     createLabel: 'Add Promo Code',
     fields: [
       field('code', 'Code', 'text', { help: 'Uppercase, no spaces. e.g. SCHOOL25 or FREESHIP' }),
@@ -536,12 +546,28 @@ const CONFIG = {
     allowEdit: false,       // orders are view-only; use status actions only
     statusOnly: true,       // only status changes and archiving allowed
     allowArchive: true,
-    statusOptions: ['new', 'received', 'shipped', 'complete', 'cancelled'],
+    statusOptions: ['new', 'confirmed', 'shipped', 'complete', 'cancelled'],
     requireCancelReason: true,
     emptyTitle: 'No Bookshop Orders Yet',
     emptyBody: 'Customer orders from the bookshop will appear here.',
     fields: [],             // no edit form fields
     columns: ['order_reference', 'customer_name', 'total_amount', 'status'],
+  },
+  orderReviews: {
+    title: 'Order Reviews',
+    description: 'Order-level customer feedback collected after delivery so the team can spot fulfilment issues and follow up quickly.',
+    collection: 'orderReviews',
+    createLabel: '',
+    allowCreate: false,
+    allowEdit: false,
+    statusOnly: true,
+    allowArchive: true,
+    statusOptions: ['new', 'reviewed', 'follow_up'],
+    emptyTitle: 'No Order Reviews Yet',
+    emptyBody: 'Delivered-order feedback will appear here after customers rate their experience.',
+    fields: [],
+    columns: ['order_reference', 'customer_name', 'score', 'status'],
+    columnLabels: { order_reference: 'Order', customer_name: 'Customer', score: 'NPS Score' },
   },
   newsletters: {
     title: 'Newsletter Subscribers',
@@ -576,7 +602,7 @@ const CONFIG = {
     createLabel: 'Create Staff Account',
     fields: [
       field('email', 'Email Address', 'email'),
-      field('password', 'Password', 'password', { help: 'Required for new staff. Leave blank when editing to keep the current password.' }),
+      field('password', 'Password', 'password', { help: 'Required for new staff. Any new or reset password becomes temporary and must be changed on first sign-in.' }),
       field('first_name', 'First Name'),
       field('last_name', 'Last Name'),
       field('permissions', 'Permissions', 'permission-list', { options: PERMISSION_OPTIONS, groups: PERMISSION_GROUPS }),
@@ -591,7 +617,7 @@ const CONFIG = {
     createLabel: 'Create Admin Account',
     fields: [
       field('email', 'Email Address', 'email', { help: 'Use an official RealMindX admin email where possible.' }),
-      field('password', 'Temporary Password', 'password', { help: 'Required for new admins. Leave blank when editing to keep the current password.' }),
+      field('password', 'Temporary Password', 'password', { help: 'Required for new admins. Any new or reset password must be changed on first sign-in.' }),
       field('first_name', 'First Name'),
       field('last_name', 'Last Name'),
       field('status', 'Status', 'select', { options: ['active', 'inactive'] }),
@@ -735,7 +761,7 @@ const EmptySection = ({ title, body, action, onAction }) => (
   </div>
 );
 
-const AdminSidebar = ({ active, setActive, open, setOpen, session }) => {
+const AdminSidebar = ({ active, setActive, open, setOpen, session, portalLabel }) => {
   const visibleNav = NAV.filter(item => canAccessAdminItem(item, session));
   const groups = visibleNav.reduce((acc, item) => {
     acc[item.group] = [...(acc[item.group] || []), item];
@@ -755,7 +781,7 @@ const AdminSidebar = ({ active, setActive, open, setOpen, session }) => {
       <div className="admin-sidebar-logo">
         <img src={logoWhite} alt="RealMindX Education" className="admin-sidebar-logo-img" />
         <div>
-          <span className="admin-logo-tag">Admin</span>
+          <span className="admin-logo-tag">{portalLabel}</span>
         </div>
       </div>
       <nav className="admin-nav">
@@ -783,7 +809,7 @@ const AdminSidebar = ({ active, setActive, open, setOpen, session }) => {
   );
 };
 
-const DashboardView = ({ content, setActive }) => {
+const DashboardView = ({ content, setActive, session }) => {
   // Keep the WHOLE dashboard payload — summary feeds the stat cards and
   // recent_jobs/recent_orders feed the tables (they were being thrown
   // away, leaving "Recent Job Posts"/"Recent Orders" permanently empty).
@@ -798,37 +824,48 @@ const DashboardView = ({ content, setActive }) => {
 
   // In API mode use the live summary; in local mode derive from content arrays.
   const s = liveData?.summary || {};
-  const stats = isApiMode() ? [
-    ['Total Users',           s.total_users            ?? 0, 'registered accounts',     'users'],
-    ['Job Applications',      s.total_job_applications ?? 0, `${s.pending_applications ?? 0} pending`, 'clipboard'],
-    ['New Orders',            s.new_orders             ?? 0, 'awaiting confirmation',    'package'],
-    ['New Tickets',           s.new_contact_messages   ?? 0, 'need attention',           'message'],
-    ['Products',              s.total_products         ?? 0, 'in the bookshop',          'book'],
-    ['Newsletter Subscribers',s.newsletter_subscribers ?? 0, 'active subscriptions',     'mail'],
+  const stats = (isApiMode() ? [
+    { label: 'Total Users', value: s.total_users ?? 0, note: 'registered accounts', icon: 'users', target: 'teachers', permission: 'teachers.view' },
+    { label: 'Job Applications', value: s.total_job_applications ?? 0, note: `${s.pending_applications ?? 0} pending`, icon: 'clipboard', target: 'applications', permission: 'applications.view' },
+    { label: 'New Orders', value: s.new_orders ?? 0, note: 'awaiting confirmation', icon: 'package', target: 'orders', permission: 'orders.view' },
+    { label: 'New Tickets', value: s.new_contact_messages ?? 0, note: 'need attention', icon: 'message', target: 'messages', permission: 'messages.view' },
+    { label: 'Products', value: s.total_products ?? 0, note: 'in the bookshop', icon: 'book', target: 'products', permission: 'products.view' },
+    { label: 'Newsletter Subscribers', value: s.newsletter_subscribers ?? 0, note: 'active subscriptions', icon: 'mail', target: 'newsletters', permission: 'newsletters.view' },
   ] : [
-    ['Total Users', 142, 'seeded demo users', 'users'],
-    ['Job Applications', 38, `${(content.jobs||[]).length} active job records`, 'clipboard'],
-    ['New Orders', (content.orders||[]).filter(o => o.status === 'new').length, 'from bookshop', 'package'],
-    ['New Tickets', (content.messages||[]).filter(m => m.status === 'new').length, 'need attention', 'message'],
-    ['Products', (content.products||[]).length, `${publicItems(content.products||[]).length} published`, 'book'],
-    ['Newsletter Subscribers', (content.newsletters||[]).length, 'managed list', 'mail'],
-  ];
+    { label: 'Total Users', value: 142, note: 'seeded demo users', icon: 'users', target: 'teachers', permission: 'teachers.view' },
+    { label: 'Job Applications', value: 38, note: `${(content.jobs || []).length} active job records`, icon: 'clipboard', target: 'applications', permission: 'applications.view' },
+    { label: 'New Orders', value: (content.orders || []).filter(o => o.status === 'new').length, note: 'from bookshop', icon: 'package', target: 'orders', permission: 'orders.view' },
+    { label: 'New Tickets', value: (content.messages || []).filter(m => m.status === 'new').length, note: 'need attention', icon: 'message', target: 'messages', permission: 'messages.view' },
+    { label: 'Products', value: (content.products || []).length, note: `${publicItems(content.products || []).length} published`, icon: 'book', target: 'products', permission: 'products.view' },
+    { label: 'Newsletter Subscribers', value: (content.newsletters || []).length, note: 'managed list', icon: 'mail', target: 'newsletters', permission: 'newsletters.view' },
+  ]).filter(item => hasSessionPermission(session, item.permission));
 
   const recentJobs   = (isApiMode() ? (liveData?.recent_jobs   || []) : (content.jobs   || [])).slice(0, 5);
   const recentOrders = (isApiMode() ? (liveData?.recent_orders || []) : (content.orders || [])).slice(0, 5);
+  const quickActions = [
+    ['Post Job', 'jobs', 'briefcase'],
+    ['Add Product', 'products', 'book'],
+    ['Add Flyer', 'flyers', 'image'],
+    ['Write News', 'news', 'newspaper'],
+  ].filter(([, key]) => hasSessionPermission(session, `${key}.create`));
+  const canSeeRecentJobs = hasSessionPermission(session, 'jobs.view');
+  const canSeeRecentOrders = hasSessionPermission(session, 'orders.view');
+  const hasVisibleDashboardContent = stats.length || quickActions.length || canSeeRecentJobs || canSeeRecentOrders;
+
+  if (!hasVisibleDashboardContent) {
+    return (
+      <EmptySection
+        title="Portal Ready"
+        body="This internal account is active, but there are no dashboard widgets assigned yet. Grant a section permission to surface related cards, actions, and tables here."
+      />
+    );
+  }
 
   return (
     <div>
       <div className="admin-stats-row">
-        {stats.map(([label, value, note, icon]) => (
-          <button key={label} className="admin-stat" onClick={() => {
-            if (label === 'Total Users') setActive('teachers');
-            if (label === 'Job Applications') setActive('applications');
-            if (label === 'Products') setActive('products');
-            if (label === 'New Orders') setActive('orders');
-            if (label === 'New Tickets') setActive('messages');
-            if (label === 'Newsletter Subscribers') setActive('newsletters');
-          }}>
+        {stats.map(({ label, value, note, icon, target }) => (
+          <button key={label} className="admin-stat" onClick={() => setActive(target)}>
             <div className="admin-stat-icon asi-navy"><Icon name={icon} size={22} stroke={1.9} /></div>
             <div className="admin-stat-info">
               <div className="ast-value">{value}</div>
@@ -839,43 +876,48 @@ const DashboardView = ({ content, setActive }) => {
         ))}
       </div>
 
+      {quickActions.length ? (
       <div className="quick-actions-row">
-        {[
-          ['Post Job', 'jobs', 'briefcase'],
-          ['Add Product', 'products', 'book'],
-          ['Add Flyer', 'flyers', 'image'],
-          ['Write News', 'news', 'newspaper'],
-        ].map(([label, key, icon]) => (
+        {quickActions.map(([label, key, icon]) => (
           <button key={label} className="quick-action-btn" onClick={() => setActive(key)}>
             <div className="qab-icon"><Icon name={icon} size={20} stroke={2} /></div>
             <div className="qab-label">{label}</div>
           </button>
         ))}
       </div>
+      ) : null}
 
       <div className="admin-grid-2">
-        <div className="admin-table-card">
-          <div className="atc-header"><h3>Recent Job Posts</h3><button className="btn btn-sm btn-outline-navy" onClick={() => setActive('jobs')}>Manage</button></div>
-          <MiniTable rows={recentJobs} columns={['title', 'organisation', 'status']} />
-        </div>
-        <div className="admin-table-card">
-          <div className="atc-header"><h3>Recent Orders</h3><button className="btn btn-sm btn-outline-navy" onClick={() => setActive('orders')}>Manage</button></div>
-          <MiniTable rows={recentOrders} columns={['order_reference', 'customer_name', 'status']} />
-        </div>
+        {canSeeRecentJobs ? (
+          <div className="admin-table-card">
+            <div className="atc-header"><h3>Recent Job Posts</h3><button className="btn btn-sm btn-outline-navy" onClick={() => setActive('jobs')}>Manage</button></div>
+            <MiniTable rows={recentJobs} columns={['title', 'organisation', 'status']} />
+          </div>
+        ) : null}
+        {canSeeRecentOrders ? (
+          <div className="admin-table-card">
+            <div className="atc-header"><h3>Recent Orders</h3><button className="btn btn-sm btn-outline-navy" onClick={() => setActive('orders')}>Manage</button></div>
+            <MiniTable rows={recentOrders} columns={['order_reference', 'customer_name', 'status']} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
 };
 
+const AdminTableScroll = ({ children }) => <div className="admin-table-scroll">{children}</div>;
+
 const MiniTable = ({ rows, columns }) => (
-  <table className="admin-table">
-    <thead><tr>{columns.map(col => <th key={col}>{col.replace(/_/g, ' ')}</th>)}</tr></thead>
-    <tbody>
-      {rows.map(row => (
-        <tr key={row.id}>{columns.map(col => <td key={col}>{String(row[col] ?? '')}</td>)}</tr>
-      ))}
-    </tbody>
-  </table>
+  <AdminTableScroll>
+    <table className="admin-table">
+      <thead><tr>{columns.map(col => <th key={col}>{col.replace(/_/g, ' ')}</th>)}</tr></thead>
+      <tbody>
+        {rows.map(row => (
+          <tr key={row.id}>{columns.map(col => <td key={col}>{String(row[col] ?? '')}</td>)}</tr>
+        ))}
+      </tbody>
+    </table>
+  </AdminTableScroll>
 );
 
 // ---------- Image upload field (with crop) ----------
@@ -1416,14 +1458,14 @@ const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
     const base = Array.isArray(options) ? options.filter(Boolean) : [];
     return current && !base.includes(current) ? [current, ...base] : base;
   }, [options, row.status]);
-  const [val, setVal] = React.useState(row.status || optionValues[0] || 'received');
+  const [val, setVal] = React.useState(row.status || optionValues[0] || 'new');
   const [reason, setReason] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [dirty, setDirty] = React.useState(false);
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
-    setVal(row.status || optionValues[0] || 'received');
+    setVal(row.status || optionValues[0] || 'new');
     setDirty(false);
     setReason('');
     setError('');
@@ -1486,7 +1528,7 @@ const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
   );
 };
 
-const ManagedTableView = ({ config, rows: rowsProp }) => {
+const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const { content, fetchCollection, createItem, updateItem, deleteItem, togglePublish: apiToggle, loading, errors } = useAdminContent();
   const [editing, setEditing] = React.useState(null);
   const [creating, setCreating] = React.useState(false);
@@ -1620,15 +1662,21 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
 
   const isLoading = isApiMode() && loading[config.collection];
   const loadError = isApiMode() && errors?.[config.collection];
-  const canCreate = config.allowCreate !== false && Boolean(config.createLabel);
-  const canUpdate = config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly;
-  const canDelete = config.allowDelete !== false && !config.readOnly;
-  const canReply = config.collection === 'messages' && !config.readOnly;
-  const canPublish = PUBLISHABLE_COLLECTIONS.has(config.collection) && !config.readOnly && !config.statusOnly;
+  const reloginPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/staff')
+    ? loginPathForRole('staff')
+    : loginPathForRole('admin');
+  const permissionKey = config.permissionKey || config.collection;
+  const canCreate = config.allowCreate !== false && Boolean(config.createLabel) && hasSessionPermission(session, `${permissionKey}.create`);
+  const canUpdate = config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly && hasSessionPermission(session, `${permissionKey}.edit`);
+  const canDelete = config.allowDelete !== false && !config.readOnly && hasSessionPermission(session, `${permissionKey}.delete`);
+  const canReply = config.collection === 'messages' && !config.readOnly && hasSessionPermission(session, `${permissionKey}.edit`);
+  const canPublish = PUBLISHABLE_COLLECTIONS.has(config.collection) && !config.readOnly && !config.statusOnly && hasSessionPermission(session, `${permissionKey}.edit`);
   const isStatusOnly = Boolean(config.statusOnly);          // orders: status + archive only
   const isModerationOnly = Boolean(config.moderationOnly);  // reviews: approve/reject/delete
   const allowArchive = Boolean(config.allowArchive);
-  const hasActions = canUpdate || canDelete || canReply || canPublish || isStatusOnly || isModerationOnly;
+  const canStatusEdit = isStatusOnly && hasSessionPermission(session, `${permissionKey}.edit`);
+  const canModerate = isModerationOnly && hasSessionPermission(session, `${permissionKey}.edit`);
+  const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate;
 
   // Status modal for orders
   const [statusModal, setStatusModal] = React.useState(null); // { row }
@@ -1841,9 +1889,9 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
         {loadError ? (
           <EmptySection
             title="This section could not load"
-            body="Please sign in again with an admin account. If it still fails, the account may not have permission for this section."
-            action="Open Admin Login"
-            onAction={() => { window.location.href = '/admin/login'; }}
+            body="Please sign in again with the correct internal account. If it still fails, the account may not have permission for this section."
+            action="Open Sign In"
+            onAction={() => { window.location.href = reloginPath; }}
           />
         ) : isLoading ? (
           <EmptySection title={`Loading ${config.title}`} body="One moment while the latest records load." />
@@ -1855,7 +1903,8 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
             onAction={canCreate ? () => setCreating(true) : undefined}
           />
         ) : (
-          <table className="admin-table">
+          <AdminTableScroll>
+            <table className="admin-table">
             <thead>
               <tr>
                 {config.columns.map(column => (
@@ -1902,23 +1951,23 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
                         {'status' in row && canPublish && <button className="table-action-btn" onClick={() => togglePublish(row)}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</button>}
 
                         {/* Status-only tables: inline status selector, with archive where enabled */}
-                        {isStatusOnly && row.status !== 'archived' && (
+                        {canStatusEdit && row.status !== 'archived' && (
                           <OrderStatusSelector
                             row={row}
-                            options={config.statusOptions || ['received','shipped','complete','cancelled']}
+                            options={config.statusOptions || ['new', 'confirmed', 'shipped', 'complete', 'cancelled']}
                             requireCancelReason={config.requireCancelReason}
                             onSave={(patch) => updateItem(config.collection, getItemId(row), patch)}
                           />
                         )}
-                        {isStatusOnly && allowArchive && row.status !== 'archived' && (
+                        {canStatusEdit && allowArchive && row.status !== 'archived' && (
                           <button className="table-action-btn" onClick={() => handleArchive(row)}>Archive</button>
                         )}
 
                         {/* Product reviews: moderation only */}
-                        {isModerationOnly && row.status !== 'approved' && (
+                        {canModerate && row.status !== 'approved' && (
                           <button className="table-action-btn" style={{ background:'#e6f4ea', color:'#1a6e33' }} onClick={() => handleModerate(row, 'approved')}>Approve</button>
                         )}
-                        {isModerationOnly && row.status !== 'rejected' && (
+                        {canModerate && row.status !== 'rejected' && (
                           <button className="table-action-btn" style={{ background:'#fdf0f0', color:'#a63030' }} onClick={() => handleModerate(row, 'rejected')}>Reject</button>
                         )}
 
@@ -1929,7 +1978,8 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </AdminTableScroll>
         )}
       {/* Table pagination */}
       {totalTablePages > 1 && (
@@ -1953,7 +2003,7 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
               <label className="form-label">New Status</label>
               <select className="form-select" value={statusChoice} onChange={e => setStatusChoice(e.target.value)}>
                 <option value="">Select status</option>
-                {(config.statusOptions || ['received','shipped','complete','cancelled']).map(s => (
+                {(config.statusOptions || ['new', 'confirmed', 'shipped', 'complete', 'cancelled']).map(s => (
                   <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>
                 ))}
               </select>
@@ -1997,7 +2047,7 @@ const ManagedTableView = ({ config, rows: rowsProp }) => {
   );
 };
 
-const ApplicationsView = ({ content }) => (
+const ApplicationsView = ({ content, session }) => (
   <ManagedTableView
     config={{
       title: 'Job Applications',
@@ -2018,6 +2068,7 @@ const ApplicationsView = ({ content }) => (
     rows={content.applications || (isApiMode() ? [] : [
       { id: 1, name: 'Kwame Mensah', email: 'kwame@gmail.com', job: 'Mathematics Teacher (JHS)', status: 'pending', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
     ])}
+    session={session}
   />
 );
 
@@ -2085,8 +2136,9 @@ const BulkAdjuster = ({ title, description, onApply }) => {
   );
 };
 
-const PriceAdjustmentView = ({ content }) => {
+const PriceAdjustmentView = ({ content, session }) => {
   const [tab, setTab] = React.useState('promo');
+  const canEditPriceTools = hasSessionPermission(session, 'priceAdjustment.edit');
   const tabStyle = (t) => ({
     padding: '9px 22px', borderRadius: 8, fontFamily: 'Montserrat,sans-serif',
     fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', border: 'none',
@@ -2104,7 +2156,7 @@ const PriceAdjustmentView = ({ content }) => {
       </div>
 
       {tab === 'promo' && (
-        <ManagedTableView config={CONFIG['promoCodes']} rows={content[CONFIG['promoCodes'].collection] || []} />
+        <ManagedTableView config={CONFIG['promoCodes']} rows={content[CONFIG['promoCodes'].collection] || []} session={session} />
       )}
 
       {tab === 'bulk' && (
@@ -2112,16 +2164,25 @@ const PriceAdjustmentView = ({ content }) => {
           <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginBottom:28 }}>
             Apply a single discount or increase to all product prices or delivery fees at once. Changes are permanent.
           </p>
-          <BulkAdjuster
-            title="Adjust All Product Prices"
-            description="Applies the adjustment to every active product in the bookshop. Useful for a site-wide sale or price correction."
-            onApply={(t, v, d) => api.bulkPriceAdjust(t, v, d)}
-          />
-          <BulkAdjuster
-            title="Adjust All Delivery Fees"
-            description="Applies the adjustment to every active delivery zone. Zones with zero fee are skipped."
-            onApply={(t, v, d) => api.bulkDeliveryAdjust(t, v, d)}
-          />
+          {canEditPriceTools ? (
+            <>
+              <BulkAdjuster
+                title="Adjust All Product Prices"
+                description="Applies the adjustment to every active product in the bookshop. Useful for a site-wide sale or price correction."
+                onApply={(t, v, d) => api.bulkPriceAdjust(t, v, d)}
+              />
+              <BulkAdjuster
+                title="Adjust All Delivery Fees"
+                description="Applies the adjustment to every active delivery zone. Zones with zero fee are skipped."
+                onApply={(t, v, d) => api.bulkDeliveryAdjust(t, v, d)}
+              />
+            </>
+          ) : (
+            <EmptySection
+              title="View-only access"
+              body="This account can review pricing tools, but bulk adjustments require the price adjustment edit permission."
+            />
+          )}
           <div style={{ background:'#fff3cd', border:'1px solid #ffc107', borderRadius:10, padding:'14px 18px', fontSize:'0.82rem', color:'#664d03', marginTop:24 }}>
             <strong>Tip:</strong> To discount a specific product, set its <em>Old Price</em> (original), then lower its <em>Price</em>. The bookshop shows the crossed-out original automatically.
           </div>
@@ -2131,12 +2192,14 @@ const PriceAdjustmentView = ({ content }) => {
   );
 };
 
-const TeachersView = () => {
+const TeachersView = ({ session }) => {
   const [teachers, setTeachers] = React.useState(null);
   const [search, setSearch] = React.useState('');
   const [detail, setDetail] = React.useState(null); // full profile object for the modal
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [toggling, setToggling] = React.useState(null); // user id currently being toggled
+  const canEditTeachers = hasSessionPermission(session, 'teachers.edit');
+  const canExportTeachers = hasSessionPermission(session, 'teachers.export');
 
   const reload = React.useCallback(() => {
     if (!isApiMode()) return;
@@ -2190,7 +2253,7 @@ const TeachersView = () => {
             Only teacher accounts are shown. Admin and staff accounts are excluded. Use the export buttons for records.
           </p>
         </div>
-        {isApiMode() && (
+        {isApiMode() && canExportTeachers && (
           <div style={{ display:'flex', gap:10 }}>
             <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl('users','csv')}>Export CSV</a>
             <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl('users','xlsx')}>Export Excel</a>
@@ -2211,7 +2274,7 @@ const TeachersView = () => {
         ) : filtered.length === 0 ? (
           <EmptySection title="No Registered Teachers Yet" body="Teachers who sign up on the portal will appear here." />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <AdminTableScroll>
             <table className="admin-table">
               <thead>
                 <tr>
@@ -2237,21 +2300,23 @@ const TeachersView = () => {
                     <td>
                       <div style={{ display:'flex', gap:6 }}>
                         <button className="table-action-btn" onClick={() => openDetail(t)}>View Profile</button>
-                        <button
-                          className="table-action-btn"
-                          style={{ background: t.is_active !== false ? '#fff8e1' : '#f0fdf4', color: t.is_active !== false ? '#92400e' : '#166534' }}
-                          disabled={toggling === t.id}
-                          onClick={() => toggleActive(t)}
-                        >
-                          {toggling === t.id ? '…' : t.is_active !== false ? 'Disable' : 'Enable'}
-                        </button>
+                        {canEditTeachers ? (
+                          <button
+                            className="table-action-btn"
+                            style={{ background: t.is_active !== false ? '#fff8e1' : '#f0fdf4', color: t.is_active !== false ? '#92400e' : '#166534' }}
+                            disabled={toggling === t.id}
+                            onClick={() => toggleActive(t)}
+                          >
+                            {toggling === t.id ? '…' : t.is_active !== false ? 'Disable' : 'Enable'}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </AdminTableScroll>
         )}
       </div>
 
@@ -2365,14 +2430,16 @@ const TeachersView = () => {
 
             {/* Modal footer */}
             <div style={{ padding:'16px 28px', borderTop:'1px solid var(--border)', display:'flex', gap:10, justifyContent:'flex-end', flexWrap:'wrap' }}>
-              <button
-                className="btn btn-outline-navy btn-sm"
-                style={detail.is_active !== false ? { color:'#92400e', borderColor:'#d97706' } : { color:'#166534', borderColor:'#16a34a' }}
-                disabled={toggling === detail.id}
-                onClick={() => toggleActive(detail)}
-              >
-                {toggling === detail.id ? 'Saving…' : detail.is_active !== false ? 'Disable Account' : 'Enable Account'}
-              </button>
+              {canEditTeachers ? (
+                <button
+                  className="btn btn-outline-navy btn-sm"
+                  style={detail.is_active !== false ? { color:'#92400e', borderColor:'#d97706' } : { color:'#166534', borderColor:'#16a34a' }}
+                  disabled={toggling === detail.id}
+                  onClick={() => toggleActive(detail)}
+                >
+                  {toggling === detail.id ? 'Saving…' : detail.is_active !== false ? 'Disable Account' : 'Enable Account'}
+                </button>
+              ) : null}
               <button className="btn btn-outline-navy btn-sm" onClick={() => setDetail(null)}>Close</button>
             </div>
           </div>
@@ -2382,7 +2449,21 @@ const TeachersView = () => {
   );
 };
 
-const AccountView = ({ session }) => {
+const buildInternalSession = (user, fallbackLabel = 'Admin') => {
+  const role = user?.role?.name || user?.role || 'admin';
+  return {
+    role,
+    email: user.email,
+    firstName: user.first_name || user.firstName || (role === 'staff' ? 'Staff' : fallbackLabel),
+    lastName: user.last_name || user.lastName || '',
+    initials: user.initials || `${user.first_name?.[0] || (role === 'staff' ? 'S' : 'A')}${user.last_name?.[0] || (role === 'staff' ? 'T' : 'D')}`.toUpperCase(),
+    permissions: user.permissions || [],
+    directPermissions: user.direct_permissions || [],
+    mustChangePassword: Boolean(user.must_change_password ?? user.mustChangePassword),
+  };
+};
+
+const AccountView = ({ session, onPasswordChanged }) => {
   const [form, setForm] = React.useState({ current_password: '', new_password: '', confirm_password: '' });
   const [status, setStatus] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -2402,21 +2483,12 @@ const AccountView = ({ session }) => {
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/admin/change-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ current_password: form.current_password, new_password: form.new_password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setStatus({ error: data.error || 'Failed to update password.' });
-      } else {
-        setStatus({ success: data.message || 'Password updated successfully.' });
-        setForm({ current_password: '', new_password: '', confirm_password: '' });
-      }
-    } catch {
-      setStatus({ error: 'Network error. Please try again.' });
+      const data = await api.changePassword({ current_password: form.current_password, new_password: form.new_password });
+      setStatus({ success: data.message || 'Password updated successfully.' });
+      setForm({ current_password: '', new_password: '', confirm_password: '' });
+      onPasswordChanged?.();
+    } catch (err) {
+      setStatus({ error: err?.message || 'Network error. Please try again.' });
     } finally {
       setSaving(false);
     }
@@ -2454,15 +2526,110 @@ const AccountView = ({ session }) => {
   );
 };
 
-const AdminPortalPage = () => {
+const ForcedPasswordChangeModal = ({ session, loginPath, onPasswordChanged }) => {
+  const [form, setForm] = React.useState({ current_password: '', new_password: '', confirm_password: '' });
+  const [status, setStatus] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const isStaff = session?.role === 'staff';
+
+  const handleChange = event => {
+    const { name, value } = event.target;
+    setForm(current => ({ ...current, [name]: value }));
+  };
+
+  const handleSubmit = async event => {
+    event.preventDefault();
+    setStatus(null);
+    if (form.new_password !== form.confirm_password) {
+      setStatus({ error: 'New passwords do not match.' });
+      return;
+    }
+    if (form.new_password.length < 8) {
+      setStatus({ error: 'New password must be at least 8 characters.' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const data = await api.changePassword({ current_password: form.current_password, new_password: form.new_password });
+      setStatus({ success: data.message || 'Password updated successfully.' });
+      setForm({ current_password: '', new_password: '', confirm_password: '' });
+      onPasswordChanged?.();
+    } catch (err) {
+      setStatus({ error: err?.message || 'Could not update the password right now.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.href = loginPath;
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(12, 22, 46, 0.62)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+      <div className="admin-table-card" style={{ width: '100%', maxWidth: 560, padding: '32px 32px 28px', borderRadius: 20, boxShadow: '0 28px 80px rgba(9, 20, 43, 0.24)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 22 }}>
+          <div>
+            <span className="auth-badge" style={{ display: 'inline-flex', marginBottom: 12 }}>{isStaff ? 'Staff Password Update' : 'Admin Password Update'}</span>
+            <h3 style={{ margin: '0 0 8px', color: 'var(--navy)', fontFamily: "'Montserrat', sans-serif" }}>Change your temporary password to continue</h3>
+            <p style={{ margin: 0, color: 'var(--gray-600)', fontSize: '0.9rem', lineHeight: 1.7 }}>
+              This {isStaff ? 'staff' : 'internal'} account is marked for first-login password rotation. Update the password now before using the portal.
+            </p>
+          </div>
+          <button type="button" className="btn btn-outline-navy btn-sm" onClick={handleSignOut}>Sign out</button>
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
+          <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
+            Current Password
+            <input type="password" name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required className="form-input" />
+          </label>
+          <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
+            New Password
+            <input type="password" name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" minLength={8} required className="form-input" />
+          </label>
+          <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
+            Confirm New Password
+            <input type="password" name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required className="form-input" />
+          </label>
+          {status?.error ? <p style={{ margin: 0, color: '#b42318', fontSize: '0.84rem' }}>{status.error}</p> : null}
+          {status?.success ? <p style={{ margin: 0, color: '#027a48', fontSize: '0.84rem' }}>{status.success}</p> : null}
+          <button type="submit" className="btn btn-primary" disabled={saving} style={{ justifySelf: 'flex-start', marginTop: 4 }}>
+            {saving ? 'Updating…' : 'Update Password'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const AdminPortalPage = ({ portalRole = 'admin' }) => {
   const { content } = useAdminContent();
+  const requiredRole = portalRole === 'staff' ? 'staff' : 'admin';
+  const portalLabel = requiredRole === 'staff' ? 'Staff' : 'Admin';
+  const loginPath = loginPathForRole(requiredRole);
   const [activeView, setActiveView] = React.useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [session, setSession] = React.useState(() => getDemoSession());
   const [sessionChecked, setSessionChecked] = React.useState(!isApiMode());
-  const isAdminSession = ['admin', 'staff'].includes(session?.role);
-  const adminName = isAdminSession ? (session.firstName || 'Admin') : 'Admin';
-  const adminInitials = isAdminSession ? (session.initials || 'AD') : 'AD';
+  const isInternalSession = ['admin', 'staff'].includes(session?.role);
+  const adminName = isInternalSession ? (session.firstName || portalLabel) : portalLabel;
+  const adminInitials = isInternalSession ? (session.initials || (requiredRole === 'staff' ? 'ST' : 'AD')) : (requiredRole === 'staff' ? 'ST' : 'AD');
+
+  const redirectToCorrectPortal = React.useCallback((role) => {
+    if (role === 'admin' || role === 'staff') {
+      window.location.href = dashboardPathForRole(role);
+      return;
+    }
+    window.location.href = loginPath;
+  }, [loginPath]);
+
+  const clearPasswordRotationFlag = React.useCallback(() => {
+    if (!session) return;
+    const nextSession = { ...session, mustChangePassword: false };
+    saveDemoSession(nextSession);
+    setSession(nextSession);
+  }, [session]);
 
   const canViewActive = React.useCallback((key, nextSession = session) => {
     const item = NAV.find(entry => entry.key === key);
@@ -2472,7 +2639,9 @@ const AdminPortalPage = () => {
   React.useEffect(() => {
     if (!isApiMode()) {
       if (!session || !['admin', 'staff'].includes(session.role)) {
-        window.location.href = '/admin/login';
+        window.location.href = loginPath;
+      } else if (session.role !== requiredRole) {
+        window.location.href = dashboardPathForRole(session.role);
       }
       return undefined;
     }
@@ -2484,31 +2653,27 @@ const AdminPortalPage = () => {
         const role = user?.role?.name || user?.role;
         if (!user || !['admin', 'staff'].includes(role)) {
           clearDemoSession();
-          window.location.href = '/admin/login';
+          window.location.href = loginPath;
           return;
         }
-        const freshSession = {
-          role,
-          email: user.email,
-          firstName: user.first_name || user.firstName || 'Admin',
-          lastName: user.last_name || user.lastName || '',
-          initials: user.initials || `${user.first_name?.[0] || 'A'}${user.last_name?.[0] || 'D'}`.toUpperCase(),
-          permissions: user.permissions || [],
-          directPermissions: user.direct_permissions || [],
-        };
+        const freshSession = buildInternalSession(user, portalLabel);
         saveDemoSession(freshSession);
+        if (role !== requiredRole) {
+          redirectToCorrectPortal(role);
+          return;
+        }
         setSession(freshSession);
         setSessionChecked(true);
       })
       .catch(() => {
         if (cancelled) return;
         clearDemoSession();
-        window.location.href = '/admin/login';
+        window.location.href = loginPath;
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loginPath, portalLabel, redirectToCorrectPortal, requiredRole]);
 
   React.useEffect(() => {
     if (sessionChecked && !canViewActive(activeView)) {
@@ -2521,43 +2686,51 @@ const AdminPortalPage = () => {
       const fresh = getDemoSession();
       setSession(fresh);
       if (!fresh || !['admin', 'staff'].includes(fresh.role)) {
-        window.location.href = '/admin/login';
+        window.location.href = loginPath;
+        return;
+      }
+      if (fresh.role !== requiredRole) {
+        redirectToCorrectPortal(fresh.role);
       }
     };
     window.addEventListener('rmx-session-sync', handler);
     return () => window.removeEventListener('rmx-session-sync', handler);
-  }, []);
+  }, [loginPath, redirectToCorrectPortal, requiredRole]);
 
   React.useEffect(() => {
     if (isApiMode() || sessionChecked) return;
     if (!session || !['admin', 'staff'].includes(session.role)) {
-      window.location.href = '/admin/login';
+      window.location.href = loginPath;
+      return;
     }
-  }, [session, sessionChecked]);
+    if (session.role !== requiredRole) {
+      window.location.href = dashboardPathForRole(session.role);
+    }
+  }, [loginPath, requiredRole, session, sessionChecked]);
 
   if (!sessionChecked) return null;
 
   const view = activeView === 'dashboard'
-    ? <DashboardView content={content} setActive={setActiveView} />
+    ? <DashboardView content={content} setActive={setActiveView} session={session} />
     : activeView === 'analytics'
-      ? <AnalyticsView />
+      ? <AnalyticsView session={session} />
     : activeView === 'applications'
-      ? <ApplicationsView content={content} />
+      ? <ApplicationsView content={content} session={session} />
       : activeView === 'alerts'
         ? <AlertsView />
         : activeView === 'priceAdjustment' || activeView === 'promoCodes' || activeView === 'priceTools'
-          ? <PriceAdjustmentView content={content} />
+          ? <PriceAdjustmentView content={content} session={session} />
           : activeView === 'teachers'
-          ? <TeachersView />
+          ? <TeachersView session={session} />
           : activeView === 'account'
-          ? <AccountView session={session} />
+          ? <AccountView session={session} onPasswordChanged={clearPasswordRotationFlag} />
           : CONFIG[activeView]
-            ? <ManagedTableView config={CONFIG[activeView]} rows={content[CONFIG[activeView].collection] || []} />
+            ? <ManagedTableView config={CONFIG[activeView]} rows={content[CONFIG[activeView].collection] || []} session={session} />
             : null;
 
   return (
     <div className="admin-portal-layout">
-      <AdminSidebar active={activeView} setActive={setActiveView} open={sidebarOpen} setOpen={setSidebarOpen} session={session} />
+      <AdminSidebar active={activeView} setActive={setActiveView} open={sidebarOpen} setOpen={setSidebarOpen} session={session} portalLabel={portalLabel} />
       <main className="admin-main">
         <div className="admin-topbar">
           <div className="admin-topbar-left" style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, overflow: 'hidden' }}>
@@ -2610,6 +2783,13 @@ const AdminPortalPage = () => {
         </div>
         {view}
       </main>
+      {session?.mustChangePassword ? (
+        <ForcedPasswordChangeModal
+          session={session}
+          loginPath={loginPath}
+          onPasswordChanged={clearPasswordRotationFlag}
+        />
+      ) : null}
       <style>{`
         .admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
         .admin-image-help { color: var(--gray-700); font-size: 0.74rem; line-height: 1.5; margin-top: 8px; max-width: 760px; }

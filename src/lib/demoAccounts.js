@@ -19,6 +19,16 @@ export const DEMO_ACCOUNTS = {
     subject: 'Mathematics',
     level: 'JHS / SHS',
   },
+  staff: {
+    role: 'staff',
+    email: 'staff@realmindxgh.com',
+    password: 'Staff@12345',
+    firstName: 'Portal',
+    lastName: 'Staff',
+    initials: 'PS',
+    permissions: ['jobs.view', 'applications.view', 'products.view', 'orders.view', 'analytics.view', 'news.view'],
+    mustChangePassword: false,
+  },
 };
 
 const SESSION_KEY = 'realmindx.demoSession';

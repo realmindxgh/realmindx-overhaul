@@ -215,3 +215,40 @@ export const trackWishlistAction = (action, { productId, path = '/bookshop/wishl
     page_type: 'bookshop',
   });
 };
+
+export const trackServiceEnquiryClick = ({ serviceId, path, href, label, source = 'service_page' } = {}) => {
+  if (!serviceId) return;
+  trackAnalyticsEvent({
+    event_type: 'service_enquiry_click',
+    service_id: serviceId,
+    path,
+    page_type: 'service',
+    details: {
+      href,
+      label,
+      source,
+    },
+  }, {
+    dedupeKey: `service-enquiry:${serviceId}:${source}:${href || label || ''}`,
+    ttlMs: 900,
+  });
+};
+
+export const trackNewsServiceClick = ({ newsId, serviceId, path, href, label, source = 'news_article' } = {}) => {
+  if (!newsId || !serviceId) return;
+  trackAnalyticsEvent({
+    event_type: 'news_service_click',
+    news_id: newsId,
+    service_id: serviceId,
+    path,
+    page_type: 'news_article',
+    details: {
+      href,
+      label,
+      source,
+    },
+  }, {
+    dedupeKey: `news-service:${newsId}:${serviceId}:${source}:${href || label || ''}`,
+    ttlMs: 900,
+  });
+};

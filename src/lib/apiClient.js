@@ -111,6 +111,7 @@ export const api = {
   initPaystackPayment: (orderId, callbackUrl) => apiFetch(`/orders/${orderId}/paystack/initialize`, { method: 'POST', body: { callback_url: callbackUrl } }),
   createProductReview: (productId, payload) => apiFetch(`/products/${productId}/reviews`, { method: 'POST', body: payload }),
   fetchProductReviews: (productId) => apiFetch(`/products/${productId}/reviews`),
+  createOrderReview: (payload) => apiFetch('/orders/reviews', { method: 'POST', body: payload }),
 
   uploadUserFile: async (file, kind = 'document') => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -142,6 +143,7 @@ export const api = {
   },
 
   updateProfile: (payload) => apiFetch('/me/profile', { method: 'PUT', body: payload }),
+  fetchProfile: () => apiFetch('/me/profile'),
   updateAccount: (payload) => apiFetch('/me/account', { method: 'PUT', body: payload }),
   requestContactChange: (payload) => apiFetch('/me/contact-change/request', { method: 'POST', body: payload }),
   verifyContactChange: (payload) => apiFetch('/me/contact-change/verify', { method: 'POST', body: payload }),

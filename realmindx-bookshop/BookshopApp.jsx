@@ -3,7 +3,7 @@ import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, BottomNav } from '.
 import { HomePage, ShopPage } from './pages-shop.jsx';
 import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
-import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage } from './pages-misc.jsx';
+import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
 import { CatalogProvider, useCatalog } from './catalog.jsx';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 import { trackPageView } from '../src/lib/analytics.js';
@@ -20,7 +20,7 @@ const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.s
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 
 const prefixedPath = (path) => `${PREFIX}${path}`;
-const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'track', 'login', 'signup', 'account', 'orders']);
+const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'track', 'login', 'signup', 'account', 'orders', 'review']);
 const canonicalUrlForRoute = (route, params = {}) => `${canonicalBookshopBase}${bookshopPathForRoute(route, params)}`;
 const browseParam = (taxonomy, value = '') => ({ taxonomy, value });
 
@@ -77,6 +77,7 @@ const routeFromPath = () => {
   if (p === '/terms')    return { route: 'terms',    params: {} };
   if (p === '/account')  return { route: 'account',  params: {} };
   if (p === '/orders')   return { route: 'orders',   params: {} };
+  if (p === '/review')   return { route: 'review',   params: {} };
   return { route: 'home', params: {} };
 };
 
@@ -205,6 +206,7 @@ const App = () => {
       terms:    { title: 'Terms and Conditions | RealMindX Bookshop', desc: 'Terms governing your use of the RealMindX Bookshop and any purchases you make.' },
       account:  { title: 'My Account | RealMindX Bookshop', desc: 'Manage your RealMindX Bookshop account, view billing info, and access your order history.' },
       orders:   { title: 'My Orders | RealMindX Bookshop', desc: 'View all your past orders, track deliveries, and see order details.' },
+      review:   { title: 'Rate Your Order | RealMindX Bookshop', desc: 'Share feedback on your RealMindX Bookshop order.' },
     };
     let currentMeta = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
     let image = BOOKSHOP_DEFAULT_IMAGE;
@@ -329,6 +331,7 @@ const App = () => {
     case 'terms':    page = <BookshopLegalPage type="terms" />; break;
     case 'account':  page = <AccountPage navigate={navigate} />; break;
     case 'orders':   page = <OrdersPage navigate={navigate} />; break;
+    case 'review':   page = <OrderReviewPage navigate={navigate} />; break;
     default:         page = <HomePage navigate={navigate} />;
   }
   const mainClassName = `bs-page${route === 'login' || route === 'signup' ? ' bs-page-auth' : ''}`;

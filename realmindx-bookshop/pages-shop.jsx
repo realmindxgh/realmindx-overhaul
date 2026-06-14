@@ -682,6 +682,16 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     loadingRef.current = false;
   }, [filters, sort]);
 
+  const list = React.useMemo(() => {
+    const filtered = books.filter((book) => matchesCatalogueFilters(book, filters));
+    if (sort === 'low') return [...filtered].sort((left, right) => left.price - right.price);
+    if (sort === 'high') return [...filtered].sort((left, right) => right.price - left.price);
+    if (sort === 'popular') {
+      return [...filtered].sort((left, right) => (right.rating * (right.reviews || 1)) - (left.rating * (left.reviews || 1)));
+    }
+    return filtered;
+  }, [books, filters, sort]);
+
   React.useEffect(() => {
     const term = String(initialQuery || '').trim();
     if (!term || catalogLoading) return;
@@ -705,11 +715,6 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       document.body.style.overflow = '';
     };
   }, [drawer]);
-
-  let list = books.filter((book) => matchesCatalogueFilters(book, filters));
-  if (sort === 'low') list = [...list].sort((left, right) => left.price - right.price);
-  if (sort === 'high') list = [...list].sort((left, right) => right.price - left.price);
-  if (sort === 'popular') list = [...list].sort((left, right) => (right.rating * (right.reviews || 1)) - (left.rating * (left.reviews || 1)));
 
   const shown = list.slice(0, visible);
   const allLoaded = shown.length >= list.length;

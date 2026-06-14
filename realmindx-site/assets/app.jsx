@@ -2,7 +2,9 @@ import React from 'react';
 import { Icon, Reveal, CountUp } from './components.jsx';
 import logoWhite from './logo-white.png';
 import { getDemoSession } from '../../src/lib/demoAccounts.js';
+import { trackNewsServiceClick } from '../../src/lib/analytics.js';
 import { signOut, syncSessionFromApi } from '../../src/lib/authClient.js';
+import { dashboardPathForRole } from '../../src/lib/sessionRoutes.js';
 import toast from '../../src/lib/toast.js';
 import { servicePath } from '../../src/lib/seoRoutes.js';
 import {
@@ -117,7 +119,7 @@ const NavUserPill = () => {
   const initials = session.initials
     || ((session.firstName?.[0] || '') + (session.lastName?.[0] || '')).toUpperCase();
   const isAdminSession = ['admin', 'staff'].includes(session.role);
-  const dashboardHref = isAdminSession ? '/admin/dashboard' : '/portal';
+  const dashboardHref = isAdminSession ? dashboardPathForRole(session.role) : '/portal';
 
   const handleSignOut = async (e) => {
     e.stopPropagation();
@@ -1110,6 +1112,27 @@ const News = () => {
   const [activeNews, setActiveNews] = React.useState(null);
 
   const closeNews = () => setActiveNews(null);
+  const handleModalLinkClick = React.useCallback((event) => {
+    const anchor = event.target.closest('a[href]');
+    if (!anchor || !activeNews?.id || typeof window === 'undefined') return;
+    try {
+      const url = new URL(anchor.getAttribute('href'), window.location.origin);
+      const path = (url.pathname || '').replace(/\/+$/, '');
+      if (!path.startsWith('/services/')) return;
+      const serviceId = path.split('/services/')[1] || null;
+      if (!serviceId) return;
+      trackNewsServiceClick({
+        newsId: activeNews.id,
+        serviceId,
+        path: activeNews.href || '/news',
+        href: anchor.getAttribute('href'),
+        label: anchor.textContent?.trim() || 'Service link',
+        source: 'homepage_news_modal',
+      });
+    } catch {
+      // Ignore malformed hrefs.
+    }
+  }, [activeNews]);
 
   return (
     <section className="news" id="news">
@@ -1157,7 +1180,7 @@ const News = () => {
               <Icon name="x" size={20} stroke={2} />
             </button>
             {activeNews.img && <img className="news-modal-hero" src={activeNews.img} alt={activeNews.title} />}
-            <div className="news-modal-copy">
+            <div className="news-modal-copy" onClick={handleModalLinkClick}>
               <p className="overline">{activeNews.cat}{activeNews.date ? ` · ${activeNews.date}` : ''}</p>
               <h2>{activeNews.title}</h2>
               {activeNews.excerpt && <p className="news-modal-summary">{activeNews.excerpt}</p>}

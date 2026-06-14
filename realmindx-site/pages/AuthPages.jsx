@@ -3,13 +3,15 @@ import { Icon } from '../assets/components.jsx';
 import { Nav, Footer } from '../components/NavFooter';
 import logoWhite from '../assets/logo-white.png';
 import { resendVerificationOtp, signIn, signUp, requestPasswordReset, verifyEmailOtp } from '../../src/lib/authClient.js';
+import { dashboardPathForRole, loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import { TurnstileField } from '../../src/lib/TurnstileField.jsx';
 import toast from '../../src/lib/toast.js';
 
 /* ─────────────────────────────────────────────────────────────
    ADMIN LOGIN PAGE
    ──────────────────────────────────────────────────────────── */
-export const AdminLoginPage = () => {
+const InternalLoginPage = ({ role = 'admin' }) => {
+  const isStaff = role === 'staff';
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
   const [showPass, setShowPass]   = useState(false);
@@ -22,15 +24,46 @@ export const AdminLoginPage = () => {
     if (!email || !password) { toast.error('Please enter your email and password.'); return; }
     setLoading(true);
     try {
-      await signIn({ email, password, role: 'admin' });
-      window.location.href = '/admin/dashboard';
+      const session = await signIn({ email, password, role });
+      window.location.href = dashboardPathForRole(session?.role || role);
     } catch (err) {
-      const msg = err?.message || 'Invalid admin credentials.';
+      const msg = err?.message || `Invalid ${isStaff ? 'staff' : 'admin'} credentials.`;
       setError(msg); toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
+
+  const title = isStaff ? 'Staff Portal Sign In' : 'Sign In to Admin';
+  const badge = isStaff ? 'Staff Access' : 'Admin Access';
+  const heroTitle = isStaff ? (
+    <>The Staff<br />Desk of<br /><span>RealMindX.</span></>
+  ) : (
+    <>The Control<br />Room of<br /><span>RealMindX.</span></>
+  );
+  const heroCopy = isStaff
+    ? 'Staff access is limited to assigned tools, reports, and workflows. Permission scope is enforced on every action.'
+    : 'Admin access is restricted to authorised RealMindX personnel only. All actions are logged and audited.';
+  const accentCards = isStaff
+    ? [
+        { icon: 'clipboard', label: 'Assigned Reviews' },
+        { icon: 'book', label: 'Bookshop Tasks' },
+        { icon: 'newspaper', label: 'Content Updates' },
+        { icon: 'message', label: 'Support Tickets' },
+        { icon: 'chart', label: 'Analytics' },
+        { icon: 'shield', label: 'Secure Access' },
+      ]
+    : [
+        { icon: 'users', label: 'Manage Users' },
+        { icon: 'briefcase', label: 'Job Board' },
+        { icon: 'package', label: 'Bookshop' },
+        { icon: 'newspaper', label: 'News & Posts' },
+        { icon: 'image', label: 'Gallery' },
+        { icon: 'settings', label: 'Site Settings' },
+      ];
+  const secondaryHref = isStaff ? loginPathForRole('admin') : loginPathForRole('staff');
+  const secondaryLabel = isStaff ? 'Need admin access?' : 'Staff member?';
+  const secondaryLink = isStaff ? 'Go to Admin Login' : 'Go to Staff Login';
 
   return (
     <>
@@ -42,11 +75,10 @@ export const AdminLoginPage = () => {
         <div className="auth-panel-brand">
           <div className="auth-brand-content">
             <h1 className="auth-brand-quote">
-              The Control<br />Room of<br /><span>RealMindX.</span>
+              {heroTitle}
             </h1>
             <p className="auth-brand-sub">
-              Admin access is restricted to authorised RealMindX personnel only.
-              All actions are logged and audited.
+              {heroCopy}
             </p>
 
             {/* Decorative grid */}
@@ -56,14 +88,7 @@ export const AdminLoginPage = () => {
               gridTemplateColumns: 'repeat(3, 1fr)',
               gap: 12,
             }}>
-              {[
-                { icon: 'users', label: 'Manage Users' },
-                { icon: 'briefcase', label: 'Job Board' },
-                { icon: 'package', label: 'Bookshop' },
-                { icon: 'newspaper', label: 'News & Posts' },
-                { icon: 'image', label: 'Gallery' },
-                { icon: 'settings', label: 'Site Settings' },
-              ].map(item => (
+              {accentCards.map(item => (
                 <div key={item.label} style={{
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.07)',
@@ -87,9 +112,9 @@ export const AdminLoginPage = () => {
         {/* Form panel */}
         <div className="auth-panel-form">
           <div className="auth-form-header">
-            <div className="auth-badge">Admin Access</div>
-            <h2>Sign In to Admin</h2>
-            <p>Use your authorised admin credentials to continue.</p>
+            <div className="auth-badge">{badge}</div>
+            <h2>{title}</h2>
+            <p>{isStaff ? 'Use your assigned staff credentials to continue.' : 'Use your authorised admin credentials to continue.'}</p>
           </div>
 
           <form onSubmit={handleSubmit} noValidate>
@@ -98,7 +123,7 @@ export const AdminLoginPage = () => {
               <input
                 className="form-input"
                 type="email"
-                placeholder="admin@realmindxgh.com"
+                placeholder={isStaff ? 'staff@realmindxgh.com' : 'admin@realmindxgh.com'}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 autoComplete="email"
@@ -108,7 +133,6 @@ export const AdminLoginPage = () => {
             <div className="form-group has-forgot">
               <label className="form-label">
                 Password
-                <a href="/admin/forgot-password" className="forgot-link">Forgot password?</a>
               </label>
               <div className="password-field">
                 <input
@@ -137,7 +161,7 @@ export const AdminLoginPage = () => {
               disabled={loading}
               style={{ width: '100%', justifyContent: 'center', marginTop: 8, opacity: loading ? 0.7 : 1 }}
             >
-              {loading ? 'Signing in...' : 'Sign In to Admin Portal'}
+              {loading ? 'Signing in...' : isStaff ? 'Sign In to Staff Portal' : 'Sign In to Admin Portal'}
             </button>
           </form>
 
@@ -145,14 +169,19 @@ export const AdminLoginPage = () => {
             <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', lineHeight: 1.6 }}>
               <strong style={{ color: 'var(--navy)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Icon name="shield" size={15} stroke={2} /> Security notice:
-              </strong>{' '}This portal is
-              restricted to authorised personnel. Unauthorised access attempts are recorded.
-              If you need admin access, contact the system administrator.
+              </strong>{' '}This portal is restricted to authorised personnel. Unauthorised access attempts are recorded.
+              Internal accounts may be required to change temporary passwords before continuing.
             </p>
           </div>
 
           <p style={{ textAlign: 'center', marginTop: 24, fontSize: '0.82rem', color: 'var(--gray-600)' }}>
-            Not an admin?{' '}
+            {secondaryLabel}{' '}
+            <a href={secondaryHref} style={{ color: 'var(--navy)', fontWeight: 700, textDecoration: 'underline' }}>
+              {secondaryLink}
+            </a>
+          </p>
+          <p style={{ textAlign: 'center', marginTop: 12, fontSize: '0.82rem', color: 'var(--gray-600)' }}>
+            Looking for the teacher portal?{' '}
             <a href="/portal" style={{ color: 'var(--navy)', fontWeight: 700, textDecoration: 'underline' }}>
               Go to User Portal
             </a>
@@ -164,6 +193,10 @@ export const AdminLoginPage = () => {
     </>
   );
 };
+
+export const AdminLoginPage = () => <InternalLoginPage role="admin" />;
+
+export const StaffLoginPage = () => <InternalLoginPage role="staff" />;
 
 
 /* ─────────────────────────────────────────────────────────────

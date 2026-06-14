@@ -89,6 +89,8 @@ export const bookshopPathForRoute = (route, params = {}) => {
       return '/account';
     case 'orders':
       return '/orders';
+    case 'review':
+      return '/review';
     default:
       return '/';
   }

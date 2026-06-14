@@ -9,6 +9,7 @@ import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { consumeBookshopAuthReturn } from './authReturn.js';
 import { api, isApiMode } from '../src/lib/apiClient.js';
+import { normalizeOrderStatus, orderStatusLabel } from '../src/lib/orderStatus.js';
 import VerifiedContactField from '../src/lib/VerifiedContactField.jsx';
 import { bookshopPathForRoute } from './urls.js';
 const bookshopHeroImage = '/bookshop-og.png';
@@ -366,13 +367,15 @@ const ContactPage = ({ navigate }) => {
               style={{ width: '100%', height: 260, border: 'none', borderRadius: 8, marginTop: 16, display: 'block' }}
             />
           ) : null}
-          <table className="bs-hours-table" style={{ marginTop: 20 }}>
-            <tbody>
-              <tr><td>Monday - Friday</td><td>8:00 - 18:00</td></tr>
-              <tr><td>Saturday</td><td>9:00 - 16:00</td></tr>
-              <tr><td>Sunday</td><td>Closed</td></tr>
-            </tbody>
-          </table>
+          <div className="bs-table-scroll">
+            <table className="bs-hours-table" style={{ marginTop: 20 }}>
+              <tbody>
+                <tr><td>Monday - Friday</td><td>8:00 - 18:00</td></tr>
+                <tr><td>Saturday</td><td>9:00 - 16:00</td></tr>
+                <tr><td>Sunday</td><td>Closed</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -416,13 +419,15 @@ const InfoPage = ({ navigate }) => (
           <div className="bs-contact-row"><Icon name="phone" size={18} className="bs-ci" /><div><div className="bs-cr-label">Phone</div><div className="bs-cr-val">+233 55 803 9190</div></div></div>
           <div className="bs-contact-row"><Icon name="mail" size={18} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">info@realmindxgh.com</div></div></div>
           <h4 style={{ marginTop: 24 }}>Opening Hours</h4>
-          <table className="bs-hours-table" style={{ color: 'var(--bs-text)' }}>
-            <tbody>
-              <tr><td>Mon - Fri</td><td style={{ color: 'var(--bs-navy)' }}>8:00 - 18:00</td></tr>
-              <tr><td>Saturday</td><td style={{ color: 'var(--bs-navy)' }}>9:00 - 16:00</td></tr>
-              <tr><td>Sunday</td><td style={{ color: 'var(--bs-navy)' }}>Closed</td></tr>
-            </tbody>
-          </table>
+          <div className="bs-table-scroll">
+            <table className="bs-hours-table" style={{ color: 'var(--bs-text)' }}>
+              <tbody>
+                <tr><td>Mon - Fri</td><td style={{ color: 'var(--bs-navy)' }}>8:00 - 18:00</td></tr>
+                <tr><td>Saturday</td><td style={{ color: 'var(--bs-navy)' }}>9:00 - 16:00</td></tr>
+                <tr><td>Sunday</td><td style={{ color: 'var(--bs-navy)' }}>Closed</td></tr>
+              </tbody>
+            </table>
+          </div>
         </aside>
       </div>
     </div>
@@ -548,14 +553,14 @@ const fmtDate = (iso) => {
 const STATUS_META = {
   new:        { label: 'Placed',      color: '#0ea5e9' },
   confirmed:  { label: 'Confirmed',   color: '#6366f1' },
-  packed:     { label: 'Packed',      color: '#f59e0b' },
-  dispatched: { label: 'Dispatched',  color: '#f97316' },
-  delivered:  { label: 'Delivered',   color: '#16a34a' },
+  shipped:    { label: 'Shipped',     color: '#f97316' },
+  complete:   { label: 'Delivered',   color: '#16a34a' },
   cancelled:  { label: 'Cancelled',   color: '#dc2626' },
 };
 
 const OrderStatusBadge = ({ status }) => {
-  const meta = STATUS_META[status] || { label: status || 'Unknown', color: '#6b7b8e' };
+  const normalized = normalizeOrderStatus(status);
+  const meta = STATUS_META[normalized] || { label: orderStatusLabel(normalized || 'unknown'), color: '#6b7b8e' };
   return (
     <span className="bs-order-badge" style={{ '--badge-color': meta.color }}>
       {meta.label}
@@ -665,7 +670,8 @@ const OrderDetailModal = ({ order, onClose }) => {
 
 const MiniOrderCard = ({ order, onOpen }) => {
   const itemCount = (order.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
-  const meta = STATUS_META[order.status] || { label: order.status || 'Unknown', color: '#6b7b8e' };
+  const normalizedStatus = normalizeOrderStatus(order.status);
+  const meta = STATUS_META[normalizedStatus] || { label: orderStatusLabel(normalizedStatus || 'unknown'), color: '#6b7b8e' };
   return (
     <div className="bs-mini-order-card" style={{ '--badge-color': meta.color }}
       onClick={() => onOpen(order)} role="button" tabIndex={0}
@@ -693,7 +699,7 @@ const OrderCard = ({ order, onOpen }) => {
   return (
     <div className="bs-order-card" onClick={() => onOpen(order)} role="button" tabIndex={0}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onOpen(order); }}>
-      <div className="bs-oc-stripe" style={{ background: (STATUS_META[order.status] || {}).color || '#6b7b8e' }} />
+      <div className="bs-oc-stripe" style={{ background: (STATUS_META[normalizeOrderStatus(order.status)] || {}).color || '#6b7b8e' }} />
       <div className="bs-oc-body">
         <div className="bs-oc-top">
           <div>
@@ -974,9 +980,8 @@ const ORDER_STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
   { value: 'new', label: 'Placed' },
   { value: 'confirmed', label: 'Confirmed' },
-  { value: 'packed', label: 'Packed' },
-  { value: 'dispatched', label: 'Dispatched' },
-  { value: 'delivered', label: 'Delivered' },
+  { value: 'shipped', label: 'Shipped' },
+  { value: 'complete', label: 'Delivered' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
 const ORDERS_PER_PAGE = 40; // 2 cols × 20 rows; paginate after this
@@ -1144,4 +1149,152 @@ const OrdersPage = ({ navigate }) => {
   );
 };
 
-export { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage };
+const ORDER_REVIEW_SCORES = Array.from({ length: 11 }, (_, index) => index);
+
+const OrderReviewPage = ({ navigate }) => {
+  const session = useSession();
+  const initialSearch = React.useMemo(() => (
+    typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search)
+  ), []);
+  const initialScore = Number(initialSearch.get('score'));
+  const [form, setForm] = React.useState({
+    orderReference: initialSearch.get('ref') || '',
+    email: session?.email || '',
+    score: Number.isFinite(initialScore) && initialScore >= 0 && initialScore <= 10 ? initialScore : '',
+    comment: '',
+  });
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState(false);
+
+  React.useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      email: prev.email || session?.email || '',
+    }));
+  }, [session?.email]);
+
+  const setField = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!form.orderReference.trim()) {
+      setError('Enter your order reference.');
+      return;
+    }
+    if (!form.email.trim()) {
+      setError('Enter the email used for the order.');
+      return;
+    }
+    if (form.score === '' || Number(form.score) < 0 || Number(form.score) > 10) {
+      setError('Choose a recommendation score from 0 to 10.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      if (!isApiMode()) {
+        throw new Error('Live order reviews are available on the connected RealMindX backend.');
+      }
+      await api.createOrderReview({
+        order_reference: form.orderReference.trim(),
+        email: form.email.trim(),
+        score: Number(form.score),
+        comment: form.comment.trim(),
+        source: 'email',
+      });
+      setSuccess(true);
+      globalToast.success('Thank you for your feedback.');
+    } catch (err) {
+      setError(err.message || 'Could not submit your feedback right now.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="bs-container bs-fade-page" style={{ paddingTop: 80, paddingBottom: 80 }}>
+        <div className="bs-empty-state">
+          <div className="bs-empty-icon"><Icon name="check" size={36} /></div>
+          <h1 className="bs-h2">Thanks for rating your order.</h1>
+          <p className="bs-muted">Your RealMindX Bookshop feedback has been received and will help us improve delivery, support, and fulfilment.</p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 22, flexWrap: 'wrap' }}>
+            <button className="bs-btn bs-btn-navy" onClick={() => navigate('track')}>Track another order</button>
+            <button className="bs-btn bs-btn-outline-navy" onClick={() => navigate('shop')}>Continue shopping</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bs-fade-page">
+      <div className="bs-info-hero">
+        <div className="bs-container">
+          <span className="bs-eyebrow">Order feedback</span>
+          <h1 className="bs-h1">Rate your RealMindX Bookshop order.</h1>
+          <p className="bs-sub" style={{ maxWidth: 720, marginTop: 14 }}>
+            Tell us how likely you are to recommend RealMindX Bookshop to others. We use this feedback to improve fulfilment, delivery, and customer care.
+          </p>
+        </div>
+      </div>
+
+      <div className="bs-container" style={{ paddingTop: 40, paddingBottom: 72 }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', padding: 28, background: '#fff', border: '1px solid var(--bs-border)', borderRadius: 'var(--bs-radius-md)', boxShadow: 'var(--bs-shadow-sm)' }}>
+          <form onSubmit={submit} className="bs-review-form" style={{ borderTop: 'none', paddingTop: 0, maxWidth: '100%' }}>
+            <div className="bs-field-row">
+              <label className="bs-field">
+                <span>Order reference</span>
+                <input value={form.orderReference} onChange={(event) => setField('orderReference', event.target.value.toUpperCase())} placeholder="RMX-XXXXXXX" />
+              </label>
+              <label className="bs-field">
+                <span>Order email</span>
+                <input type="email" value={form.email} onChange={(event) => setField('email', event.target.value)} placeholder="you@example.com" />
+              </label>
+            </div>
+
+            <div className="bs-field" style={{ marginTop: 18 }}>
+              <label>Your recommendation score</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(48px, 1fr))', gap: 10, marginTop: 12 }}>
+                {ORDER_REVIEW_SCORES.map((score) => {
+                  const active = Number(form.score) === score;
+                  return (
+                    <button
+                      key={score}
+                      type="button"
+                      className={`bs-btn ${active ? 'bs-btn-navy' : 'bs-btn-outline-navy'}`}
+                      onClick={() => setField('score', score)}
+                      style={{ minWidth: 0, padding: '12px 0' }}
+                    >
+                      {score}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="bs-review-form-hint">0 = Not likely at all. 10 = Extremely likely.</div>
+            </div>
+
+            <label className="bs-field" style={{ marginTop: 18 }}>
+              <span>Anything we should know? <span className="bs-optional">(optional)</span></span>
+              <textarea rows={5} value={form.comment} onChange={(event) => setField('comment', event.target.value)} placeholder="Tell us what went well or what needs work." />
+            </label>
+
+            {error ? <p className="verified-contact-feedback is-error" style={{ marginTop: 14 }}>{error}</p> : null}
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 18, flexWrap: 'wrap' }}>
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={submitting}>
+                {submitting ? 'Submitting...' : 'Submit feedback'}
+              </button>
+              <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => navigate('track')}>
+                Track your order
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage, OrderReviewPage };

@@ -5,6 +5,7 @@ import { submitOrder } from '../src/lib/managedContent.js';
 import { isApiMode, api } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
+import { normalizeOrderStatus } from '../src/lib/orderStatus.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
@@ -98,6 +99,25 @@ const CheckoutPage = ({ navigate }) => {
       .catch(() => {})
       .finally(() => setLoadingZones(false));
   }, []);
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!session?.role || !isApiMode()) return undefined;
+    api.fetchProfile()
+      .then((data) => {
+        if (!alive || !data?.profile) return;
+        const profile = data.profile;
+        setForm((prev) => ({
+          ...prev,
+          name: prev.name || [profile.first_name, profile.last_name].filter(Boolean).join(' '),
+          phone: prev.phone || profile.phone || '',
+          email: prev.email || profile.email || '',
+          address: prev.address || profile.location || '',
+        }));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [session?.role]);
 
   const selectedZone = deliveryZones.find(z => String(z.id) === selectedZoneId);
   const customDeliveryArea = selectedZoneId === 'other';
@@ -449,18 +469,14 @@ const formatOrderDate = (value) => {
 
 const statusRank = {
   new: 1,
-  received: 1,
   confirmed: 2,
-  processing: 2,
-  ready: 3,
-  out_for_delivery: 3,
-  dispatched: 3,
-  delivered: 4,
-  completed: 4,
+  shipped: 3,
+  complete: 4,
+  cancelled: 4,
 };
 
 const trackingTimeline = (order) => {
-  const status = String(order?.status || 'new').toLowerCase();
+  const status = normalizeOrderStatus(order?.status);
   const payment = String(order?.payment_status || 'unpaid').toLowerCase();
   const paid = payment === 'paid';
   const payOnDelivery = order?.payment_method === 'cash_on_delivery';

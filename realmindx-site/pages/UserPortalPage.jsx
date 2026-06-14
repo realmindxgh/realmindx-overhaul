@@ -3,6 +3,7 @@ import { Icon, DatePickerField } from '../assets/components.jsx';
 import logoWhite from '../assets/logo-white.png';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
 import { signOut } from '../../src/lib/authClient.js';
+import { dashboardPathForRole } from '../../src/lib/sessionRoutes.js';
 import { queueToast } from '../../src/lib/toast.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { useCropUpload } from '../../src/lib/useCropUpload.jsx';
@@ -1607,7 +1608,7 @@ const UserPortalPage = () => {
         return undefined;
       }
       if (['admin', 'staff'].includes(session.role)) {
-        window.location.href = '/admin/dashboard';
+        window.location.href = dashboardPathForRole(session.role);
       }
       return undefined;
     }
@@ -1629,8 +1630,11 @@ const UserPortalPage = () => {
             firstName: user.first_name || user.firstName || 'Admin',
             lastName: user.last_name || user.lastName || '',
             initials: user.initials || `${user.first_name?.[0] || 'A'}${user.last_name?.[0] || 'D'}`.toUpperCase(),
+            permissions: user.permissions || [],
+            directPermissions: user.direct_permissions || [],
+            mustChangePassword: Boolean(user.must_change_password),
           });
-          window.location.href = '/admin/dashboard';
+          window.location.href = dashboardPathForRole(role);
           return;
         }
         const freshSession = {

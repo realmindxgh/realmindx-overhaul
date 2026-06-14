@@ -1,5 +1,6 @@
 from .extensions import db
 from .models import UploadedFile
+from .order_status import normalize_order_status
 
 
 def user_json(user):
@@ -21,6 +22,7 @@ def user_json(user):
         "direct_permissions": direct_permissions,
         "is_verified": user.is_verified,
         "is_active": user.is_active,
+        "must_change_password": user.must_change_password,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
@@ -92,6 +94,24 @@ def product_review_json(review):
     }
 
 
+def order_review_json(review):
+    order = getattr(review, "order", None)
+    return {
+        "id": review.id,
+        "order_id": review.order_id,
+        "order_reference": order.order_reference if order else None,
+        "customer_name": review.customer_name,
+        "email": review.email,
+        "score": int(review.score or 0),
+        "comment": review.comment,
+        "status": review.status,
+        "source": review.source,
+        "admin_notes": review.admin_notes,
+        "created_at": review.created_at.isoformat() if review.created_at else None,
+        "updated_at": review.updated_at.isoformat() if review.updated_at else None,
+    }
+
+
 def product_json(product, include_private=False):
     rating_average, rating_count = _product_rating(product)
     payload = {
@@ -131,6 +151,7 @@ def product_json(product, include_private=False):
 
 
 def order_json(order):
+    status = normalize_order_status(order.status)
     return {
         "id": order.id,
         "order_reference": order.order_reference,
@@ -144,7 +165,8 @@ def order_json(order):
         "delivery_fee": float(order.delivery_fee or 0),
         "location": order.location,
         "delivery_region": order.delivery_region,
-        "status": order.status,
+        "status": status,
+        "raw_status": order.status,
         "payment_status": order.payment_status,
         "payment_method": order.payment_method,
         "payment_provider": order.payment_provider,

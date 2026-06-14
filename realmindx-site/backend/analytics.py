@@ -5,6 +5,7 @@ from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import ipaddress
+import re
 from urllib.parse import urlparse
 
 from flask import request
@@ -12,7 +13,7 @@ from flask_login import current_user
 from sqlalchemy.orm import selectinload
 
 from .extensions import db
-from .models import AnalyticsEvent, Order, Product
+from .models import AnalyticsEvent, AuditLog, ContactMessage, JobApplication, News, NewsletterSubscriber, Order, Product
 
 
 SEARCH_HOSTS = {
@@ -301,6 +302,43 @@ def _normalize_term(term):
     return cleaned
 
 
+def _slug_key(value):
+    text = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower())
+    return text.strip("-")
+
+
+def _display_label(value, fallback=UNKNOWN_LABEL):
+    raw = str(value or "").strip()
+    if not raw:
+        return fallback
+    if any(char in raw for char in " -_/"):
+        words = re.split(r"[\s\-_\/]+", raw)
+        return " ".join(word.capitalize() for word in words if word)
+    return raw
+
+
+def _metric_bucket(metric_map, labels_map, raw_key, fallback_label):
+    key = _slug_key(raw_key) or _slug_key(fallback_label) or "unknown"
+    metric = metric_map[key]
+    metric["id"] = key
+    labels_map[key] = labels_map.get(key) or _display_label(raw_key, fallback_label)
+    metric["label"] = labels_map[key]
+    return metric
+
+
+def _mask_security_ip(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return "Unknown"
+    if ":" in raw:
+        parts = raw.split(":")
+        return ":".join(parts[:4]) + "::"
+    parts = raw.split(".")
+    if len(parts) == 4:
+        return ".".join(parts[:3] + ["0"])
+    return raw
+
+
 def queue_analytics_events(payload, *, commit=False):
     events = payload.get("events") if isinstance(payload, dict) and isinstance(payload.get("events"), list) else [payload]
     if len(events) > 50:
@@ -558,6 +596,10 @@ def build_analytics_dashboard(range_info):
             "cart_remove",
             "wishlist_add",
             "wishlist_remove",
+            "service_enquiry_click",
+            "news_service_click",
+            "contact_form_submit",
+            "newsletter_signup",
         ],
     )
     previous_view_events = _analytics_events(compare_start, compare_end, event_types=["product_view"])
@@ -570,6 +612,10 @@ def build_analytics_dashboard(range_info):
     visitors_by_day = defaultdict(set)
     top_pages = defaultdict(lambda: {"views": 0, "visitors": set(), "title": ""})
     sessions_first = {}
+    searches_by_day = Counter()
+    searches_with_results_by_day = Counter()
+    searches_without_results_by_day = Counter()
+    search_clicks_by_day = Counter()
 
     term_stats = defaultdict(lambda: {
         "term": "",
@@ -583,6 +629,34 @@ def build_analytics_dashboard(range_info):
     search_product_counter = Counter()
     all_cart_sessions = set()
     purchasing_sessions = set()
+    service_labels = {}
+    service_metrics = defaultdict(lambda: {
+        "id": "",
+        "label": "",
+        "views": 0,
+        "unique_visitors": set(),
+        "enquiry_clicks": 0,
+        "contact_submissions": 0,
+        "daily_views": Counter(),
+        "daily_enquiries": Counter(),
+        "last_activity_at": None,
+    })
+    news_metrics = defaultdict(lambda: {
+        "id": None,
+        "title": "",
+        "views": 0,
+        "unique_visitors": set(),
+        "service_clicks": 0,
+        "daily_views": Counter(),
+        "daily_service_clicks": Counter(),
+        "service_targets": Counter(),
+        "last_view_at": None,
+    })
+    lead_interest_labels = {}
+    lead_interest_counts = Counter()
+    lead_contact_by_day = Counter()
+    newsletter_sources = Counter()
+    newsletter_signups_by_day = Counter()
 
     for event in page_events:
         day = event.created_at.date()
@@ -660,6 +734,12 @@ def build_analytics_dashboard(range_info):
                     metric["search_terms"][term] += 1
 
         if event.event_type == "search":
+            day = event.created_at.date()
+            searches_by_day[day] += 1
+            if event.had_results:
+                searches_with_results_by_day[day] += 1
+            else:
+                searches_without_results_by_day[day] += 1
             term = _normalize_term(event.search_term)
             if not term:
                 continue
@@ -671,6 +751,8 @@ def build_analytics_dashboard(range_info):
             else:
                 item["no_results"] += 1
         elif event.event_type == "search_click":
+            day = event.created_at.date()
+            search_clicks_by_day[day] += 1
             term = _normalize_term(event.search_term)
             if not term:
                 continue
@@ -681,6 +763,68 @@ def build_analytics_dashboard(range_info):
                 search_click_lookup[(event.session_key, event.product_id)].add(term)
             if event.product_id in product_map:
                 search_product_counter[product_map[event.product_id].name] += 1
+        elif event.event_type == "page_view":
+            day = event.created_at.date()
+            page_type = (event.page_type or "").strip().lower()
+            if page_type == "service" or (event.path or "").startswith("/services/"):
+                service_metric = _metric_bucket(
+                    service_metrics,
+                    service_labels,
+                    event.service_id or (event.path or "").split("/services/")[1].split("/", 1)[0],
+                    "Service",
+                )
+                service_metric["views"] += 1
+                service_metric["daily_views"][day] += 1
+                visitor_marker = event.visitor_key or (f"session:{event.session_key}" if event.session_key else None)
+                if visitor_marker:
+                    service_metric["unique_visitors"].add(visitor_marker)
+                if not service_metric["last_activity_at"] or event.created_at > service_metric["last_activity_at"]:
+                    service_metric["last_activity_at"] = event.created_at
+            if page_type == "news_article" and (event.news_id or (event.path or "").startswith("/news/")):
+                news_key = event.news_id or event.path or UNKNOWN_LABEL
+                news_metric = news_metrics[news_key]
+                news_metric["id"] = event.news_id
+                news_metric["views"] += 1
+                news_metric["daily_views"][day] += 1
+                visitor_marker = event.visitor_key or (f"session:{event.session_key}" if event.session_key else None)
+                if visitor_marker:
+                    news_metric["unique_visitors"].add(visitor_marker)
+                if not news_metric["last_view_at"] or event.created_at > news_metric["last_view_at"]:
+                    news_metric["last_view_at"] = event.created_at
+                if event.page_title and not news_metric["title"]:
+                    news_metric["title"] = event.page_title
+        elif event.event_type == "service_enquiry_click":
+            service_metric = _metric_bucket(
+                service_metrics,
+                service_labels,
+                event.service_id or event.details.get("service") or event.path,
+                "Service",
+            )
+            day = event.created_at.date()
+            service_metric["enquiry_clicks"] += 1
+            service_metric["daily_enquiries"][day] += 1
+            if not service_metric["last_activity_at"] or event.created_at > service_metric["last_activity_at"]:
+                service_metric["last_activity_at"] = event.created_at
+        elif event.event_type == "contact_form_submit":
+            day = event.created_at.date()
+            label = event.details.get("service_interest") or event.service_id or "General enquiry"
+            key = _slug_key(label) or "general-enquiry"
+            lead_interest_labels[key] = lead_interest_labels.get(key) or str(label)
+            lead_interest_counts[key] += 1
+            lead_contact_by_day[day] += 1
+        elif event.event_type == "newsletter_signup":
+            day = event.created_at.date()
+            newsletter_signups_by_day[day] += 1
+            newsletter_sources[event.details.get("source") or "site"] += 1
+        elif event.event_type == "news_service_click":
+            day = event.created_at.date()
+            news_key = event.news_id or event.path or UNKNOWN_LABEL
+            news_metric = news_metrics[news_key]
+            news_metric["id"] = event.news_id
+            news_metric["service_clicks"] += 1
+            news_metric["daily_service_clicks"][day] += 1
+            target_label = _display_label(event.service_id or event.details.get("service") or "Service")
+            news_metric["service_targets"][target_label] += 1
 
     for order in current_orders:
         if order.analytics_session_key:
@@ -808,6 +952,115 @@ def build_analytics_dashboard(range_info):
     for item in product_items:
         category_interest[item["category"]] += item["views"] + item["quantity_sold"] + item["search_impressions"]
 
+    news_ids = [metric["id"] for metric in news_metrics.values() if metric["id"]]
+    news_lookup = {}
+    if news_ids:
+        news_lookup = {row.id: row for row in News.query.filter(News.id.in_(news_ids)).all()}
+
+    service_rows = []
+    service_views_by_day = Counter()
+    service_enquiries_by_day = Counter()
+    for metric in service_metrics.values():
+        service_views_by_day.update(metric["daily_views"])
+        service_enquiries_by_day.update(metric["daily_enquiries"])
+        service_rows.append({
+            "id": metric["id"],
+            "label": metric["label"],
+            "views": metric["views"],
+            "unique_visitors": len(metric["unique_visitors"]),
+            "enquiry_clicks": metric["enquiry_clicks"],
+            "contact_submissions": metric["contact_submissions"],
+            "engagement_rate": round((metric["enquiry_clicks"] / metric["views"]) * 100, 1) if metric["views"] else 0.0,
+            "last_activity_at": metric["last_activity_at"].isoformat() if metric["last_activity_at"] else None,
+        })
+    service_rows.sort(key=lambda row: (row["views"], row["enquiry_clicks"]), reverse=True)
+
+    news_rows = []
+    news_views_by_day = Counter()
+    news_service_clicks_by_day = Counter()
+    news_service_targets = Counter()
+    for key, metric in news_metrics.items():
+        news_views_by_day.update(metric["daily_views"])
+        news_service_clicks_by_day.update(metric["daily_service_clicks"])
+        news_service_targets.update(metric["service_targets"])
+        row = news_lookup.get(metric["id"])
+        title = (
+            row.title if row
+            else metric["title"]
+            or f"Article {metric['id']}" if metric["id"]
+            else str(key)
+        )
+        news_rows.append({
+            "id": metric["id"] or key,
+            "title": title,
+            "views": metric["views"],
+            "unique_visitors": len(metric["unique_visitors"]),
+            "service_clicks": metric["service_clicks"],
+            "last_view_at": metric["last_view_at"].isoformat() if metric["last_view_at"] else None,
+        })
+    news_rows.sort(key=lambda row: (row["views"], row["service_clicks"]), reverse=True)
+
+    job_applications = (
+        JobApplication.query
+        .filter(JobApplication.created_at >= start, JobApplication.created_at < end)
+        .all()
+    )
+    job_applications_by_day = Counter()
+    for application in job_applications:
+        job_applications_by_day[application.created_at.date()] += 1
+
+    lead_interest_rows = [
+        {"label": lead_interest_labels[key], "count": count}
+        for key, count in lead_interest_counts.most_common(10)
+    ]
+
+    audit_rows = (
+        AuditLog.query
+        .filter(AuditLog.created_at >= start, AuditLog.created_at < end)
+        .order_by(AuditLog.created_at.desc())
+        .limit(400)
+        .all()
+    )
+    security_action_counts = Counter()
+    admin_action_counts = Counter()
+    recent_security_rows = []
+    login_attempts = 0
+    failed_logins = 0
+    locked_logins = 0
+    password_changes = 0
+    security_actions = {
+        "user_login",
+        "user_login_failed",
+        "user_login_locked",
+        "user_login_lockout_attempt",
+        "user_login_inactive",
+        "password_changed",
+        "password_reset_confirmed",
+    }
+    admin_action_exclusions = security_actions | {"user_logout", "user_signup", "newsletter_subscription"}
+    for row in audit_rows:
+        action = row.action or UNKNOWN_LABEL
+        security_action_counts[action] += 1
+        if action in {"user_login", "user_login_failed", "user_login_locked", "user_login_lockout_attempt", "user_login_inactive"}:
+            login_attempts += 1
+        if action in {"user_login_failed", "user_login_locked", "user_login_lockout_attempt", "user_login_inactive"}:
+            failed_logins += 1
+        if action in {"user_login_locked", "user_login_lockout_attempt"}:
+            locked_logins += 1
+        if action in {"password_changed", "password_reset_confirmed"}:
+            password_changes += 1
+        if action not in admin_action_exclusions:
+            admin_action_counts[action] += 1
+        if action in security_actions and len(recent_security_rows) < 12:
+            actor = row.details.get("actor_email") if isinstance(row.details, dict) else None
+            recent_security_rows.append({
+                "action": action.replace("_", " "),
+                "at": row.created_at.isoformat() if row.created_at else None,
+                "actor": actor or f"User {row.actor_id}" if row.actor_id else "Unknown",
+                "entity_type": row.entity_type or UNKNOWN_LABEL,
+                "ip": _mask_security_ip(row.ip_address),
+            })
+
     return {
         "range": {
             "preset": range_info["preset"],
@@ -867,6 +1120,12 @@ def build_analytics_dashboard(range_info):
                 "searches_with_results": sum(item["with_results"] for item in search_terms),
                 "searches_without_results": sum(item["no_results"] for item in search_terms),
             },
+            "timeline": {
+                "searches": _series_rows(searches_by_day, start, end),
+                "with_results": _series_rows(searches_with_results_by_day, start, end),
+                "no_results": _series_rows(searches_without_results_by_day, start, end),
+                "clicks": _series_rows(search_clicks_by_day, start, end),
+            },
             "terms": search_terms[:20],
             "top_products": [{"product": name, "count": count} for name, count in search_product_counter.most_common(12)],
         },
@@ -874,13 +1133,56 @@ def build_analytics_dashboard(range_info):
             "items": product_items,
             "count": len(product_items),
         },
-        "phase2": {
-            "planned": [
-                "Service enquiry click-through and dedicated service lead funnels",
-                "News-to-service click attribution and deeper article performance reports",
-                "Contact and lead trend reporting by service interest",
-                "Expanded security and audit monitoring panels",
-            ],
+        "engagement": {
+            "services": {
+                "summary": {
+                    "page_views": sum(row["views"] for row in service_rows),
+                    "enquiry_clicks": sum(row["enquiry_clicks"] for row in service_rows),
+                },
+                "timeline": {
+                    "views": _series_rows(service_views_by_day, start, end),
+                    "enquiries": _series_rows(service_enquiries_by_day, start, end),
+                },
+                "items": service_rows[:12],
+            },
+            "news": {
+                "summary": {
+                    "article_views": sum(row["views"] for row in news_rows),
+                    "service_clicks": sum(row["service_clicks"] for row in news_rows),
+                },
+                "timeline": {
+                    "views": _series_rows(news_views_by_day, start, end),
+                    "service_clicks": _series_rows(news_service_clicks_by_day, start, end),
+                },
+                "articles": news_rows[:12],
+                "service_targets": _counter_rows(news_service_targets, limit=8),
+            },
+            "leads": {
+                "summary": {
+                    "contact_submissions": int(sum(lead_contact_by_day.values())),
+                    "newsletter_signups": int(sum(newsletter_signups_by_day.values())),
+                    "job_applications": len(job_applications),
+                },
+                "timeline": {
+                    "contact_submissions": _series_rows(lead_contact_by_day, start, end),
+                    "newsletter_signups": _series_rows(newsletter_signups_by_day, start, end),
+                    "job_applications": _series_rows(job_applications_by_day, start, end),
+                },
+                "service_interest": lead_interest_rows,
+                "newsletter_sources": _counter_rows(newsletter_sources, limit=6),
+            },
+            "security": {
+                "summary": {
+                    "login_attempts": login_attempts,
+                    "failed_logins": failed_logins,
+                    "locked_logins": locked_logins,
+                    "password_changes": password_changes,
+                    "admin_actions": sum(admin_action_counts.values()),
+                },
+                "action_breakdown": _counter_rows(security_action_counts, limit=10),
+                "admin_actions": _counter_rows(admin_action_counts, limit=10),
+                "recent": recent_security_rows,
+            },
         },
     }
 

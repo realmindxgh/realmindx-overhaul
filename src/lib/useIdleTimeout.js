@@ -10,12 +10,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const IDLE_MS   = 10 * 60 * 1000;  // 10 minutes before warning appears
-const WARN_SECS = 5 * 60;          // 5-minute countdown once warning shows
-const WARN_MS   = WARN_SECS * 1000;
+const DEFAULT_IDLE_MS = 10 * 60 * 1000;  // 10 minutes before warning appears
+const DEFAULT_WARN_SECS = 5 * 60;        // 5-minute countdown once warning shows
 const EVENTS    = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
 
-export function useIdleTimeout({ onTimeout, enabled = true }) {
+export function useIdleTimeout({ onTimeout, enabled = true, idleMs = DEFAULT_IDLE_MS, warnSecs = DEFAULT_WARN_SECS }) {
   const [countdown, setCountdown]   = useState(null); // null = hidden, number = secs left
   const idleRef      = useRef(null);
   const intervalRef  = useRef(null);
@@ -54,13 +53,14 @@ export function useIdleTimeout({ onTimeout, enabled = true }) {
   }, [finishTimeout]);
 
   const startCountdown = useCallback(() => {
+    const warnMs = warnSecs * 1000;
     clearAll();
     warningUpRef.current = true;
-    deadlineRef.current = Date.now() + WARN_MS;
-    setCountdown(WARN_SECS);
+    deadlineRef.current = Date.now() + warnMs;
+    setCountdown(warnSecs);
     intervalRef.current = setInterval(syncCountdown, 250);
-    timeoutRef.current = setTimeout(finishTimeout, WARN_MS + 250);
-  }, [clearAll, finishTimeout, syncCountdown]);
+    timeoutRef.current = setTimeout(finishTimeout, warnMs + 250);
+  }, [clearAll, finishTimeout, syncCountdown, warnSecs]);
 
   // Reset the idle clock (and dismiss the warning if showing)
   const keepAlive = useCallback(() => {
@@ -68,9 +68,9 @@ export function useIdleTimeout({ onTimeout, enabled = true }) {
     setCountdown(null);
     warningUpRef.current = false;
     if (enabled) {
-      idleRef.current = setTimeout(startCountdown, IDLE_MS);
+      idleRef.current = setTimeout(startCountdown, idleMs);
     }
-  }, [clearAll, enabled, startCountdown]);
+  }, [clearAll, enabled, idleMs, startCountdown]);
 
   // Activity handler — only resets if the warning isn't showing yet
   const onActivity = useCallback(() => {
@@ -81,13 +81,13 @@ export function useIdleTimeout({ onTimeout, enabled = true }) {
     if (!enabled) { clearAll(); setCountdown(null); return; }
 
     EVENTS.forEach(e => window.addEventListener(e, onActivity, { passive: true }));
-    idleRef.current = setTimeout(startCountdown, IDLE_MS);
+    idleRef.current = setTimeout(startCountdown, idleMs);
 
     return () => {
       clearAll();
       EVENTS.forEach(e => window.removeEventListener(e, onActivity));
     };
-  }, [enabled, onActivity, startCountdown, clearAll]);
+  }, [clearAll, enabled, idleMs, onActivity, startCountdown]);
 
   return { countdown, keepAlive };
 }

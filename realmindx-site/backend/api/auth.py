@@ -138,11 +138,20 @@ def login():
     now = datetime.now(timezone.utc)
     if user and user.locked_until and user.locked_until > now:
         wait_minutes = max(1, math.ceil((user.locked_until - now).total_seconds() / 60))
+        audit("user_login_lockout_attempt", "user", user.id, {"email": user.email, "minutes_remaining": wait_minutes})
+        db.session.commit()
         return jsonify(
             error=f"Too many failed attempts. Try again in {wait_minutes} minute{'s' if wait_minutes != 1 else ''}.",
         ), 429
 
     if not user or not user.check_password(payload.get("password") or ""):
+        audit(
+            "user_login_failed",
+            "user",
+            user.id if user else None,
+            {"email": email, "reason": "invalid_credentials"},
+            actor_email=email,
+        )
         if user:
             user.failed_login_count += 1
             if user.failed_login_count >= LOGIN_LOCKOUT_THRESHOLD:
@@ -151,6 +160,11 @@ def login():
                 audit("user_login_locked", "user", user.id, {"email": user.email, "minutes": LOGIN_LOCKOUT_MINUTES})
             db.session.commit()
         return jsonify(error="Invalid email or password."), 401
+
+    if not user.is_active:
+        audit("user_login_inactive", "user", user.id, {"email": user.email, "role": user.role.name if user.role else None})
+        db.session.commit()
+        return jsonify(error="This account is inactive. Contact the administrator."), 403
 
     if _public_account_requires_verification(user):
         _send_verification_otp(user)
@@ -197,6 +211,7 @@ def change_password():
     if current_user.check_password(new_password):
         return jsonify(error="Choose a password you have not already used here."), 400
     current_user.set_password(new_password)
+    current_user.must_change_password = False
     audit("password_changed", "user", current_user.id, {"email": current_user.email})
     db.session.commit()
     return jsonify(message="Password updated successfully.")
@@ -335,6 +350,7 @@ def confirm_password_reset():
     if not user:
         return jsonify(error="Account not found."), 404
     user.set_password(password)
+    user.must_change_password = False
     audit("password_reset_confirmed", "user", user.id, {"email": user.email})
     db.session.commit()
     return jsonify(message="Password updated.")

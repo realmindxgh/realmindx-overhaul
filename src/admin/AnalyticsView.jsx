@@ -16,7 +16,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'products', label: 'Product Analytics' },
   { id: 'search', label: 'Search Analytics' },
-  { id: 'roadmap', label: 'Phase 2' },
+  { id: 'engagement', label: 'Service & Leads' },
 ];
 
 const PRODUCT_LENSES = [
@@ -50,14 +50,22 @@ const PRODUCT_SORTS = [
 const numberFormat = new Intl.NumberFormat('en-US');
 const currencyFormat = new Intl.NumberFormat('en-GH', { style: 'currency', currency: 'GHS', maximumFractionDigits: 2 });
 const percentFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
-const CHART_COLORS = {
+const chartColors = {
   navy: 'var(--navy)',
   gold: 'var(--yellow-dark)',
   success: 'var(--success)',
   info: 'var(--info)',
   danger: 'var(--danger)',
-  slate: 'var(--gray-400)',
+  slate: 'var(--gray-500)',
 };
+const donutPalette = [
+  chartColors.navy,
+  chartColors.gold,
+  chartColors.success,
+  chartColors.info,
+  '#5f6f89',
+  '#ce5b4f',
+];
 
 const formatNumber = (value) => numberFormat.format(Number(value || 0));
 const formatCurrency = (value) => currencyFormat.format(Number(value || 0));
@@ -69,6 +77,17 @@ const queryParamsForRange = (preset, start, end) => (
     ? { preset, start, end }
     : { preset }
 );
+
+const permissionSetFor = (session) => {
+  if (!session) return new Set(['analytics.view', 'analytics.export']);
+  return new Set([...(session.permissions || []), ...(session.directPermissions || [])]);
+};
+
+const canExportAnalytics = (session) => {
+  if (!session) return true;
+  if (session.role === 'admin') return true;
+  return permissionSetFor(session).has('analytics.export');
+};
 
 const lensPredicate = (lens, item) => {
   switch (lens) {
@@ -110,6 +129,22 @@ const compareBySort = (sortKey) => (left, right) => {
   return valueRight - valueLeft;
 };
 
+const collapseRows = (rows = [], valueField = 'count', labelField = 'label', limit = 5) => {
+  const cleanRows = rows
+    .map((row) => ({
+      ...row,
+      [valueField]: Number(row?.[valueField] || 0),
+      [labelField]: row?.[labelField] || 'Unknown',
+    }))
+    .filter(row => row[valueField] > 0);
+  if (cleanRows.length <= limit) return cleanRows;
+  const visible = cleanRows.slice(0, limit - 1);
+  const remainder = cleanRows.slice(limit - 1).reduce((sum, row) => sum + row[valueField], 0);
+  return [...visible, { [labelField]: 'Other', [valueField]: remainder }];
+};
+
+const sumRows = (rows = [], valueField = 'count') => rows.reduce((sum, row) => sum + Number(row?.[valueField] || 0), 0);
+
 const StatusBadge = ({ children, tone = 'navy' }) => (
   <span className={`analytics-pill analytics-pill-${tone}`}>{children}</span>
 );
@@ -126,7 +161,7 @@ const SectionHeader = ({ eyebrow, title, body, actions }) => (
     <div>
       {eyebrow && <span className="analytics-eyebrow">{eyebrow}</span>}
       <h3>{title}</h3>
-      {body && <p>{body}</p>}
+      {body ? <p>{body}</p> : null}
     </div>
     {actions ? <div className="analytics-section-actions">{actions}</div> : null}
   </div>
@@ -143,14 +178,14 @@ const StatCard = ({ label, value, note, icon, tone = 'navy' }) => (
   </article>
 );
 
-const EmptyChart = () => (
+const EmptyChart = ({ label = 'No data yet' }) => (
   <div className="analytics-chart-empty">
     <Icon name="chart" size={18} />
-    <span>No data yet</span>
+    <span>{label}</span>
   </div>
 );
 
-const LineChart = ({ series = [], color = CHART_COLORS.navy, compact = false }) => {
+const LineChart = ({ series = [], color = chartColors.navy, compact = false, formatter = formatNumber }) => {
   const data = Array.isArray(series) ? series : [];
   const values = data.map(item => Number(item.value || 0));
   const max = Math.max(...values, 0);
@@ -159,6 +194,7 @@ const LineChart = ({ series = [], color = CHART_COLORS.navy, compact = false }) 
     const y = max === 0 ? 76 : 76 - ((Number(item.value || 0) / max) * 64);
     return `${x},${y}`;
   }).join(' ');
+  const areaPoints = `0,76 ${points} 100,76`;
 
   if (!data.length) return <EmptyChart />;
 
@@ -167,16 +203,17 @@ const LineChart = ({ series = [], color = CHART_COLORS.navy, compact = false }) 
       <svg viewBox="0 0 100 82" preserveAspectRatio="none" className="analytics-line-chart" aria-hidden="true">
         <line x1="0" y1="76" x2="100" y2="76" className="analytics-chart-axis" />
         <line x1="0" y1="12" x2="100" y2="12" className="analytics-chart-grid" />
+        <polygon points={areaPoints} fill={color} opacity="0.12" />
         <polyline points={points} fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
         {data.map((item, index) => {
           const x = data.length === 1 ? 50 : (index / Math.max(data.length - 1, 1)) * 100;
           const y = max === 0 ? 76 : 76 - ((Number(item.value || 0) / max) * 64);
-          return <circle key={item.date} cx={x} cy={y} r="1.8" fill={color} />;
+          return <circle key={`${item.date}-${index}`} cx={x} cy={y} r="1.8" fill={color} />;
         })}
       </svg>
       <div className="analytics-chart-footer">
         <span>{data[0]?.date || ''}</span>
-        <strong>{formatNumber(data[data.length - 1]?.value || 0)}</strong>
+        <strong>{formatter(data[data.length - 1]?.value || 0)}</strong>
         <span>{data[data.length - 1]?.date || ''}</span>
       </div>
     </div>
@@ -184,11 +221,12 @@ const LineChart = ({ series = [], color = CHART_COLORS.navy, compact = false }) 
 };
 
 const MultiLineChart = ({ groups = [] }) => {
-  const first = groups.find(group => group.data?.length);
+  const availableGroups = groups.filter(group => (group.data || []).length);
+  const first = availableGroups[0];
   if (!first) return <EmptyChart />;
   const dates = first.data.map(item => item.date);
   const max = Math.max(
-    ...groups.flatMap(group => (group.data || []).map(item => Number(item.value || 0))),
+    ...availableGroups.flatMap(group => (group.data || []).map(item => Number(item.value || 0))),
     0,
   );
 
@@ -197,7 +235,7 @@ const MultiLineChart = ({ groups = [] }) => {
       <svg viewBox="0 0 100 82" preserveAspectRatio="none" className="analytics-line-chart" aria-hidden="true">
         <line x1="0" y1="76" x2="100" y2="76" className="analytics-chart-axis" />
         <line x1="0" y1="12" x2="100" y2="12" className="analytics-chart-grid" />
-        {groups.map((group) => {
+        {availableGroups.map((group) => {
           const points = (group.data || []).map((item, index) => {
             const x = dates.length === 1 ? 50 : (index / Math.max(dates.length - 1, 1)) * 100;
             const y = max === 0 ? 76 : 76 - ((Number(item.value || 0) / max) * 64);
@@ -207,7 +245,7 @@ const MultiLineChart = ({ groups = [] }) => {
         })}
       </svg>
       <div className="analytics-legend-row">
-        {groups.map(group => (
+        {availableGroups.map(group => (
           <span key={group.label}><i style={{ background: group.color }} />{group.label}</span>
         ))}
       </div>
@@ -215,13 +253,67 @@ const MultiLineChart = ({ groups = [] }) => {
   );
 };
 
-const BarList = ({ rows = [], keyField = 'label', valueField = 'count', formatter = formatNumber, color = CHART_COLORS.navy }) => {
-  const max = Math.max(...rows.map(row => Number(row[valueField] || 0)), 0);
-  if (!rows.length) return <div className="analytics-empty-block">No activity recorded yet.</div>;
+const DonutChart = ({ rows = [], valueField = 'count', labelField = 'label', formatter = formatNumber, centerLabel = 'Total' }) => {
+  const data = collapseRows(rows, valueField, labelField, 6);
+  const total = sumRows(data, valueField);
+  if (!data.length || total === 0) return <EmptyChart label="No distribution yet" />;
+
+  const circumference = 2 * Math.PI * 42;
+  let offset = 0;
+
+  return (
+    <div className="analytics-donut-card">
+      <div className="analytics-donut-visual">
+        <svg viewBox="0 0 110 110" className="analytics-donut-chart" aria-hidden="true">
+          <circle cx="55" cy="55" r="42" fill="none" stroke="var(--gray-100)" strokeWidth="12" />
+          {data.map((row, index) => {
+            const value = Number(row[valueField] || 0);
+            const arc = total ? (value / total) * circumference : 0;
+            const strokeDasharray = `${arc} ${circumference - arc}`;
+            const currentOffset = offset;
+            offset += arc;
+            return (
+              <circle
+                key={`${row[labelField]}-${index}`}
+                cx="55"
+                cy="55"
+                r="42"
+                fill="none"
+                stroke={donutPalette[index % donutPalette.length]}
+                strokeWidth="12"
+                strokeLinecap="butt"
+                strokeDasharray={strokeDasharray}
+                strokeDashoffset={-currentOffset}
+                transform="rotate(-90 55 55)"
+              />
+            );
+          })}
+        </svg>
+        <div className="analytics-donut-center">
+          <strong>{formatter(total)}</strong>
+          <span>{centerLabel}</span>
+        </div>
+      </div>
+      <div className="analytics-donut-legend">
+        {data.map((row, index) => (
+          <div key={`${row[labelField]}-${index}`}>
+            <i style={{ background: donutPalette[index % donutPalette.length] }} />
+            <span>{row[labelField]}</span>
+            <strong>{formatter(row[valueField])}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const BarList = ({ rows = [], keyField = 'label', valueField = 'count', formatter = formatNumber, color = chartColors.navy, emptyLabel = 'No activity recorded yet.' }) => {
+  const max = Math.max(...rows.map(row => Number(row?.[valueField] || 0)), 0);
+  if (!rows.length) return <div className="analytics-empty-block">{emptyLabel}</div>;
   return (
     <div className="analytics-bar-list">
-      {rows.map((row) => (
-        <div className="analytics-bar-row" key={row[keyField]}>
+      {rows.map((row, index) => (
+        <div className="analytics-bar-row" key={`${row[keyField]}-${index}`}>
           <div className="analytics-bar-copy">
             <strong>{row[keyField]}</strong>
             <span>{formatter(row[valueField])}</span>
@@ -229,6 +321,29 @@ const BarList = ({ rows = [], keyField = 'label', valueField = 'count', formatte
           <div className="analytics-bar-track">
             <span className="analytics-bar-fill" style={{ width: `${max ? (Number(row[valueField] || 0) / max) * 100 : 0}%`, background: color }} />
           </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const FunnelChart = ({ stages = [], formatter = formatNumber }) => {
+  const cleanStages = stages.filter(stage => Number(stage?.value || 0) > 0);
+  const max = Math.max(...cleanStages.map(stage => Number(stage.value || 0)), 0);
+  if (!cleanStages.length || max === 0) return <EmptyChart label="No journey data yet" />;
+
+  return (
+    <div className="analytics-funnel">
+      {cleanStages.map((stage, index) => (
+        <div className="analytics-funnel-row" key={`${stage.label}-${index}`}>
+          <div className="analytics-funnel-head">
+            <span>{stage.label}</span>
+            <strong>{formatter(stage.value)}</strong>
+          </div>
+          <div className="analytics-funnel-track">
+            <span className="analytics-funnel-fill" style={{ width: `${(Number(stage.value || 0) / max) * 100}%`, background: stage.color || chartColors.navy }} />
+          </div>
+          {stage.note ? <small>{stage.note}</small> : null}
         </div>
       ))}
     </div>
@@ -244,8 +359,8 @@ const DataTable = ({ columns, rows, onRowClick, emptyLabel = 'No rows yet.' }) =
           <tr>{columns.map(column => <th key={column.key}>{column.label}</th>)}</tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id || row.term || row.path || row.product} onClick={onRowClick ? () => onRowClick(row) : undefined} className={onRowClick ? 'analytics-row-clickable' : ''}>
+          {rows.map((row, index) => (
+            <tr key={row.id || row.term || row.path || row.product || `${index}`} onClick={onRowClick ? () => onRowClick(row) : undefined} className={onRowClick ? 'analytics-row-clickable' : ''}>
               {columns.map(column => (
                 <td key={column.key} data-label={column.label}>
                   {column.render ? column.render(row) : row[column.key]}
@@ -258,16 +373,6 @@ const DataTable = ({ columns, rows, onRowClick, emptyLabel = 'No rows yet.' }) =
     </div>
   );
 };
-
-const InsightCard = ({ title, body, rows, color = CHART_COLORS.navy, keyField = 'label', valueField = 'count', formatter = formatNumber }) => (
-  <article className="analytics-highlight-card">
-    <div className="analytics-highlight-head">
-      <h4>{title}</h4>
-      {body ? <p>{body}</p> : null}
-    </div>
-    <BarList rows={rows} keyField={keyField} valueField={valueField} formatter={formatter} color={color} />
-  </article>
-);
 
 const ComparisonStrip = ({ products, onRemove }) => {
   if (!products.length) return null;
@@ -308,8 +413,11 @@ const ComparisonStrip = ({ products, onRemove }) => {
   );
 };
 
-const ProductDetailDrawer = ({ open, productId, detail, onClose, exportHref }) => {
+const ProductDetailDrawer = ({ open, detail, onClose, exportHref, canExport }) => {
   if (!open) return null;
+  const trafficRows = detail?.breakdowns?.traffic_sources || [];
+  const deviceRows = detail?.breakdowns?.devices || [];
+
   return (
     <div className="analytics-drawer-backdrop" onClick={onClose}>
       <aside className="analytics-drawer" onClick={(event) => event.stopPropagation()}>
@@ -320,7 +428,7 @@ const ProductDetailDrawer = ({ open, productId, detail, onClose, exportHref }) =
             {detail?.product ? <p>{detail.product.category} / {detail.product.status}</p> : null}
           </div>
           <div className="analytics-drawer-actions">
-            {detail ? <ExportButton href={exportHref} label="Export CSV" /> : null}
+            {detail && canExport ? <ExportButton href={exportHref} label="Export CSV" /> : null}
             <button type="button" className="analytics-icon-btn" onClick={onClose} aria-label="Close product analytics">
               <Icon name="x" size={18} />
             </button>
@@ -345,23 +453,30 @@ const ProductDetailDrawer = ({ open, productId, detail, onClose, exportHref }) =
             <div className="analytics-chart-grid">
               <article className="analytics-panel">
                 <SectionHeader title="Views over time" />
-                <LineChart series={detail.charts.views} color={CHART_COLORS.navy} />
+                <LineChart series={detail.charts.views} color={chartColors.navy} />
               </article>
               <article className="analytics-panel">
                 <SectionHeader title="Add to cart over time" />
-                <LineChart series={detail.charts.add_to_cart} color={CHART_COLORS.gold} />
+                <LineChart series={detail.charts.add_to_cart} color={chartColors.gold} />
               </article>
               <article className="analytics-panel">
                 <SectionHeader title="Sales over time" />
-                <LineChart series={detail.charts.sales} color={CHART_COLORS.success} />
+                <LineChart series={detail.charts.sales} color={chartColors.success} />
               </article>
               <article className="analytics-panel">
                 <SectionHeader title="Revenue over time" />
-                <LineChart series={detail.charts.revenue} color={CHART_COLORS.danger} />
+                <LineChart series={detail.charts.revenue} color={chartColors.danger} formatter={formatCurrency} />
               </article>
               <article className="analytics-panel">
                 <SectionHeader title="Search interest over time" />
-                <LineChart series={detail.charts.search_interest} color={CHART_COLORS.info} />
+                <LineChart series={detail.charts.search_interest} color={chartColors.info} />
+              </article>
+              <article className="analytics-panel">
+                <SectionHeader title="Audience mix" body="Traffic sources and devices for this product." />
+                <div className="analytics-two-grid compact">
+                  <DonutChart rows={trafficRows} centerLabel="Sources" />
+                  <DonutChart rows={deviceRows} centerLabel="Devices" />
+                </div>
               </article>
             </div>
 
@@ -380,11 +495,11 @@ const ProductDetailDrawer = ({ open, productId, detail, onClose, exportHref }) =
               </article>
               <article className="analytics-panel">
                 <SectionHeader title="Traffic sources" />
-                <BarList rows={detail.breakdowns.traffic_sources} color={CHART_COLORS.navy} />
+                <BarList rows={trafficRows} color={chartColors.navy} />
               </article>
               <article className="analytics-panel">
                 <SectionHeader title="Device breakdown" />
-                <BarList rows={detail.breakdowns.devices} color={CHART_COLORS.info} />
+                <BarList rows={deviceRows} color={chartColors.info} />
               </article>
             </div>
 
@@ -394,15 +509,15 @@ const ProductDetailDrawer = ({ open, productId, detail, onClose, exportHref }) =
                 <div className="analytics-mini-columns">
                   <div>
                     <h4>Countries</h4>
-                    <BarList rows={detail.breakdowns.locations.countries} color={CHART_COLORS.navy} />
+                    <BarList rows={detail.breakdowns.locations.countries} color={chartColors.navy} />
                   </div>
                   <div>
                     <h4>Regions</h4>
-                    <BarList rows={detail.breakdowns.locations.regions} color={CHART_COLORS.gold} />
+                    <BarList rows={detail.breakdowns.locations.regions} color={chartColors.gold} />
                   </div>
                   <div>
                     <h4>Cities</h4>
-                    <BarList rows={detail.breakdowns.locations.cities} color={CHART_COLORS.success} />
+                    <BarList rows={detail.breakdowns.locations.cities} color={chartColors.success} />
                   </div>
                 </div>
               </article>
@@ -425,7 +540,7 @@ const ProductDetailDrawer = ({ open, productId, detail, onClose, exportHref }) =
   );
 };
 
-const AnalyticsView = () => {
+const AnalyticsView = ({ session }) => {
   const [activeTab, setActiveTab] = React.useState('overview');
   const [preset, setPreset] = React.useState('30d');
   const [customStart, setCustomStart] = React.useState(() => new Date(Date.now() - (29 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10));
@@ -443,6 +558,7 @@ const AnalyticsView = () => {
   const [detailLoadingId, setDetailLoadingId] = React.useState(null);
   const [isPending, startTransition] = React.useTransition();
 
+  const canExport = React.useMemo(() => canExportAnalytics(session), [session]);
   const rangeParams = React.useMemo(() => queryParamsForRange(preset, customStart, customEnd), [customEnd, customStart, preset]);
 
   React.useEffect(() => {
@@ -481,7 +597,7 @@ const AnalyticsView = () => {
       .filter(item => lensPredicate(lens, item))
       .filter(item => {
         if (!search) return true;
-        return `${item.name} ${item.category} ${item.performance_status}`.toLowerCase().includes(search);
+        return `${item.name} ${item.category} ${item.performance_status} ${item.status}`.toLowerCase().includes(search);
       })
       .sort(compareBySort(sortKey));
   }, [deferredSearch, lens, products, sortKey]);
@@ -537,23 +653,77 @@ const AnalyticsView = () => {
 
   const topViewed = payload?.bookshop?.top_products?.viewed?.[0];
   const topSearched = payload?.bookshop?.top_products?.searched?.[0];
-  const noResultSearches = payload?.bookshop?.summary?.searches_no_results || 0;
+  const bookshopSummary = payload?.bookshop?.summary || {};
+  const overview = payload?.overview || {};
+  const search = payload?.search || { summary: {}, terms: [], top_products: [], timeline: {} };
+  const engagement = payload?.engagement || {
+    services: { summary: {}, timeline: {}, items: [] },
+    news: { summary: {}, timeline: {}, articles: [], service_targets: [] },
+    leads: { summary: {}, timeline: {}, service_interest: [], newsletter_sources: [] },
+    security: { summary: {}, action_breakdown: [], admin_actions: [], recent: [] },
+  };
+
+  const productTotals = products.reduce((acc, item) => ({
+    views: acc.views + Number(item.views || 0),
+    adds: acc.adds + Number(item.add_to_cart || 0),
+    sales: acc.sales + Number(item.quantity_sold || 0),
+    revenue: acc.revenue + Number(item.revenue || 0),
+    abandoned: acc.abandoned + Number(item.cart_abandonment_count || 0),
+    wishlist: acc.wishlist + Number(item.wishlist_count || 0),
+  }), { views: 0, adds: 0, sales: 0, revenue: 0, abandoned: 0, wishlist: 0 });
+
   const productBoards = {
     viewed: (payload?.bookshop?.top_products?.viewed || []).map(item => ({ label: item.name, count: item.views })),
     added: (payload?.bookshop?.top_products?.added_to_cart || []).map(item => ({ label: item.name, count: item.add_to_cart })),
     purchased: (payload?.bookshop?.top_products?.purchased || []).map(item => ({ label: item.name, count: item.quantity_sold })),
     abandoned: (payload?.bookshop?.top_products?.abandoned || []).map(item => ({ label: item.name, count: item.cart_abandonment_count })),
     searched: (payload?.bookshop?.top_products?.searched || []).map(item => ({ label: item.name, count: item.search_impressions })),
+    revenue: (payload?.bookshop?.top_products?.revenue || []).map(item => ({ label: item.name, count: item.revenue })),
     categories: payload?.bookshop?.top_categories || [],
   };
+
+  const productStatusRows = Object.entries(products.reduce((acc, item) => {
+    const key = item.status || 'Unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {})).map(([label, count]) => ({ label, count }));
+
+  const performanceRows = Object.entries(products.reduce((acc, item) => {
+    const key = item.performance_status || 'Unlabelled';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {})).map(([label, count]) => ({ label, count }));
+
+  const noResultTerms = search.terms
+    .filter(item => Number(item.no_results || 0) > 0)
+    .slice(0, 8)
+    .map(item => ({ label: item.term, count: item.no_results }));
+
+  const journeyStages = [
+    { label: 'Visits', value: overview.summary?.total_visits || 0, color: chartColors.navy },
+    { label: 'Searches', value: search.summary?.total_searches || 0, color: chartColors.gold },
+    { label: 'Product views', value: productTotals.views, color: chartColors.info },
+    { label: 'Orders', value: bookshopSummary.total_orders || 0, color: chartColors.success },
+  ];
+
+  const productJourneyStages = [
+    { label: 'Product views', value: productTotals.views, color: chartColors.navy },
+    { label: 'Add to cart', value: productTotals.adds, color: chartColors.gold },
+    { label: 'Units sold', value: productTotals.sales, color: chartColors.success },
+  ];
 
   return (
     <div className="analytics-shell">
       <header className="analytics-hero">
-        <div>
+        <div className="analytics-hero-copy">
           <span className="analytics-eyebrow">Admin analytics</span>
-          <h2>Visitor behaviour, product interest, and search performance</h2>
+          <h2>Visitor behaviour, product demand, service interest, and search clarity</h2>
           <p>{payload?.privacy?.notice}</p>
+          <div className="analytics-chip-row">
+            <span>Anonymous visitor IDs</span>
+            <span>Approximate location only</span>
+            <span>Admin-only exports</span>
+          </div>
         </div>
         <div className="analytics-toolbar">
           <div className="analytics-range-picker">
@@ -568,7 +738,21 @@ const AnalyticsView = () => {
               <DatePickerField value={customEnd} onChange={setCustomEnd} ariaLabel="End date" />
             </div>
           ) : null}
-          <ExportButton href={api.adminAnalyticsExportUrl('products', rangeParams)} label="Export products" />
+          <div className="analytics-toolbar-metrics">
+            <div>
+              <span>Orders</span>
+              <strong>{formatNumber(bookshopSummary.total_orders)}</strong>
+            </div>
+            <div>
+              <span>Revenue</span>
+              <strong>{formatCurrency(bookshopSummary.total_revenue)}</strong>
+            </div>
+            <div>
+              <span>Service enquiries</span>
+              <strong>{formatNumber(engagement.services.summary?.enquiry_clicks)}</strong>
+            </div>
+          </div>
+          {canExport ? <ExportButton href={api.adminAnalyticsExportUrl('products', rangeParams)} label="Export products" /> : null}
         </div>
       </header>
 
@@ -583,82 +767,97 @@ const AnalyticsView = () => {
       {activeTab === 'overview' ? (
         <>
           <section className="analytics-stat-grid">
-            <StatCard label="Total visits" value={formatNumber(payload.overview.summary.total_visits)} note={payload.range.label} icon="chart" tone="navy" />
-            <StatCard label="Unique visitors" value={formatNumber(payload.overview.summary.unique_visitors)} note="Anonymous visitors" icon="users" tone="teal" />
-            <StatCard label="Page views" value={formatNumber(payload.overview.summary.page_views)} note="All tracked public routes" icon="eye" tone="slate" />
-            <StatCard label="Top searched product" value={topSearched?.name || 'No data yet'} note={topSearched ? `${formatNumber(topSearched.search_impressions)} appearances` : 'Search tracking is live'} icon="search" tone="gold" />
-            <StatCard label="Most viewed product" value={topViewed?.name || 'No data yet'} note={topViewed ? `${formatNumber(topViewed.views)} views` : 'Product view tracking is live'} icon="book" tone="green" />
-            <StatCard label="Searches with no results" value={formatNumber(noResultSearches)} note="Bookshop search gaps" icon="warning" tone="gold" />
-          </section>
-
-          <section className="analytics-panel">
-            <SectionHeader
-              eyebrow="Traffic trend"
-              title="Visits, unique visitors, and page views over time"
-              actions={<ExportButton href={api.adminAnalyticsExportUrl('top-pages', rangeParams)} label="Export top pages" />}
-            />
-            <MultiLineChart groups={[
-              { label: 'Page views', color: CHART_COLORS.navy, data: payload.overview.timeline.page_views },
-              { label: 'Visits', color: CHART_COLORS.gold, data: payload.overview.timeline.visits },
-              { label: 'Unique visitors', color: CHART_COLORS.success, data: payload.overview.timeline.unique_visitors },
-            ]} />
+            <StatCard label="Total visits" value={formatNumber(overview.summary?.total_visits)} note={payload.range.label} icon="chart" tone="navy" />
+            <StatCard label="Unique visitors" value={formatNumber(overview.summary?.unique_visitors)} note="Anonymous visitors" icon="users" tone="teal" />
+            <StatCard label="Page views" value={formatNumber(overview.summary?.page_views)} note="All tracked public routes" icon="eye" tone="slate" />
+            <StatCard label="Top searched product" value={topSearched?.name || 'No data yet'} note={topSearched ? `${formatNumber(topSearched.search_impressions)} impressions` : 'Search tracking is live'} icon="search" tone="gold" />
+            <StatCard label="Most viewed product" value={topViewed?.name || 'No data yet'} note={topViewed ? `${formatNumber(topViewed.views)} views` : 'Product views are live'} icon="book" tone="green" />
+            <StatCard label="Searches with no results" value={formatNumber(bookshopSummary.searches_no_results)} note="Bookshop demand gaps" icon="warning" tone="gold" />
           </section>
 
           <div className="analytics-two-grid">
-            <article className="analytics-panel">
-              <SectionHeader title="Top visited pages" />
-              <DataTable
-                columns={[
-                  { key: 'title', label: 'Page' },
-                  { key: 'views', label: 'Views', render: row => formatNumber(row.views) },
-                  { key: 'unique_visitors', label: 'Unique visitors', render: row => formatNumber(row.unique_visitors) },
-                ]}
-                rows={payload.overview.top_pages}
+            <section className="analytics-panel">
+              <SectionHeader
+                eyebrow="Traffic trend"
+                title="Visits, unique visitors, and page views over time"
+                body="The core website traffic pattern over the selected date range."
+                actions={canExport ? <ExportButton href={api.adminAnalyticsExportUrl('top-pages', rangeParams)} label="Export top pages" /> : null}
               />
-            </article>
+              <MultiLineChart groups={[
+                { label: 'Page views', color: chartColors.navy, data: overview.timeline?.page_views || [] },
+                { label: 'Visits', color: chartColors.gold, data: overview.timeline?.visits || [] },
+                { label: 'Unique visitors', color: chartColors.success, data: overview.timeline?.unique_visitors || [] },
+              ]} />
+            </section>
 
-            <article className="analytics-panel">
-              <SectionHeader title="Bookshop summary" />
-              <div className="analytics-mini-card-grid">
-                <div><span>Orders</span><strong>{formatNumber(payload.bookshop.summary.total_orders)}</strong></div>
-                <div><span>Revenue</span><strong>{formatCurrency(payload.bookshop.summary.total_revenue)}</strong></div>
-                <div><span>Average order value</span><strong>{formatCurrency(payload.bookshop.summary.average_order_value)}</strong></div>
-                <div><span>Conversion rate</span><strong>{formatPercent(payload.bookshop.summary.conversion_rate)}</strong></div>
-                <div><span>Abandoned carts</span><strong>{formatNumber(payload.bookshop.summary.abandoned_carts)}</strong></div>
-                <div><span>No-result searches</span><strong>{formatNumber(payload.bookshop.summary.searches_no_results)}</strong></div>
-              </div>
-            </article>
+            <section className="analytics-panel">
+              <SectionHeader
+                eyebrow="Journey snapshot"
+                title="From visit to order"
+                body="A quick view of how broad traffic narrows into search, product interest, and paid orders."
+              />
+              <FunnelChart stages={journeyStages} />
+            </section>
           </div>
 
           <div className="analytics-three-grid">
             <article className="analytics-panel">
-              <SectionHeader title="Traffic sources" />
-              <BarList rows={payload.overview.traffic_sources} color={CHART_COLORS.navy} />
+              <SectionHeader title="Traffic sources" body="How visitors are arriving." />
+              <DonutChart rows={overview.traffic_sources || []} centerLabel="Sessions" />
             </article>
             <article className="analytics-panel">
-              <SectionHeader title="Device breakdown" />
-              <BarList rows={payload.overview.device_breakdown} color={CHART_COLORS.info} />
+              <SectionHeader title="Device breakdown" body="Desktop versus mobile traffic balance." />
+              <DonutChart rows={overview.device_breakdown || []} centerLabel="Devices" />
             </article>
             <article className="analytics-panel">
-              <SectionHeader title="Browser breakdown" />
-              <BarList rows={payload.overview.browser_breakdown} color={CHART_COLORS.gold} />
+              <SectionHeader title="Browser breakdown" body="Browser mix for compatibility monitoring." />
+              <DonutChart rows={overview.browser_breakdown || []} centerLabel="Browsers" />
+            </article>
+          </div>
+
+          <div className="analytics-two-grid">
+            <article className="analytics-panel">
+              <SectionHeader title="Top visited pages" body="The most-consumed public pages across the site and bookshop." />
+              <BarList rows={(overview.top_pages || []).map(item => ({ label: item.title, count: item.views }))} color={chartColors.navy} />
+              <div className="analytics-table-spacer">
+                <DataTable
+                  columns={[
+                    { key: 'title', label: 'Page' },
+                    { key: 'views', label: 'Views', render: row => formatNumber(row.views) },
+                    { key: 'unique_visitors', label: 'Unique visitors', render: row => formatNumber(row.unique_visitors) },
+                  ]}
+                  rows={overview.top_pages || []}
+                />
+              </div>
+            </article>
+
+            <article className="analytics-panel">
+              <SectionHeader title="Bookshop business snapshot" body="Commercial performance for the store in the same time window." />
+              <div className="analytics-mini-card-grid">
+                <div><span>Orders</span><strong>{formatNumber(bookshopSummary.total_orders)}</strong></div>
+                <div><span>Revenue</span><strong>{formatCurrency(bookshopSummary.total_revenue)}</strong></div>
+                <div><span>Average order value</span><strong>{formatCurrency(bookshopSummary.average_order_value)}</strong></div>
+                <div><span>Conversion rate</span><strong>{formatPercent(bookshopSummary.conversion_rate)}</strong></div>
+                <div><span>Abandoned carts</span><strong>{formatNumber(bookshopSummary.abandoned_carts)}</strong></div>
+                <div><span>Service enquiry clicks</span><strong>{formatNumber(engagement.services.summary?.enquiry_clicks)}</strong></div>
+              </div>
             </article>
           </div>
 
           <section className="analytics-panel">
-            <SectionHeader title="Location summary" body="Approximate country, region, and city only." />
+            <SectionHeader title="Location summary" body="Approximate country, region, and city only. Raw IP addresses remain outside these normal reports." />
             <div className="analytics-mini-columns">
               <div>
                 <h4>Countries</h4>
-                <BarList rows={payload.overview.locations.countries} color={CHART_COLORS.navy} />
+                <BarList rows={overview.locations?.countries || []} color={chartColors.navy} />
               </div>
               <div>
                 <h4>Regions</h4>
-                <BarList rows={payload.overview.locations.regions} color={CHART_COLORS.gold} />
+                <BarList rows={overview.locations?.regions || []} color={chartColors.gold} />
               </div>
               <div>
                 <h4>Cities</h4>
-                <BarList rows={payload.overview.locations.cities} color={CHART_COLORS.success} />
+                <BarList rows={overview.locations?.cities || []} color={chartColors.success} />
               </div>
             </div>
           </section>
@@ -671,7 +870,7 @@ const AnalyticsView = () => {
             <SectionHeader
               eyebrow="Filter products"
               title="Focus the product list"
-              body="Sort by demand, sales quality, or supply risk. Search still works by product name, category, and performance label."
+              body="Sort by demand, sales quality, or supply risk. The search box matches product name, category, status, and performance label."
             />
             <div className="analytics-controls">
               <div className="analytics-control">
@@ -693,9 +892,14 @@ const AnalyticsView = () => {
                   type="search"
                   value={productSearch}
                   onChange={(event) => setProductSearch(event.target.value)}
-                  placeholder="Search by product name, category, or status"
+                  placeholder="Search by product name, category, performance label, or status"
                 />
               </div>
+            </div>
+            <div className="analytics-filter-summary">
+              <span><strong>{formatNumber(filteredProducts.length)}</strong> products in view</span>
+              <span><strong>{formatNumber(comparisonProducts.length)}</strong> pinned for comparison</span>
+              <span><strong>{formatNumber(productTotals.abandoned)}</strong> abandoned carts tracked</span>
             </div>
           </section>
 
@@ -704,28 +908,65 @@ const AnalyticsView = () => {
             onRemove={(productId) => setComparisonIds(prev => prev.filter(id => id !== productId))}
           />
 
-          <section className="analytics-panel">
-            <SectionHeader
-              eyebrow="Product charts"
-              title="Demand, search, and sales watchlist"
-              body="These charts surface interest and friction before you drill into a single product."
-            />
-            <div className="analytics-highlight-grid">
-              <InsightCard title="Most viewed products" rows={productBoards.viewed} color={CHART_COLORS.navy} />
-              <InsightCard title="Most added to cart" rows={productBoards.added} color={CHART_COLORS.gold} />
-              <InsightCard title="Best-selling products" rows={productBoards.purchased} color={CHART_COLORS.success} />
-              <InsightCard title="Cart abandonment watchlist" rows={productBoards.abandoned} color={CHART_COLORS.danger} />
-              <InsightCard title="Search demand" rows={productBoards.searched} color={CHART_COLORS.info} />
-              <InsightCard title="Top categories" rows={productBoards.categories} color={CHART_COLORS.slate} />
-            </div>
-          </section>
+          <div className="analytics-two-grid">
+            <section className="analytics-panel">
+              <SectionHeader
+                eyebrow="Commerce funnel"
+                title="Demand to purchase flow"
+                body="This shows how product interest is converting into cart action and completed sales."
+              />
+              <FunnelChart stages={productJourneyStages} />
+            </section>
+            <section className="analytics-panel">
+              <SectionHeader
+                eyebrow="Store health"
+                title="Conversion, abandonment, and wishlist signals"
+                body="High-level product quality markers before drilling into a single title."
+              />
+              <div className="analytics-mini-card-grid">
+                <div><span>Total revenue</span><strong>{formatCurrency(productTotals.revenue)}</strong></div>
+                <div><span>Total add to cart</span><strong>{formatNumber(productTotals.adds)}</strong></div>
+                <div><span>Total wishlist saves</span><strong>{formatNumber(productTotals.wishlist)}</strong></div>
+                <div><span>Total abandoned</span><strong>{formatNumber(productTotals.abandoned)}</strong></div>
+                <div><span>Top category</span><strong>{productBoards.categories?.[0]?.label || 'No data yet'}</strong></div>
+                <div><span>Top performer</span><strong>{productBoards.viewed?.[0]?.label || 'No data yet'}</strong></div>
+              </div>
+            </section>
+          </div>
+
+          <div className="analytics-three-grid">
+            <article className="analytics-panel">
+              <SectionHeader title="Most viewed products" />
+              <BarList rows={productBoards.viewed} color={chartColors.navy} />
+            </article>
+            <article className="analytics-panel">
+              <SectionHeader title="Most added to cart" />
+              <BarList rows={productBoards.added} color={chartColors.gold} />
+            </article>
+            <article className="analytics-panel">
+              <SectionHeader title="Best-selling products" />
+              <BarList rows={productBoards.purchased} color={chartColors.success} />
+            </article>
+            <article className="analytics-panel">
+              <SectionHeader title="Highest revenue products" />
+              <BarList rows={productBoards.revenue} color={chartColors.danger} formatter={formatCurrency} />
+            </article>
+            <article className="analytics-panel">
+              <SectionHeader title="Product status mix" />
+              <DonutChart rows={productStatusRows} centerLabel="Products" />
+            </article>
+            <article className="analytics-panel">
+              <SectionHeader title="Performance labels" />
+              <DonutChart rows={performanceRows} centerLabel="Labels" />
+            </article>
+          </div>
 
           <section className="analytics-panel">
             <SectionHeader
               eyebrow="Product list"
               title={`Detailed product analytics (${formatNumber(filteredProducts.length)} shown)`}
-              body="Use View charts to open the full product report. Compare pins up to three products side by side without leaving the list."
-              actions={<ExportButton href={api.adminAnalyticsExportUrl('products', rangeParams)} label="Export CSV" />}
+              body="Open a product to see trend lines, traffic sources, device mix, search interest, and freshness markers. Compare keeps up to three products side by side."
+              actions={canExport ? <ExportButton href={api.adminAnalyticsExportUrl('products', rangeParams)} label="Export CSV" /> : null}
             />
             <DataTable
               onRowClick={(row) => openProductDetail(row.id)}
@@ -791,18 +1032,42 @@ const AnalyticsView = () => {
       {activeTab === 'search' ? (
         <>
           <section className="analytics-stat-grid compact">
-            <StatCard label="Total searches" value={formatNumber(payload.search.summary.total_searches)} icon="search" tone="navy" />
-            <StatCard label="Unique terms" value={formatNumber(payload.search.summary.unique_terms)} icon="file" tone="slate" />
-            <StatCard label="Searches with results" value={formatNumber(payload.search.summary.searches_with_results)} icon="check" tone="green" />
-            <StatCard label="Searches with no results" value={formatNumber(payload.search.summary.searches_without_results)} icon="warning" tone="gold" />
+            <StatCard label="Total searches" value={formatNumber(search.summary?.total_searches)} icon="search" tone="navy" />
+            <StatCard label="Unique terms" value={formatNumber(search.summary?.unique_terms)} icon="file" tone="slate" />
+            <StatCard label="Searches with results" value={formatNumber(search.summary?.searches_with_results)} icon="check" tone="green" />
+            <StatCard label="Searches with no results" value={formatNumber(search.summary?.searches_without_results)} icon="warning" tone="gold" />
           </section>
+
+          <div className="analytics-two-grid">
+            <article className="analytics-panel">
+              <SectionHeader
+                eyebrow="Search trend"
+                title="Demand, result quality, and click-through"
+                body="Searches, successful result sets, no-result gaps, and clicks from search results."
+              />
+              <MultiLineChart groups={[
+                { label: 'Searches', color: chartColors.navy, data: search.timeline?.searches || [] },
+                { label: 'With results', color: chartColors.success, data: search.timeline?.with_results || [] },
+                { label: 'No results', color: chartColors.gold, data: search.timeline?.no_results || [] },
+                { label: 'Clicks', color: chartColors.info, data: search.timeline?.clicks || [] },
+              ]} />
+            </article>
+
+            <article className="analytics-panel">
+              <SectionHeader title="Search quality split" body="A direct view of how often the search experience is meeting intent." />
+              <DonutChart rows={[
+                { label: 'With results', count: search.summary?.searches_with_results || 0 },
+                { label: 'No results', count: search.summary?.searches_without_results || 0 },
+              ]} centerLabel="Searches" />
+            </article>
+          </div>
 
           <div className="analytics-two-grid">
             <article className="analytics-panel">
               <SectionHeader
                 title="Top search terms"
                 body="This shows what visitors looked for, whether results appeared, and whether that search led to a product view or purchase."
-                actions={<ExportButton href={api.adminAnalyticsExportUrl('search-terms', rangeParams)} label="Export CSV" />}
+                actions={canExport ? <ExportButton href={api.adminAnalyticsExportUrl('search-terms', rangeParams)} label="Export CSV" /> : null}
               />
               <DataTable
                 columns={[
@@ -813,35 +1078,143 @@ const AnalyticsView = () => {
                   { key: 'product_views', label: 'Product views', render: row => formatNumber(row.product_views) },
                   { key: 'purchases', label: 'Purchases', render: row => formatNumber(row.purchases) },
                 ]}
-                rows={payload.search.terms}
+                rows={search.terms || []}
               />
             </article>
             <article className="analytics-panel">
-              <SectionHeader title="Top searched products" body="Based on search-result clicks and product appearances in bookshop search." />
-              <BarList rows={payload.search.top_products} keyField="product" color={CHART_COLORS.info} />
+              <SectionHeader title="No-result search watchlist" body="Terms that repeatedly failed to return inventory." />
+              <BarList rows={noResultTerms} color={chartColors.gold} emptyLabel="No no-result search terms in this range." />
+              <div className="analytics-table-spacer">
+                <SectionHeader title="Top searched products" body="Based on search-result clicks and product appearances in bookshop search." />
+                <BarList rows={search.top_products || []} keyField="product" color={chartColors.info} />
+              </div>
             </article>
           </div>
         </>
       ) : null}
 
-      {activeTab === 'roadmap' ? (
-        <section className="analytics-roadmap-grid">
-          {payload.phase2.planned.map((item) => (
-            <article key={item} className="analytics-roadmap-card">
-              <StatusBadge tone="slate">Phase 2</StatusBadge>
-              <h4>{item}</h4>
-              <p>The analytics foundation is already collecting the anonymous session and content signals needed to extend into this report next.</p>
+      {activeTab === 'engagement' ? (
+        <>
+          <section className="analytics-stat-grid">
+            <StatCard label="Service page views" value={formatNumber(engagement.services.summary?.page_views)} icon="eye" tone="navy" />
+            <StatCard label="Service enquiry clicks" value={formatNumber(engagement.services.summary?.enquiry_clicks)} icon="mail" tone="gold" />
+            <StatCard label="News article views" value={formatNumber(engagement.news.summary?.article_views)} icon="file" tone="teal" />
+            <StatCard label="News to service clicks" value={formatNumber(engagement.news.summary?.service_clicks)} icon="arrow" tone="success" />
+            <StatCard label="Contact submissions" value={formatNumber(engagement.leads.summary?.contact_submissions)} icon="mail" tone="navy" />
+            <StatCard label="Failed logins" value={formatNumber(engagement.security.summary?.failed_logins)} icon="warning" tone="gold" />
+          </section>
+
+          <div className="analytics-two-grid">
+            <article className="analytics-panel">
+              <SectionHeader
+                eyebrow="Engagement trend"
+                title="Service, news, and lead activity over time"
+                body="These lines show content consumption, commercial intent, and inbound lead signals together."
+              />
+              <MultiLineChart groups={[
+                { label: 'Service views', color: chartColors.navy, data: engagement.services.timeline?.views || [] },
+                { label: 'Service enquiries', color: chartColors.gold, data: engagement.services.timeline?.enquiries || [] },
+                { label: 'News views', color: chartColors.info, data: engagement.news.timeline?.views || [] },
+                { label: 'Contact submissions', color: chartColors.success, data: engagement.leads.timeline?.contact_submissions || [] },
+              ]} />
             </article>
-          ))}
-        </section>
+            <article className="analytics-panel">
+              <SectionHeader title="Lead funnel" body="Direct enquiries, newsletter capture, and job applications." />
+              <FunnelChart stages={[
+                { label: 'Contact submissions', value: engagement.leads.summary?.contact_submissions || 0, color: chartColors.navy },
+                { label: 'Newsletter signups', value: engagement.leads.summary?.newsletter_signups || 0, color: chartColors.gold },
+                { label: 'Job applications', value: engagement.leads.summary?.job_applications || 0, color: chartColors.success },
+              ]} />
+            </article>
+          </div>
+
+          <div className="analytics-two-grid">
+            <article className="analytics-panel">
+              <SectionHeader title="Service page performance" body="Views and enquiry clicks by service page." />
+              <DataTable
+                columns={[
+                  { key: 'label', label: 'Service' },
+                  { key: 'views', label: 'Views', render: row => formatNumber(row.views) },
+                  { key: 'unique_visitors', label: 'Unique visitors', render: row => formatNumber(row.unique_visitors) },
+                  { key: 'enquiry_clicks', label: 'Enquiry clicks', render: row => formatNumber(row.enquiry_clicks) },
+                  { key: 'engagement_rate', label: 'Engagement rate', render: row => formatPercent(row.engagement_rate) },
+                ]}
+                rows={engagement.services.items || []}
+                emptyLabel="No tracked service page activity yet."
+              />
+            </article>
+            <article className="analytics-panel">
+              <SectionHeader title="Lead interest by service" body="Contact form submissions grouped by stated service interest." />
+              <BarList rows={engagement.leads.service_interest || []} color={chartColors.navy} emptyLabel="No contact submissions yet." />
+            </article>
+          </div>
+
+          <div className="analytics-two-grid">
+            <article className="analytics-panel">
+              <SectionHeader title="News article performance" body="Views over time and clicks from articles into service pages." />
+              <DataTable
+                columns={[
+                  { key: 'title', label: 'Article' },
+                  { key: 'views', label: 'Views', render: row => formatNumber(row.views) },
+                  { key: 'unique_visitors', label: 'Unique visitors', render: row => formatNumber(row.unique_visitors) },
+                  { key: 'service_clicks', label: 'Service clicks', render: row => formatNumber(row.service_clicks) },
+                ]}
+                rows={engagement.news.articles || []}
+                emptyLabel="No tracked news article activity yet."
+              />
+            </article>
+            <article className="analytics-panel">
+              <SectionHeader title="Services reached from news" body="Which service pages people click after reading news articles." />
+              <BarList rows={engagement.news.service_targets || []} color={chartColors.info} emptyLabel="No news-to-service clicks yet." />
+              <div className="analytics-table-spacer">
+                <SectionHeader title="Newsletter source mix" body="Where newsletter signups originated." />
+                <DonutChart rows={engagement.leads.newsletter_sources || []} centerLabel="Signups" />
+              </div>
+            </article>
+          </div>
+
+          <section className="analytics-panel">
+            <SectionHeader title="Security and audit summary" body="Admin-only monitoring of login activity, failed attempts, lockouts, and audit trails." />
+            <div className="analytics-mini-card-grid security">
+              <div><span>Login attempts</span><strong>{formatNumber(engagement.security.summary?.login_attempts)}</strong></div>
+              <div><span>Failed logins</span><strong>{formatNumber(engagement.security.summary?.failed_logins)}</strong></div>
+              <div><span>Locked logins</span><strong>{formatNumber(engagement.security.summary?.locked_logins)}</strong></div>
+              <div><span>Password changes</span><strong>{formatNumber(engagement.security.summary?.password_changes)}</strong></div>
+              <div><span>Admin actions</span><strong>{formatNumber(engagement.security.summary?.admin_actions)}</strong></div>
+            </div>
+            <div className="analytics-two-grid security-grid">
+              <div className="analytics-muted-card">
+                <h4>Security event mix</h4>
+                <BarList rows={engagement.security.action_breakdown || []} color={chartColors.gold} emptyLabel="No security events in range." />
+              </div>
+              <div className="analytics-muted-card">
+                <h4>Most common admin actions</h4>
+                <BarList rows={engagement.security.admin_actions || []} color={chartColors.navy} emptyLabel="No admin actions in range." />
+              </div>
+            </div>
+            <div className="analytics-table-spacer">
+              <DataTable
+                columns={[
+                  { key: 'action', label: 'Action' },
+                  { key: 'actor', label: 'Actor' },
+                  { key: 'entity_type', label: 'Entity' },
+                  { key: 'ip', label: 'IP / prefix' },
+                  { key: 'at', label: 'Time', render: row => formatDateTime(row.at) },
+                ]}
+                rows={engagement.security.recent || []}
+                emptyLabel="No recent security events in this range."
+              />
+            </div>
+          </section>
+        </>
       ) : null}
 
       <ProductDetailDrawer
         open={Boolean(selectedProductId)}
-        productId={selectedProductId}
         detail={detailLoadingId === selectedProductId ? null : detail}
         onClose={() => setSelectedProductId(null)}
         exportHref={detailExportHref}
+        canExport={canExport}
       />
 
       {isPending ? <div className="analytics-pending">Loading product drilldown...</div> : null}

@@ -2577,19 +2577,31 @@ html {
   background: var(--bs-navy-light) !important;
 }
 
-.btn-outline-navy,
+.btn-outline-navy {
+  color: #fff !important;
+  border: 1.5px solid var(--navy) !important;
+  background: var(--navy) !important;
+  box-shadow: 0 10px 24px rgba(20, 54, 112, 0.14) !important;
+}
+
+.btn-outline-navy:hover {
+  color: #fff !important;
+  border-color: var(--navy-light) !important;
+  background: var(--navy-light) !important;
+  box-shadow: 0 16px 30px rgba(20, 54, 112, 0.18) !important;
+}
+
 .bs-btn-outline-navy {
-  color: var(--navy) !important;
+  color: var(--bs-navy) !important;
   border: 1.5px solid rgba(20, 54, 112, 0.42) !important;
-  background: linear-gradient(180deg, #ffffff 0%, #eaf1ff 100%) !important;
+  background: #ffffff !important;
   box-shadow: 0 10px 24px rgba(20, 54, 112, 0.1) !important;
 }
 
-.btn-outline-navy:hover,
 .bs-btn-outline-navy:hover {
   color: #fff !important;
-  border-color: var(--navy) !important;
-  background: var(--navy) !important;
+  border-color: var(--bs-navy) !important;
+  background: var(--bs-navy) !important;
   box-shadow: 0 16px 30px rgba(20, 54, 112, 0.18) !important;
 }
 

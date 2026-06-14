@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { Nav, Footer } from '../components/NavFooter';
 import { Icon } from '../assets/components.jsx';
+import { trackServiceEnquiryClick } from '../../src/lib/analytics.js';
 import { usePublicServices, useSiteCopy } from '../../src/lib/siteContent.js';
 import { servicePath, slugify } from '../../src/lib/seoRoutes.js';
 
@@ -34,6 +35,26 @@ const ServiceDocContent = ({ service, variant = 'overview' }) => {
   const doc = serviceDocVariant(service, variant);
   const detailHref = servicePath(service.id);
   const isOverview = variant === 'overview';
+  const handleCtaClick = (cta) => {
+    const href = String(cta?.href || '').trim();
+    if (!href) return;
+    const lowerHref = href.toLowerCase();
+    const isEnquiryTarget = (
+      lowerHref.startsWith('/contact')
+      || lowerHref.startsWith('mailto:')
+      || lowerHref.startsWith('tel:')
+      || lowerHref.includes('wa.link')
+      || lowerHref.includes('whatsapp')
+    );
+    if (!isEnquiryTarget) return;
+    trackServiceEnquiryClick({
+      serviceId: service.id,
+      path: detailHref,
+      href,
+      label: cta.label,
+      source: variant === 'detail' ? 'service_detail_cta' : 'service_overview_cta',
+    });
+  };
 
   return (
     <div className="service-doc-layout">
@@ -90,6 +111,7 @@ const ServiceDocContent = ({ service, variant = 'overview' }) => {
                 href={cta.href}
                 target={cta.href.startsWith('http') ? '_blank' : undefined}
                 rel={cta.href.startsWith('http') ? 'noreferrer' : undefined}
+                onClick={() => handleCtaClick(cta)}
               >
                 {cta.label}
               </a>

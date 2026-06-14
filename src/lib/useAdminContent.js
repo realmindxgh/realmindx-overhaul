@@ -39,6 +39,7 @@ const COLLECTION_TO_ENDPOINT = {
   donationSlides: 'donation-slides',
   siteCopy: 'site-copy',
   orders: 'orders',
+  orderReviews: 'order-reviews',
   news: 'news',
   gallery: 'gallery',
   resources: 'resources',

@@ -21,11 +21,12 @@ from ..email_service import (
     send_email,
 )
 from ..location_data import GHANA_REGIONS
+from ..order_status import ORDER_STATUS_ALIASES, normalize_order_status
 from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
-from ..models import DeliveryZone, Order, OrderItem, Product, ProductCategory, ProductReview
+from ..models import DeliveryZone, Order, OrderItem, OrderReview, Product, ProductCategory, ProductReview
 from ..security import require_turnstile
-from ..serializers import category_json, delivery_zone_json, order_json, product_json, product_review_json
+from ..serializers import category_json, delivery_zone_json, order_json, order_review_json, product_json, product_review_json
 
 bookshop_bp = Blueprint("bookshop", __name__)
 
@@ -193,6 +194,49 @@ def create_product_review(product_id):
     return jsonify(message="Review received. It will appear after moderation.", review={"id": review.id, "status": review.status}), 201
 
 
+@bookshop_bp.post("/orders/reviews")
+@limiter.limit("10/hour")
+def create_order_review():
+    payload = request.get_json(silent=True) or {}
+    order_reference = (payload.get("order_reference") or "").strip().upper()
+    if not order_reference:
+        return jsonify(error="Order reference is required."), 400
+    try:
+        email = clean_email(payload.get("email"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    try:
+        score = int(payload.get("score"))
+    except (TypeError, ValueError):
+        return jsonify(error="Choose a recommendation score between 0 and 10."), 400
+    if score < 0 or score > 10:
+        return jsonify(error="Recommendation score must be between 0 and 10."), 400
+
+    order = Order.query.filter_by(order_reference=order_reference, email=email).first()
+    if not order:
+        return jsonify(error="We could not match that order reference to the email address provided."), 404
+    if normalize_order_status(order.status) != "complete":
+        return jsonify(error="Order reviews can only be submitted after delivery is marked complete."), 400
+    if order.review:
+        return jsonify(error="This order has already been reviewed."), 409
+
+    review = OrderReview(
+        order=order,
+        customer_name=order.customer_name,
+        email=email,
+        score=score,
+        comment=(payload.get("comment") or "").strip() or None,
+        status="new",
+        source=(payload.get("source") or "email").strip() or "email",
+    )
+    db.session.add(review)
+    db.session.commit()
+    return jsonify(
+        message="Thank you for rating your RealMindX Bookshop order.",
+        review=order_review_json(review),
+    ), 201
+
+
 @bookshop_bp.get("/delivery-zones")
 def list_delivery_zones():
     zones = DeliveryZone.query.filter_by(is_active=True).order_by(DeliveryZone.sort_order.asc(), DeliveryZone.name.asc()).all()
@@ -261,7 +305,14 @@ def my_orders():
             )
         )
     if status_filter:
-        query = query.filter(Order.status == status_filter)
+        normalized = normalize_order_status(status_filter, default="")
+        accepted_statuses = [normalized] if normalized else [status_filter]
+        accepted_statuses.extend(
+            raw_status
+            for raw_status, mapped_status in ORDER_STATUS_ALIASES.items()
+            if mapped_status == normalized
+        )
+        query = query.filter(Order.status.in_(sorted(set(filter(None, accepted_statuses)))))
     if sort == "oldest":
         query = query.order_by(Order.created_at.asc())
     else:
@@ -310,6 +361,7 @@ def create_order():
 
     order = Order(
         order_reference=new_order_reference(),
+        user_id=current_user.id if current_user.is_authenticated else None,
         customer_name=(payload.get("customer_name") or payload.get("name") or "").strip(),
         email=email,
         phone=(payload.get("phone") or "").strip(),
@@ -320,7 +372,7 @@ def create_order():
         location=location,
         delivery_region=delivery_region,
         notes=(payload.get("notes") or "").strip() or None,
-        status="received",
+        status="new",
         payment_status="unpaid" if payment_method == "cash_on_delivery" else "pending",
         payment_method=payment_method,
         payment_provider="cash_on_delivery" if payment_method == "cash_on_delivery" else None,
@@ -359,9 +411,9 @@ def create_order():
         send_sms(
             order.phone,
             f"Hi {first}, your RealMindX Bookshop order {order.order_reference} "
-            f"has been received! "
+            f"has been placed. "
             f"{'Payment is due on delivery. ' if order.payment_method == 'cash_on_delivery' else 'Online payment is pending. '}"
-            f"We'll contact you within 24 hrs to confirm. "
+            f"Our team will contact you within 1 business day to arrange receipt of your package. "
             f"Reply STOP to opt out."
         )
 
@@ -403,25 +455,24 @@ def create_order():
     send_email(OutboundEmail(
         to=email,
         from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"Your RealMindX Bookshop order has been received: {order.order_reference}",
+        subject=f"Your RealMindX Bookshop order has been placed: {order.order_reference}",
         html=bookshop_email_shell(
             "Your order has been placed!",
             f"""
             <p>Hello {escape(first_name)},</p>
-            <p>Thank you for shopping with <strong>RealMindX Bookshop</strong>. We&rsquo;ve received your
-            order and our team is reviewing it now.</p>
+            <p>Thank you for shopping with <strong>RealMindX Bookshop</strong>. Your order has been placed successfully and our team is reviewing it now.</p>
 
             {customer_order_meta_html}
             {order_summary_html}
 
-            <p>Our team will contact you shortly to ensure you receive your order.</p>
+            <p>Our team will contact you within <strong>1 business day</strong> to ensure you receive your order.</p>
             <p>If you need anything sooner, reply to this email or call us and we&rsquo;ll help right away.</p>
             <p>We appreciate your trust in RealMindX and look forward to getting your books to you!</p>
             """,
             cta_label="Visit the Bookshop",
             cta_url=current_app.config.get("BOOKSHOP_URL", ""),
             eyebrow="RealMindX Bookshop",
-            preheader=f"Order {order.order_reference} received. We will be in touch within 24 hours.",
+            preheader=f"Order {order.order_reference} placed. We will be in touch within 1 business day.",
         ),
     ))
 
@@ -513,7 +564,7 @@ def paystack_webhook():
             order.payment_provider = "paystack"
             order.payment_status = "paid"
             order.paid_at = datetime.now(timezone.utc)
-            if order.status in {"new", "received"}:
+            if normalize_order_status(order.status) == "new" or str(order.status or "").strip().lower() == "received":
                 order.status = "confirmed"
             audit("paystack_payment_confirmed", "order", order.id, {
                 "order_reference": order.order_reference,

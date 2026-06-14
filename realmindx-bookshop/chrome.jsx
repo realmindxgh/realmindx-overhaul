@@ -5,6 +5,7 @@ import logoWhite from '../realmindx-site/assets/logo-white.png';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { trackCartAction, trackSearchClick, trackWishlistAction } from '../src/lib/analytics.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
+import { usePublicSettings } from '../src/lib/siteContent.js';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute, productHref, productPathSegment } from './urls.js';
 
@@ -512,55 +513,78 @@ const Navbar = ({ route, navigate }) => {
 };
 
 // ---------- Footer ----------
-const Footer = ({ navigate }) => (
-  <footer className="bs-footer">
-    <div className="bs-container">
-      <div className="bs-footer-grid">
-        <div>
-          <div className="bs-footer-logo"><img src={logoWhite} alt="RealMindX Bookshop" /></div>
-          <p className="bs-footer-tag">Learning materials for every Ghanaian student.</p>
-          <div className="bs-footer-socials">
-            <a href="https://wa.link/q5rjtp" target="_blank" rel="noopener" aria-label="WhatsApp"><Icon name="wa" size={17} /></a>
-            <a href="https://web.facebook.com/profile.php?id=61566941171883" target="_blank" rel="noopener" aria-label="Facebook"><Icon name="facebook" size={17} /></a>
-            <a href="https://www.instagram.com/realmindxgh/" target="_blank" rel="noopener" aria-label="Instagram"><Icon name="instagram" size={17} /></a>
-            <a href="https://x.com/realmindxgh" target="_blank" rel="noopener" aria-label="X"><Icon name="x" size={17} /></a>
+const Footer = ({ navigate }) => {
+  const settings = usePublicSettings();
+  const phones = [
+    settings.contact_phone_1,
+    settings.contact_phone_2,
+    settings.contact_phone_3,
+  ].filter(Boolean);
+
+  return (
+    <footer className="bs-footer">
+      <div className="bs-container">
+        <div className="bs-footer-grid">
+          <div>
+            <div className="bs-footer-logo"><img src={logoWhite} alt="RealMindX Bookshop" /></div>
+            <p className="bs-footer-tag">Learning materials for every Ghanaian student.</p>
+            <div className="bs-footer-socials">
+              <a href="https://wa.link/q5rjtp" target="_blank" rel="noopener" aria-label="WhatsApp"><Icon name="wa" size={17} /></a>
+              <a href="https://web.facebook.com/profile.php?id=61566941171883" target="_blank" rel="noopener" aria-label="Facebook"><Icon name="facebook" size={17} /></a>
+              <a href="https://www.instagram.com/realmindxgh/" target="_blank" rel="noopener" aria-label="Instagram"><Icon name="instagram" size={17} /></a>
+              <a href="https://x.com/realmindxgh" target="_blank" rel="noopener" aria-label="X"><Icon name="x" size={17} /></a>
+            </div>
+          </div>
+          <div>
+            <h4>Quick Links</h4>
+            <div className="bs-footer-links">
+              <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
+              <a href={hrefForBrowse('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { taxonomy: 'curriculum' });}}>All Curricula</a>
+              <a href={hrefForRoute('track')} onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
+              <a href={hrefForRoute('about')} onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
+              <a href={hrefForRoute('contact')} onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>
+            </div>
+          </div>
+          <div>
+            <h4>Contact</h4>
+            <div className="bs-footer-contact">
+              <span><Icon name="pin" size={17} className="bs-ci" /> {settings.contact_address}</span>
+              <a href={`mailto:${settings.contact_email}`}><Icon name="mail" size={17} className="bs-ci" /> {settings.contact_email}</a>
+              {phones.map((phone, index) => (
+                <a
+                  key={phone}
+                  href={`tel:${String(phone).replace(/\s+/g, '')}`}
+                  style={index === 0 ? undefined : { marginLeft: 27 }}
+                >
+                  {index === 0 ? <Icon name="phone" size={17} className="bs-ci" /> : null}
+                  {phone}
+                </a>
+              ))}
+              {settings.working_hours_weekday ? (
+                <span><Icon name="clock" size={17} className="bs-ci" /> {settings.working_hours_weekday}</span>
+              ) : null}
+              {settings.working_hours_saturday ? (
+                <span style={{ marginLeft: 27 }}>{settings.working_hours_saturday}</span>
+              ) : null}
+            </div>
+          </div>
+          <div>
+            <h4>Legal</h4>
+            <div className="bs-footer-links">
+              <a href={hrefForRoute('privacy')} onClick={(e)=>{e.preventDefault();navigate('privacy');}}>Bookshop Privacy Policy</a>
+              <a href={hrefForRoute('terms')} onClick={(e)=>{e.preventDefault();navigate('terms');}}>Bookshop Terms</a>
+              <a href="https://schoolms.realmindxgh.com/">SchoolMS</a>
+              <a href="https://realmindxgh.com/donate">Donate</a>
+            </div>
           </div>
         </div>
-        <div>
-          <h4>Quick Links</h4>
-          <div className="bs-footer-links">
-            <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
-            <a href={hrefForBrowse('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { taxonomy: 'curriculum' });}}>All Curricula</a>
-            <a href={hrefForRoute('track')} onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
-            <a href={hrefForRoute('about')} onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
-            <a href={hrefForRoute('contact')} onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>
-          </div>
-        </div>
-        <div>
-          <h4>Contact</h4>
-          <div className="bs-footer-contact">
-            <span><Icon name="pin" size={17} className="bs-ci" /> Dome Pillar 2, Accra, Ghana</span>
-            <a href="mailto:info@realmindxgh.com"><Icon name="mail" size={17} className="bs-ci" /> info@realmindxgh.com</a>
-            <span><Icon name="phone" size={17} className="bs-ci" /> +233 55 803 9190</span>
-            <span style={{ marginLeft: 27 }}>+233 55 452 9493</span>
-          </div>
-        </div>
-        <div>
-          <h4>Legal</h4>
-          <div className="bs-footer-links">
-            <a href={hrefForRoute('privacy')} onClick={(e)=>{e.preventDefault();navigate('privacy');}}>Bookshop Privacy Policy</a>
-            <a href={hrefForRoute('terms')} onClick={(e)=>{e.preventDefault();navigate('terms');}}>Bookshop Terms</a>
-            <a href="https://schoolms.realmindxgh.com/">SchoolMS</a>
-            <a href="https://realmindxgh.com/donate">Donate</a>
-          </div>
+        <div className="bs-footer-bottom">
+          &copy; {new Date().getFullYear()} RealMindX Education Limited. All rights reserved.
         </div>
       </div>
-      <div className="bs-footer-bottom">
-        &copy; {new Date().getFullYear()} RealMindX Education Limited. All rights reserved.
-      </div>
-    </div>
-  </footer>
-);
+    </footer>
+  );
+};
 
 // ---------- Floating WhatsApp ----------
 const WHATSAPP_HIDDEN_ROUTES = new Set(['cart', 'checkout', 'track', 'login', 'signup']);

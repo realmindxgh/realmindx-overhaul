@@ -16,6 +16,7 @@ import {
   getDemoSession,
   clearDemoSession,
 } from './demoAccounts.js';
+import { dashboardPathForRole } from './sessionRoutes.js';
 
 const initialsFrom = (first = '', last = '') =>
   ((first[0] || '') + (last[0] || '')).toUpperCase() || 'RX';
@@ -37,6 +38,7 @@ const toSession = (user = {}, roleHint = 'user') => {
     avatarUrl,
     permissions: Array.isArray(user.permissions) ? user.permissions : [],
     directPermissions: Array.isArray(user.direct_permissions) ? user.direct_permissions : [],
+    mustChangePassword: Boolean(user.must_change_password ?? user.mustChangePassword),
   };
 };
 
@@ -60,6 +62,8 @@ const invalidCredentials = (role) => {
   const err = new Error(
     role === 'admin'
       ? 'Invalid admin credentials for this local build.'
+      : role === 'staff'
+        ? 'Invalid staff credentials for this portal.'
       : 'Invalid email or password for this local build.',
   );
   err.code = 'invalid_credentials';
@@ -71,8 +75,12 @@ export const signIn = async ({ email, password, role = 'user', remember = false 
   if (isApiMode()) {
     const { user } = await api.login({ email, password, remember });
     const actualRole = user?.role?.name || user?.role;
-    const adminRoles = new Set(['admin', 'staff']);
-    if (role === 'admin' && !adminRoles.has(actualRole)) {
+    if (role === 'admin' && actualRole !== 'admin') {
+      try { await api.logout(); } catch { /* ignore cleanup errors */ }
+      clearDemoSession();
+      throw invalidCredentials(role);
+    }
+    if (role === 'staff' && actualRole !== 'staff') {
       try { await api.logout(); } catch { /* ignore cleanup errors */ }
       clearDemoSession();
       throw invalidCredentials(role);
@@ -138,3 +146,4 @@ export const signOut = async () => {
 };
 
 export const currentSession = getDemoSession;
+export const dashboardRouteForSession = dashboardPathForRole;

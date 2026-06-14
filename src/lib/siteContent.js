@@ -354,6 +354,7 @@ export const usePublicNewsState = (limit = 3) => {
   return {
     items,
     loading: isApiMode() && apiNews === null && !failed,
+    failed,
   };
 };
 
@@ -480,4 +481,3 @@ export const renderTextWithLinks = (text) => {
 
   return hasMatches ? parts : text;
 };
-

@@ -74,7 +74,9 @@ DEFAULT_PERMISSIONS = [
             "productReviews": ["view", "edit", "delete"],
             "categories": ["view", "create", "edit", "delete"],
             "flyers": ["view", "create", "edit", "delete"],
+            "priceAdjustment": ["view", "edit"],
             "orders": ["view", "create", "edit", "delete", "export"],
+            "orderReviews": ["view", "edit", "delete"],
             "services": ["view", "create", "edit", "delete"],
             "partners": ["view", "create", "edit", "delete"],
             "people": ["view", "create", "edit", "delete"],
@@ -91,6 +93,7 @@ DEFAULT_PERMISSIONS = [
             "settings": ["view", "create", "edit", "delete"],
             "admins": ["view", "create", "edit", "delete"],
             "staff": ["view", "create", "edit", "delete"],
+            "teachers": ["view", "edit", "export"],
             "auditLogs": ["view"],
         }.items()
         for action in actions

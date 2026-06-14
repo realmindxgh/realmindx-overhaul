@@ -14,12 +14,12 @@ import ContactPage from '../realmindx-site/pages/ContactPage.jsx';
 import JobsPage from '../realmindx-site/pages/JobsPage.jsx';
 import UserPortalPage from '../realmindx-site/pages/UserPortalPage.jsx';
 import AdminPortalPage from '../realmindx-site/pages/AdminPortalPage.jsx';
-import { AdminLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
+import { AdminLoginPage, StaffLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
 import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
 import { usePublicGalleryState, usePublicNewsState, usePublicServices, useSiteCopy, renderTextWithLinks } from './lib/siteContent.js';
 import { API_BASE, api, isApiMode } from './lib/apiClient.js';
-import { trackPageView } from './lib/analytics.js';
+import { trackNewsServiceClick, trackPageView } from './lib/analytics.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from './lib/head.js';
 import { newsPath, servicePath, SITE_BASE_URL, SITE_DEFAULT_IMAGE, slugify } from './lib/seoRoutes.js';
 
@@ -30,6 +30,7 @@ import { useIdleTimeout } from './lib/useIdleTimeout.js';
 import { IdleWarning } from './lib/IdleWarning.jsx';
 import { getDemoSession } from './lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from './lib/authClient.js';
+import { loginPathForRole } from './lib/sessionRoutes.js';
 import { flushQueuedToast, queueToast } from './lib/toast.js';
 
 
@@ -179,14 +180,26 @@ const newsAssetUrl = value => {
   }
 };
 
-const NewsArticleBody = ({ item }) => {
+const serviceSlugFromHref = (href) => {
+  if (!href || typeof window === 'undefined') return null;
+  try {
+    const url = new URL(href, window.location.origin);
+    const path = (url.pathname || '').replace(/\/+$/, '');
+    if (!path.startsWith('/services/')) return null;
+    return path.split('/services/')[1] || null;
+  } catch {
+    return null;
+  }
+};
+
+const NewsArticleBody = ({ item, onLinkClick }) => {
   const sections = Array.isArray(item.sections) ? item.sections : [];
   const introParagraphs = String(item.body || item.excerpt || '')
     .split(/\n\s*\n/)
     .map(paragraph => paragraph.trim())
     .filter(Boolean);
   return (
-    <div className="news-article-body">
+    <div className="news-article-body" onClick={onLinkClick}>
       {introParagraphs.map((paragraph, index) => <p key={`intro-${index}`}>{renderTextWithLinks(paragraph)}</p>)}
       {sections.map((section, index) => (
         <section className="news-article-section" key={section.id || `${item.id}-section-${index}`}>
@@ -237,6 +250,20 @@ const NewsPage = ({ articleSlug = null }) => {
   const selectedItem = articleSlug
     ? allItems.find(i => slugify(i.slug || i.id) === slugify(articleSlug) || slugify(String(i.id)) === slugify(articleSlug))
     : null;
+  const handleArticleLinkClick = React.useCallback((event) => {
+    const anchor = event.target.closest('a[href]');
+    if (!anchor || !selectedItem?.id) return;
+    const serviceId = serviceSlugFromHref(anchor.getAttribute('href'));
+    if (!serviceId) return;
+    trackNewsServiceClick({
+      newsId: selectedItem.id,
+      serviceId,
+      path: newsPath(selectedItem),
+      href: anchor.getAttribute('href'),
+      label: anchor.textContent?.trim() || 'Service link',
+      source: 'news_article_body',
+    });
+  }, [selectedItem]);
   const relatedItems = articleSlug && selectedItem
     ? allItems.filter(item => item.id !== selectedItem.id).slice(0, 3)
     : [];
@@ -283,7 +310,7 @@ const NewsPage = ({ articleSlug = null }) => {
               <p className="overline" style={{ marginTop:28 }}>{selectedItem.cat || 'Update'}{selectedItem.date ? ` · ${selectedItem.date}` : ''}</p>
               <h1 className="news-article-title">{selectedItem.title}</h1>
               {selectedItem.excerpt && <p className="news-article-lead">{selectedItem.excerpt}</p>}
-              <NewsArticleBody item={selectedItem} />
+              <NewsArticleBody item={selectedItem} onLinkClick={handleArticleLinkClick} />
               <div className="news-article-footer-ctas">
                 <Link to="/news" className="btn btn-primary">More News</Link>
                 <Link to="/" className="btn btn-navy">Visit Homepage</Link>
@@ -715,10 +742,10 @@ const RouteTitle = () => {
           },
           mainEntityOfPage: `${SITE_BASE_URL}${newsPath(article)}`,
         };
-      } else if (!newsState.loading) {
-        meta = {
-          title: 'Article Not Found | RealMindX News',
-          desc: 'That RealMindX news link does not match a currently published article.',
+        } else if (!newsState.loading && !newsState.failed) {
+          meta = {
+            title: 'Article Not Found | RealMindX News',
+            desc: 'That RealMindX news link does not match a currently published article.',
         };
         robots = 'noindex,follow';
       }
@@ -739,7 +766,7 @@ const RouteTitle = () => {
     setHeadMeta('twitter:image', image);
     setHeadLink('canonical', url);
     setStructuredData('route-seo', structuredData);
-  }, [location.pathname, newsState.items, newsState.loading, services]);
+  }, [location.pathname, newsState.failed, newsState.items, newsState.loading, services]);
   return null;
 };
 
@@ -768,7 +795,7 @@ const IdleGuard = () => {
   const isBookshopRoute = location.pathname.startsWith('/bookshop');
   // Only dashboards send the user to a login screen on sign-out; any other
   // page just reloads in place, now logged out, with a toast explaining why.
-  const isDashboardRoute = location.pathname.startsWith('/portal') || location.pathname.startsWith('/admin');
+  const isDashboardRoute = location.pathname.startsWith('/portal') || location.pathname.startsWith('/admin') || location.pathname.startsWith('/staff');
 
   React.useEffect(() => {
     const handler = () => setSession(getDemoSession());
@@ -776,8 +803,11 @@ const IdleGuard = () => {
     return () => window.removeEventListener('rmx-session-sync', handler);
   }, []);
 
-  const isAdmin = session?.role === 'admin' || session?.role === 'staff';
-  const loginUrl = isAdmin ? '/admin/login' : '/login';
+  const loginUrl = loginPathForRole(session?.role);
+  const idleMs = session?.role === 'staff' ? 5 * 60 * 1000 : 10 * 60 * 1000;
+  const timeoutMessage = session?.role === 'staff'
+    ? 'Your staff session expired after five idle minutes and the warning countdown finished.'
+    : 'You were signed out after 15 minutes of inactivity.';
 
   const signOutHere = async (message, { idle = false } = {}) => {
     await signOut();
@@ -791,7 +821,8 @@ const IdleGuard = () => {
 
   const { countdown, keepAlive } = useIdleTimeout({
     enabled: Boolean(session?.role) && !isBookshopRoute,
-    onTimeout: () => signOutHere('You were signed out after 15 minutes of inactivity.', { idle: true }),
+    idleMs,
+    onTimeout: () => signOutHere(timeoutMessage, { idle: true }),
   });
   return (
     <IdleWarning
@@ -897,8 +928,12 @@ const AppRoutes = () => {
 
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
-        <Route path="/admin/dashboard" element={<AdminPortalPage />} />
-        <Route path="/admin/*" element={<AdminPortalPage />} />
+        <Route path="/admin/dashboard" element={<AdminPortalPage portalRole="admin" />} />
+        <Route path="/admin/*" element={<AdminPortalPage portalRole="admin" />} />
+        <Route path="/staff" element={<Navigate to="/staff/dashboard" replace />} />
+        <Route path="/staff/login" element={<StaffLoginPage />} />
+        <Route path="/staff/dashboard" element={<AdminPortalPage portalRole="staff" />} />
+        <Route path="/staff/*" element={<AdminPortalPage portalRole="staff" />} />
 
         <Route path="/bookshop/*" element={<BookshopApp />} />
 
