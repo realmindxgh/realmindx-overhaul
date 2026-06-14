@@ -432,7 +432,7 @@ const Navbar = ({ route, navigate }) => {
 
             <div className="bs-nav-cats" ref={catsRef}>
               <button className="bs-nav-cats-btn" onClick={() => setCatsOpen(o => !o)} aria-expanded={catsOpen}>
-                <span>Categories</span> <Icon name="chevDown" size={15} />
+                <span>Quick Search</span> <Icon name="chevDown" size={15} />
               </button>
               <div className={`bs-cats-menu${catsOpen ? ' open' : ''}`}>
                 <a className="bs-cats-menu-entry" href={hrefForRoute('shop')} onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop'); }}>

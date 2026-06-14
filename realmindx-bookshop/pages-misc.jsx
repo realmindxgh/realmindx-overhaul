@@ -1149,7 +1149,7 @@ const OrdersPage = ({ navigate }) => {
   );
 };
 
-const ORDER_REVIEW_SCORES = Array.from({ length: 11 }, (_, index) => index);
+const ORDER_REVIEW_SCORES = Array.from({ length: 10 }, (_, index) => index + 1);
 
 const OrderReviewPage = ({ navigate }) => {
   const session = useSession();
@@ -1160,7 +1160,7 @@ const OrderReviewPage = ({ navigate }) => {
   const [form, setForm] = React.useState({
     orderReference: initialSearch.get('ref') || '',
     email: session?.email || '',
-    score: Number.isFinite(initialScore) && initialScore >= 0 && initialScore <= 10 ? initialScore : '',
+    score: Number.isFinite(initialScore) && initialScore >= 1 && initialScore <= 10 ? initialScore : '',
     comment: '',
   });
   const [submitting, setSubmitting] = React.useState(false);
@@ -1186,8 +1186,8 @@ const OrderReviewPage = ({ navigate }) => {
       setError('Enter the email used for the order.');
       return;
     }
-    if (form.score === '' || Number(form.score) < 0 || Number(form.score) > 10) {
-      setError('Choose a recommendation score from 0 to 10.');
+    if (form.score === '' || Number(form.score) < 1 || Number(form.score) > 10) {
+      setError('Choose a recommendation score from 1 to 10.');
       return;
     }
     setSubmitting(true);
@@ -1256,7 +1256,7 @@ const OrderReviewPage = ({ navigate }) => {
 
             <div className="bs-field" style={{ marginTop: 18 }}>
               <label>Your recommendation score</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(48px, 1fr))', gap: 10, marginTop: 12 }}>
+              <div className="bs-order-review-scale">
                 {ORDER_REVIEW_SCORES.map((score) => {
                   const active = Number(form.score) === score;
                   return (
@@ -1265,14 +1265,14 @@ const OrderReviewPage = ({ navigate }) => {
                       type="button"
                       className={`bs-btn ${active ? 'bs-btn-navy' : 'bs-btn-outline-navy'}`}
                       onClick={() => setField('score', score)}
-                      style={{ minWidth: 0, padding: '12px 0' }}
+                      style={{ minWidth: 0 }}
                     >
                       {score}
                     </button>
                   );
                 })}
               </div>
-              <div className="bs-review-form-hint">0 = Not likely at all. 10 = Extremely likely.</div>
+              <div className="bs-review-form-hint">1 = Not likely at all. 10 = Extremely likely.</div>
             </div>
 
             <label className="bs-field" style={{ marginTop: 18 }}>

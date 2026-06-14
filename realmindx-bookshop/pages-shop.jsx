@@ -665,6 +665,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   const [visible, setVisible] = React.useState(BATCH);
   const [loading, setLoading] = React.useState(false);
   const [drawer, setDrawer] = React.useState(false);
+  const [browseQuery, setBrowseQuery] = React.useState('');
   const sentinelRef = React.useRef(null);
   const loadingRef = React.useRef(false);
 
@@ -785,6 +786,15 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     () => (browseGroup ? (taxonomies[browseGroup.key] || []) : []),
     [browseGroup, taxonomies],
   );
+  const filteredBrowseLinks = React.useMemo(() => {
+    const query = browseQuery.trim().toLowerCase();
+    if (!query) return browseLinks;
+    return browseLinks.filter((item) => item.label.toLowerCase().includes(query));
+  }, [browseLinks, browseQuery]);
+
+  React.useEffect(() => {
+    setBrowseQuery('');
+  }, [initialBrowse.taxonomy]);
 
   if (catalogLoading && books.length === 0) {
     return (
@@ -834,24 +844,39 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               <h1 className="bs-h2">{browseIntro.title}</h1>
               <p>{browseIntro.body}</p>
               {!hasScopedBrowse && browseLinks.length > 0 && (
-                <div className="bs-browse-link-grid">
-                  {browseLinks.map((item) => {
-                    const active = item.id === initialBrowse.value;
-                    return (
-                      <a
-                        key={`${initialBrowse.taxonomy}-${item.id}`}
-                        className={`bs-browse-link-card${active ? ' active' : ''}`}
-                        href={hrefForRoute('shop', { taxonomy: initialBrowse.taxonomy, value: item.id })}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          navigate('shop', { taxonomy: initialBrowse.taxonomy, value: item.id });
-                        }}
-                      >
-                        <span>{item.label}</span>
-                        <strong>{item.count}</strong>
-                      </a>
-                    );
-                  })}
+                <div className="bs-browse-picker">
+                  <label className="bs-browse-filter">
+                    <Icon name="search" size={16} />
+                    <input
+                      type="search"
+                      value={browseQuery}
+                      onChange={(event) => setBrowseQuery(event.target.value)}
+                      placeholder={`Find a ${browseIntroHeading(initialBrowse.taxonomy).toLowerCase()}`}
+                      aria-label={`Find a ${browseIntroHeading(initialBrowse.taxonomy).toLowerCase()}`}
+                    />
+                  </label>
+                  <div className="bs-browse-link-grid">
+                    {filteredBrowseLinks.map((item) => {
+                      const active = item.id === initialBrowse.value;
+                      return (
+                        <a
+                          key={`${initialBrowse.taxonomy}-${item.id}`}
+                          className={`bs-browse-link-card${active ? ' active' : ''}`}
+                          href={hrefForRoute('shop', { taxonomy: initialBrowse.taxonomy, value: item.id })}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            navigate('shop', { taxonomy: initialBrowse.taxonomy, value: item.id });
+                          }}
+                        >
+                          <span>{item.label}</span>
+                          <strong>{item.count}</strong>
+                        </a>
+                      );
+                    })}
+                  </div>
+                  {filteredBrowseLinks.length === 0 && (
+                    <p className="bs-browse-empty">No matching options. Try a shorter search.</p>
+                  )}
                 </div>
               )}
               <div className="bs-category-intro-meta">

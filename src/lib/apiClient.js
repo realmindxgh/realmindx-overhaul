@@ -111,6 +111,7 @@ export const api = {
   initPaystackPayment: (orderId, callbackUrl) => apiFetch(`/orders/${orderId}/paystack/initialize`, { method: 'POST', body: { callback_url: callbackUrl } }),
   createProductReview: (productId, payload) => apiFetch(`/products/${productId}/reviews`, { method: 'POST', body: payload }),
   fetchProductReviews: (productId) => apiFetch(`/products/${productId}/reviews`),
+  fetchProductReviewEligibility: (productId) => apiFetch(`/products/${productId}/review-eligibility`),
   createOrderReview: (payload) => apiFetch('/orders/reviews', { method: 'POST', body: payload }),
 
   uploadUserFile: async (file, kind = 'document') => {

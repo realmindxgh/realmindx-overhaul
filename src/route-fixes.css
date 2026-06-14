@@ -4124,4 +4124,31 @@ html {
   transform: translateY(-1px);
 }
 
+/* Bookshop mobile width repair: 100vw includes browser scrollbar/inset width
+   on several mobile engines and made every page wider than the layout viewport. */
+@media (max-width: 768px) {
+  .bs,
+  .bs .bs-page {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .bs .bs-hero,
+  .bs .bs-category-marquee,
+  .bs .bs-gold-rule,
+  .bs .bs-info-hero,
+  .bs .bs-account-hero {
+    width: calc(100% + 36px) !important;
+    max-width: none !important;
+    margin-left: -18px !important;
+    margin-right: -18px !important;
+  }
+
+  .bs .bs-info-hero > .bs-container,
+  .bs .bs-account-hero > .bs-container {
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+  }
+}
+
 

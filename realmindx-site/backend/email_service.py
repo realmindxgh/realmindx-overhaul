@@ -178,12 +178,15 @@ def app_email_shell(
         cta = f"""
         <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px auto 8px;">
           <tr>
-            <td style="border-radius:8px;background:#ffcc01;">
+            <td class="email-cta-cell" bgcolor="#ffcc01"
+                style="border-radius:8px;background:#ffcc01;border:1px solid #e2b600;">
               <a href="{escape(cta_url, quote=True)}"
-                 style="display:inline-block;padding:14px 32px;color:#143670;font-weight:800;
+                 class="email-cta"
+                 style="display:inline-block;padding:14px 32px;background:#ffcc01;color:#143670!important;
+                        -webkit-text-fill-color:#143670!important;font-weight:800;
                         font-family:Arial,Helvetica,sans-serif;font-size:15px;
                         text-decoration:none;letter-spacing:.02em;border-radius:8px;">
-                {escape(cta_label)}
+                <span style="color:#143670!important;-webkit-text-fill-color:#143670!important;">{escape(cta_label)}</span>
               </a>
             </td>
           </tr>
@@ -209,6 +212,8 @@ def app_email_shell(
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="light only" />
+  <meta name="supported-color-schemes" content="light" />
   <title>{safe_title}</title>
   <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
   <style>
@@ -218,10 +223,16 @@ def app_email_shell(
       .email-header{{padding:24px 20px!important}}
       .email-body{{padding:24px 20px 20px!important;font-size:15px!important}}
       .email-footer{{padding:20px!important}}
+      .email-cta{{padding:13px 24px!important}}
     }}
+    :root{{color-scheme:light only;supported-color-schemes:light}}
+    .email-cta-cell,.email-cta{{background:#ffcc01!important}}
+    .email-cta,.email-cta span{{color:#143670!important;-webkit-text-fill-color:#143670!important}}
+    [data-ogsc] .email-cta-cell,[data-ogsb] .email-cta-cell{{background:#ffcc01!important}}
+    [data-ogsc] .email-cta,[data-ogsc] .email-cta span{{color:#143670!important;-webkit-text-fill-color:#143670!important}}
   </style>
 </head>
-<body style="margin:0;padding:0;background:#eef2f8;font-family:Arial,Helvetica,sans-serif;">
+<body style="margin:0;padding:0;background:#eef2f8;font-family:Arial,Helvetica,sans-serif;color-scheme:light only;">
   {preheader_block}
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
     <tr>
@@ -340,6 +351,7 @@ def bookshop_email_shell(
     bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop").rstrip("/")
     bookshop_origin = _url_origin(bookshop_url) or _url_origin(base_url) or bookshop_url
     logo_url = f"{bookshop_origin}/bookshop-logo.png"
+    email_icon_base = f"{bookshop_origin}/email-icons"
     contact = _email_contact_settings()
 
     if cta_url and not cta_url.startswith(("http://", "https://")):
@@ -350,12 +362,15 @@ def bookshop_email_shell(
         cta = f"""
         <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px auto 8px;">
           <tr>
-            <td style="border-radius:8px;background:#ffcc01;">
+            <td class="email-cta-cell" bgcolor="#ffcc01"
+                style="border-radius:8px;background:#ffcc01;border:1px solid #e2b600;">
               <a href="{escape(cta_url, quote=True)}"
-                 style="display:inline-block;padding:14px 32px;color:#143670;font-weight:800;
+                 class="email-cta"
+                 style="display:inline-block;padding:14px 32px;background:#ffcc01;color:#143670!important;
+                        -webkit-text-fill-color:#143670!important;font-weight:800;
                         font-family:Arial,Helvetica,sans-serif;font-size:15px;
                         text-decoration:none;letter-spacing:.02em;border-radius:8px;">
-                {escape(cta_label)}
+                <span style="color:#143670!important;-webkit-text-fill-color:#143670!important;">{escape(cta_label)}</span>
               </a>
             </td>
           </tr>
@@ -381,6 +396,8 @@ def bookshop_email_shell(
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="light only" />
+  <meta name="supported-color-schemes" content="light" />
   <title>{safe_title}</title>
   <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
   <style>
@@ -391,10 +408,16 @@ def bookshop_email_shell(
       .email-header img{{max-width:260px!important}}
       .email-body{{padding:24px 20px 20px!important;font-size:15px!important}}
       .email-footer{{padding:20px!important}}
+      .email-cta{{padding:13px 24px!important}}
     }}
+    :root{{color-scheme:light only;supported-color-schemes:light}}
+    .email-cta-cell,.email-cta{{background:#ffcc01!important}}
+    .email-cta,.email-cta span{{color:#143670!important;-webkit-text-fill-color:#143670!important}}
+    [data-ogsc] .email-cta-cell,[data-ogsb] .email-cta-cell{{background:#ffcc01!important}}
+    [data-ogsc] .email-cta,[data-ogsc] .email-cta span{{color:#143670!important;-webkit-text-fill-color:#143670!important}}
   </style>
 </head>
-<body style="margin:0;padding:0;background:#eef2f8;font-family:Arial,Helvetica,sans-serif;">
+<body class="email-body-root" style="margin:0;padding:0;background:#eef2f8;font-family:Arial,Helvetica,sans-serif;color-scheme:light only;">
   {preheader_block}
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
     <tr>
@@ -447,10 +470,7 @@ def bookshop_email_shell(
                    style="display:block;width:100%;max-width:220px;height:auto;margin:0 auto 16px;
                           border:0;outline:none;text-decoration:none;" />
               <p style="margin:0 0 6px;font-weight:800;color:#143670;font-size:14px;text-align:center;">
-                RealMindX Bookshop
-              </p>
-              <p style="margin:0 0 4px;color:#53657d;font-size:12px;text-align:center;">
-                Part of RealMindX Education Limited
+                RealMindX Education Limited
               </p>
               <p style="margin:0 0 8px;text-align:center;">{escape(contact["address"])}</p>
               <p style="margin:0 0 8px;text-align:center;">
@@ -466,15 +486,37 @@ def bookshop_email_shell(
                 {escape(contact["weekday_hours"])}<br/>
                 {escape(contact["saturday_hours"])}
               </p>
-              <p style="margin:0;text-align:center;">
+              <p style="margin:0 0 14px;text-align:center;white-space:nowrap;">
+                <a href="https://schoolms.realmindxgh.com/" style="color:#143670;text-decoration:none;">SchoolMS</a>
+                &nbsp;&middot;&nbsp;
                 <a href="{bookshop_url}" style="color:#143670;text-decoration:none;">Bookshop</a>
                 &nbsp;&middot;&nbsp;
-                <a href="{base_url}" style="color:#143670;text-decoration:none;">Main Site</a>
-                &nbsp;&middot;&nbsp;
-                <a href="https://web.facebook.com/profile.php?id=61566941171883" style="color:#143670;text-decoration:none;">Facebook</a>
-                &nbsp;&middot;&nbsp;
-                <a href="https://www.instagram.com/realmindxgh/" style="color:#143670;text-decoration:none;">Instagram</a>
+                <a href="{base_url}" style="color:#143670;text-decoration:none;">Our Website</a>
               </p>
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
+                <tr>
+                  <td style="padding:0 5px;">
+                    <a href="https://wa.link/q5rjtp" aria-label="WhatsApp" style="display:block;text-decoration:none;">
+                      <img src="{email_icon_base}/whatsapp.png" alt="WhatsApp" width="34" height="34" style="display:block;border:0;width:34px;height:34px;" />
+                    </a>
+                  </td>
+                  <td style="padding:0 5px;">
+                    <a href="https://web.facebook.com/profile.php?id=61566941171883" aria-label="Facebook" style="display:block;text-decoration:none;">
+                      <img src="{email_icon_base}/facebook.png" alt="Facebook" width="34" height="34" style="display:block;border:0;width:34px;height:34px;" />
+                    </a>
+                  </td>
+                  <td style="padding:0 5px;">
+                    <a href="https://www.instagram.com/realmindxgh/" aria-label="Instagram" style="display:block;text-decoration:none;">
+                      <img src="{email_icon_base}/instagram.png" alt="Instagram" width="34" height="34" style="display:block;border:0;width:34px;height:34px;" />
+                    </a>
+                  </td>
+                  <td style="padding:0 5px;">
+                    <a href="https://x.com/realmindxgh" aria-label="X" style="display:block;text-decoration:none;">
+                      <img src="{email_icon_base}/x.png" alt="X" width="34" height="34" style="display:block;border:0;width:34px;height:34px;" />
+                    </a>
+                  </td>
+                </tr>
+              </table>
               {footer_note_html}
             </td>
           </tr>

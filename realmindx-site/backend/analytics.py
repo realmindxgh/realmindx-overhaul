@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from .extensions import db
 from .models import AnalyticsEvent, AuditLog, ContactMessage, JobApplication, News, NewsletterSubscriber, Order, Product
+from .order_status import normalize_order_status
 
 
 SEARCH_HOSTS = {
@@ -238,18 +239,26 @@ def _location_from_headers():
     headers = request.headers
     country = (
         headers.get("CF-IPCountry")
+        or headers.get("CF-Country")
+        or headers.get("X-Country-Code")
+        or headers.get("X-Geo-Country")
         or headers.get("X-Vercel-IP-Country")
         or headers.get("CloudFront-Viewer-Country")
         or None
     )
     region = (
         headers.get("CF-Region")
+        or headers.get("CF-IPCountry-Region")
+        or headers.get("CF-Region-Code")
+        or headers.get("X-Geo-Region")
         or headers.get("X-Vercel-IP-Country-Region")
         or headers.get("CloudFront-Viewer-Country-Region")
         or None
     )
     city = (
         headers.get("CF-IPCity")
+        or headers.get("CF-City")
+        or headers.get("X-Geo-City")
         or headers.get("X-Vercel-IP-City")
         or headers.get("CloudFront-Viewer-City")
         or None
@@ -420,7 +429,7 @@ def _human_status(product):
     stock = str(product.stock_status or "").lower()
     if not product.is_active:
         return "Draft"
-    if stock == "out_of_stock" or int(product.quantity_available or 0) == 0:
+    if stock == "out_of_stock":
         return "Out of stock"
     return "Active"
 
@@ -433,7 +442,7 @@ def _blank_product_metrics(product):
         "category_id": product.category_id,
         "status": _human_status(product),
         "stock_status": product.stock_status,
-        "stock_quantity": int(product.quantity_available or 0),
+        "stock_quantity": int(product.quantity_available) if product.quantity_available is not None else None,
         "price": float(product.price or 0),
         "views": 0,
         "unique_viewers": set(),
@@ -469,7 +478,7 @@ def _blank_product_metrics(product):
         "previous_views": 0,
         "interest_delta": 0,
         "interest_delta_pct": 0.0,
-        "performance_status": "Dead stock",
+        "performance_status": "No activity yet",
     }
 
 
@@ -522,8 +531,13 @@ def _top_location(counter, fallback="Unknown"):
 def _label_product_performance(metric, thresholds):
     if metric["status"] == "Out of stock" and metric["search_impressions"] > 0:
         return "Needs restock"
-    if metric["views"] == 0 and metric["quantity_sold"] == 0:
-        return "Dead stock"
+    if (
+        metric["views"] == 0
+        and metric["quantity_sold"] == 0
+        and metric["search_impressions"] == 0
+        and metric["add_to_cart"] == 0
+    ):
+        return "No activity yet"
     if metric["views"] > thresholds["views_high"] and metric["quantity_sold"] == 0:
         return "Good views, poor sales"
     if metric["search_impressions"] > thresholds["search_high"] and metric["views"] <= thresholds["views_low"]:
@@ -536,7 +550,7 @@ def _label_product_performance(metric, thresholds):
         return "Strong seller"
     if metric["views"] > thresholds["views_low"] and metric["search_clicks"] == 0:
         return "Low visibility"
-    return "Low visibility" if metric["views"] < thresholds["views_low"] else "High demand"
+    return "Low visibility" if metric["views"] < thresholds["views_low"] else "Steady interest"
 
 
 def _analytics_orders(start, end):
@@ -560,11 +574,19 @@ def _analytics_events(start, end, *, event_types=None, product_id=None):
     return query.order_by(AnalyticsEvent.created_at.asc()).all()
 
 
-def _successful_orders(orders):
+def _valid_orders(orders):
     return [
         order for order in orders
         if (order.status or "").lower() not in {"cancelled", "canceled", "deleted"}
         and (order.payment_status or "").lower() != "failed"
+    ]
+
+
+def _successful_orders(orders):
+    return [
+        order for order in _valid_orders(orders)
+        if (order.payment_status or "").lower() == "paid"
+        or normalize_order_status(order.status) == "complete"
     ]
 
 
@@ -603,7 +625,8 @@ def build_analytics_dashboard(range_info):
         ],
     )
     previous_view_events = _analytics_events(compare_start, compare_end, event_types=["product_view"])
-    current_orders = _successful_orders(_analytics_orders(start, end))
+    current_orders = _valid_orders(_analytics_orders(start, end))
+    completed_sales = _successful_orders(current_orders)
 
     page_events = [event for event in current_events if event.event_type == "page_view"]
     search_events = [event for event in current_events if event.event_type == "search"]
@@ -693,12 +716,9 @@ def build_analytics_dashboard(range_info):
                 if event.traffic_source:
                     metric["traffic_sources"][event.traffic_source] += 1
                 metric["devices"][event.device_type or UNKNOWN_LABEL] += 1
-                if event.country:
-                    metric["countries"][event.country] += 1
-                if event.region:
-                    metric["regions"][event.region] += 1
-                if event.city:
-                    metric["cities"][event.city] += 1
+                metric["countries"][event.country or UNKNOWN_LABEL] += 1
+                metric["regions"][event.region or UNKNOWN_LABEL] += 1
+                metric["cities"][event.city or UNKNOWN_LABEL] += 1
                 if not metric["last_view_at"] or event.created_at > metric["last_view_at"]:
                     metric["last_view_at"] = event.created_at
             elif event.event_type == "cart_add":
@@ -829,6 +849,8 @@ def build_analytics_dashboard(range_info):
     for order in current_orders:
         if order.analytics_session_key:
             purchasing_sessions.add(order.analytics_session_key)
+
+    for order in completed_sales:
         order_day = order.created_at.date()
         for item in order.items:
             if item.product_id not in product_metrics:
@@ -915,8 +937,9 @@ def build_analytics_dashboard(range_info):
     unique_visitors = len({event.visitor_key for event in page_events if event.visitor_key})
     total_page_views = len(page_events)
     order_count = len(current_orders)
-    total_revenue = round(sum(float(order.total_amount or 0) for order in current_orders), 2)
-    average_order_value = round(total_revenue / order_count, 2) if order_count else 0.0
+    completed_order_count = len(completed_sales)
+    total_revenue = round(sum(float(order.total_amount or 0) for order in completed_sales), 2)
+    average_order_value = round(total_revenue / completed_order_count, 2) if completed_order_count else 0.0
     conversion_rate = round((order_count / total_visits) * 100, 1) if total_visits else 0.0
     abandoned_sessions = len(all_cart_sessions - purchasing_sessions)
 
@@ -1089,9 +1112,9 @@ def build_analytics_dashboard(range_info):
             "device_breakdown": _counter_rows(session_devices, limit=6),
             "browser_breakdown": _counter_rows(session_browsers, limit=8),
             "locations": {
-                "countries": _counter_rows(session_countries, limit=8),
-                "regions": _counter_rows(session_regions, limit=8),
-                "cities": _counter_rows(session_cities, limit=8),
+                "countries": _counter_rows(session_countries, limit=8, include_unknown=True),
+                "regions": _counter_rows(session_regions, limit=8, include_unknown=True),
+                "cities": _counter_rows(session_cities, limit=8, include_unknown=True),
             },
         },
         "bookshop": {
@@ -1229,12 +1252,9 @@ def build_product_detail(product_id, range_info):
             metric["daily_views"][day] += 1
             metric["traffic_sources"][event.traffic_source or "Direct"] += 1
             metric["devices"][event.device_type or UNKNOWN_LABEL] += 1
-            if event.country:
-                metric["countries"][event.country] += 1
-            if event.region:
-                metric["regions"][event.region] += 1
-            if event.city:
-                metric["cities"][event.city] += 1
+            metric["countries"][event.country or UNKNOWN_LABEL] += 1
+            metric["regions"][event.region or UNKNOWN_LABEL] += 1
+            metric["cities"][event.city or UNKNOWN_LABEL] += 1
             metric["last_view_at"] = max(metric["last_view_at"], event.created_at) if metric["last_view_at"] else event.created_at
         elif event.event_type == "cart_add":
             quantity = max(1, int(event.quantity or 1))
@@ -1299,7 +1319,7 @@ def build_product_detail(product_id, range_info):
             "name": product.name,
             "category": product.category.name if product.category else "General",
             "status": _human_status(product),
-            "stock_quantity": int(product.quantity_available or 0),
+            "stock_quantity": int(product.quantity_available) if product.quantity_available is not None else None,
             "price": float(product.price or 0),
             "stock_status": product.stock_status,
         },
@@ -1326,9 +1346,9 @@ def build_product_detail(product_id, range_info):
             "traffic_sources": _counter_rows(metric["traffic_sources"], limit=8),
             "devices": _counter_rows(metric["devices"], limit=6),
             "locations": {
-                "countries": _counter_rows(metric["countries"], limit=8),
-                "regions": _counter_rows(metric["regions"], limit=8),
-                "cities": _counter_rows(metric["cities"], limit=8),
+                "countries": _counter_rows(metric["countries"], limit=8, include_unknown=True),
+                "regions": _counter_rows(metric["regions"], limit=8, include_unknown=True),
+                "cities": _counter_rows(metric["cities"], limit=8, include_unknown=True),
             },
             "search_terms": [
                 {"term": term, "clicks": clicks, "purchases": search_purchase_terms.get(term, 0)}

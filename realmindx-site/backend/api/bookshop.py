@@ -153,7 +153,55 @@ def list_product_reviews(product_id):
     return jsonify(items=[product_review_json(review) for review in reviews])
 
 
+def _product_review_eligibility(product_id, user_id):
+    orders = (
+        Order.query
+        .join(OrderItem, OrderItem.order_id == Order.id)
+        .filter(
+            Order.user_id == user_id,
+            OrderItem.product_id == product_id,
+        )
+        .order_by(Order.created_at.desc())
+        .all()
+    )
+    completed_orders = [
+        order for order in orders
+        if normalize_order_status(order.status) == "complete"
+    ]
+    if not completed_orders:
+        return None, False
+
+    reviewed_order_ids = {
+        row.order_id
+        for row in ProductReview.query.filter(
+            ProductReview.product_id == product_id,
+            ProductReview.order_id.in_([order.id for order in completed_orders]),
+        ).all()
+    }
+    eligible_order = next(
+        (order for order in completed_orders if order.id not in reviewed_order_ids),
+        None,
+    )
+    return eligible_order, bool(reviewed_order_ids)
+
+
+@bookshop_bp.get("/products/<int:product_id>/review-eligibility")
+@login_required
+def product_review_eligibility(product_id):
+    product = db.get_or_404(Product, product_id)
+    if not product.is_active:
+        return jsonify(error="Product not available."), 404
+
+    order, already_reviewed = _product_review_eligibility(product.id, current_user.id)
+    return jsonify(
+        eligible=bool(order),
+        already_reviewed=already_reviewed and not order,
+        order_reference=order.order_reference if order else None,
+    )
+
+
 @bookshop_bp.post("/products/<int:product_id>/reviews")
+@login_required
 @limiter.limit("10/hour")
 def create_product_review(product_id):
     product = db.get_or_404(Product, product_id)
@@ -161,29 +209,23 @@ def create_product_review(product_id):
         return jsonify(error="Product not available."), 404
     payload = request.get_json(silent=True) or {}
     try:
-        email = clean_email(payload.get("email"))
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
-    customer_name = (payload.get("customer_name") or payload.get("name") or "").strip()
-    if not customer_name:
-        return jsonify(error="Name is required."), 400
-    try:
         rating = int(payload.get("rating") or 0)
     except (TypeError, ValueError):
         rating = 0
     if rating < 1 or rating > 5:
         return jsonify(error="Rating must be between 1 and 5."), 400
 
-    order = None
-    order_reference = (payload.get("order_reference") or "").strip()
-    if order_reference:
-        order = Order.query.filter_by(order_reference=order_reference, email=email).first()
+    order, already_reviewed = _product_review_eligibility(product.id, current_user.id)
+    if not order:
+        if already_reviewed:
+            return jsonify(error="You have already reviewed this product purchase."), 409
+        return jsonify(error="Only customers with a completed order for this product can leave a review."), 403
 
     review = ProductReview(
         product=product,
         order=order,
-        customer_name=customer_name,
-        email=email,
+        customer_name=current_user.full_name,
+        email=current_user.email,
         rating=rating,
         title=(payload.get("title") or "").strip() or None,
         comment=(payload.get("comment") or "").strip() or None,
@@ -208,9 +250,9 @@ def create_order_review():
     try:
         score = int(payload.get("score"))
     except (TypeError, ValueError):
-        return jsonify(error="Choose a recommendation score between 0 and 10."), 400
-    if score < 0 or score > 10:
-        return jsonify(error="Recommendation score must be between 0 and 10."), 400
+        return jsonify(error="Choose a recommendation score between 1 and 10."), 400
+    if score < 1 or score > 10:
+        return jsonify(error="Recommendation score must be between 1 and 10."), 400
 
     order = Order.query.filter_by(order_reference=order_reference, email=email).first()
     if not order:
@@ -465,9 +507,9 @@ def create_order():
             {customer_order_meta_html}
             {order_summary_html}
 
-            <p>Our team will contact you within <strong>1 business day</strong> to ensure you receive your order.</p>
-            <p>If you need anything sooner, reply to this email or call us and we&rsquo;ll help right away.</p>
-            <p>We appreciate your trust in RealMindX and look forward to getting your books to you!</p>
+            <p>Our team will contact you within <strong>1 business day</strong> to confirm your order.</p>
+            <p>If you need anything sooner, contact us on any of the channels below and we&rsquo;ll help right away.</p>
+            <p>We appreciate your trust in RealMindX and look forward to fulfilling your order.</p>
             """,
             cta_label="Visit the Bookshop",
             cta_url=current_app.config.get("BOOKSHOP_URL", ""),

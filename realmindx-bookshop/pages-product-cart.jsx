@@ -35,12 +35,11 @@ const QtyStepper = ({ qty, setQty, sm = false }) => (
   </div>
 );
 
-// Customer review submission. POSTs to the public reviews endpoint; the
-// review is created as status='pending' and only shows once admin approves
-// it, so on success we explain the moderation step instead of appending the
-// review to the list. Only rendered for real backend products (numeric id).
+// Only customers with a completed order for this product see this form.
+// Identity and verified-purchase status come from the signed-in account and
+// matching order on the backend, never from customer-entered claims.
 const ReviewForm = ({ productId }) => {
-  const [form, setForm] = React.useState({ rating: 0, name: '', email: '', title: '', comment: '', order_reference: '' });
+  const [form, setForm] = React.useState({ rating: 0, title: '', comment: '' });
   const [hoverStar, setHoverStar] = React.useState(0);
   const [errors, setErrors] = React.useState({});
   const [apiError, setApiError] = React.useState('');
@@ -56,20 +55,15 @@ const ReviewForm = ({ productId }) => {
     e.preventDefault();
     const next = {};
     if (!form.rating) next.rating = 'Choose a star rating.';
-    if (!form.name.trim()) next.name = 'Your name is required.';
-    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) next.email = 'Enter a valid email address.';
     setErrors(next);
     if (Object.keys(next).length) return;
     setBusy(true);
     setApiError('');
     try {
       await api.createProductReview(productId, {
-        name: form.name.trim(),
-        email: form.email.trim(),
         rating: form.rating,
         title: form.title.trim(),
         comment: form.comment.trim(),
-        order_reference: form.order_reference.trim(),
       });
       setDone(true);
     } catch (err) {
@@ -99,7 +93,7 @@ const ReviewForm = ({ productId }) => {
   return (
     <form className="bs-review-form" id="write-review" onSubmit={submit} noValidate>
       <h3 className="bs-review-form-title">Write a review</h3>
-      <p className="bs-review-form-sub">Bought this product? Tell other parents, teachers, and schools what you think.</p>
+      <p className="bs-review-form-sub">Share your experience with this verified purchase.</p>
 
       <div className={`bs-field${errors.rating ? ' err' : ''}`}>
         <label>Your rating</label>
@@ -118,19 +112,6 @@ const ReviewForm = ({ productId }) => {
         {errors.rating && <div className="bs-field-error">{errors.rating}</div>}
       </div>
 
-      <div className="bs-field-row">
-        <div className={`bs-field${errors.name ? ' err' : ''}`}>
-          <label htmlFor="rv-name">Name</label>
-          <input id="rv-name" value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Ama Mensah" autoComplete="name" />
-          {errors.name && <div className="bs-field-error">{errors.name}</div>}
-        </div>
-        <div className={`bs-field${errors.email ? ' err' : ''}`}>
-          <label htmlFor="rv-email">Email</label>
-          <input id="rv-email" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="you@example.com" autoComplete="email" />
-          {errors.email && <div className="bs-field-error">{errors.email}</div>}
-        </div>
-      </div>
-
       <div className="bs-field">
         <label htmlFor="rv-title">Review title <span className="bs-optional">(optional)</span></label>
         <input id="rv-title" value={form.title} onChange={e => set('title', e.target.value)} placeholder="Sum it up in a few words" />
@@ -141,19 +122,13 @@ const ReviewForm = ({ productId }) => {
         <textarea id="rv-comment" rows={4} value={form.comment} onChange={e => set('comment', e.target.value)} placeholder="What did you like? How is the quality? Would you recommend it?" />
       </div>
 
-      <div className="bs-field">
-        <label htmlFor="rv-order">Order reference <span className="bs-optional">(optional)</span></label>
-        <input id="rv-order" value={form.order_reference} onChange={e => set('order_reference', e.target.value)} placeholder="e.g. RMX-A1B2C3" />
-        <div className="bs-review-form-hint">If it matches an order placed with the email above, your review gets a "Verified purchase" tag.</div>
-      </div>
-
       {apiError && <div className="bs-field-error" role="alert" style={{ marginBottom: 12 }}>{apiError}</div>}
 
       <button type="submit" className="bs-btn bs-btn-gold" disabled={busy}>
         {busy ? 'Submitting...' : 'Submit Review'}
       </button>
       <div className="bs-review-form-hint" style={{ marginTop: 10 }}>
-        Your email is never shown publicly. Reviews appear after moderation.
+        Your review will be marked as a verified purchase after moderation. Your email is never shown publicly.
       </div>
     </form>
   );
@@ -188,15 +163,36 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
   // Approved reviews from the backend. Demo fallback books carry non-numeric
   // ids ('b1') and have no backend rows — they just show the empty state and
   // no submission form (there is no product row to attach the review to).
-  const canReview = isApiMode() && /^\d+$/.test(String(book?.id ?? ''));
+  const hasBackendProduct = isApiMode() && /^\d+$/.test(String(book?.id ?? ''));
   const [productReviews, setProductReviews] = React.useState([]);
+  const [reviewEligibility, setReviewEligibility] = React.useState({
+    loading: false,
+    eligible: false,
+    alreadyReviewed: false,
+  });
   React.useEffect(() => {
     setProductReviews([]);
+    setReviewEligibility({ loading: false, eligible: false, alreadyReviewed: false });
     if (!isApiMode() || !/^\d+$/.test(String(book?.id ?? ''))) return undefined;
     let alive = true;
     api.fetchProductReviews(book.id)
       .then(data => { if (alive) setProductReviews(data.items || []); })
       .catch(() => {});
+    if (isLoggedIn()) {
+      setReviewEligibility({ loading: true, eligible: false, alreadyReviewed: false });
+      api.fetchProductReviewEligibility(book.id)
+        .then(data => {
+          if (!alive) return;
+          setReviewEligibility({
+            loading: false,
+            eligible: Boolean(data.eligible),
+            alreadyReviewed: Boolean(data.already_reviewed),
+          });
+        })
+        .catch(() => {
+          if (alive) setReviewEligibility({ loading: false, eligible: false, alreadyReviewed: false });
+        });
+    }
     return () => { alive = false; };
   }, [book?.id]);
 
@@ -391,7 +387,13 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
                 <p className="bs-review-body">Buyer reviews will appear here after customers rate this product and admin approves the review.</p>
               </div>
             )}
-            {canReview && <ReviewForm key={book.id} productId={book.id} />}
+            {hasBackendProduct && reviewEligibility.eligible && <ReviewForm key={book.id} productId={book.id} />}
+            {hasBackendProduct && isLoggedIn() && reviewEligibility.alreadyReviewed && (
+              <div className="bs-review-eligibility-note">
+                <Icon name="check" size={17} />
+                You have already submitted a review for this product purchase.
+              </div>
+            )}
           </div>
         </div>
       </section>

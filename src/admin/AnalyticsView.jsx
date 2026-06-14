@@ -114,7 +114,10 @@ const lensPredicate = (lens, item) => {
     case 'no_sales':
       return item.quantity_sold === 0;
     case 'needs_restock':
-      return (item.status === 'Out of stock' || item.stock_quantity <= 5) && (item.search_impressions > 0 || item.views > 0);
+      return (
+        item.status === 'Out of stock'
+        || (item.stock_quantity != null && item.stock_quantity <= 5)
+      ) && (item.search_impressions > 0 || item.views > 0);
     case 'gaining_interest':
       return item.interest_delta > 0;
     default:
@@ -717,13 +720,8 @@ const AnalyticsView = ({ session }) => {
       <header className="analytics-hero">
         <div className="analytics-hero-copy">
           <span className="analytics-eyebrow">Admin analytics</span>
-          <h2>Visitor behaviour, product demand, service interest, and search clarity</h2>
+          <h2>Website and bookshop analytics</h2>
           <p>{payload?.privacy?.notice}</p>
-          <div className="analytics-chip-row">
-            <span>Anonymous visitor IDs</span>
-            <span>Approximate location only</span>
-            <span>Admin-only exports</span>
-          </div>
         </div>
         <div className="analytics-toolbar">
           <div className="analytics-range-picker">
@@ -845,7 +843,7 @@ const AnalyticsView = ({ session }) => {
           </div>
 
           <section className="analytics-panel">
-            <SectionHeader title="Location summary" body="Approximate country, region, and city only. Raw IP addresses remain outside these normal reports." />
+            <SectionHeader title="Location summary" body="Approximate location from available proxy headers. Visits without location data remain visible as Unknown so totals reconcile." />
             <div className="analytics-mini-columns">
               <div>
                 <h4>Countries</h4>

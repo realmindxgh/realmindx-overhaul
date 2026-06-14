@@ -461,7 +461,11 @@ def _normalise_import_row(row):
         "short_description": pick("short_description", "description", "summary"),
         "full_description": pick("full_description", "details", "body"),
         "stock_status": stock or "in_stock",
-        "quantity_available": int(_decimalish(pick("quantity_available", "quantity", "qty"), 0) or 0),
+        "quantity_available": (
+            int(_decimalish(pick("quantity_available", "quantity", "qty")))
+            if pick("quantity_available", "quantity", "qty") not in (None, "")
+            else None
+        ),
         "subject": pick("subject"),
         "level": pick("level", "class", "grade"),
         "curriculum": pick("curriculum", "curriculum_name", "syllabus"),
@@ -2100,26 +2104,24 @@ def _send_order_status_email(order, status, cancel_reason=""):
     """
     order_summary_html = bookshop_order_summary_table(order)
     feedback_url = f"{bookshop_url}/review?ref={escape(ref, quote=True)}"
-    feedback_rows = []
-    for group in (range(0, 6), range(6, 11)):
-        feedback_rows.append(
-            "<tr>"
-            + "".join(
-                f'<td style="padding:0 4px 8px;"><a href="{feedback_url}&score={score}" '
-                f'style="display:inline-block;min-width:34px;padding:10px 0;border-radius:8px;'
-                f'background:#143670;color:#ffffff;font-weight:800;font-family:Arial,Helvetica,sans-serif;'
-                f'font-size:14px;text-decoration:none;text-align:center;">{score}</a></td>'
-                for score in group
-            )
-            + "</tr>"
+    feedback_rows = (
+        "<tr>"
+        + "".join(
+            f'<td style="padding:0 2px 8px;"><a href="{feedback_url}&score={score}" '
+            f'style="display:inline-block;min-width:28px;padding:9px 0;border-radius:7px;'
+            f'background:#143670;color:#ffffff;font-weight:800;font-family:Arial,Helvetica,sans-serif;'
+            f'font-size:13px;text-decoration:none;text-align:center;">{score}</a></td>'
+            for score in range(1, 11)
         )
+        + "</tr>"
+    )
     feedback_scale_html = f"""
     <div style="margin:22px 0 6px;">
       <p style="margin:0 0 12px;font-weight:700;color:#143670;">How likely are you to recommend RealMindX Bookshop to others?</p>
       <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">
-        {''.join(feedback_rows)}
+        {feedback_rows}
       </table>
-      <p style="margin:8px 0 0;color:#53657d;font-size:13px;">0 = Not likely at all, 10 = Extremely likely.</p>
+      <p style="margin:8px 0 0;color:#53657d;font-size:13px;">1 = Not likely at all, 10 = Extremely likely.</p>
     </div>
     """
 
@@ -2132,8 +2134,8 @@ def _send_order_status_email(order, status, cancel_reason=""):
                 f"<p>Your order <strong>{escape(ref)}</strong> has been placed successfully and our team is reviewing it now.</p>"
                 f"{order_meta_html}"
                 f"{order_summary_html}"
-                f"<p>Our team will contact you within <strong>1 business day</strong> to ensure you receive your order.</p>"
-                f"<p>If you need anything sooner, reply to this email or contact us on WhatsApp and we&rsquo;ll help right away.</p>"
+                f"<p>Our team will contact you within <strong>1 business day</strong> to confirm your order.</p>"
+                f"<p>If you need anything sooner, contact us on any of the channels below and we&rsquo;ll help right away.</p>"
             ),
             "cta_label": "Track Your Order",
             "cta_url": "track",
@@ -2146,8 +2148,8 @@ def _send_order_status_email(order, status, cancel_reason=""):
                 f"<p>Great news! Your order <strong>{escape(ref)}</strong> has been confirmed and our team is getting it ready for you.</p>"
                 f"{order_meta_html}"
                 f"{order_summary_html}"
-                f"<p>Our team will contact you shortly to ensure you receive your order.</p>"
-                f"<p>In the meantime, feel free to reach us on WhatsApp if you have any questions.</p>"
+                f"<p>Our team will contact you when your order is ready to ensure you receive your order.</p>"
+                f"<p>In the meantime, feel free to reach us through any of the channels below if you have any questions or concerns.</p>"
             ),
             "cta_label": "Track Your Order",
             "cta_url": "track",
@@ -2170,10 +2172,10 @@ def _send_order_status_email(order, status, cancel_reason=""):
             "title": "Order delivered. Thank you!",
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
-                f"<p>Your order <strong>{escape(ref)}</strong> has been marked as delivered. We hope you&rsquo;re happy with your books!</p>"
+                f"<p>Your order <strong>{escape(ref)}</strong> has been marked as delivered. We hope you&rsquo;re pleased with our service.</p>"
                 f"{order_meta_html}"
                 f"{order_summary_html}"
-                f"<p>If anything is missing or not as expected, please reply to this email or reach us on WhatsApp and we&rsquo;ll make it right.</p>"
+                f"<p>If anything is missing or not as expected, please contact us through our channels below and we&rsquo;ll investigate and rectify.</p>"
                 f"{feedback_scale_html}"
                 f"<p>Thank you for choosing RealMindX Bookshop. We look forward to serving you again.</p>"
             ),
