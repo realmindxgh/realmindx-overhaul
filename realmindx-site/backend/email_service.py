@@ -1,7 +1,9 @@
 import smtplib
 from dataclasses import dataclass
+from decimal import Decimal
 from email.message import EmailMessage as SmtpEmailMessage
 from html import escape
+from urllib.parse import urlsplit
 
 import requests
 from flask import current_app
@@ -27,6 +29,115 @@ def absolute_app_url(path_or_url):
     return f"{base}/{value.lstrip('/')}"
 
 
+def _url_origin(url):
+    parsed = urlsplit(str(url or "").strip())
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return ""
+
+
+def _email_contact_settings():
+    defaults = {
+        "contact_email": "info@realmindxgh.com",
+        "contact_phone_1": "+233 55 803 9190",
+        "contact_address": "Dome Pillar 2, Accra, Ghana",
+        "working_hours_weekday": "Monday - Friday: 8:00am - 5:00pm",
+        "working_hours_saturday": "Saturday: 9:00am - 1:00pm",
+        "primary_phone": "+233 55 803 9190",
+        "address": "Dome Pillar 2, Accra, Ghana",
+    }
+    try:
+        from .models import SiteSetting
+
+        rows = SiteSetting.query.filter(
+            SiteSetting.key.in_(list(defaults.keys()))
+        ).all()
+        values = {row.key: row.value for row in rows}
+    except Exception:
+        values = {}
+
+    contact_email = str(values.get("contact_email") or defaults["contact_email"]).strip()
+    contact_phone = str(
+        values.get("contact_phone_1")
+        or values.get("primary_phone")
+        or defaults["contact_phone_1"]
+    ).strip()
+    contact_address = str(
+        values.get("contact_address")
+        or values.get("address")
+        or defaults["contact_address"]
+    ).strip()
+    weekday_hours = str(values.get("working_hours_weekday") or defaults["working_hours_weekday"]).strip()
+    saturday_hours = str(values.get("working_hours_saturday") or defaults["working_hours_saturday"]).strip()
+    return {
+        "email": contact_email,
+        "phone": contact_phone,
+        "address": contact_address,
+        "weekday_hours": weekday_hours,
+        "saturday_hours": saturday_hours,
+    }
+
+
+def bookshop_order_summary_table(order):
+    items = list(getattr(order, "items", None) or [])
+    body_rows = []
+    for item in items:
+        quantity = max(int(getattr(item, "quantity", 0) or 0), 1)
+        unit_price = Decimal(str(getattr(item, "unit_price", 0) or 0))
+        line_total = unit_price * quantity
+        body_rows.append(
+            f"""
+            <tr>
+              <td style="padding:12px 14px;border-bottom:1px solid #dce5f0;color:#1a2a40;">{escape(getattr(item, 'product_name', '') or 'Requested item')}</td>
+              <td style="padding:12px 14px;border-bottom:1px solid #dce5f0;color:#1a2a40;text-align:center;">{quantity}</td>
+              <td style="padding:12px 14px;border-bottom:1px solid #dce5f0;color:#1a2a40;text-align:right;">GH&#8373;{float(unit_price):,.2f}</td>
+              <td style="padding:12px 14px;border-bottom:1px solid #dce5f0;color:#1a2a40;text-align:right;">GH&#8373;{float(line_total):,.2f}</td>
+            </tr>
+            """
+        )
+
+    if not body_rows:
+        body_rows.append(
+            """
+            <tr>
+              <td colspan="4" style="padding:14px;color:#53657d;text-align:center;">
+                Order items will be confirmed by our team shortly.
+              </td>
+            </tr>
+            """
+        )
+
+    subtotal = Decimal(str(getattr(order, "subtotal_amount", 0) or 0))
+    delivery_fee = Decimal(str(getattr(order, "delivery_fee", 0) or 0))
+    total_amount = Decimal(str(getattr(order, "total_amount", 0) or (subtotal + delivery_fee)))
+
+    return f"""
+    <div style="margin:18px 0 22px;border:1px solid #dce5f0;border-radius:12px;overflow:hidden;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+        <tr style="background:#f5f8fc;">
+          <th style="padding:12px 14px;color:#143670;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-align:left;">Item</th>
+          <th style="padding:12px 14px;color:#143670;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-align:center;">Qty</th>
+          <th style="padding:12px 14px;color:#143670;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-align:right;">Unit</th>
+          <th style="padding:12px 14px;color:#143670;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-align:right;">Line total</th>
+        </tr>
+        {''.join(body_rows)}
+        <tr style="background:#fbfcfe;">
+          <td colspan="3" style="padding:12px 14px;color:#53657d;font-weight:700;text-align:right;">Subtotal</td>
+          <td style="padding:12px 14px;color:#1a2a40;font-weight:700;text-align:right;">GH&#8373;{float(subtotal):,.2f}</td>
+        </tr>
+        <tr style="background:#fbfcfe;">
+          <td colspan="3" style="padding:0 14px 12px;color:#53657d;font-weight:700;text-align:right;">Delivery fee</td>
+          <td style="padding:0 14px 12px;color:#1a2a40;font-weight:700;text-align:right;">GH&#8373;{float(delivery_fee):,.2f}</td>
+        </tr>
+        <tr style="background:#fff7d1;">
+          <td colspan="3" style="padding:12px 14px;color:#143670;font-weight:900;text-align:right;">Total</td>
+          <td style="padding:12px 14px;color:#143670;font-weight:900;text-align:right;">GH&#8373;{float(total_amount):,.2f}</td>
+        </tr>
+      </table>
+    </div>
+    """
+
+
 def app_email_shell(
     title,
     body_html,
@@ -43,7 +154,10 @@ def app_email_shell(
     Navy #143670 header with RealMindX logo, gold #ffcc01 accent.
     """
     base_url = current_app.config["BASE_URL"].rstrip("/")
-    bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop")
+    bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop").rstrip("/")
+    site_origin = _url_origin(base_url) or base_url
+    logo_url = f"{site_origin}/logo-white.png"
+    contact = _email_contact_settings()
 
     if cta_url and not cta_url.startswith(("http://", "https://")):
         cta_url = f"{base_url}/{cta_url.lstrip('/')}"
@@ -62,7 +176,7 @@ def app_email_shell(
     cta = ""
     if cta_label and cta_url:
         cta = f"""
-        <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px 0 8px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px auto 8px;">
           <tr>
             <td style="border-radius:8px;background:#ffcc01;">
               <a href="{escape(cta_url, quote=True)}"
@@ -82,7 +196,7 @@ def app_email_shell(
     )
 
     footer_note_html = (
-        f'<p style="margin:14px 0 0;color:#93a8c8;font-size:12px;">{escape(footer_note)}</p>'
+        f'<p style="margin:14px 0 0;color:#93a8c8;font-size:12px;">{footer_note}</p>'
         if footer_note else ""
     )
 
@@ -116,38 +230,19 @@ def app_email_shell(
                style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;
                       overflow:hidden;border:1px solid #c8d5e8;">
 
-          <!-- HEADER: navy with logo -->
+          <!-- HEADER: navy with centered logo -->
           <tr>
             <td class="email-header"
-                style="background:#143670;padding:28px 32px 24px;border-bottom:4px solid #ffcc01;">
-              <!-- Logo row -->
-              <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
-                <tr>
-                  <td style="vertical-align:middle;">
-                    <img src="{base_url}/logo-white.png" alt="RealMindX" width="44" height="44"
-                         style="display:inline-block;width:44px;height:44px;border-radius:8px;
-                                background:#ffcc01;padding:4px;vertical-align:middle;" />
-                  </td>
-                  <td style="padding-left:12px;vertical-align:middle;">
-                    <span style="font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:22px;
-                                 color:#ffffff;letter-spacing:-0.5px;display:block;line-height:1.1;">
-                      RealMindX
-                    </span>
-                    <span style="font-family:Arial,Helvetica,sans-serif;color:#ffcc01;
-                                 font-size:10px;font-weight:700;letter-spacing:2.5px;
-                                 text-transform:uppercase;display:block;margin-top:2px;">
-                      Education
-                    </span>
-                  </td>
-                </tr>
-              </table>
-              <!-- Eyebrow + title -->
+                style="background:#143670;padding:28px 32px 24px;border-bottom:4px solid #ffcc01;text-align:center;">
+              <img src="{logo_url}" alt="RealMindX Education" height="44"
+                   style="display:block;height:44px;max-width:240px;width:auto;margin:0 auto 18px;
+                          border:0;outline:none;text-decoration:none;" />
               <p style="margin:0 0 6px;color:#ffcc01;font-family:Arial,Helvetica,sans-serif;
-                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;">
+                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;text-align:center;">
                 {safe_eyebrow}
               </p>
               <h1 style="margin:0;color:#ffffff;font-family:Arial,Helvetica,sans-serif;
-                          font-size:26px;line-height:1.2;font-weight:900;">
+                          font-size:26px;line-height:1.2;font-weight:900;text-align:center;">
                 {safe_title}
               </h1>
             </td>
@@ -176,20 +271,27 @@ def app_email_shell(
           <tr>
             <td class="email-footer"
                 style="background:#143670;padding:24px 32px;font-family:Arial,Helvetica,sans-serif;
-                       font-size:13px;color:#93a8c8;line-height:1.7;">
-              <p style="margin:0 0 6px;font-weight:800;color:#ffffff;font-size:14px;">
+                       font-size:13px;color:#93a8c8;line-height:1.7;text-align:center;">
+              <img src="{logo_url}" alt="RealMindX Education" height="34"
+                   style="display:block;height:34px;max-width:200px;width:auto;margin:0 auto 14px;
+                          border:0;outline:none;text-decoration:none;" />
+              <p style="margin:0 0 6px;font-weight:800;color:#ffffff;font-size:14px;text-align:center;">
                 RealMindX Education Limited
               </p>
-              <p style="margin:0 0 12px;">
-                Dome Pillar 2, Accra, Ghana &nbsp;&bull;&nbsp;
-                <a href="mailto:info@realmindxgh.com"
-                   style="color:#ffcc01;text-decoration:none;">info@realmindxgh.com</a>
+              <p style="margin:0 0 8px;text-align:center;">{escape(contact["address"])}</p>
+              <p style="margin:0 0 8px;text-align:center;">
+                <a href="mailto:{escape(contact["email"], quote=True)}"
+                   style="color:#ffcc01;text-decoration:none;">{escape(contact["email"])}</a>
                 &nbsp;&bull;&nbsp;
-                <a href="tel:+233558039190" style="color:#93a8c8;text-decoration:none;">
-                  +233 55 803 9190
+                <a href="tel:{escape(contact["phone"].replace(' ', ''), quote=True)}" style="color:#93a8c8;text-decoration:none;">
+                  {escape(contact["phone"])}
                 </a>
               </p>
-              <p style="margin:0;">
+              <p style="margin:0 0 12px;text-align:center;">
+                {escape(contact["weekday_hours"])}<br/>
+                {escape(contact["saturday_hours"])}
+              </p>
+              <p style="margin:0;text-align:center;">
                 <a href="{base_url}" style="color:#c8d5e8;text-decoration:none;">Website</a>
                 &nbsp;&middot;&nbsp;
                 <a href="{bookshop_url}" style="color:#c8d5e8;text-decoration:none;">Bookshop</a>
@@ -235,15 +337,18 @@ def bookshop_email_shell(
     navy #143670 title band, gold #ffcc01 accent — works in all email clients.
     """
     base_url = current_app.config["BASE_URL"].rstrip("/")
-    bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop")
+    bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop").rstrip("/")
+    bookshop_origin = _url_origin(bookshop_url) or _url_origin(base_url) or bookshop_url
+    logo_url = f"{bookshop_origin}/bookshop-logo.png"
+    contact = _email_contact_settings()
 
     if cta_url and not cta_url.startswith(("http://", "https://")):
-        cta_url = f"{bookshop_url.rstrip('/')}/{cta_url.lstrip('/')}"
+        cta_url = f"{bookshop_url}/{cta_url.lstrip('/')}"
 
     cta = ""
     if cta_label and cta_url:
         cta = f"""
-        <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px 0 8px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px auto 8px;">
           <tr>
             <td style="border-radius:8px;background:#ffcc01;">
               <a href="{escape(cta_url, quote=True)}"
@@ -263,7 +368,7 @@ def bookshop_email_shell(
     )
 
     footer_note_html = (
-        f'<p style="margin:14px 0 0;color:#93a8c8;font-size:12px;">{escape(footer_note)}</p>'
+        f'<p style="margin:14px 0 0;color:#53657d;font-size:12px;text-align:center;">{footer_note}</p>'
         if footer_note else ""
     )
 
@@ -282,9 +387,8 @@ def bookshop_email_shell(
     @media only screen and (max-width:600px){{
       .email-wrapper{{padding:12px 8px!important}}
       .email-card{{border-radius:12px!important}}
-      .bs-logo-band{{padding:16px 20px!important}}
-      .bs-logo-band img{{height:40px!important}}
-      .bs-title-band{{padding:20px!important}}
+      .email-header{{padding:24px 20px!important}}
+      .email-header img{{max-width:260px!important}}
       .email-body{{padding:24px 20px 20px!important;font-size:15px!important}}
       .email-footer{{padding:20px!important}}
     }}
@@ -299,25 +403,19 @@ def bookshop_email_shell(
                style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;
                       overflow:hidden;border:1px solid #c8d5e8;">
 
-          <!-- LOGO BAND: white background so logo renders cleanly in all email clients -->
+          <!-- HEADER -->
           <tr>
-            <td class="bs-logo-band"
-                style="background:#ffffff;padding:20px 32px;border-bottom:3px solid #143670;">
-              <img src="{base_url}/bookshop-logo.png" alt="RealMindX Bookshop" height="52"
-                   style="display:block;height:52px;max-width:280px;border:0;outline:none;" />
-            </td>
-          </tr>
-
-          <!-- TITLE BAND: navy -->
-          <tr>
-            <td class="bs-title-band"
-                style="background:#143670;padding:24px 32px;border-bottom:4px solid #ffcc01;">
-              <p style="margin:0 0 6px;color:#ffcc01;font-family:Arial,Helvetica,sans-serif;
-                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;">
+            <td class="email-header"
+                style="background:#ffffff;padding:28px 32px 24px;border-bottom:4px solid #ffcc01;text-align:center;">
+              <img src="{logo_url}" alt="RealMindX Bookshop" width="320"
+                   style="display:block;width:100%;max-width:320px;height:auto;margin:0 auto 18px;
+                          border:0;outline:none;text-decoration:none;" />
+              <p style="margin:0 0 6px;color:#143670;font-family:Arial,Helvetica,sans-serif;
+                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;text-align:center;">
                 {safe_eyebrow}
               </p>
-              <h1 style="margin:0;color:#ffffff;font-family:Arial,Helvetica,sans-serif;
-                          font-size:24px;line-height:1.25;font-weight:900;">
+              <h1 style="margin:0;color:#143670;font-family:Arial,Helvetica,sans-serif;
+                          font-size:24px;line-height:1.25;font-weight:900;text-align:center;">
                 {safe_title}
               </h1>
             </td>
@@ -343,31 +441,39 @@ def bookshop_email_shell(
           <!-- FOOTER -->
           <tr>
             <td class="email-footer"
-                style="background:#143670;padding:24px 32px;font-family:Arial,Helvetica,sans-serif;
-                       font-size:13px;color:#93a8c8;line-height:1.7;">
-              <p style="margin:0 0 6px;font-weight:800;color:#ffffff;font-size:14px;">
+                style="background:#f7f9fc;padding:24px 32px;font-family:Arial,Helvetica,sans-serif;
+                       font-size:13px;color:#53657d;line-height:1.7;text-align:center;">
+              <img src="{logo_url}" alt="RealMindX Bookshop" width="220"
+                   style="display:block;width:100%;max-width:220px;height:auto;margin:0 auto 16px;
+                          border:0;outline:none;text-decoration:none;" />
+              <p style="margin:0 0 6px;font-weight:800;color:#143670;font-size:14px;text-align:center;">
                 RealMindX Bookshop
               </p>
-              <p style="margin:0 0 4px;color:#c8d5e8;font-size:12px;">
+              <p style="margin:0 0 4px;color:#53657d;font-size:12px;text-align:center;">
                 Part of RealMindX Education Limited
               </p>
-              <p style="margin:0 0 12px;">
-                Dome Pillar 2, Accra, Ghana &nbsp;&bull;&nbsp;
-                <a href="mailto:info@realmindxgh.com"
-                   style="color:#ffcc01;text-decoration:none;">info@realmindxgh.com</a>
+              <p style="margin:0 0 8px;text-align:center;">{escape(contact["address"])}</p>
+              <p style="margin:0 0 8px;text-align:center;">
+                <a href="mailto:{escape(contact["email"], quote=True)}"
+                   style="color:#143670;text-decoration:none;font-weight:700;">{escape(contact["email"])}</a>
                 &nbsp;&bull;&nbsp;
-                <a href="tel:+233558039190" style="color:#93a8c8;text-decoration:none;">
-                  +233 55 803 9190
+                <a href="tel:{escape(contact["phone"].replace(' ', ''), quote=True)}"
+                   style="color:#53657d;text-decoration:none;">
+                  {escape(contact["phone"])}
                 </a>
               </p>
-              <p style="margin:0;">
-                <a href="{bookshop_url}" style="color:#c8d5e8;text-decoration:none;">Bookshop</a>
+              <p style="margin:0 0 12px;text-align:center;">
+                {escape(contact["weekday_hours"])}<br/>
+                {escape(contact["saturday_hours"])}
+              </p>
+              <p style="margin:0;text-align:center;">
+                <a href="{bookshop_url}" style="color:#143670;text-decoration:none;">Bookshop</a>
                 &nbsp;&middot;&nbsp;
-                <a href="{base_url}" style="color:#c8d5e8;text-decoration:none;">Main Site</a>
+                <a href="{base_url}" style="color:#143670;text-decoration:none;">Main Site</a>
                 &nbsp;&middot;&nbsp;
-                <a href="https://web.facebook.com/profile.php?id=61566941171883" style="color:#c8d5e8;text-decoration:none;">Facebook</a>
+                <a href="https://web.facebook.com/profile.php?id=61566941171883" style="color:#143670;text-decoration:none;">Facebook</a>
                 &nbsp;&middot;&nbsp;
-                <a href="https://www.instagram.com/realmindxgh/" style="color:#c8d5e8;text-decoration:none;">Instagram</a>
+                <a href="https://www.instagram.com/realmindxgh/" style="color:#143670;text-decoration:none;">Instagram</a>
               </p>
               {footer_note_html}
             </td>

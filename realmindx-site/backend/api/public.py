@@ -17,6 +17,7 @@ from ..default_content import (
     DEFAULT_SITE_COPY,
     DEFAULT_TESTIMONIALS,
 )
+from ..analytics import queue_analytics_event, queue_analytics_events
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
@@ -361,6 +362,15 @@ def clean_email(email):
         raise ValueError(str(exc)) from exc
 
 
+@public_bp.post("/analytics/events")
+@limiter.limit("240/minute")
+def collect_analytics_events():
+    payload = request.get_json(silent=True) or {}
+    rows = queue_analytics_events(payload)
+    db.session.commit()
+    return jsonify(recorded=len(rows)), 202
+
+
 @public_bp.post("/contact")
 @limiter.limit("5/minute")
 def contact():
@@ -393,6 +403,16 @@ def contact():
         "email": email, "subject": subject, "source": contact_message.source,
         "ticket": ticket_reference,
     }, actor_email=email)
+    queue_analytics_event(
+        "contact_form_submit",
+        path="/contact",
+        page_type="contact",
+        service_id=contact_message.source,
+        details={
+            "service_interest": contact_message.source,
+            "ticket_reference": ticket_reference,
+        },
+    )
     db.session.commit()
 
     _email_shell = bookshop_email_shell if is_bookshop else app_email_shell
@@ -480,6 +500,12 @@ def newsletter():
     audit("newsletter_subscription", "newsletter_subscriber", None, {
         "email": email, "status": status, "source": payload.get("source") or "site",
     }, actor_email=email)
+    queue_analytics_event(
+        "newsletter_signup",
+        path="/newsletter",
+        page_type="newsletter",
+        details={"source": payload.get("source") or "site", "status": status},
+    )
     db.session.commit()
     send_email(
         OutboundEmail(

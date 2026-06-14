@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon, Reveal, LoadingState, cedis } from './shared.jsx';
 import { ProductCard, ListCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
+import { trackSearch } from '../src/lib/analytics.js';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
 import { findTaxonomyItem, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
@@ -682,6 +683,23 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   }, [filters, sort]);
 
   React.useEffect(() => {
+    const term = String(initialQuery || '').trim();
+    if (!term || catalogLoading) return;
+    trackSearch({
+      term,
+      scope: 'bookshop',
+      pageType: 'bookshop_search',
+      path: `${PREFIX}/products`,
+      resultsCount: list.length,
+      productImpressions: list.slice(0, 12).map((book, index) => ({
+        productId: book.id,
+        available: book.stock,
+        position: index + 1,
+      })),
+    });
+  }, [catalogLoading, initialQuery, list]);
+
+  React.useEffect(() => {
     document.body.style.overflow = drawer ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
@@ -718,6 +736,9 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   }, [allLoaded, visible]);
 
   const selectedLabels = React.useMemo(() => selectedLabelList(filters, taxonomies), [filters, taxonomies]);
+  const searchContext = filters.query.trim()
+    ? { term: filters.query.trim(), scope: 'bookshop', path: `${PREFIX}/products`, source: 'results' }
+    : null;
   const contextLabel = React.useMemo(() => {
     let base = 'the full catalogue';
     if (filters.query.trim()) base = `search results for "${filters.query.trim()}"`;
@@ -891,9 +912,9 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               </button>
             </div>
           ) : view === 'grid' ? (
-            <div className="bs-product-grid">{shown.map((book, index) => <ProductCard key={book.id} book={book} idx={index} navigate={navigate} />)}</div>
+            <div className="bs-product-grid">{shown.map((book, index) => <ProductCard key={book.id} book={book} idx={index} navigate={navigate} searchContext={searchContext ? { ...searchContext, position: index + 1 } : null} />)}</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{shown.map((book, index) => <ListCard key={book.id} book={book} idx={index} navigate={navigate} />)}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{shown.map((book, index) => <ListCard key={book.id} book={book} idx={index} navigate={navigate} searchContext={searchContext ? { ...searchContext, position: index + 1 } : null} />)}</div>
           )}
 
           {!allLoaded && shown.length > 0 && (

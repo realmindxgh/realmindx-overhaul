@@ -87,6 +87,7 @@ DEFAULT_PERMISSIONS = [
             "messages": ["view", "edit", "delete"],
             "newsletters": ["view", "create", "edit", "delete", "export"],
             "alerts": ["view", "edit"],
+            "analytics": ["view", "export"],
             "settings": ["view", "create", "edit", "delete"],
             "admins": ["view", "create", "edit", "delete"],
             "staff": ["view", "create", "edit", "delete"],

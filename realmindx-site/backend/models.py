@@ -275,6 +275,8 @@ class Order(TimestampMixin, db.Model):
     subtotal_amount = db.Column(db.Numeric(12, 2), nullable=True)
     total_amount = db.Column(db.Numeric(12, 2), nullable=True)
     paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    analytics_session_key = db.Column(db.String(80), nullable=True, index=True)
+    analytics_visitor_key = db.Column(db.String(80), nullable=True, index=True)
 
     delivery_zone = db.relationship("DeliveryZone")
 
@@ -319,6 +321,48 @@ class ProductReview(TimestampMixin, db.Model):
 
     product = db.relationship("Product", backref=db.backref("reviews", cascade="all, delete-orphan"))
     order = db.relationship("Order")
+
+
+class AnalyticsEvent(TimestampMixin, db.Model):
+    __tablename__ = "analytics_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_type = db.Column(db.String(60), nullable=False, index=True)
+    session_key = db.Column(db.String(80), nullable=True, index=True)
+    visitor_key = db.Column(db.String(80), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    host = db.Column(db.String(160), nullable=True, index=True)
+    path = db.Column(db.String(255), nullable=True, index=True)
+    full_path = db.Column(db.String(500), nullable=True)
+    page_title = db.Column(db.String(255), nullable=True)
+    page_type = db.Column(db.String(80), nullable=True, index=True)
+    referrer = db.Column(db.String(500), nullable=True)
+    referrer_host = db.Column(db.String(160), nullable=True, index=True)
+    traffic_source = db.Column(db.String(120), nullable=True, index=True)
+    traffic_medium = db.Column(db.String(120), nullable=True, index=True)
+    campaign = db.Column(db.String(160), nullable=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=True, index=True)
+    news_id = db.Column(db.Integer, db.ForeignKey("news.id"), nullable=True, index=True)
+    service_id = db.Column(db.String(120), nullable=True, index=True)
+    search_term = db.Column(db.String(255), nullable=True, index=True)
+    search_scope = db.Column(db.String(40), nullable=True, index=True)
+    results_count = db.Column(db.Integer, nullable=True)
+    had_results = db.Column(db.Boolean, nullable=True)
+    device_type = db.Column(db.String(40), nullable=True, index=True)
+    browser = db.Column(db.String(80), nullable=True, index=True)
+    operating_system = db.Column(db.String(80), nullable=True)
+    country = db.Column(db.String(80), nullable=True, index=True)
+    region = db.Column(db.String(80), nullable=True, index=True)
+    city = db.Column(db.String(120), nullable=True, index=True)
+    ip_hash = db.Column(db.String(64), nullable=True, index=True)
+    ip_prefix = db.Column(db.String(80), nullable=True)
+    quantity = db.Column(db.Integer, nullable=True)
+    value_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    details = db.Column("metadata", db.JSON, default=dict, nullable=False)
+
+    user = db.relationship("User")
+    product = db.relationship("Product")
+    news = db.relationship("News")
 
 
 class NewsletterSubscriber(TimestampMixin, db.Model):

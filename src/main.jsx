@@ -19,6 +19,7 @@ import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
 import { usePublicGalleryState, usePublicNewsState, usePublicServices, useSiteCopy, renderTextWithLinks } from './lib/siteContent.js';
 import { API_BASE, api, isApiMode } from './lib/apiClient.js';
+import { trackPageView } from './lib/analytics.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from './lib/head.js';
 import { newsPath, servicePath, SITE_BASE_URL, SITE_DEFAULT_IMAGE, slugify } from './lib/seoRoutes.js';
 
@@ -813,6 +814,55 @@ const SessionBridge = () => {
   return null;
 };
 
+const RouteAnalyticsTracker = () => {
+  const location = useLocation();
+  const services = usePublicServices();
+  const newsState = usePublicNewsState(200);
+
+  React.useEffect(() => {
+    const path = location.pathname.replace(/\/$/, '') || '/';
+    if (path.startsWith('/bookshop') || path.startsWith('/admin') || path.startsWith('/portal')) return;
+
+    let pageType = 'website';
+    let serviceId = null;
+    let newsId = null;
+
+    if (path === '/services') {
+      pageType = 'services';
+    } else if (path.startsWith('/services/')) {
+      pageType = 'service_detail';
+      const serviceSlug = path.split('/services/')[1] || '';
+      const service = services.find(item => slugify(item.id) === slugify(serviceSlug));
+      serviceId = service?.id || serviceSlug || null;
+    } else if (path === '/news') {
+      pageType = 'news';
+    } else if (path.startsWith('/news/')) {
+      pageType = 'news_article';
+      const articleSlug = path.split('/news/')[1] || '';
+      const article = newsState.items.find(item => slugify(item.slug || item.id) === slugify(articleSlug) || slugify(String(item.id)) === slugify(articleSlug));
+      newsId = article?.id || null;
+    } else if (path === '/contact') {
+      pageType = 'contact';
+    } else if (path === '/jobs') {
+      pageType = 'jobs';
+    } else if (path === '/donate') {
+      pageType = 'donate';
+    } else if (path === '/about') {
+      pageType = 'about';
+    }
+
+    trackPageView({
+      path,
+      fullPath: `${path}${location.search}`,
+      pageType,
+      serviceId,
+      newsId,
+    });
+  }, [location.pathname, location.search, newsState.items, services]);
+
+  return null;
+};
+
 // If served from bookshop.realmindxgh.com, show only the bookshop
 const isBookshopSubdomain =
   typeof window !== 'undefined' &&
@@ -823,6 +873,7 @@ const AppRoutes = () => {
   return (
   <BrowserRouter>
     <RouteTitle />
+    <RouteAnalyticsTracker />
     <SessionBridge />
     <IdleGuard />
     <HashScroll>

@@ -3,6 +3,7 @@ import { Icon, Stars, cedis, CoverPlaceholder, Logo } from './shared.jsx';
 import { useCatalog } from './catalog.jsx';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
+import { trackCartAction, trackSearchClick, trackWishlistAction } from '../src/lib/analytics.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute, productHref, productPathSegment } from './urls.js';
@@ -48,17 +49,29 @@ const readSavedWishlist = () => {
 
 const WishlistProvider = ({ children }) => {
   const [items, setItems] = React.useState(readSavedWishlist);
+  const itemsRef = React.useRef(items);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(items));
+    itemsRef.current = items;
   }, [items]);
 
-  const toggle = (bookId) => setItems(prev =>
-    prev.includes(bookId) ? prev.filter(id => id !== bookId) : [...prev, bookId]
-  );
-  const add    = (bookId) => setItems(prev => prev.includes(bookId) ? prev : [...prev, bookId]);
-  const remove = (bookId) => setItems(prev => prev.filter(id => id !== bookId));
+  const toggle = (bookId) => {
+    const hadItem = itemsRef.current.includes(bookId);
+    setItems(prev => (hadItem ? prev.filter(id => id !== bookId) : [...prev, bookId]));
+    trackWishlistAction(hadItem ? 'remove' : 'add', { productId: bookId });
+  };
+  const add = (bookId) => {
+    if (itemsRef.current.includes(bookId)) return;
+    setItems(prev => [...prev, bookId]);
+    trackWishlistAction('add', { productId: bookId });
+  };
+  const remove = (bookId) => {
+    if (!itemsRef.current.includes(bookId)) return;
+    setItems(prev => prev.filter(id => id !== bookId));
+    trackWishlistAction('remove', { productId: bookId });
+  };
   const has    = (bookId) => items.includes(bookId);
   const count  = items.length;
 
@@ -108,23 +121,40 @@ const CartProvider = ({ children, navigate }) => {
 const CartProviderInner = ({ children, navigate }) => {
   const { books, loading: catalogLoading } = useCatalog();
   const [items, setItems] = React.useState(readSavedCart);
+  const itemsRef = React.useRef(items);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+    itemsRef.current = items;
   }, [items]);
 
   const add = (bookId, qty = 1) => {
+    const safeQty = Math.max(1, Number(qty) || 1);
     setItems(prev => {
       const ex = prev.find(i => i.id === bookId);
-      if (ex) return prev.map(i => i.id === bookId ? { ...i, qty: i.qty + qty } : i);
-      return [...prev, { id: bookId, qty }];
+      if (ex) return prev.map(i => i.id === bookId ? { ...i, qty: i.qty + safeQty } : i);
+      return [...prev, { id: bookId, qty: safeQty }];
     });
     const b = books.find(x => x.id === bookId);
     globalToast.success(`Added "${b ? b.title : 'item'}" to cart`);
+    trackCartAction('add', { productId: bookId, quantity: safeQty });
   };
-  const setQty = (bookId, qty) => setItems(prev => prev.map(i => i.id === bookId ? { ...i, qty: Math.max(1, qty) } : i));
-  const remove = (bookId) => setItems(prev => prev.filter(i => i.id !== bookId));
+  const setQty = (bookId, qty) => {
+    const nextQty = Math.max(1, Number(qty) || 1);
+    const current = itemsRef.current.find(item => item.id === bookId);
+    if (current) {
+      const delta = nextQty - current.qty;
+      if (delta > 0) trackCartAction('add', { productId: bookId, quantity: delta });
+      if (delta < 0) trackCartAction('remove', { productId: bookId, quantity: Math.abs(delta) });
+    }
+    setItems(prev => prev.map(i => i.id === bookId ? { ...i, qty: nextQty } : i));
+  };
+  const remove = (bookId) => {
+    const current = itemsRef.current.find(item => item.id === bookId);
+    if (current) trackCartAction('remove', { productId: bookId, quantity: current.qty });
+    setItems(prev => prev.filter(i => i.id !== bookId));
+  };
   const clear  = () => setItems([]);
 
   // Resolve against the live catalogue; drop items whose product was
@@ -363,6 +393,7 @@ const Navbar = ({ route, navigate }) => {
                     onMouseDown={e => e.preventDefault()} /* prevent input blur before click */
                     onClick={(e) => {
                       e.preventDefault();
+                      trackSearchClick({ term: q, productId: b.id, scope: 'bookshop', path: '/bookshop/products', source: 'suggestions' });
                       navigate('product', { id: b.id, slug: productPathSegment(b) });
                       setSearching(false);
                       setSearchFocused(false);
@@ -598,11 +629,24 @@ const RatingLine = ({ book, size = 13 }) => {
 };
 
 // ---------- Product card ----------
-const ProductCard = ({ book, idx = 0, navigate }) => {
+const ProductCard = ({ book, idx = 0, navigate, searchContext = null }) => {
   const { add } = useCart();
   const wishlist = useWishlist();
   const [added, setAdded] = React.useState(false);
   const productUrl = hrefForProduct(book);
+  const openProduct = () => {
+    if (searchContext?.term) {
+      trackSearchClick({
+        term: searchContext.term,
+        productId: book.id,
+        scope: searchContext.scope || 'bookshop',
+        path: searchContext.path || '/bookshop/products',
+        source: searchContext.source || 'results',
+        position: searchContext.position,
+      });
+    }
+    navigate('product', { id: book.id, slug: productPathSegment(book) });
+  };
   const onAdd = (e) => {
     e.stopPropagation();
     add(book.id);
@@ -614,7 +658,7 @@ const ProductCard = ({ book, idx = 0, navigate }) => {
   };
   const wishlisted = wishlist?.has(book.id);
   return (
-    <div className={`bs-pcard${book.stock ? '' : ' bs-oos'}`} onClick={() => navigate('product', { id: book.id, slug: productPathSegment(book) })} style={{ cursor:'pointer' }}>
+    <div className={`bs-pcard${book.stock ? '' : ' bs-oos'}`} onClick={openProduct} style={{ cursor:'pointer' }}>
       <div className="bs-pcard-cover">
         {book.badge && <span className="bs-cover-badge">{book.badge}</span>}
         <button
@@ -630,7 +674,8 @@ const ProductCard = ({ book, idx = 0, navigate }) => {
           className="bs-product-link"
           onClick={(e) => {
             e.preventDefault();
-            navigate('product', { id: book.id, slug: productPathSegment(book) });
+            e.stopPropagation();
+            openProduct();
           }}
         >
           <CoverPlaceholder title={book.title} idx={idx} image={book.image} />
@@ -646,7 +691,8 @@ const ProductCard = ({ book, idx = 0, navigate }) => {
           className="bs-pcard-title bs-product-link"
           onClick={(e) => {
             e.preventDefault();
-            navigate('product', { id: book.id, slug: productPathSegment(book) });
+            e.stopPropagation();
+            openProduct();
           }}
         >
           {book.title}
@@ -670,17 +716,31 @@ const ProductCard = ({ book, idx = 0, navigate }) => {
 };
 
 // ---------- List-view card ----------
-const ListCard = ({ book, idx = 0, navigate }) => {
+const ListCard = ({ book, idx = 0, navigate, searchContext = null }) => {
   const { add } = useCart();
   const productUrl = hrefForProduct(book);
+  const openProduct = () => {
+    if (searchContext?.term) {
+      trackSearchClick({
+        term: searchContext.term,
+        productId: book.id,
+        scope: searchContext.scope || 'bookshop',
+        path: searchContext.path || '/bookshop/products',
+        source: searchContext.source || 'results',
+        position: searchContext.position,
+      });
+    }
+    navigate('product', { id: book.id, slug: productPathSegment(book) });
+  };
   return (
-    <div className="bs-lcard" onClick={() => navigate('product', { id: book.id, slug: productPathSegment(book) })} style={{ cursor:'pointer' }}>
+    <div className="bs-lcard" onClick={openProduct} style={{ cursor:'pointer' }}>
       <a
         href={productUrl}
         className="bs-lcard-cover bs-product-link"
         onClick={(e) => {
           e.preventDefault();
-          navigate('product', { id: book.id, slug: productPathSegment(book) });
+          e.stopPropagation();
+          openProduct();
         }}
       >
         <CoverPlaceholder title={book.title} idx={idx} small image={book.image} />
@@ -692,7 +752,8 @@ const ListCard = ({ book, idx = 0, navigate }) => {
           className="bs-cart-item-title bs-product-link"
           onClick={(e) => {
             e.preventDefault();
-            navigate('product', { id: book.id, slug: productPathSegment(book) });
+            e.stopPropagation();
+            openProduct();
           }}
         >
           {book.title}

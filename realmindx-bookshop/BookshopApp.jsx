@@ -6,6 +6,7 @@ import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
 import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage } from './pages-misc.jsx';
 import { CatalogProvider, useCatalog } from './catalog.jsx';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
+import { trackPageView } from '../src/lib/analytics.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from '../src/lib/head.js';
 import { BOOKSHOP_BASE_URL, BOOKSHOP_DEFAULT_IMAGE } from '../src/lib/seoRoutes.js';
 import { findTaxonomyItem, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
@@ -163,6 +164,20 @@ const App = () => {
   React.useEffect(() => {
     document.documentElement.style.setProperty('--bs-gold-live', GOLD_ACCENT);
   }, []);
+
+  React.useEffect(() => {
+    const pageType = route === 'product'
+      ? 'product'
+      : route === 'shop' && params.q
+        ? 'bookshop_search'
+        : 'bookshop';
+    trackPageView({
+      path: `${PREFIX}${canonicalPath}`,
+      fullPath: `${PREFIX}${canonicalPath}`,
+      pageType,
+      productId: activeProduct?.id || null,
+    });
+  }, [activeProduct?.id, canonicalPath, params.q, route]);
 
   React.useEffect(() => {
     let alive = true;

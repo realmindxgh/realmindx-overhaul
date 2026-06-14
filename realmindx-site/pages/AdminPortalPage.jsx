@@ -5,6 +5,7 @@ import { resetManagedContent, JOB_LEVELS, JOB_SUBJECTS, JOB_TYPES } from '../../
 import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
 import { API_BASE, api, isApiMode } from '../../src/lib/apiClient.js';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
+import AnalyticsView from '../../src/admin/AnalyticsView.jsx';
 import logoWhite from '../assets/logo-white.png';
 import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
 import { TEACHING_CURRICULA } from '../../src/lib/teachingOptions.js';
@@ -12,6 +13,7 @@ import { PRODUCT_CURRICULUM_OPTIONS, PRODUCT_LEVEL_OPTIONS, PRODUCT_SUBJECT_OPTI
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
+  { key: 'analytics', label: 'Analytics', group: 'Overview', icon: 'chart' },
   { key: 'jobs', label: 'Jobs', group: 'Jobs', icon: 'briefcase' },
   { key: 'applications', label: 'Applications', group: 'Jobs', icon: 'clipboard' },
   { key: 'products', label: 'Products', group: 'Bookshop', icon: 'book' },
@@ -83,7 +85,9 @@ const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 
 const PERMISSION_GROUPS = NAV
   .filter(item => item.key !== 'dashboard' && item.key !== 'admins' && item.key !== 'auditLogs')
   .map(item => {
-    const actions = item.key === 'auditLogs'
+    const actions = item.key === 'analytics'
+      ? ['view', 'export']
+      : item.key === 'auditLogs'
       ? ['view']
       : item.key === 'alerts'
         ? ['view', 'edit']
@@ -2535,6 +2539,8 @@ const AdminPortalPage = () => {
 
   const view = activeView === 'dashboard'
     ? <DashboardView content={content} setActive={setActiveView} />
+    : activeView === 'analytics'
+      ? <AnalyticsView />
     : activeView === 'applications'
       ? <ApplicationsView content={content} />
       : activeView === 'alerts'

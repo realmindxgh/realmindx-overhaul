@@ -12,8 +12,14 @@ from markupsafe import escape
 import requests
 from sqlalchemy import or_
 
+from ..analytics import queue_analytics_event
 from ..audit import audit
-from ..email_service import OutboundEmail, bookshop_email_shell, send_email
+from ..email_service import (
+    OutboundEmail,
+    bookshop_email_shell,
+    bookshop_order_summary_table,
+    send_email,
+)
 from ..location_data import GHANA_REGIONS
 from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
@@ -318,6 +324,8 @@ def create_order():
         payment_status="unpaid" if payment_method == "cash_on_delivery" else "pending",
         payment_method=payment_method,
         payment_provider="cash_on_delivery" if payment_method == "cash_on_delivery" else None,
+        analytics_session_key=(request.cookies.get("rmx_analytics_session") or "").strip() or None,
+        analytics_visitor_key=(request.cookies.get("rmx_analytics_visitor") or "").strip() or None,
     )
     if not order.customer_name or not order.phone:
         return jsonify(error="Customer name and phone are required."), 400
@@ -359,51 +367,55 @@ def create_order():
 
     first_name = (order.customer_name or "").split()[0] or "there"
     delivery_info = (
-        "Pickup at our Dome Pillar 2 shop"
+        "Pickup from our Dome Pillar 2 shop"
         if order.delivery_method == "pickup"
-        else f"Delivery to: {order.location or 'address on file'}"
+        else f"Delivery to {order.location or 'the address on file'}"
     )
     payment_info = (
         "Payment on delivery"
         if order.payment_method == "cash_on_delivery"
         else "Online payment via Paystack"
     )
-    items_list_html = "".join(
-        f"<p style='margin:4px 0;'>&bull; {escape(i.product_name)} x{i.quantity} @ GH&#8373;{float(i.unit_price):,.2f}</p>"
-        for i in order.items
-    )
+    order_summary_html = bookshop_order_summary_table(order)
+    customer_order_meta_html = f"""
+    <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
+      <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
+      <p style="margin:0 0 6px;"><strong>Fulfilment:</strong> {escape(delivery_info)}</p>
+      <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
+      <p style="margin:0;"><strong>Contact number:</strong> {escape(order.phone or "not provided")}</p>
+    </div>
+    """
+    staff_order_meta_html = f"""
+    <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
+      <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
+      <p style="margin:0 0 6px;"><strong>Customer:</strong> {escape(order.customer_name)}</p>
+      <p style="margin:0 0 6px;"><strong>Email:</strong>
+        <a href="mailto:{escape(email)}" style="color:#143670;text-decoration:none;">{escape(email)}</a>
+      </p>
+      <p style="margin:0 0 6px;"><strong>Phone:</strong> {escape(order.phone or "not provided")}</p>
+      <p style="margin:0 0 6px;"><strong>Fulfilment:</strong> {escape(delivery_info)}</p>
+      <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
+      <p style="margin:0;font-weight:800;"><strong>Total:</strong> GH&#8373;{float(order.total_amount):,.2f}</p>
+    </div>
+    """
 
     # Customer confirmation — warm, detailed, professional
     send_email(OutboundEmail(
         to=email,
         from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"Your RealMindX Bookshop order is in: {order.order_reference}",
+        subject=f"Your RealMindX Bookshop order has been received: {order.order_reference}",
         html=bookshop_email_shell(
             "Your order has been placed!",
             f"""
             <p>Hello {escape(first_name)},</p>
-            <p>Thank you for shopping with <strong>RealMindX Bookshop</strong>! We&rsquo;ve received your
-            order and our team will have it ready for you shortly.</p>
+            <p>Thank you for shopping with <strong>RealMindX Bookshop</strong>. We&rsquo;ve received your
+            order and our team is reviewing it now.</p>
 
-            <div style="background:#f5f8fc;border-left:4px solid #f2bd00;border-radius:6px;
-                         padding:16px 20px;margin:20px 0;">
-              <p style="margin:0 0 8px;font-weight:800;color:#0b1d38;">Order summary</p>
-              <p style="margin:0 0 4px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
-              {items_list_html}
-              <p style="margin:10px 0 0;font-weight:800;">
-                Total: GH&#8373;{float(order.total_amount):,.2f}
-              </p>
-            </div>
+            {customer_order_meta_html}
+            {order_summary_html}
 
-            <p style="margin:0 0 6px;">
-              <strong>Delivery:</strong> {escape(delivery_info)}<br/>
-              <strong>Payment:</strong> {escape(payment_info)}<br/>
-              <strong>Contact number:</strong> {escape(order.phone or "not provided")}
-            </p>
-
-            <p>Our team will reach out to you within <strong>24 hours</strong> to confirm availability
-            and arrange delivery or pickup. If you&rsquo;d prefer to speak with us right away, simply
-            reply to this email or give us a call.</p>
+            <p>Our team will contact you shortly to ensure you receive your order.</p>
+            <p>If you need anything sooner, reply to this email or call us and we&rsquo;ll help right away.</p>
             <p>We appreciate your trust in RealMindX and look forward to getting your books to you!</p>
             """,
             cta_label="Visit the Bookshop",
@@ -422,17 +434,8 @@ def create_order():
             f"New order from {escape(order.customer_name)}",
             f"""
             <p>A new order has been placed via the RealMindX Bookshop.</p>
-            <div style="background:#f5f8fc;border-radius:8px;padding:16px 20px;margin:16px 0;">
-              <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
-              <p style="margin:0 0 6px;"><strong>Customer:</strong> {escape(order.customer_name)}</p>
-              <p style="margin:0 0 6px;"><strong>Email:</strong>
-                <a href="mailto:{escape(email)}" style="color:#0b1d38;">{escape(email)}</a></p>
-              <p style="margin:0 0 6px;"><strong>Phone:</strong> {escape(order.phone or "not provided")}</p>
-              <p style="margin:0 0 6px;"><strong>Delivery:</strong> {escape(delivery_info)}</p>
-              <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
-              <p style="margin:10px 0 0;font-weight:800;">Total: GH&#8373;{float(order.total_amount):,.2f}</p>
-            </div>
-            {items_list_html}
+            {staff_order_meta_html}
+            {order_summary_html}
             """,
             cta_label="View in Admin Dashboard",
             cta_url=f"{current_app.config['BASE_URL']}/admin/dashboard",
@@ -543,5 +546,11 @@ def bulk_order():
         )
     )
     audit("bulk_order_enquiry", "bulk_order", None, {"name": name, "email": email}, actor_email=email)
+    queue_analytics_event(
+        "bulk_order_enquiry",
+        path="/bookshop/contact",
+        page_type="bookshop",
+        details={"lead_type": "bulk_order", "channel": "bookshop_contact"},
+    )
     db.session.commit()
     return jsonify(message="Bulk order request received. We will respond with a quote."), 201

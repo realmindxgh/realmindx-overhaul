@@ -16,6 +16,7 @@ from flask_login import current_user, login_required
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 
+from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
 from ..default_content import (
     DEFAULT_DONATION_SLIDES,
     DEFAULT_HOME_HERO_SLIDES,
@@ -25,7 +26,13 @@ from ..default_content import (
     DEFAULT_SITE_COPY,
     DEFAULT_TESTIMONIALS,
 )
-from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
+from ..email_service import (
+    OutboundEmail,
+    app_email_shell,
+    bookshop_email_shell,
+    bookshop_order_summary_table,
+    send_email,
+)
 from ..extensions import db
 from ..location_data import parse_location_ids
 from ..models import (
@@ -606,6 +613,134 @@ def dashboard():
         },
         recent_jobs=[job_json(job) for job in recent_jobs],
         recent_orders=[order_json(order) for order in recent_orders],
+    )
+
+
+def _csv_response(filename, rows, fieldnames):
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@admin_bp.get("/analytics/dashboard")
+@login_required
+@permission_required("analytics.view")
+def analytics_dashboard():
+    range_info = parse_analytics_range(request.args)
+    return jsonify(build_analytics_dashboard(range_info))
+
+
+@admin_bp.get("/analytics/products/<int:product_id>")
+@login_required
+@permission_required("analytics.view")
+def analytics_product_detail(product_id):
+    range_info = parse_analytics_range(request.args)
+    payload = build_product_detail(product_id, range_info)
+    if not payload:
+        return jsonify(error="Product not found."), 404
+    return jsonify(payload)
+
+
+@admin_bp.get("/analytics/export")
+@login_required
+@permission_required("analytics.export")
+def analytics_export():
+    report = str(request.args.get("report") or "products").strip().lower()
+    range_info = parse_analytics_range(request.args)
+    dashboard_payload = build_analytics_dashboard(range_info)
+
+    if report == "top-pages":
+        rows = dashboard_payload["overview"]["top_pages"]
+        return _csv_response(
+            "realmindx-top-pages.csv",
+            rows,
+            ["path", "title", "views", "unique_visitors"],
+        )
+
+    if report == "search-terms":
+        rows = dashboard_payload["search"]["terms"]
+        return _csv_response(
+            "realmindx-search-terms.csv",
+            rows,
+            ["term", "searches", "with_results", "no_results", "product_views", "purchases"],
+        )
+
+    if report == "product-detail":
+        product_id = request.args.get("product_id")
+        payload = build_product_detail(int(product_id), range_info) if str(product_id or "").isdigit() else None
+        if not payload:
+            return jsonify(error="Product not found."), 404
+        rows = []
+        chart_maps = {
+            "views": {item["date"]: item["value"] for item in payload["charts"]["views"]},
+            "add_to_cart": {item["date"]: item["value"] for item in payload["charts"]["add_to_cart"]},
+            "sales": {item["date"]: item["value"] for item in payload["charts"]["sales"]},
+            "revenue": {item["date"]: item["value"] for item in payload["charts"]["revenue"]},
+            "search_interest": {item["date"]: item["value"] for item in payload["charts"]["search_interest"]},
+        }
+        for date_key in chart_maps["views"]:
+            rows.append({
+                "product_name": payload["product"]["name"],
+                "product_category": payload["product"]["category"],
+                "product_status": payload["product"]["status"],
+                "price": payload["product"]["price"],
+                "stock_quantity": payload["product"]["stock_quantity"],
+                "date": date_key,
+                "views": chart_maps["views"].get(date_key, 0),
+                "add_to_cart": chart_maps["add_to_cart"].get(date_key, 0),
+                "sales": chart_maps["sales"].get(date_key, 0),
+                "revenue": chart_maps["revenue"].get(date_key, 0),
+                "search_interest": chart_maps["search_interest"].get(date_key, 0),
+            })
+        return _csv_response(
+            f"realmindx-product-{payload['product']['id']}-analytics.csv",
+            rows,
+            ["product_name", "product_category", "product_status", "price", "stock_quantity", "date", "views", "add_to_cart", "sales", "revenue", "search_interest"],
+        )
+
+    rows = dashboard_payload["products"]["items"]
+    return _csv_response(
+        "realmindx-product-analytics.csv",
+        rows,
+        [
+            "id",
+            "name",
+            "category",
+            "status",
+            "stock_status",
+            "stock_quantity",
+            "price",
+            "views",
+            "unique_visitors",
+            "add_to_cart",
+            "remove_from_cart",
+            "purchases",
+            "quantity_sold",
+            "revenue",
+            "conversion_rate",
+            "add_to_cart_rate",
+            "cart_abandonment_count",
+            "wishlist_count",
+            "search_impressions",
+            "search_clicks",
+            "unavailable_searches",
+            "last_sale_at",
+            "last_view_at",
+            "last_add_to_cart_at",
+            "top_traffic_source",
+            "top_device",
+            "top_location",
+            "interest_delta",
+            "interest_delta_pct",
+            "performance_status",
+        ],
     )
 
 
@@ -1859,6 +1994,27 @@ def _send_order_status_email(order, status, cancel_reason=""):
     """Send a friendly, branded email when order status changes."""
     first_name = (order.customer_name or "").split()[0] or "there"
     ref = order.order_reference
+    base_url = current_app.config["BASE_URL"].rstrip("/")
+    bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop").rstrip("/")
+    delivery_info = (
+        "Pickup from our Dome Pillar 2 shop"
+        if order.delivery_method == "pickup"
+        else f"Delivery to {order.location or 'the address on file'}"
+    )
+    payment_info = (
+        "Payment on delivery"
+        if order.payment_method == "cash_on_delivery"
+        else "Online payment via Paystack"
+    )
+    order_meta_html = f"""
+    <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
+      <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(ref)}</p>
+      <p style="margin:0 0 6px;"><strong>Fulfilment:</strong> {escape(delivery_info)}</p>
+      <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
+      <p style="margin:0;"><strong>Contact number:</strong> {escape(order.phone or "not provided")}</p>
+    </div>
+    """
+    order_summary_html = bookshop_order_summary_table(order)
 
     status_messages = {
         "received": {
@@ -1867,11 +2023,13 @@ def _send_order_status_email(order, status, cancel_reason=""):
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
                 f"<p>Great news! Your order <strong>{escape(ref)}</strong> has been confirmed and our team is getting it ready for you.</p>"
-                f"<p>We&rsquo;ll be in touch to arrange delivery or let you know when it&rsquo;s ready for pickup at our Dome Pillar 2 shop.</p>"
+                f"{order_meta_html}"
+                f"{order_summary_html}"
+                f"<p>Our team will contact you shortly to ensure you receive your order.</p>"
                 f"<p>In the meantime, feel free to reach us on WhatsApp if you have any questions.</p>"
             ),
             "cta_label": "Track Your Order",
-            "cta_url": "/bookshop/track",
+            "cta_url": "track",
         },
         "shipped": {
             "subject": f"Your RealMindX order is on its way: {ref}",
@@ -1879,10 +2037,12 @@ def _send_order_status_email(order, status, cancel_reason=""):
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
                 f"<p>Good news! Your order <strong>{escape(ref)}</strong> has been dispatched and is heading your way.</p>"
-                f"<p>Expected delivery is within 48 hours. Our team will contact you to coordinate handover if needed.</p>"
+                f"{order_meta_html}"
+                f"{order_summary_html}"
+                f"<p>Expected delivery is within 48 hours. Our team will contact you if any final handover details are needed.</p>"
             ),
             "cta_label": "Track Your Order",
-            "cta_url": "/bookshop/track",
+            "cta_url": "track",
         },
         "complete": {
             "subject": f"Order delivered. Thank you, {escape(first_name)}!",
@@ -1890,11 +2050,12 @@ def _send_order_status_email(order, status, cancel_reason=""):
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
                 f"<p>Your order <strong>{escape(ref)}</strong> has been marked as delivered. We hope you&rsquo;re happy with your books!</p>"
+                f"{order_summary_html}"
                 f"<p>If anything is missing or not as expected, please reply to this email or reach us on WhatsApp and we&rsquo;ll make it right.</p>"
                 f"<p>Thank you for choosing RealMindX Bookshop. We look forward to serving you again.</p>"
             ),
             "cta_label": "Shop Again",
-            "cta_url": "/bookshop",
+            "cta_url": bookshop_url,
         },
         "cancelled": {
             "subject": f"Your RealMindX order {ref} has been cancelled",
@@ -1902,11 +2063,12 @@ def _send_order_status_email(order, status, cancel_reason=""):
             "body": (
                 f"<p>Hello {escape(first_name)},</p>"
                 f"<p>We&rsquo;re sorry to let you know that your order <strong>{escape(ref)}</strong> has been cancelled.</p>"
+                + order_summary_html
                 + (f"<p><strong>Reason:</strong> {escape(cancel_reason)}</p>" if cancel_reason else "")
                 + "<p>If you believe this is an error or would like to place a new order, please reach out to us and we&rsquo;ll be happy to help.</p>"
             ),
             "cta_label": "Contact Us",
-            "cta_url": "/contact",
+            "cta_url": f"{base_url}/contact",
         },
     }
 
@@ -1919,7 +2081,7 @@ def _send_order_status_email(order, status, cancel_reason=""):
             to=order.email,
             from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
             subject=info["subject"],
-            html=app_email_shell(
+            html=bookshop_email_shell(
                 info["title"],
                 info["body"],
                 cta_label=info.get("cta_label"),

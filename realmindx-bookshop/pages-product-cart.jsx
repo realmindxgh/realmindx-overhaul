@@ -3,6 +3,7 @@ import { Icon, Stars, LoadingState, cedis, CoverPlaceholder } from './shared.jsx
 import { useCart, useWishlist, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
+import { trackProductView } from '../src/lib/analytics.js';
 import { useSiteCopy } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
@@ -175,6 +176,14 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
   const idx = Math.max(0, books.indexOf(book));
 
   React.useEffect(() => { setQty(1); setActiveImg(0); window.scrollTo(0,0); }, [bookId]);
+  React.useEffect(() => {
+    if (!book?.id) return;
+    trackProductView({
+      productId: book.id,
+      path: `${PREFIX}/products/${productPathSegment(book)}`,
+      fullPath: `${PREFIX}/products/${productPathSegment(book)}`,
+    });
+  }, [book]);
 
   // Approved reviews from the backend. Demo fallback books carry non-numeric
   // ids ('b1') and have no backend rows — they just show the empty state and

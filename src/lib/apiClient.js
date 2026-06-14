@@ -184,6 +184,29 @@ export const api = {
 
   // admin - read
   adminDashboard: () => apiFetch('/admin/dashboard'),
+  adminAnalyticsDashboard: (params = {}) => {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') sp.set(key, value);
+    });
+    const suffix = sp.toString() ? `?${sp.toString()}` : '';
+    return apiFetch(`/admin/analytics/dashboard${suffix}`);
+  },
+  adminAnalyticsProduct: (productId, params = {}) => {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') sp.set(key, value);
+    });
+    const suffix = sp.toString() ? `?${sp.toString()}` : '';
+    return apiFetch(`/admin/analytics/products/${productId}${suffix}`);
+  },
+  adminAnalyticsExportUrl: (report, params = {}) => {
+    const sp = new URLSearchParams({ report });
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') sp.set(key, value);
+    });
+    return url(`/admin/analytics/export?${sp.toString()}`);
+  },
   adminList: (collection) => apiFetch(`/admin/${collection}`),
   // admin - write (collection: 'jobs'|'products'|'categories'|'news'|'gallery'|'resources')
   adminCreate: (collection, payload) => apiFetch(`/admin/${collection}`, { method: 'POST', body: payload }),
