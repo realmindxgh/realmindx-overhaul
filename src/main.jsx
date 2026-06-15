@@ -918,12 +918,10 @@ const publicAssetUrl = (value) => {
 
 const FlyerFocusModal = () => {
   const [flyer, setFlyer] = React.useState(null);
-  const requested = React.useRef(false);
 
   React.useEffect(() => {
     const path = window.location.pathname;
-    if (requested.current || /^\/(admin|staff|portal)(\/|$)/.test(path)) return undefined;
-    requested.current = true;
+    if (/^\/(admin|staff|portal)(\/|$)/.test(path)) return undefined;
 
     let lastSeen = 0;
     try {
