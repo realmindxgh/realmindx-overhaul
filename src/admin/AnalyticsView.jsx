@@ -152,8 +152,14 @@ const StatusBadge = ({ children, tone = 'navy' }) => (
   <span className={`analytics-pill analytics-pill-${tone}`}>{children}</span>
 );
 
-const ExportButton = ({ href, label }) => (
-  <a className="analytics-export-btn" href={href} target="_blank" rel="noreferrer">
+const ExportButton = ({ href, label, compact = false }) => (
+  <a
+    className={`analytics-export-btn${compact ? ' analytics-export-compact' : ''}`}
+    href={href}
+    target="_blank"
+    rel="noreferrer"
+    aria-label={label}
+  >
     <Icon name="file" size={14} />
     <span>{label}</span>
   </a>
@@ -721,49 +727,58 @@ const AnalyticsView = ({ session }) => {
   return (
     <div className="analytics-shell">
       <header className="analytics-hero">
-        <div className="analytics-hero-copy">
-          <span className="analytics-eyebrow">Admin analytics</span>
-          <h2>Website and bookshop analytics</h2>
-          <p>{payload?.privacy?.notice}</p>
+        <div className="analytics-hero-head">
+          <div className="analytics-hero-copy">
+            <span className="analytics-eyebrow">Admin analytics</span>
+            <h2>Website and bookshop analytics</h2>
+            <p>Analytics use anonymous visitor IDs and summarised location data; full IP addresses are never shown.</p>
+          </div>
+          <div className="analytics-toolbar">
+            <div className="analytics-range-picker">
+              <label htmlFor="analytics-range">Date range</label>
+              <div className="analytics-range-select">
+                <Icon name="calendar" size={17} />
+                <select id="analytics-range" value={preset} onChange={(event) => setPreset(event.target.value)}>
+                  {RANGE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </div>
+            </div>
+            {preset === 'custom' ? (
+              <div className="analytics-date-fields">
+                <DatePickerField value={customStart} onChange={setCustomStart} ariaLabel="Start date" />
+                <DatePickerField value={customEnd} onChange={setCustomEnd} ariaLabel="End date" />
+              </div>
+            ) : null}
+            {canExport ? <ExportButton href={api.adminAnalyticsExportUrl('products', rangeParams)} label="Export products" compact /> : null}
+          </div>
         </div>
-        <div className="analytics-toolbar">
-          <div className="analytics-range-picker">
-            <label htmlFor="analytics-range">Date range</label>
-            <select id="analytics-range" value={preset} onChange={(event) => setPreset(event.target.value)}>
-              {RANGE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+
+        <nav className="analytics-tabs" aria-label="Analytics sections">
+          {TABS.map(tab => (
+            <button key={tab.id} type="button" className={activeTab === tab.id ? 'active' : ''} onClick={() => setActiveTab(tab.id)}>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="analytics-toolbar-metrics" aria-label="Business snapshot">
+          <div>
+            <span>Orders</span>
+            <strong>{formatNumber(bookshopSummary.total_orders)}</strong>
+            <small>{payload?.range?.label}</small>
           </div>
-          {preset === 'custom' ? (
-            <div className="analytics-date-fields">
-              <DatePickerField value={customStart} onChange={setCustomStart} ariaLabel="Start date" />
-              <DatePickerField value={customEnd} onChange={setCustomEnd} ariaLabel="End date" />
-            </div>
-          ) : null}
-          <div className="analytics-toolbar-metrics">
-            <div>
-              <span>Orders</span>
-              <strong>{formatNumber(bookshopSummary.total_orders)}</strong>
-            </div>
-            <div>
-              <span>Revenue</span>
-              <strong>{formatCurrency(bookshopSummary.total_revenue)}</strong>
-            </div>
-            <div>
-              <span>Service enquiries</span>
-              <strong>{formatNumber(engagement.services.summary?.enquiry_clicks)}</strong>
-            </div>
+          <div>
+            <span>Revenue</span>
+            <strong>{formatCurrency(bookshopSummary.total_revenue)}</strong>
+            <small>{payload?.range?.label}</small>
           </div>
-          {canExport ? <ExportButton href={api.adminAnalyticsExportUrl('products', rangeParams)} label="Export products" /> : null}
+          <div>
+            <span>Service enquiries</span>
+            <strong>{formatNumber(engagement.services.summary?.enquiry_clicks)}</strong>
+            <small>{payload?.range?.label}</small>
+          </div>
         </div>
       </header>
-
-      <nav className="analytics-tabs" aria-label="Analytics sections">
-        {TABS.map(tab => (
-          <button key={tab.id} type="button" className={activeTab === tab.id ? 'active' : ''} onClick={() => setActiveTab(tab.id)}>
-            {tab.label}
-          </button>
-        ))}
-      </nav>
 
       {activeTab === 'overview' ? (
         <>

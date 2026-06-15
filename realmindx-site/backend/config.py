@@ -26,6 +26,7 @@ class Config:
     BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:5173")
     BOOKSHOP_URL = os.getenv("BOOKSHOP_URL", f"{BASE_URL}/bookshop")
     API_URL = os.getenv("API_URL", "http://127.0.0.1:5000/api")
+    FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", str(BASE_DIR.parent / "dist"))
     GEOIP_DATABASE_PATH = os.getenv(
         "GEOIP_DATABASE_PATH",
         "/var/lib/realmindx/geoip/dbip-city-lite.mmdb",

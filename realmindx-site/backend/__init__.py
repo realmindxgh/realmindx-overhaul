@@ -7,6 +7,7 @@ from .cli import register_cli
 from .config import Config
 from .extensions import cors, csrf, db, limiter, login_manager, migrate
 from .models import User
+from .seo_pages import news_article_page
 
 
 def create_app(config_object=Config):
@@ -57,6 +58,10 @@ def create_app(config_object=Config):
     @app.get("/robots.txt")
     def robots():
         return host_robots_response()
+
+    @app.get("/news/<slug>", strict_slashes=False)
+    def news_article(slug):
+        return news_article_page(slug)
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
