@@ -424,6 +424,9 @@ def _save_imported_images(file_storage, owner_id):
     file_storage.stream.seek(0)
     if archive_bytes > 100 * 1024 * 1024:
         raise ValueError("Image ZIP must be 100 MB or smaller.")
+    if not zipfile.is_zipfile(file_storage.stream):
+        raise ValueError("Choose a valid ZIP archive for the product images.")
+    file_storage.stream.seek(0)
     total_uncompressed = 0
     max_entries = 500
     max_image_bytes = 12 * 1024 * 1024

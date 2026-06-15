@@ -56,7 +56,9 @@ class Config:
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
 
     UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", str(BASE_DIR / "uploads"))
-    MAX_CONTENT_LENGTH = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
+    MAX_UPLOAD_FILE_BYTES = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
+    # Multipart requests also contain the catalogue, mapping, and form boundaries.
+    MAX_CONTENT_LENGTH = MAX_UPLOAD_FILE_BYTES + (5 * 1024 * 1024)
     ALLOWED_UPLOAD_EXTENSIONS = {
         "images": {"jpg", "jpeg", "png", "webp"},
         "documents": {"pdf", "doc", "docx", "odt", "rtf"},
