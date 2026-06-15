@@ -863,7 +863,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
           </button>
         </aside>
 
-        <div>
+        <div className="bs-shop-results">
           {browseIntro && !filters.query.trim() && (
             <section className={`bs-category-intro${hasScopedBrowse ? ' compact' : ''}`}>
               <span className="bs-eyebrow">{browseIntro.eyebrow}</span>
@@ -1086,6 +1086,14 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       <div className={`bs-drawer-scrim${drawer ? ' open' : ''}`} onClick={() => setDrawer(false)} />
       <div className={`bs-filter-drawer${drawer ? ' open' : ''}`}>
         <div className="bs-drawer-handle" />
+        <button
+          type="button"
+          className="bs-drawer-close"
+          onClick={() => setDrawer(false)}
+          aria-label="Close filters"
+        >
+          <Icon name="x" size={17} />
+        </button>
         <FilterPanel
           filters={filters}
           setFilters={setFilters}
