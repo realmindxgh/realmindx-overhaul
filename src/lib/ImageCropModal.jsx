@@ -207,7 +207,14 @@ export default function ImageCropModal({
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 16, backdropFilter: 'blur(6px)',
     }}>
-      <div style={{ background: '#fff', borderRadius: 18, padding: '24px 24px 20px', maxWidth: `min(${VW + 80}px, 95vw)`, width: '100%', maxHeight: 'calc(100svh - 32px)', overflowY: 'auto' }}>
+      <div style={{ position: 'relative', background: '#fff', borderRadius: 18, padding: '24px 24px 20px', maxWidth: `min(${VW + 80}px, 95vw)`, width: '100%', maxHeight: 'calc(100svh - 32px)', overflowY: 'auto' }}>
+        <button type="button" onClick={onCancel} aria-label="Close image cropper" style={{
+          position: 'absolute', top: 14, right: 14, zIndex: 2,
+          width: 38, height: 38, display: 'grid', placeItems: 'center',
+          border: '1.5px solid #d9e1ee', borderRadius: '50%',
+          background: '#fff', color: '#143670', fontSize: 23,
+          lineHeight: 1, cursor: 'pointer',
+        }}>&times;</button>
         <h3 style={{ margin: '0 0 4px', fontFamily: 'Montserrat,sans-serif', fontWeight: 900, fontSize: 17, color: '#143670' }}>{title}</h3>
         <p style={{ margin: '0 0 14px', fontSize: 12.5, color: '#6b7a99' }}>Drag to reposition · Scroll or pinch to zoom</p>
 

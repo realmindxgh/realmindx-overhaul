@@ -680,10 +680,25 @@
 @media (max-width: 768px) { .bs-bottom-nav { display: grid; } }
 
 /* ============================================================ BREADCRUMB ============================================================ */
-.bs-breadcrumb { padding: 18px 0 4px; font-size: 13px; color: var(--bs-muted); display: flex; gap: 8px; align-items: center; }
-.bs-breadcrumb a:hover { color: var(--bs-navy); }
-.bs-sep { opacity: .5; }
-.bs-cur { color: var(--bs-navy); font-weight: 600; }
+.bs-breadcrumb { padding: 18px 0 4px; font-size: 12px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.bs-breadcrumb a,
+.bs-breadcrumb .bs-cur,
+.bs-breadcrumb > span:not(.bs-sep) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 11px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(20,54,112,.96), rgba(7,35,83,.96));
+  color: #fff;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(7,35,83,.14);
+}
+.bs-breadcrumb a:hover { color: var(--bs-gold-live); }
+.bs-sep { color: var(--bs-gold-dark); font-weight: 900; opacity: 1; }
+.bs-cur { color: #fff; font-weight: 800; }
 
 /* ============================================================ SHOP PAGE ============================================================ */
 .bs-shop-layout { display: grid; grid-template-columns: 268px 1fr; gap: 32px; align-items: start; padding: 24px 0 72px; }
@@ -804,7 +819,7 @@
 @media (max-width: 900px) {
   .bs-shop-layout { grid-template-columns: 1fr; }
   .bs-filter-card.desktop { display: none; }
-  .bs-filter-mobile-btn { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border: 1.5px solid var(--bs-border); border-radius: var(--bs-radius-sm); font-family:'Montserrat',sans-serif; font-weight: 700; font-size: 13px; color: var(--bs-navy); background: #fff; }
+  button.bs-filter-mobile-btn { display: inline-flex !important; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border: 2px solid var(--bs-navy) !important; border-radius: 999px; font-family:'Montserrat',sans-serif; font-weight: 900; font-size: 13px; color: var(--bs-navy) !important; background: #ffcc01 !important; box-shadow: 0 8px 20px rgba(255,204,1,.34); }
 }
 .bs-drawer-scrim { position: fixed; inset: 0; background: rgba(13,27,46,.5); z-index: 960; opacity: 0; pointer-events: none; transition: opacity .3s; }
 .bs-drawer-scrim.open { opacity: 1; pointer-events: auto; }

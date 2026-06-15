@@ -142,11 +142,7 @@ const DonateForm = () => {
   };
 
   const validateIdentity = () => {
-    if (!form.name.trim()) {
-      focusProblem('name', 'Enter your full name.');
-      return false;
-    }
-    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) {
+    if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) {
       focusProblem('email', 'Enter a valid email address.');
       return false;
     }
@@ -169,7 +165,7 @@ const DonateForm = () => {
     setLoading(true); setError('');
     try {
       await submitMessage({
-        name: form.name, email: form.email, phone: form.phone,
+        name: form.name || 'Anonymous Donor', email: form.email, phone: form.phone,
         subject: `Donation enquiry - ${form.type || 'General'} / ${form.area || 'General'}`,
         message: buildMessage(),
         service: 'Donation',
@@ -205,7 +201,7 @@ const DonateForm = () => {
       await loadPaystack();
       const handler = window.PaystackPop.setup({
         key: PAYSTACK_PUBLIC_KEY,
-        email: form.email,
+        email: form.email || 'info@realmindxgh.com',
         amount: Math.round(amt * 100),
         currency: 'GHS',
         metadata: {
@@ -219,7 +215,7 @@ const DonateForm = () => {
           // Record the completed donation
           try {
             await submitMessage({
-              name: form.name, email: form.email, phone: form.phone,
+              name: form.name || 'Anonymous Donor', email: form.email, phone: form.phone,
               subject: `Donation paid GH${amt} - ref ${response.reference}`,
               message: `Paystack ref: ${response.reference}\n${buildMessage()}`,
               service: 'Donation',
@@ -258,13 +254,13 @@ const DonateForm = () => {
 
       <div className="donate-form-grid">
         <div className="form-group">
-          <label className="form-label">Full Name *</label>
-          <input ref={nameRef} className="form-input" aria-invalid={Boolean(fieldErrors.name)} value={form.name} onChange={set('name')} placeholder="Your name" required />
+          <label className="form-label">Full Name</label>
+          <input ref={nameRef} className="form-input" aria-invalid={Boolean(fieldErrors.name)} value={form.name} onChange={set('name')} placeholder="Your name" />
           {fieldErrors.name && <p className="form-error">{fieldErrors.name}</p>}
         </div>
         <div className="form-group">
-          <label className="form-label">Email Address *</label>
-          <input ref={emailRef} className="form-input" aria-invalid={Boolean(fieldErrors.email)} type="email" value={form.email} onChange={set('email')} placeholder="you@email.com" required />
+          <label className="form-label">Email Address</label>
+          <input ref={emailRef} className="form-input" aria-invalid={Boolean(fieldErrors.email)} type="email" value={form.email} onChange={set('email')} placeholder="you@email.com" />
           {fieldErrors.email && <p className="form-error">{fieldErrors.email}</p>}
         </div>
         <div className="form-group">
@@ -273,7 +269,7 @@ const DonateForm = () => {
         </div>
         <div className="form-group">
           <label className="form-label">Organisation / School</label>
-          <input className="form-input" value={form.organisation} onChange={set('organisation')} placeholder="Optional" />
+          <input className="form-input" value={form.organisation} onChange={set('organisation')} placeholder="Organisation or school" />
         </div>
 
         <div className="form-group">
@@ -336,7 +332,7 @@ const DonateForm = () => {
         )}
 
         <div className="form-group" style={{ gridColumn:'1 / -1' }}>
-          <label className="form-label">Message (optional)</label>
+          <label className="form-label">Message</label>
           <textarea className="form-textarea" rows={3} value={form.message} onChange={set('message')}
             placeholder="Any schools, programmes, or goals you'd like to support..." />
         </div>

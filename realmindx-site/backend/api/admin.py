@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from werkzeug.utils import secure_filename
 
 from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
@@ -37,6 +37,7 @@ from ..extensions import db
 from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
 from ..models import (
+    AnalyticsEvent,
     AuditLog,
     ContactMessage,
     DeliveryZone,
@@ -47,6 +48,7 @@ from ..models import (
     NewsletterSubscriber,
     News,
     Order,
+    OrderItem,
     OrderReview,
     Permission,
     Product,
@@ -416,15 +418,33 @@ def _read_image_zip(file_storage):
         return {}
     if not file_storage.filename.lower().endswith(".zip"):
         raise ValueError("Batch images must be uploaded as a ZIP file.")
+    file_storage.stream.seek(0, 2)
+    archive_bytes = file_storage.stream.tell()
+    file_storage.stream.seek(0)
+    if archive_bytes > 100 * 1024 * 1024:
+        raise ValueError("Image ZIP must be 100 MB or smaller.")
     images = {}
+    total_uncompressed = 0
+    max_entries = 500
+    max_image_bytes = 12 * 1024 * 1024
+    max_uncompressed_bytes = 512 * 1024 * 1024
     with zipfile.ZipFile(file_storage.stream) as archive:
-        for name in archive.namelist():
+        entries = archive.infolist()
+        if len(entries) > max_entries:
+            raise ValueError(f"Image ZIP contains too many files. Use at most {max_entries}.")
+        for entry in entries:
+            name = entry.filename
             if name.endswith("/") or "__MACOSX" in name:
                 continue
             basename = Path(name).name
             if not basename:
                 continue
-            images[basename.lower()] = archive.read(name)
+            if entry.file_size > max_image_bytes:
+                raise ValueError(f"{basename} is larger than the 12 MB per-image limit.")
+            total_uncompressed += entry.file_size
+            if total_uncompressed > max_uncompressed_bytes:
+                raise ValueError("Image ZIP expands beyond the 512 MB safety limit.")
+            images[basename.lower()] = archive.read(entry)
     return images
 
 
@@ -666,6 +686,31 @@ def _csv_response(filename, rows, fieldnames):
 def analytics_dashboard():
     range_info = parse_analytics_range(request.args)
     return jsonify(build_analytics_dashboard(range_info))
+
+
+@admin_bp.delete("/analytics/location-history")
+@login_required
+@admin_required
+def clear_analytics_location_history():
+    rows = AnalyticsEvent.query.filter(
+        or_(
+            AnalyticsEvent.country.isnot(None),
+            AnalyticsEvent.region.isnot(None),
+            AnalyticsEvent.city.isnot(None),
+            AnalyticsEvent.ip_prefix.isnot(None),
+        )
+    ).update(
+        {
+            AnalyticsEvent.country: None,
+            AnalyticsEvent.region: None,
+            AnalyticsEvent.city: None,
+            AnalyticsEvent.ip_prefix: None,
+        },
+        synchronize_session=False,
+    )
+    log_action("clear_analytics_location_history", "analytics_event", metadata={"events_cleared": rows})
+    db.session.commit()
+    return jsonify(message="Analytics location history cleared.", events_cleared=rows)
 
 
 @admin_bp.get("/analytics/products/<int:product_id>")
@@ -1308,6 +1353,15 @@ def update_product(product_id):
 def delete_product(product_id):
     product = db.get_or_404(Product, product_id)
     log_action("delete_product", "product", product.id, {"name": product.name})
+    OrderItem.query.filter_by(product_id=product.id).update(
+        {OrderItem.product_id: None},
+        synchronize_session=False,
+    )
+    AnalyticsEvent.query.filter_by(product_id=product.id).update(
+        {AnalyticsEvent.product_id: None},
+        synchronize_session=False,
+    )
+    ProductReview.query.filter_by(product_id=product.id).delete(synchronize_session=False)
     db.session.delete(product)
     db.session.commit()
     return jsonify(message="Product deleted.")
@@ -2248,6 +2302,12 @@ def _clean_news_sections(sections):
         heading = (section.get("heading") or "").strip()
         body = (section.get("body") or "").strip()
         caption = (section.get("caption") or "").strip()
+        image_position = (section.get("image_position") or "auto").strip().lower()
+        image_size = (section.get("image_size") or "medium").strip().lower()
+        if image_position not in {"auto", "left", "right", "full"}:
+            image_position = "auto"
+        if image_size not in {"small", "medium", "large"}:
+            image_size = "medium"
         image_file_id = section.get("image_file_id") or None
         if image_file_id in ("", "null", "None"):
             image_file_id = None
@@ -2258,6 +2318,8 @@ def _clean_news_sections(sections):
                 "heading": heading,
                 "body": body,
                 "caption": caption,
+                "image_position": image_position,
+                "image_size": image_size,
                 "image_file_id": int(image_file_id) if str(image_file_id or "").isdigit() else None,
             }
         )
@@ -2971,6 +3033,7 @@ def list_flyers():
         "image_url": _img(r),
         "image_file_id": r.image_file_id,
         "status": r.status,
+        "is_focus": r.is_focus,
     } for r in rows])
 
 
@@ -2990,9 +3053,12 @@ def create_flyer():
         image_fit=payload.get("image_fit") or "cover",
         image_position=payload.get("image_position") or "center",
         status=payload.get("status") or "published",
+        is_focus=bool(payload.get("is_focus", False)),
     )
     if not row.headline and not row.image_file_id:
         return jsonify(error="Add headline text, an image, or both."), 400
+    if row.is_focus:
+        Flyer.query.update({Flyer.is_focus: False}, synchronize_session=False)
     db.session.add(row)
     db.session.flush()
     log_action("create_flyer", "flyer", row.id)
@@ -3006,12 +3072,14 @@ def create_flyer():
 def update_flyer(flyer_id):
     row = db.get_or_404(Flyer, flyer_id)
     payload = request.get_json(silent=True) or {}
-    for field in ["headline", "accent", "subline", "badge", "sort_order", "image_file_id", "show_overlay", "image_fit", "image_position", "status"]:
+    for field in ["headline", "accent", "subline", "badge", "sort_order", "image_file_id", "show_overlay", "image_fit", "image_position", "status", "is_focus"]:
         if field in payload:
             value = payload[field]
             if field in {"headline", "accent", "subline", "badge", "image_file_id"}:
                 value = (str(value).strip() if value is not None else "") or None
             setattr(row, field, value)
+    if row.is_focus:
+        Flyer.query.filter(Flyer.id != row.id).update({Flyer.is_focus: False}, synchronize_session=False)
     if not row.headline and not row.image_file_id:
         return jsonify(error="Add headline text, an image, or both."), 400
     log_action("update_flyer", "flyer", row.id)

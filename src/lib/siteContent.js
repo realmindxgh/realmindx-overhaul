@@ -44,6 +44,17 @@ const previewImages = {
   community: homeTeachingImage,
 };
 
+const INITIAL_ROUTE_DATA = (() => {
+  if (typeof document === 'undefined') return {};
+  const node = document.getElementById('realmindx-route-data');
+  if (!node?.textContent) return {};
+  try {
+    return JSON.parse(node.textContent);
+  } catch {
+    return {};
+  }
+})();
+
 const apiAssetUrl = value => {
   if (!value || !String(value).startsWith('/uploads/')) return value;
   try {
@@ -123,8 +134,8 @@ const sortServices = items =>
     .map(normaliseService)
     .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
 
-const useApiItems = loader => {
-  const [state, setState] = React.useState({ items: null, failed: false });
+const useApiItems = (loader, initialItems = null) => {
+  const [state, setState] = React.useState({ items: initialItems, failed: false });
 
   React.useEffect(() => {
     if (!isApiMode()) return undefined;
@@ -134,7 +145,7 @@ const useApiItems = loader => {
         if (alive) setState({ items: data.items || [], failed: false });
       })
       .catch(() => {
-        if (alive) setState({ items: [], failed: true });
+        if (alive) setState(prev => ({ items: prev.items || [], failed: true }));
       });
     return () => {
       alive = false;
@@ -224,6 +235,8 @@ const normaliseNews = (item, index = 0) => {
           heading: section.heading || '',
           body: section.body || '',
           caption: section.caption || '',
+          image_position: section.image_position || 'auto',
+          image_size: section.image_size || 'medium',
           image_file_id: section.image_file_id || null,
           image_url: apiAssetUrl(section.image_url) || section.image_url || '',
         }))
@@ -340,7 +353,8 @@ export const useDonationSlides = () => {
 
 export const usePublicNewsState = (limit = 3) => {
   const localContent = useManagedContent();
-  const { items: apiNews, failed } = useApiItems(api.fetchNews);
+  const initialNews = Array.isArray(INITIAL_ROUTE_DATA.news) ? INITIAL_ROUTE_DATA.news : null;
+  const { items: apiNews, failed } = useApiItems(api.fetchNews, initialNews);
 
   const localNews = localContent.news?.length ? localContent.news : [];
   const source = isApiMode()

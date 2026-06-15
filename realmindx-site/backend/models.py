@@ -439,6 +439,7 @@ class Flyer(TimestampMixin, db.Model):
     image_fit = db.Column(db.String(20), default="cover", nullable=False)
     image_position = db.Column(db.String(40), default="center", nullable=False)
     status = db.Column(db.String(20), default="published", nullable=False)
+    is_focus = db.Column(db.Boolean, default=False, nullable=False)
 
     image_file = db.relationship("UploadedFile", foreign_keys=[image_file_id])
 

@@ -28,12 +28,20 @@ export const IdleWarning = ({ countdown, onKeepAlive, onLogout }) => {
       animation: 'rmxFadeIn .25s ease',
     }}>
       <div style={{
+        position: 'relative',
         background: '#fff', borderRadius: 20,
         padding: '48px 40px 40px',
         maxWidth: 400, width: '100%',
         textAlign: 'center',
         boxShadow: '0 32px 80px rgba(0,0,0,0.28)',
       }}>
+        <button onClick={onKeepAlive} aria-label="Close inactivity warning" style={{
+          position: 'absolute', top: 14, right: 14,
+          width: 38, height: 38, display: 'grid', placeItems: 'center',
+          border: '1.5px solid #d9e1ee', borderRadius: '50%',
+          background: '#fff', color: '#143670', fontSize: 23,
+          lineHeight: 1, cursor: 'pointer',
+        }}>&times;</button>
         {/* Circular countdown ring */}
         <div style={{ position: 'relative', width: 112, height: 112, margin: '0 auto 28px' }}>
           <svg width="112" height="112" viewBox="0 0 112 112" style={{ transform: 'rotate(-90deg)' }}>

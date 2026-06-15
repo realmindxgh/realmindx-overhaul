@@ -280,6 +280,89 @@
   background: var(--analytics-navy-tint);
 }
 
+.analytics-danger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid #d94c4c;
+  border-radius: 999px;
+  background: #fff;
+  color: #a92222;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.analytics-danger-btn.solid {
+  background: #b42318;
+  border-color: #b42318;
+  color: #fff;
+}
+
+.analytics-danger-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.analytics-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(4, 18, 38, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.analytics-confirm-modal {
+  position: relative;
+  width: min(520px, 100%);
+  padding: 32px;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 30px 90px rgba(4, 18, 38, 0.3);
+}
+
+.analytics-confirm-modal h3 {
+  margin: 8px 48px 10px 0;
+  color: var(--navy);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.35rem;
+}
+
+.analytics-confirm-modal p {
+  margin: 0;
+  color: var(--analytics-muted);
+  line-height: 1.65;
+}
+
+.analytics-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--analytics-border-strong);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--navy);
+  cursor: pointer;
+}
+
+.analytics-confirm-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
 .analytics-open-btn {
   background: var(--navy);
   border-color: var(--navy);
@@ -951,7 +1034,8 @@
 
   .analytics-open-btn,
   .analytics-compare-btn,
-  .analytics-export-btn {
+  .analytics-export-btn,
+  .analytics-danger-btn {
     width: 100%;
   }
 

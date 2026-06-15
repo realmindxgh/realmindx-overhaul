@@ -93,6 +93,7 @@ export const api = {
   fetchProducts: (qs = '') => apiFetch(`/products${qs}`),
   fetchCategories: () => apiFetch('/products/categories'),
   fetchFlyers: () => apiFetch('/flyers'),
+  fetchFocusFlyer: () => apiFetch('/flyers/focus'),
   fetchServices: () => apiFetch('/services'),
   fetchSiteCopy: () => apiFetch('/site-copy'),
   fetchSettings: () => apiFetch('/settings'),
@@ -210,6 +211,7 @@ export const api = {
     });
     return url(`/admin/analytics/export?${sp.toString()}`);
   },
+  adminClearAnalyticsLocations: () => apiFetch('/admin/analytics/location-history', { method: 'DELETE' }),
   adminList: (collection) => apiFetch(`/admin/${collection}`),
   // admin - write (collection: 'jobs'|'products'|'categories'|'news'|'gallery'|'resources')
   adminCreate: (collection, payload) => apiFetch(`/admin/${collection}`, { method: 'POST', body: payload }),

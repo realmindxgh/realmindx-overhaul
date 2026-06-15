@@ -5,7 +5,7 @@ import re
 
 from flask import Response, current_app, redirect, request
 
-from .api.public import MAIN_SITE_BASE_URL, enrich_news_sections, upload_public_url
+from .api.public import MAIN_SITE_BASE_URL, enrich_news_sections, news_public_json, upload_public_url
 from .models import News
 
 
@@ -77,14 +77,19 @@ def _article_markup(row, sections, image_url):
         pieces.append(f'<p class="news-article-lead">{escape(row.summary)}</p>')
     for paragraph in _paragraphs(row.body):
         pieces.append(f"<p>{escape(paragraph)}</p>")
-    for section in sections:
+    for section_index, section in enumerate(sections):
         heading = section.get("heading")
         section_image = _absolute_url(section.get("image_url"))
+        image_position = section.get("image_position") or "auto"
+        if image_position == "auto":
+            image_position = "right" if section_index % 2 == 0 else "left"
+        image_size = section.get("image_size") or "medium"
         if heading:
             pieces.append(f"<h2>{escape(heading)}</h2>")
         if section_image:
             pieces.append(
-                f'<figure><img src="{escape(section_image, quote=True)}" '
+                f'<figure class="news-section-image position-{escape(image_position, quote=True)} '
+                f'size-{escape(image_size, quote=True)}"><img src="{escape(section_image, quote=True)}" '
                 f'alt="{escape(section.get("caption") or heading or row.title, quote=True)}" />'
             )
             if section.get("caption"):
@@ -116,7 +121,7 @@ def _frontend_document():
         return None
 
 
-def _render_document(document, *, title, description, canonical, robots, image, markup, schema=None):
+def _render_document(document, *, title, description, canonical, robots, image, markup, schema=None, route_data=None):
     document = _replace_title(document, title)
     document = _set_meta(document, "description", description)
     document = _set_meta(document, "robots", robots)
@@ -135,6 +140,13 @@ def _render_document(document, *, title, description, canonical, robots, image, 
         document = document.replace(
             "</head>",
             f'    <script type="application/ld+json" data-seo-id="route-seo">{payload}</script>\n  </head>',
+            1,
+        )
+    if route_data is not None:
+        payload = json.dumps(route_data, ensure_ascii=False).replace("</", "<\\/")
+        document = document.replace(
+            "</head>",
+            f'    <script type="application/json" id="realmindx-route-data">{payload}</script>\n  </head>',
             1,
         )
     document = document.replace('<div id="root"></div>', f'<div id="root">{markup}</div>', 1)
@@ -162,6 +174,7 @@ def news_article_page(slug):
             robots="noindex,follow",
             image=f"{MAIN_SITE_BASE_URL}/og-image.png",
             markup=_not_found_markup(),
+            route_data={"news": []},
         )
         response = Response(rendered, status=404, mimetype="text/html")
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -203,6 +216,7 @@ def news_article_page(slug):
         image=image_url,
         markup=_article_markup(row, sections, image_url),
         schema=schema,
+        route_data={"news": [news_public_json(row)]},
     )
     response = Response(rendered, status=200, mimetype="text/html")
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"

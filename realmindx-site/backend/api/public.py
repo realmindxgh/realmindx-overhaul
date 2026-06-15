@@ -29,6 +29,25 @@ public_bp = Blueprint("public", __name__)
 MAIN_SITE_BASE_URL = "https://realmindxgh.com"
 BOOKSHOP_SITE_BASE_URL = "https://bookshop.realmindxgh.com"
 
+CRAWLABLE_PUBLIC_API_RULES = [
+    "Allow: /api/news$",
+    "Allow: /api/services$",
+    "Allow: /api/settings$",
+    "Allow: /api/site-copy$",
+    "Allow: /api/partners$",
+    "Allow: /api/people$",
+    "Allow: /api/testimonials$",
+    "Allow: /api/home-hero-slides$",
+    "Allow: /api/donation-slides$",
+    "Allow: /api/gallery$",
+    "Allow: /api/resources$",
+    "Allow: /api/jobs$",
+    "Allow: /api/products",
+    "Allow: /api/flyers/focus$",
+    "Allow: /api/flyers$",
+    "Allow: /api/delivery-zones$",
+]
+
 
 def collection_item_id(item):
     if not isinstance(item, dict):
@@ -144,6 +163,8 @@ def enrich_news_sections(sections):
             "heading": section.get("heading") or "",
             "body": section.get("body") or "",
             "caption": section.get("caption") or "",
+            "image_position": section.get("image_position") or "auto",
+            "image_size": section.get("image_size") or "medium",
             "image_file_id": section.get("image_file_id") or None,
         }
         if str(row["image_file_id"] or "").isdigit():
@@ -318,6 +339,7 @@ def host_robots_response(host=None):
         body = "\n".join([
             "User-agent: *",
             "Allow: /",
+            *CRAWLABLE_PUBLIC_API_RULES,
             "",
             "Disallow: /api/",
             "Disallow: /cart",
@@ -337,6 +359,7 @@ def host_robots_response(host=None):
         body = "\n".join([
             "User-agent: *",
             "Allow: /",
+            *CRAWLABLE_PUBLIC_API_RULES,
             "",
             "Disallow: /api/",
             "Disallow: /login",
@@ -376,24 +399,31 @@ def collect_analytics_events():
 def contact():
     payload = request.get_json(silent=True) or {}
     require_turnstile(payload)
-    try:
-        email = clean_email(payload.get("email"))
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
+    source = (payload.get("source") or "site").strip()
+    is_anonymous_donation = source.lower() == "donation" and not (payload.get("email") or "").strip()
+    if is_anonymous_donation:
+        email = "anonymous@realmindxgh.com"
+    else:
+        try:
+            email = clean_email(payload.get("email"))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
     name = (payload.get("name") or "").strip()
+    if source.lower() == "donation" and not name:
+        name = "Anonymous Donor"
     subject = (payload.get("subject") or "Website enquiry").strip()
     message = (payload.get("message") or "").strip()
     if not name or not message:
         return jsonify(error="Name and message are required."), 400
 
-    is_bookshop = (payload.get("source") or "").lower() == "bookshop"
+    is_bookshop = source.lower() == "bookshop"
     contact_message = ContactMessage(
         name=name,
         email=email,
         phone=(payload.get("phone") or "").strip() or None,
         subject=subject,
         message=message,
-        source=payload.get("source") or "site",
+        source=source,
     )
     db.session.add(contact_message)
     db.session.flush()
@@ -447,29 +477,30 @@ def contact():
         ))
 
     first_name = (name.split()[0] if name else "there")
-    # Warm confirmation to the sender
-    send_email(OutboundEmail(
-        to=email,
-        subject=f"We have received your message, {escape(first_name)} (ref {ticket_reference})",
-        html=_email_shell(
-            "We have received your message!",
-            (
-                f"<p>Hello {escape(first_name)},</p>"
-                f"<p>Thank you for reaching out to RealMindX. We really appreciate you getting in touch, "
-                f"and we want you to know your message has been received and is in the hands of our team.</p>"
-                f"<div style='background:#f5f8fc;border-left:4px solid #ffcc01;border-radius:6px;"
-                f"padding:14px 18px;margin:20px 0;'>"
-                f"<p style='margin:0;'><strong>Your reference:</strong> {escape(ticket_reference)}</p>"
-                f"<p style='margin:6px 0 0;'><strong>Subject:</strong> {escape(subject)}</p>"
-                f"</div>"
-                f"<p>One of our team members will get back to you within <strong>one business day</strong>. "
-                f"If your enquiry is urgent, feel free to reply to this email or reach us directly on WhatsApp.</p>"
-                f"<p>We look forward to speaking with you!</p>"
+    # Anonymous donors do not provide a destination for an acknowledgement.
+    if not is_anonymous_donation:
+        send_email(OutboundEmail(
+            to=email,
+            subject=f"We have received your message, {escape(first_name)} (ref {ticket_reference})",
+            html=_email_shell(
+                "We have received your message!",
+                (
+                    f"<p>Hello {escape(first_name)},</p>"
+                    f"<p>Thank you for reaching out to RealMindX. We really appreciate you getting in touch, "
+                    f"and we want you to know your message has been received and is in the hands of our team.</p>"
+                    f"<div style='background:#f5f8fc;border-left:4px solid #ffcc01;border-radius:6px;"
+                    f"padding:14px 18px;margin:20px 0;'>"
+                    f"<p style='margin:0;'><strong>Your reference:</strong> {escape(ticket_reference)}</p>"
+                    f"<p style='margin:6px 0 0;'><strong>Subject:</strong> {escape(subject)}</p>"
+                    f"</div>"
+                    f"<p>One of our team members will get back to you within <strong>one business day</strong>. "
+                    f"If your enquiry is urgent, feel free to reply to this email or reach us directly on WhatsApp.</p>"
+                    f"<p>We look forward to speaking with you!</p>"
+                ),
+                eyebrow=_eyebrow,
+                preheader=f"Reference {ticket_reference}. We will be in touch within one business day.",
             ),
-            eyebrow=_eyebrow,
-            preheader=f"Reference {ticket_reference}. We will be in touch within one business day.",
-        ),
-    ))
+        ))
     return jsonify(message="Message received. We will get back to you shortly.", ticket_reference=ticket_reference), 201
 
 
@@ -544,13 +575,15 @@ def initialize_donation_paystack():
     secret_key = current_app.config.get("PAYSTACK_SECRET_KEY")
     if not secret_key:
         return jsonify(error="Paystack is not configured for this environment."), 503
-    try:
-        email = clean_email(payload.get("email"))
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
-    name = (payload.get("name") or "").strip()
-    if not name:
-        return jsonify(error="Full name is required."), 400
+    supplied_email = (payload.get("email") or "").strip()
+    if supplied_email:
+        try:
+            email = clean_email(supplied_email)
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+    else:
+        email = current_app.config["DEFAULT_REPLY_TO_EMAIL"]
+    name = (payload.get("name") or "").strip() or "Anonymous Donor"
     try:
         amount = Decimal(str(payload.get("amount") or "0"))
     except Exception:
@@ -629,19 +662,31 @@ def validate_promo_code():
 @public_bp.get("/flyers")
 def flyers():
     rows = Flyer.query.filter_by(status="published").order_by(Flyer.sort_order.asc(), Flyer.created_at.asc()).all()
-    def _img(r):
-        return f"/uploads/{r.image_file.visibility}/{r.image_file.category}/{r.image_file.stored_filename}" if r.image_file else None
-    return jsonify(items=[{
-        "id": r.id,
-        "headline": r.headline,
-        "accent": r.accent,
-        "subline": r.subline,
-        "badge": r.badge,
-        "show_overlay": r.show_overlay,
-        "image_fit": r.image_fit,
-        "image_position": r.image_position,
-        "image_url": _img(r),
-    } for r in rows])
+    return jsonify(items=[_flyer_json(r) for r in rows])
+
+
+def _flyer_json(row):
+    image_url = (
+        f"/uploads/{row.image_file.visibility}/{row.image_file.category}/{row.image_file.stored_filename}"
+        if row.image_file else None
+    )
+    return {
+        "id": row.id,
+        "headline": row.headline,
+        "accent": row.accent,
+        "subline": row.subline,
+        "badge": row.badge,
+        "show_overlay": row.show_overlay,
+        "image_fit": row.image_fit,
+        "image_position": row.image_position,
+        "image_url": image_url,
+    }
+
+
+@public_bp.get("/flyers/focus")
+def focus_flyer():
+    row = Flyer.query.filter_by(is_focus=True).order_by(Flyer.updated_at.desc(), Flyer.id.desc()).first()
+    return jsonify(item=_flyer_json(row) if row else None)
 
 
 @public_bp.get("/settings")
@@ -698,12 +743,8 @@ def donation_slides():
     return jsonify(items=enrich_service_media(rows))
 
 
-@public_bp.get("/news")
-def news():
-    rows = News.query.filter_by(status="published").order_by(News.published_at.desc().nullslast()).limit(20).all()
-    def _img(row):
-        return upload_public_url(row.image_file) if row.image_file else None
-    return jsonify(items=[{
+def news_public_json(row):
+    return {
         "id": row.id,
         "title": row.title,
         "slug": row.slug,
@@ -711,10 +752,16 @@ def news():
         "summary": row.summary,
         "body": row.body,
         "sections": enrich_news_sections(row.sections or []),
-        "image_url": _img(row),
+        "image_url": upload_public_url(row.image_file) if row.image_file else None,
         "date": str(row.display_date) if row.display_date else None,
         "published_at": row.published_at.isoformat() if row.published_at else row.created_at.isoformat(),
-    } for row in rows])
+    }
+
+
+@public_bp.get("/news")
+def news():
+    rows = News.query.filter_by(status="published").order_by(News.published_at.desc().nullslast()).limit(20).all()
+    return jsonify(items=[news_public_json(row) for row in rows])
 
 
 @public_bp.get("/gallery")

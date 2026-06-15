@@ -1879,24 +1879,25 @@ input, textarea, select { font-family: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: var(--navy);
-  color: var(--white);
-  border: none;
-  border-radius: var(--r-md);
+  background: var(--yellow);
+  color: var(--navy);
+  border: 2px solid var(--navy);
+  border-radius: 999px;
   padding: 0 14px;
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
   font-size: 0.8rem;
   cursor: pointer;
+  box-shadow: 0 8px 20px rgba(255, 204, 1, 0.28);
   transition: var(--transition);
   flex-shrink: 0;
 }
 
-.jobs-filter-cta:hover { background: var(--navy-light); }
-.jobs-filter-cta svg { color: var(--yellow); flex-shrink: 0; }
+.jobs-filter-cta:hover { background: var(--yellow-dark); }
+.jobs-filter-cta svg { color: var(--navy); flex-shrink: 0; }
 
 .jobs-filter-count {
-  background: var(--yellow);
+  background: var(--white);
   color: var(--navy);
   border-radius: 100px;
   min-width: 19px;
@@ -2057,13 +2058,26 @@ input, textarea, select { font-family: inherit; }
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 8px;
+  border-radius: 50%;
   background: var(--gray-100);
   color: var(--gray-600);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.job-modal-close {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--white);
+  cursor: pointer;
 }
 
 .job-alert-modal-icon {
@@ -2234,7 +2248,7 @@ input, textarea, select { font-family: inherit; }
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 8px;
+  border-radius: 50%;
   background: var(--gray-100);
   color: var(--gray-600);
   cursor: pointer;

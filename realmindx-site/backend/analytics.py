@@ -1171,9 +1171,9 @@ def build_analytics_dashboard(range_info):
             "device_breakdown": _counter_rows(session_devices, limit=6),
             "browser_breakdown": _counter_rows(session_browsers, limit=8),
             "locations": {
-                "countries": _counter_rows(session_countries, limit=8, include_unknown=True),
-                "regions": _counter_rows(session_regions, limit=8, include_unknown=True),
-                "cities": _counter_rows(session_cities, limit=8, include_unknown=True),
+                "countries": _counter_rows(session_countries, limit=8),
+                "regions": _counter_rows(session_regions, limit=8),
+                "cities": _counter_rows(session_cities, limit=8),
             },
         },
         "bookshop": {
@@ -1405,9 +1405,9 @@ def build_product_detail(product_id, range_info):
             "traffic_sources": _counter_rows(metric["traffic_sources"], limit=8),
             "devices": _counter_rows(metric["devices"], limit=6),
             "locations": {
-                "countries": _counter_rows(metric["countries"], limit=8, include_unknown=True),
-                "regions": _counter_rows(metric["regions"], limit=8, include_unknown=True),
-                "cities": _counter_rows(metric["cities"], limit=8, include_unknown=True),
+                "countries": _counter_rows(metric["countries"], limit=8),
+                "regions": _counter_rows(metric["regions"], limit=8),
+                "cities": _counter_rows(metric["cities"], limit=8),
             },
             "search_terms": [
                 {"term": term, "clicks": clicks, "purchases": search_purchase_terms.get(term, 0)}

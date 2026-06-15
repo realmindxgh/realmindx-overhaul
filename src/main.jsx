@@ -201,20 +201,26 @@ const NewsArticleBody = ({ item, onLinkClick }) => {
   return (
     <div className="news-article-body" onClick={onLinkClick}>
       {introParagraphs.map((paragraph, index) => <p key={`intro-${index}`}>{renderTextWithLinks(paragraph)}</p>)}
-      {sections.map((section, index) => (
-        <section className="news-article-section" key={section.id || `${item.id}-section-${index}`}>
-          {section.heading && <h3>{section.heading}</h3>}
-          {newsAssetUrl(section.image_url) && (
-            <figure>
+      {sections.map((section, index) => {
+        const imagePosition = section.image_position === 'auto'
+          ? (index % 2 === 0 ? 'right' : 'left')
+          : (section.image_position || 'right');
+        const imageSize = section.image_size || 'medium';
+        return (
+          <section className="news-article-section" key={section.id || `${item.id}-section-${index}`}>
+            {section.heading && <h3>{section.heading}</h3>}
+            {newsAssetUrl(section.image_url) && (
+              <figure className={`news-section-image position-${imagePosition} size-${imageSize}`}>
               <img src={newsAssetUrl(section.image_url)} alt={section.caption || section.heading || item.title} />
               {section.caption && <figcaption>{section.caption}</figcaption>}
-            </figure>
-          )}
-          {String(section.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, paragraphIndex) => (
-            <p key={`section-${index}-p-${paragraphIndex}`}>{renderTextWithLinks(paragraph)}</p>
-          ))}
-        </section>
-      ))}
+              </figure>
+            )}
+            {String(section.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, paragraphIndex) => (
+              <p key={`section-${index}-p-${paragraphIndex}`}>{renderTextWithLinks(paragraph)}</p>
+            ))}
+          </section>
+        );
+      })}
     </div>
   );
 };
@@ -899,16 +905,104 @@ const isBookshopSubdomain =
   typeof window !== 'undefined' &&
   window.location.hostname.startsWith('bookshop.');
 
-const AppRoutes = () => {
-  if (isBookshopSubdomain) return <BookshopApp />;
+const FOCUS_FLYER_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+const FOCUS_FLYER_SEEN_KEY = 'rmx-focus-flyer-seen-at-v2';
+
+const publicAssetUrl = (value) => {
+  if (!value || !String(value).startsWith('/uploads/')) return value;
+  const base = String(API_BASE || '').startsWith('http')
+    ? API_BASE.replace(/\/api\/?$/, '')
+    : window.location.origin;
+  return new URL(value, base).toString();
+};
+
+const FlyerFocusModal = () => {
+  const [flyer, setFlyer] = React.useState(null);
+  const requested = React.useRef(false);
+
+  React.useEffect(() => {
+    const path = window.location.pathname;
+    if (requested.current || /^\/(admin|staff|portal)(\/|$)/.test(path)) return undefined;
+    requested.current = true;
+
+    let lastSeen = 0;
+    try {
+      lastSeen = Number(window.localStorage.getItem(FOCUS_FLYER_SEEN_KEY) || 0);
+    } catch {
+      lastSeen = 0;
+    }
+    if (Date.now() - lastSeen < FOCUS_FLYER_COOLDOWN_MS) return undefined;
+
+    let active = true;
+    api.fetchFocusFlyer()
+      .then((data) => {
+        if (!active || !data?.item) return;
+        setFlyer(data.item);
+        try {
+          window.localStorage.setItem(FOCUS_FLYER_SEEN_KEY, String(Date.now()));
+        } catch {
+          // Browsers with blocked storage still get a dismissible modal.
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!flyer) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = event => event.key === 'Escape' && setFlyer(null);
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [flyer]);
+
+  if (!flyer) return null;
+  const imageUrl = publicAssetUrl(flyer.image_url);
+
   return (
-  <BrowserRouter>
-    <RouteTitle />
-    <RouteAnalyticsTracker />
-    <SessionBridge />
-    <IdleGuard />
-    <HashScroll>
-      <Routes>
+    <div className="focus-flyer-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setFlyer(null)}>
+      <section className="focus-flyer-modal" role="dialog" aria-modal="true" aria-label={flyer.headline || 'Featured flyer'}>
+        <button className="focus-flyer-close" type="button" onClick={() => setFlyer(null)} aria-label="Close featured flyer">
+          <Icon name="x" size={20} stroke={2.3} />
+        </button>
+        {imageUrl ? <img src={imageUrl} alt={flyer.headline || 'RealMindX featured flyer'} /> : null}
+        {(flyer.headline || flyer.accent || flyer.subline || flyer.badge) ? (
+          <div className="focus-flyer-copy">
+            {flyer.badge ? <span>{flyer.badge}</span> : null}
+            {flyer.headline ? <h2>{flyer.headline}{flyer.accent ? <> <strong>{flyer.accent}</strong></> : null}</h2> : null}
+            {flyer.subline ? <p>{flyer.subline}</p> : null}
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+};
+
+const AppRoutes = () => {
+  if (isBookshopSubdomain) {
+    return (
+      <>
+        <FlyerFocusModal />
+        <BookshopApp />
+      </>
+    );
+  }
+  return (
+  <>
+    <FlyerFocusModal />
+    <BrowserRouter>
+      <RouteTitle />
+      <RouteAnalyticsTracker />
+      <SessionBridge />
+      <IdleGuard />
+      <HashScroll>
+        <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/services" element={<ServicesPage />} />
@@ -968,9 +1062,10 @@ const AppRoutes = () => {
           path="*"
           element={<NotFoundPage />}
         />
-      </Routes>
-    </HashScroll>
-  </BrowserRouter>
+        </Routes>
+      </HashScroll>
+    </BrowserRouter>
+  </>
   );
 };
 

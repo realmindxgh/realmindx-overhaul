@@ -257,7 +257,7 @@ const JobModal = ({ job, onClose, applyState, applyError, onApply }) => {
               <h2>{job.title}</h2>
               <p>{job.school} - {job.location}</p>
             </div>
-            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'var(--white)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <button className="job-modal-close" onClick={onClose} aria-label="Close job details">
               <Icon name="x" size={17} stroke={2.2} />
             </button>
           </div>

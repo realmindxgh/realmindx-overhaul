@@ -5,6 +5,7 @@ import sys
 
 START_MARKER = "    # BEGIN REALMINDX MANAGED SEO ROUTES"
 END_MARKER = "    # END REALMINDX MANAGED SEO ROUTES"
+UPLOAD_LIMIT = "100M"
 ROUTE_BLOCK = f"""{START_MARKER}
     location = /sitemap.xml {{
         proxy_pass         http://127.0.0.1:5002/sitemap.xml;
@@ -70,12 +71,20 @@ def install_route(text):
     raise RuntimeError("Could not find the main realmindxgh.com HTTPS server block.")
 
 
+def install_upload_limit(text):
+    return re.sub(
+        r"(?m)^(\s*client_max_body_size\s+)\S+(;\s*)$",
+        rf"\g<1>{UPLOAD_LIMIT}\g<2>",
+        text,
+    )
+
+
 def main():
     if len(sys.argv) != 2:
         raise SystemExit("Usage: install_nginx_seo_routes.py /path/to/nginx/site.conf")
     path = Path(sys.argv[1])
     original = path.read_text(encoding="utf-8-sig")
-    updated = install_route(original)
+    updated = install_upload_limit(install_route(original))
     if updated != original:
         path.write_text(updated, encoding="utf-8")
         print(f"Installed managed SEO routes in {path}.")

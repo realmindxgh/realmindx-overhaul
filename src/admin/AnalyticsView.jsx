@@ -2,6 +2,7 @@ import React from 'react';
 
 import { DatePickerField, Icon } from '../../realmindx-site/assets/components.jsx';
 import { api, isApiMode } from '../lib/apiClient.js';
+import toast from '../lib/toast.js';
 import './analytics.css';
 
 const RANGE_OPTIONS = [
@@ -568,9 +569,12 @@ const AnalyticsView = ({ session }) => {
   const [selectedProductId, setSelectedProductId] = React.useState(null);
   const [detailCache, setDetailCache] = React.useState({});
   const [detailLoadingId, setDetailLoadingId] = React.useState(null);
+  const [showLocationReset, setShowLocationReset] = React.useState(false);
+  const [clearingLocations, setClearingLocations] = React.useState(false);
   const [isPending, startTransition] = React.useTransition();
 
   const canExport = React.useMemo(() => canExportAnalytics(session), [session]);
+  const canClearLocations = !session || session.role === 'admin';
   const rangeParams = React.useMemo(() => queryParamsForRange(preset, customStart, customEnd), [customEnd, customStart, preset]);
 
   React.useEffect(() => {
@@ -649,6 +653,21 @@ const AnalyticsView = ({ session }) => {
       if (prev.length >= 3) return [...prev.slice(1), productId];
       return [...prev, productId];
     });
+  };
+
+  const clearLocationHistory = async () => {
+    setClearingLocations(true);
+    try {
+      const result = await api.adminClearAnalyticsLocations();
+      const refreshed = await api.adminAnalyticsDashboard(rangeParams);
+      setPayload(refreshed);
+      setShowLocationReset(false);
+      toast.success(`${formatNumber(result.events_cleared)} analytics events had location history cleared.`);
+    } catch (err) {
+      toast.error(err.message || 'Could not clear analytics location history.');
+    } finally {
+      setClearingLocations(false);
+    }
   };
 
   if (!isApiMode()) {
@@ -864,6 +883,12 @@ const AnalyticsView = ({ session }) => {
             <SectionHeader
               title="Location summary"
               body={<>Approximate network location is resolved locally from the visitor IP. Unknown usually means a historical visit, bot, private address, or an IP absent from the database; it does not mean the visitor refused browser location permission. IP geolocation by <a href="https://db-ip.com" target="_blank" rel="noreferrer">DB-IP</a>.</>}
+              actions={canClearLocations ? (
+                <button className="analytics-danger-btn" type="button" onClick={() => setShowLocationReset(true)}>
+                  <Icon name="trash" size={14} />
+                  Clear location history
+                </button>
+              ) : null}
             />
             <div className="analytics-mini-columns">
               <div>
@@ -1226,6 +1251,25 @@ const AnalyticsView = ({ session }) => {
             </div>
           </section>
         </>
+      ) : null}
+
+      {showLocationReset ? (
+        <div className="analytics-modal-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setShowLocationReset(false)}>
+          <section className="analytics-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="analytics-location-reset-title">
+            <button className="analytics-modal-close" type="button" onClick={() => setShowLocationReset(false)} aria-label="Close">
+              <Icon name="x" size={18} />
+            </button>
+            <span className="analytics-eyebrow">Location privacy</span>
+            <h3 id="analytics-location-reset-title">Clear location history?</h3>
+            <p>Country, region, city, and network-prefix history will be removed from existing analytics events. Visits, orders, searches, devices, and all other reporting will remain intact.</p>
+            <div className="analytics-confirm-actions">
+              <button className="analytics-danger-btn solid" type="button" onClick={clearLocationHistory} disabled={clearingLocations}>
+                {clearingLocations ? 'Clearing...' : 'Clear location history'}
+              </button>
+              <button className="analytics-export-btn" type="button" onClick={() => setShowLocationReset(false)} disabled={clearingLocations}>Cancel</button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       <ProductDetailDrawer

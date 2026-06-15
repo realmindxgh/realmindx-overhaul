@@ -345,8 +345,17 @@ const Navbar = ({ route, navigate }) => {
       .slice(0, 6);
   }, [books, q]);
 
+  const quickSubjects = [
+    { ids: ['mathematics', 'maths'], label: 'Maths' },
+    { ids: ['english-language', 'english'], label: 'English' },
+    { ids: ['science', 'integrated-science'], label: 'Science' },
+  ].flatMap(({ ids, label }) => {
+    const item = (taxonomies.subjects || []).find(candidate => ids.includes(candidate.id));
+    return item ? [{ ...item, label }] : [];
+  });
+
   const browseGroups = [
-    { title: 'Subject', allLabel: 'Subjects', taxonomy: 'subject', icon: 'book', items: taxonomies.preview.subjects || [] },
+    { title: 'Subject', allLabel: 'Subjects', taxonomy: 'subject', icon: 'book', items: quickSubjects },
     { title: 'Level', allLabel: 'Levels', taxonomy: 'level', icon: 'cap', items: taxonomies.levels || [] },
     { title: 'Curriculum', allLabel: 'Curricula', taxonomy: 'curriculum', icon: 'files', items: taxonomies.curricula || [] },
     { title: 'Item Type', allLabel: 'Item Types', taxonomy: 'category', icon: 'box', items: taxonomies.categories || [] },

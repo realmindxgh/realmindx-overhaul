@@ -248,7 +248,7 @@ const CONFIG = {
   },
   flyers: {
     title: 'Bookshop Flyers',
-    description: 'Hero flyers shown in the bookshop homepage slideshow. Published flyers appear in order; drafts are hidden.',
+    description: 'Published flyers rotate in the bookshop hero. One flyer can also be the Flyer of Focus, including a draft.',
     collection: 'flyers',
     createLabel: 'Add Flyer',
     fields: [
@@ -264,12 +264,13 @@ const CONFIG = {
         { icon: 'check',    text: 'Flyers rotate automatically in the hero section. Upload at least 3 for a good scrolling experience.' },
       ] }),
       field('show_overlay', 'Dark / Stripe Overlay', 'checkbox'),
+      field('is_focus', 'Flyer of Focus', 'checkbox', { help: 'Show this flyer to visitors in a dismissible modal at most once every 12 hours. Selecting it replaces the previous Flyer of Focus.' }),
       field('image_fit', 'Image Fit', 'select', { options: ['cover', 'contain'] }),
       field('image_position', 'Image Position', 'select', { options: ['center', 'top', 'bottom', 'left', 'right'] }),
       field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
-    columns: ['image_url', 'headline', 'accent', 'badge', 'status'],
-    columnLabels: { image_url: 'Image' },
+    columns: ['image_url', 'headline', 'accent', 'badge', 'is_focus', 'status'],
+    columnLabels: { image_url: 'Image', is_focus: 'Focus' },
   },
   categories: {
     title: 'Product Categories',
@@ -1020,7 +1021,15 @@ const ArticleSectionsField = ({ sections, onChange }) => {
     )));
   };
   const addSection = () => {
-    onChange([...safeSections, { heading: '', body: '', caption: '', image_file_id: '', image_url: '' }]);
+    onChange([...safeSections, {
+      heading: '',
+      body: '',
+      caption: '',
+      image_position: 'auto',
+      image_size: 'medium',
+      image_file_id: '',
+      image_url: '',
+    }]);
   };
   const removeSection = index => {
     onChange(safeSections.filter((_, currentIndex) => currentIndex !== index));
@@ -1052,6 +1061,31 @@ const ArticleSectionsField = ({ sections, onChange }) => {
                 onChange={event => updateSection(index, { caption: event.target.value })}
                 placeholder="Optional caption for this section image"
               />
+            </label>
+            <label className="form-group">
+              <span className="form-label">Desktop Image Position</span>
+              <select
+                className="form-select"
+                value={section.image_position || 'auto'}
+                onChange={event => updateSection(index, { image_position: event.target.value })}
+              >
+                <option value="auto">Alternate right and left</option>
+                <option value="right">Right</option>
+                <option value="left">Left</option>
+                <option value="full">Full width</option>
+              </select>
+            </label>
+            <label className="form-group">
+              <span className="form-label">Desktop Image Size</span>
+              <select
+                className="form-select"
+                value={section.image_size || 'medium'}
+                onChange={event => updateSection(index, { image_size: event.target.value })}
+              >
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
             </label>
             <label className="form-group" style={{ gridColumn: '1 / -1' }}>
               <span className="form-label">Section Body</span>
@@ -1085,7 +1119,7 @@ const ArticleSectionsField = ({ sections, onChange }) => {
       <button type="button" className="btn btn-outline-navy btn-sm" onClick={addSection}>
         Add Article Section
       </button>
-      <p className="admin-image-help">Readers will see the sections as one polished article, with natural spacing between sections and no divider lines.</p>
+      <p className="admin-image-help">Desktop images can sit beside the section text. On phones, every section image remains full width for readability.</p>
     </div>
   );
 };
@@ -1164,6 +1198,18 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const chooseImageZip = event => {
+    const file = event.target.files?.[0] || null;
+    if (file && file.size > maxZipBytes) {
+      event.target.value = '';
+      setImagesZip(null);
+      setStatus('Image ZIP must be 100 MB or smaller.');
+      return;
+    }
+    setStatus('');
+    setImagesZip(file);
   };
 
   return (
@@ -1303,6 +1349,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
 };
 
 const ProductImportPanel = ({ onDone }) => {
+  const maxZipBytes = 100 * 1024 * 1024;
   const [catalogFile, setCatalogFile] = React.useState(null);
   const [imagesZip, setImagesZip] = React.useState(null);
   const [status, setStatus] = React.useState('');
@@ -1332,6 +1379,7 @@ const ProductImportPanel = ({ onDone }) => {
       <div>
         <p className="overline">Batch Product Import</p>
         <h3>Upload books and stationery in one pass</h3>
+        <p><strong>Upload limit:</strong> image ZIPs may be up to 100 MB.</p>
         <p>
           Use columns such as name, category, curriculum, author, publisher, price, stock_status, quantity, subject, level, source, tags, and image_filename.
           Put matching cover images in a ZIP using the exact same image_filename values. The importer creates missing categories automatically.
@@ -1343,8 +1391,8 @@ const ProductImportPanel = ({ onDone }) => {
           <input className="form-input" type="file" accept=".csv,.xlsx" onChange={event => setCatalogFile(event.target.files?.[0] || null)} />
         </label>
         <label className="form-group">
-          <span className="form-label">Image ZIP</span>
-          <input className="form-input" type="file" accept=".zip" onChange={event => setImagesZip(event.target.files?.[0] || null)} />
+          <span className="form-label">Image ZIP (up to 100 MB)</span>
+          <input className="form-input" type="file" accept=".zip" onChange={chooseImageZip} />
         </label>
       </div>
       {status && <p style={{ color: status.includes('failed') || status.includes('Upload') ? 'var(--danger)' : 'var(--navy)', fontWeight: 700 }}>{status}</p>}
@@ -1994,7 +2042,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       {/* Order status modal */}
       {statusModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <div style={{ background:'#fff', borderRadius:12, padding:32, width:'100%', maxWidth:440, boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
+          <div role="dialog" aria-modal="true" aria-label="Change order status" style={{ position:'relative', background:'#fff', borderRadius:12, padding:32, width:'100%', maxWidth:440, boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setStatusModal(null)} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
             <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Change Order Status</h3>
             <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:20 }}>
               Order: <strong>{statusModal.row.order_reference}</strong> for {statusModal.row.customer_name}
@@ -2028,7 +2079,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       {/* Confirm delete modal — replaces window.confirm */}
       {confirmModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
-          <div style={{ background:'#fff', borderRadius:16, padding:'36px 32px', width:'100%', maxWidth:420, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
+          <div role="dialog" aria-modal="true" aria-label="Confirm permanent deletion" style={{ position:'relative', background:'#fff', borderRadius:16, padding:'36px 32px', width:'100%', maxWidth:420, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setConfirmModal(null)} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
             <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2', border:'2px solid #fca5a5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', fontSize:26, color:'#dc2626' }}>⚠</div>
             <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', textAlign:'center', marginBottom:10, fontSize:'1.1rem' }}>
               Permanently delete?
@@ -2345,7 +2399,9 @@ const TeachersView = ({ session }) => {
                 <span className={`badge ${detail.is_active !== false ? 'badge-success' : 'badge-danger'}`} style={{ fontSize:'0.72rem' }}>
                   {detail.is_active !== false ? 'Active' : 'Disabled'}
                 </span>
-                <button onClick={() => setDetail(null)} style={{ background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', width:32, height:32, borderRadius:'50%', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+                <button onClick={() => setDetail(null)} aria-label="Close teacher details" style={{ background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.4)', color:'#fff', width:34, height:34, borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <Icon name="x" size={16} />
+                </button>
               </div>
             </div>
 
@@ -2829,22 +2885,21 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
           z-index: 2;
           display: inline-flex;
           align-items: center;
-          gap: 6px;
+          justify-content: center;
+          width: 38px;
+          height: 38px;
           border: 1px solid var(--gray-200);
           background: #fff;
           color: var(--navy);
-          border-radius: 999px;
-          padding: 8px 12px;
-          font-family: 'Montserrat', sans-serif;
-          font-weight: 800;
-          font-size: 0.74rem;
+          border-radius: 50%;
+          padding: 0;
           cursor: pointer;
         }
+        .admin-modal-close span { display: none; }
         @media (max-width: 768px) {
           .mobile-menu-toggle { display: flex !important; }
           .admin-form-grid { grid-template-columns: 1fr; }
           .admin-modal-backdrop { padding: 12px; }
-          .admin-modal-close span { display: none; }
         }
       `}</style>
     </div>
