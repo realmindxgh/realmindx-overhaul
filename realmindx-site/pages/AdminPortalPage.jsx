@@ -1200,18 +1200,6 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
     }
   };
 
-  const chooseImageZip = event => {
-    const file = event.target.files?.[0] || null;
-    if (file && file.size > maxZipBytes) {
-      event.target.value = '';
-      setImagesZip(null);
-      setStatus('Image ZIP must be 100 MB or smaller.');
-      return;
-    }
-    setStatus('');
-    setImagesZip(file);
-  };
-
   return (
     <form className="admin-table-card" style={{ padding: 24, marginBottom: 20 }} onSubmit={submit}>
       <h3 style={{ fontFamily: "'Montserrat', sans-serif", color: 'var(--navy)', marginBottom: 18 }}>
@@ -1372,6 +1360,18 @@ const ProductImportPanel = ({ onDone }) => {
     } finally {
       setImporting(false);
     }
+  };
+
+  const chooseImageZip = event => {
+    const file = event.target.files?.[0] || null;
+    if (file && file.size > maxZipBytes) {
+      event.target.value = '';
+      setImagesZip(null);
+      setStatus('Image ZIP must be 100 MB or smaller.');
+      return;
+    }
+    setStatus('');
+    setImagesZip(file);
   };
 
   return (
