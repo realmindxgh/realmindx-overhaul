@@ -1799,6 +1799,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [localRows, setLocalRows] = React.useState(null);
   const [showProductImport, setShowProductImport] = React.useState(false);
   const [actionStatus, setActionStatus] = React.useState(null);
+  const [missingImageStats, setMissingImageStats] = React.useState(null);
+  const [showMissingImageConfirm, setShowMissingImageConfirm] = React.useState(false);
+  const [bulkUnpublishing, setBulkUnpublishing] = React.useState(false);
 
   // In API mode: fetch on mount; in local mode: use rowsProp from parent.
   React.useEffect(() => {
@@ -1935,6 +1938,41 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const canModerate = isModerationOnly && hasSessionPermission(session, `${permissionKey}.edit`);
   const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate;
 
+  const refreshMissingImageStats = React.useCallback(async () => {
+    if (config.collection !== 'products' || !isApiMode()) return;
+    try {
+      setMissingImageStats(await api.adminProductMissingImages());
+    } catch {
+      setMissingImageStats(null);
+    }
+  }, [config.collection]);
+
+  React.useEffect(() => {
+    if (config.collection !== 'products' || !canUpdate || !isApiMode()) return;
+    refreshMissingImageStats();
+  }, [canUpdate, config.collection, refreshMissingImageStats]);
+
+  const executeBulkMissingImageUnpublish = async () => {
+    setBulkUnpublishing(true);
+    setActionStatus(null);
+    try {
+      const result = await api.adminUnpublishProductsMissingImages();
+      await fetchCollection(config.collection);
+      await refreshMissingImageStats();
+      setShowMissingImageConfirm(false);
+      setActionStatus({
+        type: 'success',
+        message: result.unpublished
+          ? `Unpublished ${result.unpublished} product${result.unpublished === 1 ? '' : 's'} without images.`
+          : 'No published products without images were found.',
+      });
+    } catch (err) {
+      setActionStatus({ type: 'error', message: err?.message || 'Could not unpublish products without images.' });
+    } finally {
+      setBulkUnpublishing(false);
+    }
+  };
+
   // Status modal for orders
   const [statusModal, setStatusModal] = React.useState(null); // { row }
   const [statusChoice, setStatusChoice] = React.useState('');
@@ -2045,7 +2083,19 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           {EXPORTABLE_PERMISSION_KEYS.has(config.collection) && isApiMode() && (
             <>
               {config.collection === 'products' && (
-                <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setShowProductImport(value => !value)}>Batch Import</button>
+                <>
+                  <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setShowProductImport(value => !value)}>Batch Import</button>
+                  {canUpdate && (
+                    <button
+                      className="btn btn-outline-navy btn-sm"
+                      type="button"
+                      disabled={!missingImageStats?.published}
+                      onClick={() => setShowMissingImageConfirm(true)}
+                    >
+                      Unpublish products without images{missingImageStats ? ` (${missingImageStats.published})` : ''}
+                    </button>
+                  )}
+                </>
               )}
               {['csv', 'xlsx', 'pdf'].map(format => (
                 <a className="btn btn-outline-navy btn-sm" key={format} href={api.adminExportUrl(config.collection, format)}>
@@ -2305,6 +2355,31 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             <div style={{ display:'flex', gap:12 }}>
               <button className="btn btn-outline-navy" style={{ flex:1 }} onClick={() => setConfirmModal(null)}>Cancel</button>
               <button className="btn btn-primary" style={{ flex:1, background:'#dc2626', borderColor:'#dc2626' }} onClick={executeDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMissingImageConfirm && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-label="Confirm unpublishing products without images" style={{ position:'relative', background:'#fff', borderRadius:16, padding:'36px 32px', width:'100%', maxWidth:460, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setShowMissingImageConfirm(false)} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
+            <div style={{ width:56, height:56, borderRadius:'50%', background:'#fff8dc', border:'2px solid var(--yellow)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', color:'var(--navy)' }}>
+              <Icon name="image" size={24} />
+            </div>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', textAlign:'center', marginBottom:10, fontSize:'1.1rem' }}>
+              Unpublish products without images?
+            </h3>
+            <p style={{ fontSize:'0.875rem', color:'var(--gray-600)', textAlign:'center', marginBottom:28, lineHeight:1.6 }}>
+              <strong style={{ color:'var(--navy)' }}>{missingImageStats?.published || 0} published product{missingImageStats?.published === 1 ? '' : 's'}</strong> without a valid uploaded image will be hidden from the bookshop. Nothing will be deleted.
+            </p>
+            <div style={{ display:'flex', gap:12 }}>
+              <button className="btn btn-outline-navy" style={{ flex:1 }} disabled={bulkUnpublishing} onClick={() => setShowMissingImageConfirm(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex:1 }} disabled={bulkUnpublishing} onClick={executeBulkMissingImageUnpublish}>
+                {bulkUnpublishing ? 'Unpublishing...' : 'Unpublish'}
+              </button>
             </div>
           </div>
         </div>

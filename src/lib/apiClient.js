@@ -213,6 +213,8 @@ export const api = {
     return url(`/admin/analytics/export?${sp.toString()}`);
   },
   adminClearAnalyticsLocations: () => apiFetch('/admin/analytics/location-history', { method: 'DELETE' }),
+  adminProductMissingImages: () => apiFetch('/admin/products/missing-images'),
+  adminUnpublishProductsMissingImages: () => apiFetch('/admin/products/missing-images/unpublish', { method: 'POST' }),
   adminList: (collection) => apiFetch(`/admin/${collection}`),
   // admin - write (collection: 'jobs'|'products'|'categories'|'news'|'gallery'|'resources')
   adminCreate: (collection, payload) => apiFetch(`/admin/${collection}`, { method: 'POST', body: payload }),

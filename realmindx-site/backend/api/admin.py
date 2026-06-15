@@ -1380,6 +1380,48 @@ def list_products():
     return jsonify(items=[product_json(row, include_private=True) for row in rows])
 
 
+def _products_without_images_query():
+    return (
+        Product.query
+        .outerjoin(UploadedFile, Product.image_file_id == UploadedFile.id)
+        .filter(or_(Product.image_file_id.is_(None), UploadedFile.id.is_(None)))
+    )
+
+
+@admin_bp.get("/products/missing-images")
+@login_required
+@permission_required("products.view")
+def products_missing_images():
+    query = _products_without_images_query()
+    return jsonify(
+        total=query.count(),
+        published=query.filter(Product.is_active.is_(True)).count(),
+        draft=query.filter(Product.is_active.is_(False)).count(),
+    )
+
+
+@admin_bp.post("/products/missing-images/unpublish")
+@login_required
+@permission_required("products.edit")
+def unpublish_products_missing_images():
+    products = _products_without_images_query().filter(Product.is_active.is_(True)).all()
+    product_ids = [product.id for product in products]
+    for product in products:
+        product.is_active = False
+    log_action(
+        "bulk_unpublish_products_missing_images",
+        "product",
+        None,
+        {"count": len(product_ids), "product_ids": product_ids},
+    )
+    db.session.commit()
+    return jsonify(
+        message=f"Unpublished {len(product_ids)} product(s) without images.",
+        unpublished=len(product_ids),
+        product_ids=product_ids,
+    )
+
+
 @admin_bp.post("/products")
 @login_required
 @permission_required("products.create")
