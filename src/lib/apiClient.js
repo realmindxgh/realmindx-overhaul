@@ -63,6 +63,7 @@ async function apiFetch(path, { method = 'GET', body, freshCsrf = false } = {}) 
       method,
       headers,
       credentials: 'include',
+      cache: method === 'GET' ? 'no-store' : 'default',
       body: body ? JSON.stringify(body) : undefined,
     });
     const data = await res.json().catch(() => ({}));

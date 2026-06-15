@@ -55,6 +55,37 @@ const INITIAL_ROUTE_DATA = (() => {
   }
 })();
 
+const apiItemsCache = new WeakMap();
+const apiItemsRequests = new WeakMap();
+
+const wait = delay => new Promise(resolve => setTimeout(resolve, delay));
+
+const requestApiItems = loader => {
+  const activeRequest = apiItemsRequests.get(loader);
+  if (activeRequest) return activeRequest;
+
+  const request = (async () => {
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const data = await loader();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        apiItemsCache.set(loader, items);
+        return items;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) await wait(250 * (attempt + 1));
+      }
+    }
+    throw lastError || new Error('Could not load content.');
+  })().finally(() => {
+    apiItemsRequests.delete(loader);
+  });
+
+  apiItemsRequests.set(loader, request);
+  return request;
+};
+
 const apiAssetUrl = value => {
   if (!value || !String(value).startsWith('/uploads/')) return value;
   try {
@@ -135,24 +166,51 @@ const sortServices = items =>
     .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
 
 const useApiItems = (loader, initialItems = null) => {
-  const [state, setState] = React.useState({ items: initialItems, failed: false });
+  const [state, setState] = React.useState(() => {
+    const cachedItems = apiItemsCache.get(loader);
+    const items = initialItems ?? cachedItems ?? null;
+    return {
+      items,
+      failed: false,
+      loading: isApiMode() && items === null,
+    };
+  });
+
+  const refresh = React.useCallback(() => {
+    if (!isApiMode()) return Promise.resolve([]);
+    let alive = true;
+    setState(prev => ({ ...prev, failed: false, loading: true }));
+    const request = requestApiItems(loader)
+      .then(items => {
+        if (alive) setState({ items, failed: false, loading: false });
+        return items;
+      })
+      .catch(error => {
+        if (alive) {
+          setState(prev => ({
+            items: prev.items ?? apiItemsCache.get(loader) ?? [],
+            failed: true,
+            loading: false,
+          }));
+        }
+        throw error;
+      });
+    request.cancel = () => {
+      alive = false;
+    };
+    return request;
+  }, [loader]);
 
   React.useEffect(() => {
     if (!isApiMode()) return undefined;
-    let alive = true;
-    loader()
-      .then(data => {
-        if (alive) setState({ items: data.items || [], failed: false });
-      })
-      .catch(() => {
-        if (alive) setState(prev => ({ items: prev.items || [], failed: true }));
-      });
+    const request = refresh();
+    request.catch(() => {});
     return () => {
-      alive = false;
+      request.cancel?.();
     };
-  }, [loader]);
+  }, [refresh]);
 
-  return state;
+  return { ...state, refresh };
 };
 
 const normalisePartner = (partner, index = 0) => ({
@@ -265,16 +323,28 @@ const normaliseGallery = (item, index = 0) => {
   };
 };
 
-export const usePublicServices = () => {
+export const usePublicServicesState = () => {
   const localContent = useManagedContent();
-  const { items: apiServices, failed } = useApiItems(api.fetchServices);
+  const apiState = useApiItems(api.fetchServices);
+
+  React.useEffect(() => {
+    if (!isApiMode() || typeof window === 'undefined') return undefined;
+    const refreshOnFocus = () => {
+      apiState.refresh().catch(() => {});
+    };
+    window.addEventListener('focus', refreshOnFocus);
+    return () => window.removeEventListener('focus', refreshOnFocus);
+  }, [apiState.refresh]);
 
   const localServices = localContent.services?.length ? localContent.services : DEFAULT_SERVICES;
-  const source = isApiMode()
-    ? (failed ? localServices : (apiServices ?? localServices))
-    : localServices;
-  return sortServices(source);
+  const source = isApiMode() ? (apiState.items || []) : localServices;
+  return {
+    ...apiState,
+    items: sortServices(source),
+  };
 };
+
+export const usePublicServices = () => usePublicServicesState().items;
 
 export const usePublicPartners = () => {
   const localContent = useManagedContent();

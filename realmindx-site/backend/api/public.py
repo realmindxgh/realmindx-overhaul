@@ -699,7 +699,9 @@ def settings():
 def services():
     rows = setting_collection("services", DEFAULT_SERVICES)
     rows = sorted(public_rows(rows), key=lambda item: (item.get("sort_order") or 0, item.get("label") or ""))
-    return jsonify(items=enrich_service_media(rows))
+    response = jsonify(items=enrich_service_media(rows))
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @public_bp.get("/site-copy")

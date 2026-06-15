@@ -3,7 +3,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { Nav, Footer } from '../components/NavFooter';
 import { Icon } from '../assets/components.jsx';
 import { trackServiceEnquiryClick } from '../../src/lib/analytics.js';
-import { usePublicServices, useSiteCopy } from '../../src/lib/siteContent.js';
+import { usePublicServicesState, useSiteCopy } from '../../src/lib/siteContent.js';
 import { servicePath, slugify } from '../../src/lib/seoRoutes.js';
 
 const serviceDocVariant = (service, variant = 'overview') => {
@@ -124,7 +124,7 @@ const ServiceDocContent = ({ service, variant = 'overview' }) => {
 };
 
 const ServicesPage = () => {
-  const services = usePublicServices();
+  const { items: services, loading, failed } = usePublicServicesState();
   const copy = useSiteCopy();
   const [activeSection, setActiveSection] = useState(services[0]?.id || '');
   const sectionRefs = useRef({});
@@ -249,6 +249,10 @@ const ServicesPage = () => {
   const heroBody = copy.services_hero_body || 'From teacher recruitment to school transformation, every RealMindX service is organised around one goal: making quality education easier to access, manage, and improve.';
   const heroNote = copy.services_effective_note || 'Built for schools, teachers, families, and learners across Ghana.';
 
+  if (services.length === 0 && (loading || failed)) {
+    return <main style={{ minHeight: '100vh', background: '#fff' }} aria-hidden="true" />;
+  }
+
   return (
     <>
       <Nav activePage="services" />
@@ -337,13 +341,17 @@ const ServicesPage = () => {
 
 export const ServiceDetailPage = () => {
   const { serviceSlug = '' } = useParams();
-  const services = usePublicServices();
+  const { items: services, loading, failed } = usePublicServicesState();
   const service = services.find(item => slugify(item.id) === slugify(serviceSlug));
   const related = services.filter(item => item.id !== service?.id);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
   }, [serviceSlug]);
+
+  if (!service && (loading || failed)) {
+    return <main style={{ minHeight: '100vh', background: '#fff' }} aria-hidden="true" />;
+  }
 
   if (!service) {
     return (
