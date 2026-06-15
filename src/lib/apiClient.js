@@ -220,12 +220,11 @@ export const api = {
   adminReplyMessage: (id, message) => apiFetch(`/admin/messages/${id}/reply`, { method: 'POST', body: { message } }),
   adminSendNewsletter: (payload) => apiFetch('/admin/newsletters/send', { method: 'POST', body: payload }),
   adminExportUrl: (collection, format = 'csv') => url(`/admin/${collection}/export?format=${encodeURIComponent(format)}`),
-  adminImportProducts: async ({ catalogFile, imagesZip }) => {
+  adminPreviewProductImport: async (catalogFile) => {
     const csrf = await getCsrf();
     const fd = new FormData();
     if (catalogFile) fd.append('catalog_file', catalogFile);
-    if (imagesZip) fd.append('images_zip', imagesZip);
-    const res = await fetch(url('/admin/products/import'), {
+    const res = await fetch(url('/admin/products/import/preview'), {
       method: 'POST',
       headers: { 'X-CSRFToken': csrf },
       credentials: 'include',
@@ -236,12 +235,84 @@ export const api = {
       handleUnauthorized();
     }
     if (!res.ok) {
-      const err = new Error(data.error || `Import failed (${res.status}).`);
+      const err = new Error(data.error || `Catalogue review failed (${res.status}).`);
       err.status = res.status;
       err.data = data;
       throw err;
     }
     return data;
+  },
+  adminImportProducts: async ({
+    catalogFile,
+    imagesZip,
+    columnMapping = {},
+    onProgress,
+  }) => {
+    const csrf = await getCsrf();
+    const fd = new FormData();
+    if (catalogFile) fd.append('catalog_file', catalogFile);
+    if (imagesZip) fd.append('images_zip', imagesZip);
+    fd.append('column_mapping', JSON.stringify(columnMapping));
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let latestProgress = 0;
+      xhr.open('POST', url('/admin/products/import'));
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('X-CSRFToken', csrf);
+
+      xhr.upload.addEventListener('loadstart', () => {
+        onProgress?.({ stage: 'uploading', percent: 0, loaded: 0, total: 0 });
+      });
+      xhr.upload.addEventListener('progress', event => {
+        if (event.lengthComputable && event.total > 0) {
+          latestProgress = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        }
+        onProgress?.({
+          stage: 'uploading',
+          percent: latestProgress,
+          loaded: event.loaded,
+          total: event.lengthComputable ? event.total : 0,
+        });
+      });
+      xhr.upload.addEventListener('load', () => {
+        latestProgress = 100;
+        onProgress?.({ stage: 'processing', percent: 100 });
+      });
+      xhr.addEventListener('load', () => {
+        let data = {};
+        try {
+          data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+        } catch {
+          data = {};
+        }
+        if (xhr.status === 401) {
+          handleUnauthorized();
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const statusHint = xhr.status === 413
+            ? 'The files exceed the server upload limit.'
+            : `Import failed (${xhr.status || 'network error'}).`;
+          const err = new Error(data.error || statusHint);
+          err.status = xhr.status;
+          err.data = data;
+          reject(err);
+          return;
+        }
+        onProgress?.({ stage: 'complete', percent: 100 });
+        resolve(data);
+      });
+      xhr.addEventListener('error', () => {
+        const suffix = latestProgress > 0 && latestProgress < 100
+          ? ` The connection stopped at ${latestProgress}%.`
+          : '';
+        reject(new Error(`The upload connection was interrupted.${suffix} Check your network and retry; no incomplete product changes were saved.`));
+      });
+      xhr.addEventListener('abort', () => {
+        reject(new Error('The product import was cancelled.'));
+      });
+      xhr.send(fd);
+    });
   },
   // admin - status shortcuts
   adminUpdateStatus: (collection, id, payload) => apiFetch(

@@ -1,5 +1,6 @@
 ﻿import csv
 import io
+import json
 import mimetypes
 import re
 import secrets
@@ -359,7 +360,7 @@ def _unique_category_slug(name):
     return candidate
 
 
-def _save_imported_image(filename, data):
+def _save_imported_image(filename, data, owner_id):
     safe_name = secure_filename(filename or "")
     if not safe_name or "." not in safe_name:
         return None
@@ -373,7 +374,7 @@ def _save_imported_image(filename, data):
     target = root / stored_name
     target.write_bytes(data)
     uploaded = UploadedFile(
-        owner_id=current_user.id,
+        owner_id=owner_id,
         original_filename=safe_name,
         stored_filename=stored_name,
         storage_path=str(target),
@@ -384,7 +385,7 @@ def _save_imported_image(filename, data):
     )
     db.session.add(uploaded)
     db.session.flush()
-    return uploaded.id
+    return uploaded.id, target
 
 
 def _read_catalog_rows(file_storage):
@@ -413,9 +414,9 @@ def _read_catalog_rows(file_storage):
     raise ValueError("Only CSV and XLSX catalogue files are supported.")
 
 
-def _read_image_zip(file_storage):
+def _save_imported_images(file_storage, owner_id):
     if not file_storage or not file_storage.filename:
-        return {}
+        return {}, []
     if not file_storage.filename.lower().endswith(".zip"):
         raise ValueError("Batch images must be uploaded as a ZIP file.")
     file_storage.stream.seek(0, 2)
@@ -423,20 +424,22 @@ def _read_image_zip(file_storage):
     file_storage.stream.seek(0)
     if archive_bytes > 100 * 1024 * 1024:
         raise ValueError("Image ZIP must be 100 MB or smaller.")
-    images = {}
     total_uncompressed = 0
     max_entries = 500
     max_image_bytes = 12 * 1024 * 1024
     max_uncompressed_bytes = 512 * 1024 * 1024
+    saved_images = {}
+    saved_paths = []
     with zipfile.ZipFile(file_storage.stream) as archive:
-        entries = archive.infolist()
+        entries = [
+            entry
+            for entry in archive.infolist()
+            if not entry.is_dir() and "__MACOSX" not in entry.filename
+        ]
         if len(entries) > max_entries:
             raise ValueError(f"Image ZIP contains too many files. Use at most {max_entries}.")
         for entry in entries:
-            name = entry.filename
-            if name.endswith("/") or "__MACOSX" in name:
-                continue
-            basename = Path(name).name
+            basename = Path(entry.filename).name
             if not basename:
                 continue
             if entry.file_size > max_image_bytes:
@@ -444,8 +447,118 @@ def _read_image_zip(file_storage):
             total_uncompressed += entry.file_size
             if total_uncompressed > max_uncompressed_bytes:
                 raise ValueError("Image ZIP expands beyond the 512 MB safety limit.")
-            images[basename.lower()] = archive.read(entry)
-    return images
+        for entry in entries:
+            basename = Path(entry.filename).name
+            if not basename:
+                continue
+            saved = _save_imported_image(basename, archive.read(entry), owner_id)
+            if not saved:
+                continue
+            file_id, target = saved
+            saved_images[basename.lower()] = file_id
+            saved_paths.append(target)
+    return saved_images, saved_paths
+
+
+PRODUCT_IMPORT_FIELDS = (
+    {"key": "name", "label": "Product name", "required": True, "aliases": ("name", "product_name", "title")},
+    {"key": "slug", "label": "Slug", "aliases": ("slug",)},
+    {"key": "category", "label": "Category", "aliases": ("category", "product_category")},
+    {"key": "price", "label": "Price", "aliases": ("price", "unit_price")},
+    {"key": "old_price", "label": "Old price", "aliases": ("old_price", "compare_at_price")},
+    {
+        "key": "short_description",
+        "label": "Short description",
+        "aliases": ("short_description", "description", "summary"),
+    },
+    {
+        "key": "full_description",
+        "label": "Full description",
+        "aliases": ("full_description", "details", "body"),
+    },
+    {"key": "stock_status", "label": "Stock status", "aliases": ("stock_status", "stock")},
+    {
+        "key": "quantity_available",
+        "label": "Quantity",
+        "aliases": ("quantity_available", "quantity", "qty"),
+    },
+    {"key": "subject", "label": "Subject", "aliases": ("subject",)},
+    {"key": "level", "label": "Level", "aliases": ("level", "class", "grade")},
+    {
+        "key": "curriculum",
+        "label": "Curriculum",
+        "aliases": ("curriculum", "curriculum_name", "syllabus"),
+    },
+    {"key": "author", "label": "Author", "aliases": ("author", "writer")},
+    {"key": "publisher", "label": "Publisher", "aliases": ("publisher", "publishing_house")},
+    {"key": "product_type", "label": "Product type", "aliases": ("product_type", "item_type", "type")},
+    {"key": "delivery_note", "label": "Delivery note", "aliases": ("delivery_note",)},
+    {"key": "tags", "label": "Tags", "aliases": ("tags", "badges")},
+    {"key": "featured", "label": "Featured", "aliases": ("featured", "is_featured")},
+    {"key": "source", "label": "Source", "aliases": ("source", "supplier", "vendor")},
+    {
+        "key": "image_filename",
+        "label": "Image filename",
+        "aliases": ("image_filename", "image", "cover_filename", "cover_image"),
+    },
+)
+
+
+def _normalise_import_header(value):
+    return str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def _import_headers(rows):
+    if not rows:
+        return []
+    return [str(header or "").strip() for header in rows[0].keys() if str(header or "").strip()]
+
+
+def _suggest_import_mapping(headers):
+    normalised = {_normalise_import_header(header): header for header in headers}
+    mapping = {}
+    for field in PRODUCT_IMPORT_FIELDS:
+        for alias in field["aliases"]:
+            source = normalised.get(_normalise_import_header(alias))
+            if source:
+                mapping[field["key"]] = source
+                break
+    return mapping
+
+
+def _parse_import_mapping(raw_mapping, headers):
+    if not raw_mapping:
+        return {}
+    try:
+        mapping = json.loads(raw_mapping)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("Column mapping is invalid. Review the matched columns and try again.") from exc
+    if not isinstance(mapping, dict):
+        raise ValueError("Column mapping must be an object.")
+    allowed_fields = {field["key"] for field in PRODUCT_IMPORT_FIELDS}
+    allowed_headers = set(headers)
+    clean_mapping = {}
+    for field, source in mapping.items():
+        if field not in allowed_fields or not source:
+            continue
+        if source not in allowed_headers:
+            raise ValueError(f'The mapped column "{source}" is no longer present in the catalogue.')
+        clean_mapping[field] = source
+    return clean_mapping
+
+
+def _apply_import_mapping(row, mapping):
+    if not mapping:
+        return row
+    return {field: row.get(source) for field, source in mapping.items()}
+
+
+def _json_safe_import_value(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
 
 
 def _normalise_import_row(row):
@@ -1463,59 +1576,135 @@ def delete_order_review(review_id):
 @login_required
 @permission_required("products.create")
 def import_products():
+    saved_paths = []
     try:
         rows = _read_catalog_rows(request.files.get("catalog_file"))
-        image_bytes = _read_image_zip(request.files.get("images_zip"))
+        headers = _import_headers(rows)
+        mapping = _parse_import_mapping(request.form.get("column_mapping"), headers)
+        if mapping and not mapping.get("name"):
+            raise ValueError("Map a catalogue column to Product name before importing.")
+        image_ids, saved_paths = _save_imported_images(request.files.get("images_zip"), current_user.id)
     except ValueError as exc:
+        db.session.rollback()
+        for path in saved_paths:
+            path.unlink(missing_ok=True)
         return jsonify(error=str(exc)), 400
-
-    image_ids = {
-        filename: _save_imported_image(filename, data)
-        for filename, data in image_bytes.items()
-    }
-    image_ids = {name: file_id for name, file_id in image_ids.items() if file_id}
 
     imported = 0
     updated = 0
     skipped = []
-    for index, raw_row in enumerate(rows, start=2):
-        row = _normalise_import_row(raw_row)
-        if not row:
-            skipped.append({"row": index, "reason": "Missing product name"})
-            continue
-        category = _ensure_category(row["category"])
-        product = Product.query.filter_by(slug=row["slug"]).first()
-        if not product:
-            product = Product(name=row["name"], slug=_unique_product_slug(row["slug"]), price=row["price"])
-            db.session.add(product)
-            imported += 1
-        else:
-            updated += 1
-        product.name = row["name"]
-        product.category = category
-        product.price = row["price"]
-        product.old_price = row["old_price"]
-        product.short_description = row["short_description"]
-        product.full_description = row["full_description"]
-        product.stock_status = row["stock_status"]
-        product.quantity_available = row["quantity_available"]
-        product.subject = row["subject"]
-        product.level = row["level"]
-        product.curriculum = row["curriculum"]
-        product.author = row["author"]
-        product.publisher = row["publisher"]
-        product.product_type = row["product_type"]
-        product.delivery_note = row["delivery_note"]
-        product.tags = row["tags"]
-        product.featured = row["featured"]
-        product.source = row["source"]
-        product.is_active = True
-        image_filename = row["image_filename"].lower()
-        if image_filename and image_filename in image_ids:
-            product.image_file_id = image_ids[image_filename]
-    log_action("import_products", "product", None, {"imported": imported, "updated": updated, "skipped": skipped})
-    db.session.commit()
-    return jsonify(imported=imported, updated=updated, skipped=skipped)
+    missing_images = set()
+    try:
+        for index, raw_row in enumerate(rows, start=2):
+            row = _normalise_import_row(_apply_import_mapping(raw_row, mapping))
+            if not row:
+                skipped.append({"row": index, "reason": "Missing product name"})
+                continue
+            category = _ensure_category(row["category"])
+            product = Product.query.filter_by(slug=row["slug"]).first()
+            if not product:
+                product = Product(name=row["name"], slug=_unique_product_slug(row["slug"]), price=row["price"])
+                db.session.add(product)
+                imported += 1
+            else:
+                updated += 1
+            product.name = row["name"]
+            product.category = category
+            product.price = row["price"]
+            product.old_price = row["old_price"]
+            product.short_description = row["short_description"]
+            product.full_description = row["full_description"]
+            product.stock_status = row["stock_status"]
+            product.quantity_available = row["quantity_available"]
+            product.subject = row["subject"]
+            product.level = row["level"]
+            product.curriculum = row["curriculum"]
+            product.author = row["author"]
+            product.publisher = row["publisher"]
+            product.product_type = row["product_type"]
+            product.delivery_note = row["delivery_note"]
+            product.tags = row["tags"]
+            product.featured = row["featured"]
+            product.source = row["source"]
+            product.is_active = True
+            image_filename = row["image_filename"].lower()
+            if image_filename and image_filename in image_ids:
+                product.image_file_id = image_ids[image_filename]
+            elif image_filename:
+                missing_images.add(image_filename)
+        log_action(
+            "import_products",
+            "product",
+            None,
+            {
+                "imported": imported,
+                "updated": updated,
+                "skipped": skipped,
+                "images_saved": len(image_ids),
+                "missing_images": sorted(missing_images),
+            },
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        for path in saved_paths:
+            path.unlink(missing_ok=True)
+        current_app.logger.exception("Product catalogue import failed.")
+        return jsonify(error="The catalogue could not be imported. No product changes were saved."), 500
+    return jsonify(
+        imported=imported,
+        updated=updated,
+        skipped=skipped,
+        images_saved=len(image_ids),
+        missing_images=sorted(missing_images),
+    )
+
+
+@admin_bp.post("/products/import/preview")
+@login_required
+@permission_required("products.create")
+def preview_product_import():
+    try:
+        rows = _read_catalog_rows(request.files.get("catalog_file"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    if not rows:
+        return jsonify(error="The catalogue contains headers but no product rows."), 400
+
+    headers = _import_headers(rows)
+    mapping = _suggest_import_mapping(headers)
+    name_source = mapping.get("name")
+    blank_names = sum(
+        1
+        for row in rows
+        if not str(row.get(name_source) or "").strip()
+    ) if name_source else len(rows)
+    warnings = []
+    if not name_source:
+        warnings.append("No product-name column was matched. Choose the correct column below.")
+    elif blank_names:
+        warnings.append(f"{blank_names} row(s) have no product name and will be skipped.")
+
+    sample_rows = [
+        {key: _json_safe_import_value(value) for key, value in row.items()}
+        for row in rows[:8]
+    ]
+    fields = [
+        {
+            "key": field["key"],
+            "label": field["label"],
+            "required": bool(field.get("required")),
+        }
+        for field in PRODUCT_IMPORT_FIELDS
+    ]
+    return jsonify(
+        row_count=len(rows),
+        headers=headers,
+        mapping=mapping,
+        fields=fields,
+        sample_rows=sample_rows,
+        warnings=warnings,
+    )
 
 
 @admin_bp.get("/products/export")

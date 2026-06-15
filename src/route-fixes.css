@@ -1960,6 +1960,233 @@ html {
   color: #243146;
 }
 
+.product-import-panel {
+  gap: 20px;
+}
+
+.product-import-files small {
+  display: block;
+  margin-top: 7px;
+  color: #667085;
+  overflow-wrap: anywhere;
+}
+
+.product-import-review {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid #cdd9ec;
+  border-radius: 14px;
+  background: #f7f9fd;
+}
+
+.product-import-review-heading,
+.product-import-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.product-import-review h4,
+.product-import-preview h4 {
+  margin: 3px 0 0;
+  color: var(--navy);
+  font-family: 'Montserrat', sans-serif;
+}
+
+.product-import-helper {
+  margin: -8px 0 0;
+  font-size: 0.9rem;
+}
+
+.product-import-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.product-import-map-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #243146;
+  font-size: 0.77rem;
+  font-weight: 800;
+}
+
+.product-import-map-field strong {
+  color: #c62828;
+}
+
+.product-import-map-field .form-input {
+  min-width: 0;
+  height: 42px;
+  padding-block: 8px;
+  background: #fff;
+}
+
+.product-import-more-fields {
+  border-top: 1px solid #dce3ef;
+  padding-top: 14px;
+}
+
+.product-import-more-fields summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--navy);
+  font-weight: 800;
+}
+
+.product-import-more-fields[open] summary {
+  margin-bottom: 14px;
+}
+
+.product-import-preview {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.product-import-preview-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #dce3ef;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.product-import-preview table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.product-import-preview th,
+.product-import-preview td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e6ebf3;
+  text-align: left;
+  vertical-align: top;
+}
+
+.product-import-preview th {
+  color: var(--navy);
+  background: #edf2fa;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.product-import-preview tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.product-import-empty {
+  color: #98a2b3;
+  font-style: italic;
+}
+
+.product-import-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 4px solid #d99b00;
+  border-radius: 8px;
+  background: #fff7d6;
+  color: #694c00 !important;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.product-import-progress {
+  display: grid;
+  gap: 9px;
+  padding: 14px 16px;
+  border: 1px solid #cdd9ec;
+  border-radius: 12px;
+  background: #f7f9fd;
+}
+
+.product-import-progress-copy {
+  color: var(--navy);
+  font-size: 0.83rem;
+}
+
+.product-import-progress-copy span {
+  color: #667085;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.product-import-progress-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe7f4;
+}
+
+.product-import-progress-track span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--navy), #2864b7);
+  transition: width 180ms ease;
+}
+
+.product-import-progress[data-stage='processing'] .product-import-progress-track span {
+  background: linear-gradient(100deg, var(--yellow) 0 35%, #ffe88c 50%, var(--yellow) 65% 100%);
+  background-size: 220% 100%;
+  animation: product-import-processing 1.4s linear infinite;
+}
+
+.product-import-status {
+  margin: 0;
+  font-weight: 800;
+}
+
+.product-import-status[data-type='error'] {
+  color: #b42318 !important;
+}
+
+.product-import-status[data-type='warning'] {
+  color: #8a5d00 !important;
+}
+
+.product-import-status[data-type='success'] {
+  color: #087443 !important;
+}
+
+@keyframes product-import-processing {
+  to {
+    background-position: -220% 0;
+  }
+}
+
+@media (max-width: 1040px) {
+  .product-import-mapping-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .product-import-review {
+    padding: 15px;
+  }
+
+  .product-import-review-heading,
+  .product-import-progress-copy {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .product-import-mapping-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .home-services-strip {
   width: 100%;
   overflow-x: auto;

@@ -1336,27 +1336,108 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
   );
 };
 
-const ProductImportPanel = ({ onDone }) => {
+const PRODUCT_IMPORT_PREVIEW_COLUMNS = [
+  'name',
+  'category',
+  'price',
+  'subject',
+  'level',
+  'curriculum',
+  'image_filename',
+];
+
+const PRODUCT_IMPORT_PRIMARY_FIELDS = new Set([
+  'name',
+  'category',
+  'price',
+  'stock_status',
+  'quantity_available',
+  'subject',
+  'level',
+  'curriculum',
+  'author',
+  'publisher',
+  'image_filename',
+]);
+
+const formatImportBytes = value => {
+  const bytes = Number(value || 0);
+  if (!bytes) return '0 MB';
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 1 : 2)} MB`;
+};
+
+const ProductImportPanel = ({ onImported, onClose }) => {
   const maxZipBytes = 100 * 1024 * 1024;
   const [catalogFile, setCatalogFile] = React.useState(null);
   const [imagesZip, setImagesZip] = React.useState(null);
-  const [status, setStatus] = React.useState('');
+  const [preview, setPreview] = React.useState(null);
+  const [mapping, setMapping] = React.useState({});
+  const [status, setStatus] = React.useState(null);
+  const [progress, setProgress] = React.useState(null);
+  const [previewing, setPreviewing] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
+
+  const reviewCatalog = async file => {
+    setCatalogFile(file);
+    setPreview(null);
+    setMapping({});
+    setProgress(null);
+    if (!file) {
+      setStatus(null);
+      return;
+    }
+    setPreviewing(true);
+    setStatus({ type: 'info', message: 'Reviewing catalogue columns...' });
+    try {
+      const result = await api.adminPreviewProductImport(file);
+      setPreview(result);
+      setMapping(result.mapping || {});
+      setStatus({
+        type: result.warnings?.length ? 'warning' : 'success',
+        message: `${result.row_count} product rows detected. Review the matched columns before importing.`,
+      });
+    } catch (err) {
+      setStatus({ type: 'error', message: err.message || 'Catalogue review failed.' });
+    } finally {
+      setPreviewing(false);
+    }
+  };
 
   const submit = async event => {
     event.preventDefault();
-    setStatus('');
     if (!catalogFile) {
-      setStatus('Upload a CSV or XLSX catalogue first.');
+      setStatus({ type: 'error', message: 'Upload a CSV or XLSX catalogue first.' });
+      return;
+    }
+    if (!preview) {
+      setStatus({ type: 'error', message: 'Wait for the catalogue review to finish.' });
+      return;
+    }
+    if (!mapping.name) {
+      setStatus({ type: 'error', message: 'Choose the column containing the product name.' });
       return;
     }
     setImporting(true);
+    setProgress({ stage: 'uploading', percent: 0, loaded: 0, total: 0 });
+    setStatus({ type: 'info', message: 'Preparing the files for upload...' });
     try {
-      const result = await api.adminImportProducts({ catalogFile, imagesZip });
-      setStatus(`Imported ${result.imported || 0}, updated ${result.updated || 0}. ${result.skipped?.length ? `${result.skipped.length} rows skipped.` : ''}`);
-      onDone?.();
+      const result = await api.adminImportProducts({
+        catalogFile,
+        imagesZip,
+        columnMapping: mapping,
+        onProgress: nextProgress => setProgress(nextProgress),
+      });
+      const details = [
+        `${result.imported || 0} added`,
+        `${result.updated || 0} updated`,
+        `${result.images_saved || 0} images saved`,
+      ];
+      if (result.skipped?.length) details.push(`${result.skipped.length} rows skipped`);
+      if (result.missing_images?.length) details.push(`${result.missing_images.length} image files not found`);
+      setStatus({ type: 'success', message: `Import complete: ${details.join(', ')}.` });
+      onImported?.();
     } catch (err) {
-      setStatus(err.message || 'Import failed.');
+      setStatus({ type: 'error', message: err.message || 'Import failed.' });
     } finally {
       setImporting(false);
     }
@@ -1367,38 +1448,166 @@ const ProductImportPanel = ({ onDone }) => {
     if (file && file.size > maxZipBytes) {
       event.target.value = '';
       setImagesZip(null);
-      setStatus('Image ZIP must be 100 MB or smaller.');
+      setStatus({ type: 'error', message: 'Image ZIP must be 100 MB or smaller.' });
       return;
     }
-    setStatus('');
+    setStatus(preview ? {
+      type: preview.warnings?.length ? 'warning' : 'success',
+      message: `${preview.row_count} product rows are ready for review.`,
+    } : null);
     setImagesZip(file);
   };
 
+  const updateMapping = (field, source) => {
+    setMapping(current => ({ ...current, [field]: source }));
+  };
+
+  const renderMappingField = field => (
+    <label className="product-import-map-field" key={field.key}>
+      <span>
+        {field.label}
+        {field.required ? <strong aria-label="required"> *</strong> : null}
+      </span>
+      <select
+        className="form-input"
+        value={mapping[field.key] || ''}
+        onChange={event => updateMapping(field.key, event.target.value)}
+        disabled={importing}
+      >
+        <option value="">Do not import</option>
+        {preview.headers.map(header => (
+          <option key={header} value={header}>{header}</option>
+        ))}
+      </select>
+    </label>
+  );
+
+  const primaryFields = preview?.fields?.filter(field => PRODUCT_IMPORT_PRIMARY_FIELDS.has(field.key)) || [];
+  const additionalFields = preview?.fields?.filter(field => !PRODUCT_IMPORT_PRIMARY_FIELDS.has(field.key)) || [];
+  const previewRows = (preview?.sample_rows || []).map((row, index) => ({
+    id: index,
+    values: Object.fromEntries(
+      PRODUCT_IMPORT_PREVIEW_COLUMNS.map(field => [field, mapping[field] ? row[mapping[field]] : '']),
+    ),
+  }));
+  const fieldLabels = Object.fromEntries((preview?.fields || []).map(field => [field.key, field.label]));
+  const progressLabel = progress?.stage === 'processing'
+    ? 'Upload complete. The server is validating images and saving products.'
+    : progress?.stage === 'complete'
+      ? 'Import complete'
+      : `Uploading catalogue and images: ${progress?.percent || 0}%`;
+
   return (
-    <form className="admin-reply-panel" onSubmit={submit}>
+    <form className="admin-reply-panel product-import-panel" onSubmit={submit}>
       <div>
         <p className="overline">Batch Product Import</p>
-        <h3>Upload books and stationery in one pass</h3>
-        <p><strong>Upload limit:</strong> image ZIPs may be up to 100 MB.</p>
+        <h3>Upload, review, then import</h3>
         <p>
-          Use columns such as name, category, curriculum, author, publisher, price, stock_status, quantity, subject, level, source, tags, and image_filename.
-          Put matching cover images in a ZIP using the exact same image_filename values. The importer creates missing categories automatically.
+          Select the catalogue first. RealMindX will match its columns and show a sample before any products are changed.
+          Cover images should use the filenames in the mapped image column.
         </p>
       </div>
-      <div className="admin-form-grid">
+      <div className="admin-form-grid product-import-files">
         <label className="form-group">
-          <span className="form-label">Catalogue CSV/XLSX</span>
-          <input className="form-input" type="file" accept=".csv,.xlsx" onChange={event => setCatalogFile(event.target.files?.[0] || null)} />
+          <span className="form-label">1. Catalogue CSV/XLSX</span>
+          <input
+            className="form-input"
+            type="file"
+            accept=".csv,.xlsx"
+            disabled={importing}
+            onChange={event => reviewCatalog(event.target.files?.[0] || null)}
+          />
+          <small>{previewing ? 'Reading columns...' : catalogFile ? `${catalogFile.name} / ${formatImportBytes(catalogFile.size)}` : 'Choose the product catalogue.'}</small>
         </label>
         <label className="form-group">
-          <span className="form-label">Image ZIP (up to 100 MB)</span>
-          <input className="form-input" type="file" accept=".zip" onChange={chooseImageZip} />
+          <span className="form-label">2. Image ZIP</span>
+          <input className="form-input" type="file" accept=".zip" disabled={importing} onChange={chooseImageZip} />
+          <small>{imagesZip ? `${imagesZip.name} / ${formatImportBytes(imagesZip.size)}` : 'Optional, up to 100 MB.'}</small>
         </label>
       </div>
-      {status && <p style={{ color: status.includes('failed') || status.includes('Upload') ? 'var(--danger)' : 'var(--navy)', fontWeight: 700 }}>{status}</p>}
+
+      {preview ? (
+        <section className="product-import-review" aria-label="Catalogue review">
+          <div className="product-import-review-heading">
+            <div>
+              <p className="overline">Column Matcher</p>
+              <h4>{preview.row_count} rows / {preview.headers.length} source columns</h4>
+            </div>
+            <button className="btn btn-outline-navy btn-sm" type="button" disabled={importing} onClick={() => setMapping(preview.mapping || {})}>
+              Reset matches
+            </button>
+          </div>
+          <p className="product-import-helper">Confirm what each source column means. Required fields are marked with an asterisk.</p>
+          <div className="product-import-mapping-grid">
+            {primaryFields.map(renderMappingField)}
+          </div>
+          {additionalFields.length ? (
+            <details className="product-import-more-fields">
+              <summary>Map additional product fields</summary>
+              <div className="product-import-mapping-grid">
+                {additionalFields.map(renderMappingField)}
+              </div>
+            </details>
+          ) : null}
+
+          <div className="product-import-preview">
+            <div>
+              <p className="overline">Sample Preview</p>
+              <h4>How the first {previewRows.length} rows will import</h4>
+            </div>
+            <div className="product-import-preview-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    {PRODUCT_IMPORT_PREVIEW_COLUMNS.map(field => <th key={field}>{fieldLabels[field] || field}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.map(row => (
+                    <tr key={row.id}>
+                      {PRODUCT_IMPORT_PREVIEW_COLUMNS.map(field => (
+                        <td key={field}>{String(row.values[field] ?? '') || <span className="product-import-empty">Not set</span>}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {preview.warnings?.map(warning => (
+            <p className="product-import-warning" key={warning}>{warning}</p>
+          ))}
+        </section>
+      ) : null}
+
+      {progress ? (
+        <div className="product-import-progress" data-stage={progress.stage}>
+          <div className="product-import-progress-copy">
+            <strong>{progressLabel}</strong>
+            {progress.stage === 'uploading' && progress.total ? (
+              <span>{formatImportBytes(progress.loaded)} of {formatImportBytes(progress.total)}</span>
+            ) : null}
+          </div>
+          <div
+            className="product-import-progress-track"
+            role="progressbar"
+            aria-label="Product import progress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow={progress.percent || 0}
+          >
+            <span style={{ width: `${progress.percent || 0}%` }} />
+          </div>
+        </div>
+      ) : null}
+
+      {status ? <p className="product-import-status" data-type={status.type}>{status.message}</p> : null}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="btn btn-primary btn-sm" disabled={importing}>{importing ? 'Importing...' : 'Import Products'}</button>
-        <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onDone?.()}>Close</button>
+        <button className="btn btn-primary btn-sm" disabled={importing || previewing || !preview || !mapping.name}>
+          {importing ? (progress?.stage === 'processing' ? 'Processing...' : `Uploading ${progress?.percent || 0}%`) : 'Import Products'}
+        </button>
+        <button className="btn btn-outline-navy btn-sm" type="button" disabled={importing} onClick={onClose}>Close</button>
       </div>
     </form>
   );
@@ -1852,7 +2061,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       </div>
 
       {config.collection === 'products' && showProductImport && (
-        <ProductImportPanel onDone={() => { setShowProductImport(false); fetchCollection(config.collection); }} />
+        <ProductImportPanel
+          onImported={() => fetchCollection(config.collection)}
+          onClose={() => setShowProductImport(false)}
+        />
       )}
 
       {config.collection === 'newsletters' && (
