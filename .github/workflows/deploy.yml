@@ -53,6 +53,33 @@ jobs:
           echo "── Updating Python dependencies ──"
           realmindx-site/.venv/bin/pip install -r realmindx-site/requirements.txt -q
 
+          echo "── Updating the local GeoIP city database ──"
+          GEOIP_MONTH="$(date -u +%Y-%m)"
+          GEOIP_DIR="/var/lib/realmindx/geoip"
+          GEOIP_FILE="$GEOIP_DIR/dbip-city-lite-$GEOIP_MONTH.mmdb"
+          mkdir -p "$GEOIP_DIR"
+          if [ ! -s "$GEOIP_FILE" ]; then
+            GEOIP_ARCHIVE="$GEOIP_FILE.gz"
+            if curl -fsSL "https://download.db-ip.com/free/dbip-city-lite-$GEOIP_MONTH.mmdb.gz" -o "$GEOIP_ARCHIVE.tmp" \
+              && gzip -t "$GEOIP_ARCHIVE.tmp" \
+              && gzip -dc "$GEOIP_ARCHIVE.tmp" > "$GEOIP_FILE.tmp" \
+              && test -s "$GEOIP_FILE.tmp"; then
+              mv "$GEOIP_FILE.tmp" "$GEOIP_FILE"
+              rm -f "$GEOIP_ARCHIVE.tmp"
+            else
+              echo "GeoIP download unavailable; keeping the previously installed database."
+              rm -f "$GEOIP_ARCHIVE.tmp" "$GEOIP_FILE.tmp"
+            fi
+          fi
+          if [ -s "$GEOIP_FILE" ]; then
+            ln -sfn "$(basename "$GEOIP_FILE")" "$GEOIP_DIR/dbip-city-lite.mmdb"
+          elif [ ! -s "$GEOIP_DIR/dbip-city-lite.mmdb" ]; then
+            echo "No usable GeoIP database is available."
+            exit 1
+          fi
+          ACTIVE_GEOIP_FILE="$(basename "$(readlink -f "$GEOIP_DIR/dbip-city-lite.mmdb")")"
+          find "$GEOIP_DIR" -maxdepth 1 -type f -name 'dbip-city-lite-*.mmdb' ! -name "$ACTIVE_GEOIP_FILE" -mtime +70 -delete
+
           echo "── Running database migrations ──"
           cd realmindx-site
           .venv/bin/python -m flask --app backend:create_app db upgrade heads

@@ -359,6 +359,7 @@
   margin: 8px 0 0;
   max-width: 760px;
 }
+.analytics-section-head p a { color: var(--analytics-navy); font-weight: 700; }
 
 .analytics-controls {
   display: grid;

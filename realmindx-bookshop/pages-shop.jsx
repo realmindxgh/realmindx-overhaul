@@ -169,7 +169,7 @@ const browseIntroCopy = (taxonomy, browseItem) => {
       return {
         eyebrow: 'Subject Finder',
         title: 'Shop by Subject',
-        body: 'Start with the subject your learner needs, then narrow the results by level, curriculum, publisher, or item type.',
+        body: 'Search and tick one or more subjects. Matching books update immediately, and you can refine them further by level, curriculum, publisher, or item type.',
       };
     case 'level':
       return {
@@ -423,7 +423,7 @@ const HomePage = ({ navigate }) => {
   );
 };
 
-const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
+const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' }) => {
   const { books, taxonomies } = useCatalog();
   const [open, setOpen] = React.useState({
     categories: true,
@@ -494,7 +494,7 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80 }) => {
   return (
     <>
       <h3 className="bs-h3">Filter Books</h3>
-      {FILTER_GROUPS.map((group) => {
+      {FILTER_GROUPS.filter((group) => group.taxonomy !== hiddenTaxonomy).map((group) => {
         const items = taxonomies[group.key] || [];
         if (items.length === 0) return null;
         const query = searchTerms[group.key].trim().toLowerCase();
@@ -780,6 +780,9 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     [initialBrowse.taxonomy, initialBrowse.value, taxonomies],
   );
   const hasScopedBrowse = Boolean(initialBrowse.taxonomy && initialBrowse.value);
+  const hiddenFilterTaxonomy = initialBrowse.taxonomy && !hasScopedBrowse
+    ? initialBrowse.taxonomy
+    : '';
   const browseIntro = React.useMemo(() => browseIntroCopy(initialBrowse.taxonomy, browseItem), [browseItem, initialBrowse.taxonomy]);
   const browseGroup = React.useMemo(() => filterGroupForTaxonomy(initialBrowse.taxonomy), [initialBrowse.taxonomy]);
   const browseLinks = React.useMemo(
@@ -791,6 +794,24 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     if (!query) return browseLinks;
     return browseLinks.filter((item) => item.label.toLowerCase().includes(query));
   }, [browseLinks, browseQuery]);
+  const isSubjectFinder = initialBrowse.taxonomy === 'subject' && !hasScopedBrowse;
+  const selectedSubjectItems = React.useMemo(() => {
+    const selected = new Set(filters.subjects || []);
+    return browseLinks.filter((item) => selected.has(item.id));
+  }, [browseLinks, filters.subjects]);
+
+  const toggleBrowseFilter = React.useCallback((taxonomy, value) => {
+    const group = filterGroupForTaxonomy(taxonomy);
+    if (!group) return;
+    setFilters((prev) => {
+      const selected = prev[group.key] || [];
+      const hasValue = selected.includes(value);
+      return {
+        ...prev,
+        [group.key]: hasValue ? selected.filter((item) => item !== value) : [...selected, value],
+      };
+    });
+  }, []);
 
   React.useEffect(() => {
     setBrowseQuery('');
@@ -831,7 +852,12 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
 
       <div className="bs-shop-layout">
         <aside className="bs-filter-card desktop">
-          <FilterPanel filters={filters} setFilters={setFilters} ceiling={rangeCeiling} />
+          <FilterPanel
+            filters={filters}
+            setFilters={setFilters}
+            ceiling={rangeCeiling}
+            hiddenTaxonomy={hiddenFilterTaxonomy}
+          />
           <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop: 18 }} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             Filters update instantly
           </button>
@@ -845,35 +871,90 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               <p>{browseIntro.body}</p>
               {!hasScopedBrowse && browseLinks.length > 0 && (
                 <div className="bs-browse-picker">
+                  {isSubjectFinder && selectedSubjectItems.length > 0 && (
+                    <div className="bs-subject-selection">
+                      <div className="bs-subject-selection-head">
+                        <span>Selected subjects</span>
+                        <button
+                          type="button"
+                          onClick={() => setFilters((prev) => ({ ...prev, subjects: [] }))}
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                      <div className="bs-subject-chips" aria-label="Selected subjects">
+                        {selectedSubjectItems.map((item) => (
+                          <button
+                            key={`selected-${item.id}`}
+                            type="button"
+                            className="bs-subject-chip"
+                            onClick={() => toggleBrowseFilter('subject', item.id)}
+                            aria-label={`Remove ${item.label}`}
+                          >
+                            {item.label} <Icon name="close" size={11} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <label className="bs-browse-filter">
                     <Icon name="search" size={16} />
                     <input
                       type="search"
                       value={browseQuery}
                       onChange={(event) => setBrowseQuery(event.target.value)}
-                      placeholder={`Find a ${browseIntroHeading(initialBrowse.taxonomy).toLowerCase()}`}
-                      aria-label={`Find a ${browseIntroHeading(initialBrowse.taxonomy).toLowerCase()}`}
+                      placeholder={isSubjectFinder
+                        ? 'Search subjects (e.g. Mathematics, English)'
+                        : `Find a ${browseIntroHeading(initialBrowse.taxonomy).toLowerCase()}`}
+                      aria-label={isSubjectFinder
+                        ? 'Search subjects'
+                        : `Find a ${browseIntroHeading(initialBrowse.taxonomy).toLowerCase()}`}
                     />
                   </label>
-                  <div className="bs-browse-link-grid">
-                    {filteredBrowseLinks.map((item) => {
-                      const active = item.id === initialBrowse.value;
-                      return (
-                        <a
-                          key={`${initialBrowse.taxonomy}-${item.id}`}
-                          className={`bs-browse-link-card${active ? ' active' : ''}`}
-                          href={hrefForRoute('shop', { taxonomy: initialBrowse.taxonomy, value: item.id })}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            navigate('shop', { taxonomy: initialBrowse.taxonomy, value: item.id });
-                          }}
-                        >
-                          <span>{item.label}</span>
-                          <strong>{item.count}</strong>
-                        </a>
-                      );
-                    })}
-                  </div>
+                  {isSubjectFinder ? (
+                    <div className="bs-subject-check-grid" aria-label="Available subjects">
+                      {filteredBrowseLinks.map((item) => {
+                        const checked = (filters.subjects || []).includes(item.id);
+                        return (
+                          <label
+                            key={`subject-${item.id}`}
+                            className={`bs-subject-check${checked ? ' selected' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleBrowseFilter('subject', item.id)}
+                            />
+                            <span className="bs-subject-check-box" aria-hidden="true">
+                              {checked && <Icon name="check" size={12} />}
+                            </span>
+                            <span className="bs-subject-check-label">{item.label}</span>
+                            <strong>{item.count}</strong>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="bs-browse-link-grid">
+                      {filteredBrowseLinks.map((item) => {
+                        const active = item.id === initialBrowse.value;
+                        return (
+                          <a
+                            key={`${initialBrowse.taxonomy}-${item.id}`}
+                            className={`bs-browse-link-card${active ? ' active' : ''}`}
+                            href={hrefForRoute('shop', { taxonomy: initialBrowse.taxonomy, value: item.id })}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              navigate('shop', { taxonomy: initialBrowse.taxonomy, value: item.id });
+                            }}
+                          >
+                            <span>{item.label}</span>
+                            <strong>{item.count}</strong>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
                   {filteredBrowseLinks.length === 0 && (
                     <p className="bs-browse-empty">No matching options. Try a shorter search.</p>
                   )}
@@ -881,7 +962,15 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               )}
               <div className="bs-category-intro-meta">
                 <span><strong>{list.length}</strong> result{list.length !== 1 ? 's' : ''}</span>
-                <span>{hasScopedBrowse ? `${browseIntroHeading(initialBrowse.taxonomy)} filter already applied.` : 'Choose a starting point, then refine with the filters.'}</span>
+                <span>
+                  {hasScopedBrowse
+                    ? `${browseIntroHeading(initialBrowse.taxonomy)} filter already applied.`
+                    : isSubjectFinder && selectedSubjectItems.length > 0
+                      ? `${selectedSubjectItems.length} subject${selectedSubjectItems.length !== 1 ? 's' : ''} selected. Results update instantly.`
+                      : isSubjectFinder
+                        ? 'Search and tick every subject you need.'
+                        : 'Choose a starting point, then refine with the filters.'}
+                </span>
                 {hasScopedBrowse && (
                   <button
                     type="button"
@@ -997,7 +1086,12 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       <div className={`bs-drawer-scrim${drawer ? ' open' : ''}`} onClick={() => setDrawer(false)} />
       <div className={`bs-filter-drawer${drawer ? ' open' : ''}`}>
         <div className="bs-drawer-handle" />
-        <FilterPanel filters={filters} setFilters={setFilters} ceiling={rangeCeiling} />
+        <FilterPanel
+          filters={filters}
+          setFilters={setFilters}
+          ceiling={rangeCeiling}
+          hiddenTaxonomy={hiddenFilterTaxonomy}
+        />
         <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop: 18 }} onClick={() => setDrawer(false)}>
           Show {list.length} result{list.length !== 1 ? 's' : ''}
         </button>

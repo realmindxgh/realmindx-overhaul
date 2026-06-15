@@ -508,7 +508,10 @@ const ProductDetailDrawer = ({ open, detail, onClose, exportHref, canExport }) =
 
             <div className="analytics-two-grid">
               <article className="analytics-panel">
-                <SectionHeader title="Location summary" body="Approximate location only. No raw IP addresses appear in this view." />
+                <SectionHeader
+                  title="Location summary"
+                  body={<>Approximate network location only. No raw IP addresses appear in this view. IP geolocation by <a href="https://db-ip.com" target="_blank" rel="noreferrer">DB-IP</a>.</>}
+                />
                 <div className="analytics-mini-columns">
                   <div>
                     <h4>Countries</h4>
@@ -843,7 +846,10 @@ const AnalyticsView = ({ session }) => {
           </div>
 
           <section className="analytics-panel">
-            <SectionHeader title="Location summary" body="Approximate location from available proxy headers. Visits without location data remain visible as Unknown so totals reconcile." />
+            <SectionHeader
+              title="Location summary"
+              body={<>Approximate network location is resolved locally from the visitor IP. Unknown usually means a historical visit, bot, private address, or an IP absent from the database; it does not mean the visitor refused browser location permission. IP geolocation by <a href="https://db-ip.com" target="_blank" rel="noreferrer">DB-IP</a>.</>}
+            />
             <div className="analytics-mini-columns">
               <div>
                 <h4>Countries</h4>

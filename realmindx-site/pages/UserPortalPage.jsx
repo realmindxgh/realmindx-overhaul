@@ -598,7 +598,11 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, onC
       <div className="profile-section-card">
         <h3>
           Next of Kin
-          <button type="button" className="profile-edit-link" onClick={() => onEditProfile?.('kin')}>Edit</button>
+          <button type="button" className="profile-edit-link" onClick={() => onEditProfile?.('kin')}>
+            {[user.nextOfKinName, user.nextOfKinRelationship, user.nextOfKinPhone, user.nextOfKinEmail].some(Boolean)
+              ? 'Edit'
+              : 'Add'}
+          </button>
         </h3>
         {[
           { label: 'Full Name',     value: user.nextOfKinName },
@@ -611,7 +615,6 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, onC
             {f.value ? <div className="profile-field-value">{f.value}</div> : <div className="profile-field-empty">Not provided</div>}
           </div>
         ))}
-        <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onEditProfile?.('kin')} style={{ marginTop: 8 }}>Add Next of Kin</button>
       </div>
 
       {/* Profile picture slot */}

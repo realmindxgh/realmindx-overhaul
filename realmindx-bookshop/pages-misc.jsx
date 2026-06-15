@@ -669,22 +669,32 @@ const OrderDetailModal = ({ order, onClose }) => {
 // ─── Mini order card (used in AccountPage recent orders) ─────────────────────
 
 const MiniOrderCard = ({ order, onOpen }) => {
-  const itemCount = (order.items || []).reduce((s, i) => s + (i.quantity || 1), 0);
+  const items = order.items || [];
+  const itemCount = items.reduce((sum, item) => sum + (item.quantity || 1), 0);
   const normalizedStatus = normalizeOrderStatus(order.status);
   const meta = STATUS_META[normalizedStatus] || { label: orderStatusLabel(normalizedStatus || 'unknown'), color: '#6b7b8e' };
+  const itemPreview = items.slice(0, 2).map(item => item.product_name).filter(Boolean).join(', ');
+  const extraItems = items.length > 2 ? ` +${items.length - 2} more` : '';
   return (
-    <div className="bs-mini-order-card" style={{ '--badge-color': meta.color }}
-      onClick={() => onOpen(order)} role="button" tabIndex={0}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onOpen(order); }}>
-      <div className="bs-moc-top">
-        <div className="bs-moc-ref">{order.order_reference}</div>
-        <OrderStatusBadge status={order.status} />
-      </div>
-      <div className="bs-moc-bottom">
+    <button
+      type="button"
+      className="bs-mini-order-card"
+      style={{ '--badge-color': meta.color }}
+      onClick={() => onOpen(order)}
+      aria-label={`View order ${order.order_reference}`}
+    >
+      <div className="bs-moc-main">
+        <span className="bs-moc-label">Order</span>
+        <span className="bs-moc-ref">{order.order_reference}</span>
         <span className="bs-moc-meta">{fmtDate(order.created_at)} · {itemCount} item{itemCount !== 1 ? 's' : ''}</span>
-        <span className="bs-moc-total">{cedis(order.total_amount || 0)}</span>
+        {itemPreview && <span className="bs-moc-items">{itemPreview}{extraItems}</span>}
       </div>
-    </div>
+      <div className="bs-moc-summary">
+        <OrderStatusBadge status={order.status} />
+        <span className="bs-moc-total">{cedis(order.total_amount || 0)}</span>
+        <span className="bs-moc-view">Details <Icon name="chevR" size={13} /></span>
+      </div>
+    </button>
   );
 };
 
@@ -935,7 +945,7 @@ const AccountPage = ({ navigate }) => {
               </div>
             </section>
 
-            {/* Recent orders — 2×2 grid */}
+            {/* Recent orders */}
             <section className="bs-account-section">
               <div className="bs-section-head-row" style={{ marginBottom: 20 }}>
                 <h2 className="bs-h3" style={{ margin: 0, fontSize: '1.1rem' }}>

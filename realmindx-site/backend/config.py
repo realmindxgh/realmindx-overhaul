@@ -26,6 +26,10 @@ class Config:
     BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:5173")
     BOOKSHOP_URL = os.getenv("BOOKSHOP_URL", f"{BASE_URL}/bookshop")
     API_URL = os.getenv("API_URL", "http://127.0.0.1:5000/api")
+    GEOIP_DATABASE_PATH = os.getenv(
+        "GEOIP_DATABASE_PATH",
+        "/var/lib/realmindx/geoip/dbip-city-lite.mmdb",
+    )
     CORS_ORIGINS = [
         origin.strip()
         for origin in os.getenv("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173").split(",")

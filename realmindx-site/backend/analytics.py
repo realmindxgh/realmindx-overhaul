@@ -5,12 +5,18 @@ from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import ipaddress
+import os
 import re
 from urllib.parse import urlparse
 
-from flask import request
+from flask import current_app, request
 from flask_login import current_user
 from sqlalchemy.orm import selectinload
+
+try:
+    import maxminddb
+except ImportError:  # Optional during local development before dependencies are installed.
+    maxminddb = None
 
 from .extensions import db
 from .models import AnalyticsEvent, AuditLog, ContactMessage, JobApplication, News, NewsletterSubscriber, Order, Product
@@ -37,6 +43,8 @@ SOCIAL_HOSTS = {
 }
 
 UNKNOWN_LABEL = "Unknown"
+_geoip_reader = None
+_geoip_reader_path = None
 
 
 def parse_analytics_range(args):
@@ -209,10 +217,10 @@ def _source_from_referrer(referrer, explicit_source=None, explicit_medium=None):
 
 def _remote_ip():
     forwarded = (
-        request.headers.get("CF-Connecting-IP")
-        or request.headers.get("X-Forwarded-For")
-        or request.headers.get("X-Real-IP")
+        request.headers.get("X-Real-IP")
         or request.remote_addr
+        or request.headers.get("CF-Connecting-IP")
+        or request.headers.get("X-Forwarded-For")
         or ""
     )
     return str(forwarded).split(",", 1)[0].strip()
@@ -235,9 +243,56 @@ def _anonymize_ip(raw_ip):
     return digest, prefix
 
 
+def _localized_geoip_name(value):
+    if not isinstance(value, dict):
+        return None
+    names = value.get("names")
+    if isinstance(names, dict):
+        return names.get("en") or next((name for name in names.values() if name), None)
+    return value.get("name")
+
+
+def _geoip_location(raw_ip):
+    global _geoip_reader, _geoip_reader_path
+    if not raw_ip or maxminddb is None:
+        return None, None, None
+    try:
+        parsed = ipaddress.ip_address(raw_ip)
+    except ValueError:
+        return None, None, None
+    if not parsed.is_global:
+        return None, None, None
+
+    database_path = str(current_app.config.get("GEOIP_DATABASE_PATH") or "").strip()
+    if not database_path:
+        return None, None, None
+    resolved_path = os.path.realpath(database_path)
+    if not os.path.isfile(resolved_path):
+        return None, None, None
+
+    try:
+        if _geoip_reader is None or _geoip_reader_path != resolved_path:
+            if _geoip_reader is not None:
+                _geoip_reader.close()
+            _geoip_reader = maxminddb.open_database(resolved_path)
+            _geoip_reader_path = resolved_path
+        record = _geoip_reader.get(str(parsed)) or {}
+    except Exception:
+        current_app.logger.exception("Could not resolve analytics GeoIP location.")
+        return None, None, None
+
+    country_data = record.get("country") or record.get("registered_country") or {}
+    country = country_data.get("iso_code") if isinstance(country_data, dict) else None
+    subdivisions = record.get("subdivisions") or []
+    region_data = subdivisions[-1] if isinstance(subdivisions, list) and subdivisions else {}
+    region = _localized_geoip_name(region_data)
+    city = _localized_geoip_name(record.get("city") or {})
+    return country, region, city
+
+
 def _location_from_headers():
     headers = request.headers
-    country = (
+    header_country = (
         headers.get("CF-IPCountry")
         or headers.get("CF-Country")
         or headers.get("X-Country-Code")
@@ -246,7 +301,7 @@ def _location_from_headers():
         or headers.get("CloudFront-Viewer-Country")
         or None
     )
-    region = (
+    header_region = (
         headers.get("CF-Region")
         or headers.get("CF-IPCountry-Region")
         or headers.get("CF-Region-Code")
@@ -255,7 +310,7 @@ def _location_from_headers():
         or headers.get("CloudFront-Viewer-Country-Region")
         or None
     )
-    city = (
+    header_city = (
         headers.get("CF-IPCity")
         or headers.get("CF-City")
         or headers.get("X-Geo-City")
@@ -263,8 +318,12 @@ def _location_from_headers():
         or headers.get("CloudFront-Viewer-City")
         or None
     )
-    if country in {"XX", "ZZ"}:
-        country = None
+    if header_country in {"XX", "ZZ"}:
+        header_country = None
+    geo_country, geo_region, geo_city = _geoip_location(_remote_ip())
+    country = geo_country or header_country
+    region = geo_region or header_region
+    city = geo_city or header_city
     return country, region, city
 
 
