@@ -33,6 +33,10 @@ const taxon = (taxonomy, label, count = 0, extras = {}) => ({
   description: extras.description || '',
   icon: extras.icon || 'book',
   legacyId: extras.legacyId || null,
+  aliases: extras.aliases || [],
+  popularSearches: extras.popularSearches || [],
+  seoTitle: extras.seoTitle || '',
+  seoDescription: extras.seoDescription || '',
 });
 
 const previewItems = (items, preferredIds = [], limit = 4) => {
@@ -62,7 +66,7 @@ const CURRICULUM_LOOKUP = canonicalBySlug([ALL_CURRICULA, ...TEACHING_CURRICULA,
 const subjectAliases = [
   { pattern: /\bmaths?\b/i, value: 'Mathematics' },
   { pattern: /\benglish\b/i, value: 'English Language' },
-  { pattern: /\bict\b/i, value: 'ICT' },
+  { pattern: /\bict\b|computer studies|coding/i, value: 'Computing' },
   { pattern: /\brme\b/i, value: 'Religious and Moral Education' },
   { pattern: /stationery|art supplies|school supplies|general supplies/i, value: SUBJECT_OTHER },
 ];
@@ -90,6 +94,209 @@ const curriculumAliases = [
   { pattern: /montessori/i, value: 'Montessori Curriculum' },
   { pattern: /oxford/i, value: 'Oxford International Curriculum' },
 ];
+
+const SEO_PROFILES = {
+  subject: {
+    mathematics: {
+      title: 'Mathematics Books in Ghana | Maths Textbooks, BECE & WASSCE | RealMindX Bookshop',
+      description: 'Shop Mathematics books in Ghana, including maths textbooks, Cambridge maths books, GES/NaCCA Mathematics, BECE and WASSCE revision books, workbooks and classroom materials.',
+      intro: 'Find Mathematics books for learners, parents, teachers and schools. This section includes GES/NaCCA Mathematics textbooks, Cambridge maths books, BECE and WASSCE revision books, workbooks, practice books and classroom materials.',
+      aliases: ['maths books', 'math books', 'mathematics textbooks', 'BECE maths books', 'WASSCE maths books', 'Cambridge maths books', 'GES Mathematics books'],
+      popularSearches: ['BECE maths books', 'WASSCE maths books', 'Cambridge maths books', 'GES Mathematics textbooks'],
+    },
+    'english-language': {
+      title: 'English Language Books in Ghana | Grammar, Reading, BECE & WASSCE | RealMindX Bookshop',
+      description: 'Shop English Language books in Ghana, including English textbooks, grammar books, reading books, composition books, BECE English and WASSCE English materials.',
+      intro: 'Browse English Language books for reading, grammar, comprehension, composition and exam preparation. This section supports learners, parents, teachers and schools looking for classroom-ready English textbooks and practice materials.',
+      aliases: ['English books', 'English textbooks', 'grammar books', 'reading books', 'composition books', 'BECE English', 'WASSCE English'],
+      popularSearches: ['grammar books', 'reading books', 'BECE English', 'WASSCE English'],
+    },
+    computing: {
+      title: 'Computing and ICT Books in Ghana | Computer Studies Textbooks | RealMindX Bookshop',
+      description: 'Shop Computing and ICT books in Ghana, including computer studies textbooks, JHS ICT books, coding books for students and classroom technology materials.',
+      intro: 'Find Computing and ICT books for learners and schools, including computer studies textbooks, JHS ICT books, coding introductions and practical classroom materials.',
+      aliases: ['ICT books', 'computing textbooks', 'computer studies books', 'JHS ICT books', 'coding books for students'],
+      popularSearches: ['ICT books', 'JHS ICT books', 'computer studies books', 'coding books for students'],
+    },
+    science: {
+      title: 'Science Books in Ghana | Integrated Science, BECE & WASSCE | RealMindX Bookshop',
+      description: 'Shop Science books in Ghana, including Integrated Science textbooks, BECE Science books, WASSCE Science revision books, workbooks and classroom materials.',
+      intro: 'Browse Science books for school learners, teachers and parents, including Integrated Science textbooks, exam revision books, workbooks and practical learning materials.',
+      aliases: ['science books', 'science textbooks', 'Integrated Science books', 'BECE Science', 'WASSCE Science'],
+      popularSearches: ['Integrated Science books', 'BECE Science books', 'WASSCE Science books'],
+    },
+  },
+  level: {
+    'junior-high-lower-secondary': {
+      title: 'JHS Books in Ghana | Basic 7, 8 & 9 Textbooks and BECE Books | RealMindX Bookshop',
+      description: 'Shop Junior High and lower secondary books in Ghana, including Basic 7, 8 and 9 textbooks, BECE revision books, workbooks and classroom materials.',
+      intro: 'Find Junior High School books for Basic 7, 8 and 9 learners, including textbooks, BECE revision books, workbooks, practice books and classroom materials.',
+      aliases: ['JHS books', 'Basic 7 books', 'Basic 8 books', 'Basic 9 books', 'lower secondary textbooks', 'BECE books'],
+      popularSearches: ['BECE books', 'Basic 7 textbooks', 'Basic 8 textbooks', 'Basic 9 textbooks'],
+    },
+    'senior-high-upper-secondary': {
+      title: 'SHS Books in Ghana | Senior High Textbooks and WASSCE Books | RealMindX Bookshop',
+      description: 'Shop Senior High School books in Ghana, including SHS textbooks, WASSCE revision books, workbooks and classroom materials.',
+      intro: 'Browse Senior High School books for classroom study and WASSCE preparation, including textbooks, revision guides, workbooks and practice materials.',
+      aliases: ['SHS books', 'Senior High textbooks', 'WASSCE books', 'upper secondary textbooks'],
+      popularSearches: ['WASSCE books', 'SHS textbooks', 'Senior High revision books'],
+    },
+    'upper-primary': {
+      title: 'Upper Primary Books in Ghana | Basic 4, 5 & 6 Textbooks | RealMindX Bookshop',
+      description: 'Shop Upper Primary books in Ghana, including Basic 4, 5 and 6 textbooks, workbooks, practice books and classroom materials.',
+      intro: 'Find Upper Primary textbooks, workbooks and learning materials for Basic 4, 5 and 6 learners.',
+      aliases: ['Upper Primary books', 'Basic 4 books', 'Basic 5 books', 'Basic 6 books', 'primary textbooks'],
+      popularSearches: ['Basic 4 books', 'Basic 5 books', 'Basic 6 books'],
+    },
+    'lower-primary': {
+      title: 'Lower Primary Books in Ghana | Basic 1, 2 & 3 Textbooks | RealMindX Bookshop',
+      description: 'Shop Lower Primary books in Ghana, including Basic 1, 2 and 3 textbooks, workbooks, practice books and classroom materials.',
+      intro: 'Find Lower Primary textbooks and workbooks for early foundational learning in Basic 1, 2 and 3.',
+      aliases: ['Lower Primary books', 'Basic 1 books', 'Basic 2 books', 'Basic 3 books', 'primary workbooks'],
+      popularSearches: ['Basic 1 books', 'Basic 2 books', 'Basic 3 books'],
+    },
+  },
+  curriculum: {
+    'ges-nacca-curriculum': {
+      title: 'GES/NaCCA Curriculum Books in Ghana | Textbooks and Revision Books | RealMindX Bookshop',
+      description: 'Shop GES and NaCCA curriculum books in Ghana, including textbooks, BECE books, WASSCE materials, workbooks and classroom resources.',
+      intro: 'Browse books aligned with the GES/NaCCA curriculum, including school textbooks, revision materials, workbooks and classroom resources for Ghanaian learners.',
+      aliases: ['GES books', 'NaCCA books', 'GES textbooks', 'NaCCA curriculum books', 'BECE books', 'WASSCE books'],
+      popularSearches: ['GES textbooks', 'NaCCA curriculum books', 'BECE books', 'WASSCE books'],
+    },
+    'cambridge-international-curriculum': {
+      title: 'Cambridge Books in Ghana | Cambridge Curriculum Textbooks | RealMindX Bookshop',
+      description: 'Shop Cambridge International curriculum books in Ghana, including Cambridge textbooks, workbooks and classroom materials for schools and learners.',
+      intro: 'Find Cambridge International curriculum books, textbooks and workbooks for learners, parents, teachers and schools in Ghana.',
+      aliases: ['Cambridge books', 'Cambridge textbooks', 'Cambridge maths books', 'Cambridge curriculum books'],
+      popularSearches: ['Cambridge textbooks', 'Cambridge maths books', 'Cambridge curriculum books'],
+    },
+  },
+  category: {
+    'text-books': {
+      title: 'Textbooks in Ghana | School Books, BECE & WASSCE Materials | RealMindX Bookshop',
+      description: 'Shop textbooks in Ghana for primary, JHS and SHS learners, including GES/NaCCA books, Cambridge books, BECE and WASSCE revision materials.',
+      intro: 'Browse school textbooks for learners, parents, teachers and schools, including GES/NaCCA books, Cambridge titles, BECE materials, WASSCE resources and classroom-ready editions.',
+      aliases: ['textbooks in Ghana', 'school books', 'text books', 'BECE books', 'WASSCE books', 'JHS textbooks', 'SHS textbooks'],
+      popularSearches: ['BECE books', 'WASSCE books', 'JHS textbooks', 'SHS textbooks'],
+    },
+    'drawing-books': {
+      title: 'Drawing Books in Ghana | School Drawing and Creative Arts Books | RealMindX Bookshop',
+      description: 'Shop drawing books and creative arts books in Ghana for school learners, classrooms and home practice.',
+      intro: 'Find drawing books and creative arts materials for learners, classrooms and home practice.',
+      aliases: ['drawing books', 'creative arts books', 'school drawing books'],
+      popularSearches: ['drawing books', 'creative arts books'],
+    },
+    'writing-books': {
+      title: 'Writing Books in Ghana | Handwriting and Practice Books | RealMindX Bookshop',
+      description: 'Shop writing books in Ghana, including handwriting books, practice books and classroom writing materials.',
+      intro: 'Browse writing books and handwriting practice materials for early learners and classroom use.',
+      aliases: ['writing books', 'handwriting books', 'practice books', 'copy books'],
+      popularSearches: ['writing books', 'handwriting books', 'practice books'],
+    },
+  },
+};
+
+const LANDING_PROFILES = {
+  subject: {
+    title: 'Shop Books by Subject in Ghana | RealMindX Bookshop',
+    description: 'Search and shop books by subject, including Mathematics, English Language, Science, Computing, BECE books, WASSCE books, textbooks and classroom materials.',
+    intro: 'Search and tick one or more subjects to find the books your learner, class or school needs. You can then refine results by level, curriculum, publisher or item type.',
+    aliases: ['books by subject', 'school subjects', 'subject textbooks', 'BECE subject books', 'WASSCE subject books'],
+    popularSearches: ['Mathematics books', 'English books', 'Science books', 'Computing books'],
+  },
+  level: {
+    title: 'School Books by Level in Ghana | Primary, JHS and SHS | RealMindX Bookshop',
+    description: 'Shop school books by level in Ghana, including primary textbooks, JHS books, SHS textbooks, BECE books and WASSCE materials.',
+    intro: 'Choose the learner stage first, then refine the matching books by subject, curriculum, publisher or item type.',
+    aliases: ['primary books', 'JHS books', 'SHS books', 'BECE books', 'WASSCE books'],
+    popularSearches: ['Primary books', 'JHS books', 'SHS books'],
+  },
+  curriculum: {
+    title: 'Curriculum Textbooks in Ghana | GES/NaCCA, Cambridge & More | RealMindX Bookshop',
+    description: 'Shop books by curriculum in Ghana, including GES/NaCCA curriculum books, Cambridge textbooks, British curriculum books and classroom materials.',
+    intro: 'Choose the curriculum your school follows so you can reach the most relevant textbooks, workbooks and learning materials faster.',
+    aliases: ['GES books', 'NaCCA books', 'Cambridge books', 'British curriculum books'],
+    popularSearches: ['GES textbooks', 'NaCCA books', 'Cambridge books'],
+  },
+  category: {
+    title: 'Educational Books and Learning Materials in Ghana | RealMindX Bookshop',
+    description: 'Shop textbooks, readers, stationery, workbooks and learning materials for learners, parents, teachers and schools in Ghana.',
+    intro: 'Choose the kind of learning material you need first, then narrow the list by subject, level, curriculum, publisher, price or stock.',
+    aliases: ['educational books', 'learning materials', 'school supplies', 'stationery', 'textbooks'],
+    popularSearches: ['Textbooks', 'School books', 'Stationery'],
+  },
+  publisher: {
+    title: 'Educational Book Publishers in Ghana | RealMindX Bookshop',
+    description: 'Browse educational titles by publisher and compare textbooks, workbooks, readers and classroom materials available in Ghana.',
+    intro: 'Compare available titles by publisher, then narrow them by curriculum, subject, level or item type.',
+    aliases: ['book publishers', 'educational publishers', 'school book publishers'],
+    popularSearches: ['New Golden Publication', 'Cambridge publishers', 'school book publishers'],
+  },
+};
+
+const fallbackSeoProfile = (taxonomy, label, id) => {
+  const cleanLabel = clean(label) || taxonomyLabel(taxonomy);
+  const lowerLabel = cleanLabel.toLowerCase();
+  if (!id) return LANDING_PROFILES[taxonomy] || LANDING_PROFILES.category;
+  switch (taxonomy) {
+    case 'subject':
+      return {
+        title: `${cleanLabel} Books in Ghana | Textbooks and Learning Materials | RealMindX Bookshop`,
+        description: `Shop ${cleanLabel} books in Ghana, including textbooks, workbooks, revision books, practice books and classroom materials.`,
+        intro: `Find ${cleanLabel} books for learners, parents, teachers and schools, including textbooks, workbooks, revision books, practice books and classroom materials.`,
+        aliases: [`${cleanLabel} books`, `${cleanLabel} textbooks`, `${cleanLabel} workbooks`, `${cleanLabel} revision books`],
+        popularSearches: [`${cleanLabel} books`, `${cleanLabel} textbooks`, `${cleanLabel} workbooks`],
+      };
+    case 'level':
+      return {
+        title: `${cleanLabel} Books in Ghana | Textbooks and Revision Books | RealMindX Bookshop`,
+        description: `Shop ${cleanLabel} books in Ghana, including textbooks, workbooks, revision books and classroom materials.`,
+        intro: `Find books and learning materials matched to ${cleanLabel}, including textbooks, workbooks, revision guides and practice materials.`,
+        aliases: [`${cleanLabel} books`, `${cleanLabel} textbooks`, `${cleanLabel} workbooks`],
+        popularSearches: [`${cleanLabel} books`, `${cleanLabel} textbooks`],
+      };
+    case 'curriculum':
+      return {
+        title: `${cleanLabel} Books in Ghana | Curriculum Textbooks | RealMindX Bookshop`,
+        description: `Shop ${cleanLabel} books in Ghana, including curriculum textbooks, workbooks and classroom materials.`,
+        intro: `Browse titles that fit the ${cleanLabel} pathway, including textbooks, workbooks and classroom materials.`,
+        aliases: [`${cleanLabel} books`, `${cleanLabel} textbooks`, `${cleanLabel} curriculum books`],
+        popularSearches: [`${cleanLabel} books`, `${cleanLabel} textbooks`],
+      };
+    case 'publisher':
+      return {
+        title: `${cleanLabel} Books in Ghana | RealMindX Bookshop`,
+        description: `Shop available books from ${cleanLabel}, including textbooks, workbooks and classroom materials for learners and schools.`,
+        intro: `Browse books currently available from ${cleanLabel}, then narrow them by subject, curriculum, level or item type.`,
+        aliases: [`${cleanLabel} books`, `${cleanLabel} textbooks`, `${cleanLabel} school books`],
+        popularSearches: [`${cleanLabel} books`, `${cleanLabel} textbooks`],
+      };
+    default:
+      return {
+        title: `${cleanLabel} in Ghana | RealMindX Bookshop`,
+        description: `Shop ${lowerLabel} in Ghana at RealMindX Bookshop for learners, parents, teachers and schools.`,
+        intro: `Browse ${lowerLabel} in the RealMindX Bookshop and refine by subject, level, curriculum, publisher or stock.`,
+        aliases: [`${cleanLabel}`, `${cleanLabel} in Ghana`, `${cleanLabel} for school`],
+        popularSearches: [`${cleanLabel}`],
+      };
+  }
+};
+
+export const getBookshopSeoProfile = (taxonomy, value = '') => {
+  const source = typeof value === 'object' && value ? value : {};
+  const isLanding = !source.id && !source.label && !source.name && !clean(value);
+  const label = isLanding ? '' : (source.label || source.name || value || taxonomyLabel(taxonomy));
+  const id = isLanding ? '' : idFor(source.id || label, '');
+  const profile = SEO_PROFILES[taxonomy]?.[id] || fallbackSeoProfile(taxonomy, label, id);
+  return {
+    ...profile,
+    label: clean(label),
+    id,
+    aliases: [...new Set([...(profile.aliases || [])])],
+    popularSearches: [...new Set([...(profile.popularSearches || [])])],
+  };
+};
 
 const canonicalOrAlias = (value, lookup, aliases = [], fallback = '') => {
   const raw = clean(value);
@@ -133,18 +340,38 @@ const buildDynamicTaxonomy = (books, taxonomy, getValue, options = {}) => {
   });
 
   return Array.from(counts.entries())
-    .map(([id, count]) => taxon(taxonomy, labels.get(id), count, { id, icon: options.icon, fallbackLabel: otherLabel }))
+    .map(([id, count]) => {
+      const label = labels.get(id);
+      const profile = getBookshopSeoProfile(taxonomy, { id, label });
+      return taxon(taxonomy, label, count, {
+        id,
+        icon: options.icon,
+        fallbackLabel: otherLabel,
+        description: profile.intro || profile.description,
+        aliases: profile.aliases,
+        popularSearches: profile.popularSearches,
+        seoTitle: profile.title,
+        seoDescription: profile.description,
+      });
+    })
     .sort((left, right) => left.label.localeCompare(right.label));
 };
 
 const buildCategoryTaxonomy = (books, categories) => categories
   .filter((category) => category?.id && category.id !== 'all')
-  .map((category) => taxon('category', category.name, countMatches(books, (book) => book.cat === category.id), {
-    id: category.id,
-    icon: category.icon || 'book',
-    description: category.description || '',
-    legacyId: category.id,
-  }))
+  .map((category) => {
+    const profile = getBookshopSeoProfile('category', { id: category.id, label: category.name });
+    return taxon('category', category.name, countMatches(books, (book) => book.cat === category.id), {
+      id: category.id,
+      icon: category.icon || 'book',
+      description: category.description || profile.intro || profile.description,
+      legacyId: category.id,
+      aliases: profile.aliases,
+      popularSearches: profile.popularSearches,
+      seoTitle: profile.title,
+      seoDescription: profile.description,
+    });
+  })
   .filter((category) => category.count > 0);
 
 export const PRODUCT_SUBJECT_OPTIONS = optionObjects(TEACHING_SUBJECTS, ALL_SUBJECTS, SUBJECT_OTHER);

@@ -24,7 +24,7 @@ export const taxonomyBasePath = (taxonomy) => {
     case 'level':
       return '/levels';
     case 'curriculum':
-      return '/curricula';
+      return '/curriculum';
     case 'publisher':
       return '/publishers';
     default:

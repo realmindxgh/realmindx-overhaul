@@ -4,7 +4,7 @@ import { ProductCard, ListCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { trackSearch } from '../src/lib/analytics.js';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
-import { findTaxonomyItem, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
+import { findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute } from './urls.js';
@@ -63,6 +63,10 @@ const bookSearchFields = (book) => ([
   book.subject,
   book.levelName || book.grade || book.level,
   book.curriculumName || book.curriculum,
+  ...getBookshopSeoProfile('category', book.catName).aliases,
+  ...getBookshopSeoProfile('subject', book.subject).aliases,
+  ...getBookshopSeoProfile('level', book.levelName || book.grade || book.level).aliases,
+  ...getBookshopSeoProfile('curriculum', book.curriculumName || book.curriculum).aliases,
   ...(book.tags || []),
 ]).filter(Boolean).join(' ').toLowerCase();
 
@@ -142,10 +146,11 @@ const browseIntroCopy = (taxonomy, browseItem) => {
   if (!taxonomy) return null;
   if (browseItem) {
     const label = String(browseItem.label || browseItem.name || '').trim();
+    const seoProfile = getBookshopSeoProfile(taxonomy, browseItem);
     return {
       eyebrow: browseIntroHeading(taxonomy),
       title: label,
-      body: browseItem.description || (
+      body: browseItem.description || seoProfile.intro || (
         taxonomy === 'subject'
           ? `Showing all available ${label} books, readers, workbooks, and classroom materials.`
           : taxonomy === 'level'
@@ -156,38 +161,45 @@ const browseIntroCopy = (taxonomy, browseItem) => {
                 ? `Showing what is currently available from ${label}.`
                 : `Showing the latest ${label.toLowerCase()} items in the RealMindX Bookshop.`
       ),
+      popularSearches: seoProfile.popularSearches || [],
     };
   }
+  const seoProfile = getBookshopSeoProfile(taxonomy);
   switch (taxonomy) {
     case 'category':
       return {
         eyebrow: 'Item Type',
         title: 'Shop by Item Type',
-        body: 'Choose the kind of learning material you want first, then narrow the list by subject, level, curriculum, publisher, price, or stock.',
+        body: seoProfile.intro || 'Choose the kind of learning material you want first, then narrow the list by subject, level, curriculum, publisher, price, or stock.',
+        popularSearches: seoProfile.popularSearches || [],
       };
     case 'subject':
       return {
         eyebrow: 'Subject Finder',
         title: 'Shop by Subject',
-        body: 'Search and tick one or more subjects. Matching books update immediately, and you can refine them further by level, curriculum, publisher, or item type.',
+        body: seoProfile.intro || 'Search and tick one or more subjects. Matching books update immediately, and you can refine them further by level, curriculum, publisher, or item type.',
+        popularSearches: seoProfile.popularSearches || [],
       };
     case 'level':
       return {
         eyebrow: 'Level Finder',
         title: 'Shop by Level',
-        body: 'Pick the learner stage first and refine the matching books using subject, curriculum, publisher, or item type filters.',
+        body: seoProfile.intro || 'Pick the learner stage first and refine the matching books using subject, curriculum, publisher, or item type filters.',
+        popularSearches: seoProfile.popularSearches || [],
       };
     case 'curriculum':
       return {
         eyebrow: 'Curriculum Finder',
         title: 'Shop by Curriculum',
-        body: 'Choose the curriculum your school follows so you can reach the most relevant books faster.',
+        body: seoProfile.intro || 'Choose the curriculum your school follows so you can reach the most relevant books faster.',
+        popularSearches: seoProfile.popularSearches || [],
       };
     case 'publisher':
       return {
         eyebrow: 'Publisher Finder',
         title: 'Shop by Publisher',
-        body: 'Compare available titles by publisher, then narrow them by curriculum, subject, level, or item type.',
+        body: seoProfile.intro || 'Compare available titles by publisher, then narrow them by curriculum, subject, level, or item type.',
+        popularSearches: seoProfile.popularSearches || [],
       };
     default:
       return null;
@@ -792,7 +804,12 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   const filteredBrowseLinks = React.useMemo(() => {
     const query = browseQuery.trim().toLowerCase();
     if (!query) return browseLinks;
-    return browseLinks.filter((item) => item.label.toLowerCase().includes(query));
+    return browseLinks.filter((item) => [
+      item.label,
+      item.name,
+      ...(item.aliases || []),
+      ...(item.popularSearches || []),
+    ].filter(Boolean).join(' ').toLowerCase().includes(query));
   }, [browseLinks, browseQuery]);
   const isSubjectFinder = initialBrowse.taxonomy === 'subject' && !hasScopedBrowse;
   const selectedSubjectItems = React.useMemo(() => {
@@ -869,6 +886,20 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               <span className="bs-eyebrow">{browseIntro.eyebrow}</span>
               <h1 className="bs-h2">{browseIntro.title}</h1>
               <p>{browseIntro.body}</p>
+              {browseIntro.popularSearches?.length > 0 && (
+                <div className="bs-popular-searches" aria-label="Popular searches">
+                  <span>Popular searches</span>
+                  {browseIntro.popularSearches.slice(0, 5).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setFilters((prev) => ({ ...prev, query: item }))}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              )}
               {!hasScopedBrowse && browseLinks.length > 0 && (
                 <div className="bs-browse-picker">
                   {isSubjectFinder && selectedSubjectItems.length > 0 && (

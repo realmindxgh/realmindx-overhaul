@@ -779,6 +779,10 @@
 .bs-category-intro p { margin: 0; color: var(--bs-muted); line-height: 1.7; max-width: 70ch; }
 .bs-category-intro.compact { padding: 18px 22px; }
 .bs-category-intro.compact .bs-h2 { margin-bottom: 8px; }
+.bs-popular-searches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: var(--bs-muted); }
+.bs-popular-searches > span { font-weight: 800; color: var(--bs-navy); }
+.bs-popular-searches button { border: 1px solid rgba(20,54,112,.12); border-radius: 999px; padding: 6px 10px; background: #fff; color: var(--bs-navy); font: inherit; font-weight: 700; cursor: pointer; }
+.bs-popular-searches button:hover { border-color: rgba(20,54,112,.28); box-shadow: var(--bs-shadow-sm); }
 .bs-browse-picker { margin-top: 18px; }
 .bs-browse-filter { display: flex; align-items: center; gap: 9px; width: min(100%, 420px); min-height: 42px; padding: 0 13px; border: 1px solid rgba(20,54,112,.16); border-radius: 10px; background: #fff; color: var(--bs-muted); }
 .bs-browse-filter:focus-within { border-color: var(--bs-navy); box-shadow: 0 0 0 3px rgba(20,54,112,.08); }

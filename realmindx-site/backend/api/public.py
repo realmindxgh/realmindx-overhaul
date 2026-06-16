@@ -253,7 +253,7 @@ def build_bookshop_sitemap_xml():
         sitemap_row(f"{base_url}/categories", changefreq="weekly", priority=0.7),
         sitemap_row(f"{base_url}/subjects", changefreq="weekly", priority=0.7),
         sitemap_row(f"{base_url}/levels", changefreq="weekly", priority=0.7),
-        sitemap_row(f"{base_url}/curricula", changefreq="weekly", priority=0.7),
+        sitemap_row(f"{base_url}/curriculum", changefreq="weekly", priority=0.7),
         sitemap_row(f"{base_url}/publishers", changefreq="weekly", priority=0.6),
         sitemap_row(f"{base_url}/about", changefreq="monthly", priority=0.6),
         sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.6),
@@ -301,7 +301,7 @@ def build_bookshop_sitemap_xml():
 
     append_distinct_taxonomy_rows(Product.subject, "subjects", 0.6)
     append_distinct_taxonomy_rows(Product.level, "levels", 0.6)
-    append_distinct_taxonomy_rows(Product.curriculum, "curricula", 0.6)
+    append_distinct_taxonomy_rows(Product.curriculum, "curriculum", 0.6)
     append_distinct_taxonomy_rows(Product.publisher, "publishers", 0.5)
 
     products = (

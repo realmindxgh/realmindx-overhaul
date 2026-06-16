@@ -9,7 +9,7 @@ import { syncSessionFromApi } from '../src/lib/authClient.js';
 import { trackPageView } from '../src/lib/analytics.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from '../src/lib/head.js';
 import { BOOKSHOP_BASE_URL, BOOKSHOP_DEFAULT_IMAGE } from '../src/lib/seoRoutes.js';
-import { findTaxonomyItem, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
+import { findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
 import { bookshopPathForRoute, canonicalBookshopBase, productHref, productMatchesSegment, productPathSegment } from './urls.js';
 
 const GOLD_ACCENT = '#ffcc01';
@@ -61,7 +61,8 @@ const routeFromPath = () => {
   if (p.startsWith('/subjects/')) return { route: 'shop', params: { ...browseParam('subject', decodeURIComponent(p.split('/subjects/')[1] || '')), q: searchQuery } };
   if (p === '/levels') return { route: 'shop', params: { ...browseParam('level'), q: searchQuery } };
   if (p.startsWith('/levels/')) return { route: 'shop', params: { ...browseParam('level', decodeURIComponent(p.split('/levels/')[1] || '')), q: searchQuery } };
-  if (p === '/curricula') return { route: 'shop', params: { ...browseParam('curriculum'), q: searchQuery } };
+  if (p === '/curriculum' || p === '/curricula') return { route: 'shop', params: { ...browseParam('curriculum'), q: searchQuery } };
+  if (p.startsWith('/curriculum/')) return { route: 'shop', params: { ...browseParam('curriculum', decodeURIComponent(p.split('/curriculum/')[1] || '')), q: searchQuery } };
   if (p.startsWith('/curricula/')) return { route: 'shop', params: { ...browseParam('curriculum', decodeURIComponent(p.split('/curricula/')[1] || '')), q: searchQuery } };
   if (p === '/publishers') return { route: 'shop', params: { ...browseParam('publisher'), q: searchQuery } };
   if (p.startsWith('/publishers/')) return { route: 'shop', params: { ...browseParam('publisher', decodeURIComponent(p.split('/publishers/')[1] || '')), q: searchQuery } };
@@ -211,7 +212,7 @@ const App = () => {
     let currentMeta = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
     let image = BOOKSHOP_DEFAULT_IMAGE;
     let structuredData = null;
-    let robots = ON_SUBDOMAIN && !SHOP_ROBOTS_NOINDEX.has(route) ? 'index,follow' : 'noindex,follow';
+    let robots = ON_SUBDOMAIN && !SHOP_ROBOTS_NOINDEX.has(route) ? 'index, follow' : 'noindex, follow';
 
     if (route === 'product') {
       if (activeProduct) {
@@ -245,28 +246,19 @@ const App = () => {
           title: 'Product Not Found | RealMindX Bookshop',
           desc: 'That product link does not match a currently published RealMindX Bookshop item.',
         };
-        robots = 'noindex,follow';
+        robots = 'noindex, follow';
       }
     } else if (route === 'shop' && browseTaxonomy && !params.q) {
       const taxonomyName = taxonomyLabel(browseTaxonomy);
       const browseName = activeBrowse?.name || activeBrowse?.label || taxonomyName;
-      const categoryDescription = activeBrowse?.description
-        || (browseTaxonomy === 'category' && !browseValue
-          ? 'Shop textbooks, readers, stationery, and other learning materials by item type.'
-          : browseTaxonomy === 'curriculum' && !browseValue
-            ? 'Shop by curriculum and quickly reach the books that match your school pathway.'
-            : browseTaxonomy === 'subject' && !browseValue
-              ? 'Shop textbooks, workbooks, and learning materials by subject.'
-              : browseTaxonomy === 'level' && !browseValue
-                ? 'Shop books and learning materials by school level.'
-                : browseTaxonomy === 'publisher' && !browseValue
-                  ? 'Compare educational titles by publisher.'
-                  : `Shop ${browseName.toLowerCase()} resources in the RealMindX Bookshop.`);
+      const seoProfile = getBookshopSeoProfile(
+        browseTaxonomy,
+        activeBrowse || (browseValue ? { id: browseValue, label: browseName } : ''),
+      );
       currentMeta = {
-        title: browseValue ? `${browseName} | RealMindX Bookshop` : `Shop by ${taxonomyName} | RealMindX Bookshop`,
-        desc: categoryDescription,
+        title: browseValue ? (activeBrowse?.seoTitle || seoProfile.title) : seoProfile.title,
+        desc: browseValue ? (activeBrowse?.seoDescription || seoProfile.description) : seoProfile.description,
       };
-      if (!activeBrowseCount) robots = 'noindex,follow';
       structuredData = {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
@@ -279,7 +271,7 @@ const App = () => {
         title: `Search results for "${params.q}" | RealMindX Bookshop`,
         desc: `Browse RealMindX Bookshop results for ${params.q}.`,
       };
-      robots = 'noindex,follow';
+      robots = 'noindex, follow';
     }
 
     document.title = currentMeta.title;
