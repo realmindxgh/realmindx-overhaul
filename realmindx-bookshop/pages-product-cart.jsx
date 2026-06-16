@@ -283,23 +283,25 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
           </p>
 
           <div className="bs-pdp-actions">
-            <div className="bs-pdp-buy-row">
+            <div className="bs-pdp-cart-row">
               <QtyStepper qty={qty} setQty={setQty} />
               <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" disabled={!book.stock}
                 onClick={() => add(book.id, qty)}>
                 <Icon name="bag" size={18} /> Add to Cart
+              </button>
+            </div>
+            <div className="bs-pdp-secondary-row">
+              <button
+                className={`bs-btn bs-btn-outline-navy bs-btn-sm bs-pdp-wishlist-btn${wishlist?.has(book.id) ? ' bs-wishlisted' : ''}`}
+                onClick={() => { wishlist?.toggle(book.id); globalToast.success(wishlist?.has(book.id) ? 'Removed from wishlist' : 'Added to wishlist'); }}
+              >
+                <Icon name="heart" size={17} /> {wishlist?.has(book.id) ? 'Saved' : 'Save to Wishlist'}
               </button>
               <button className="bs-btn bs-btn-navy bs-btn-lg bs-btn-block" disabled={!book.stock}
                 onClick={() => { buyNow(book.id, qty); navigate('checkout'); }}>
                 Buy Now
               </button>
             </div>
-            <button
-              className={`bs-btn bs-btn-outline-navy bs-btn-sm bs-pdp-wishlist-btn${wishlist?.has(book.id) ? ' bs-wishlisted' : ''}`}
-              onClick={() => { wishlist?.toggle(book.id); globalToast.success(wishlist?.has(book.id) ? 'Removed from wishlist' : 'Added to wishlist'); }}
-            >
-              <Icon name="heart" size={17} /> {wishlist?.has(book.id) ? 'Saved to Wishlist ✓' : 'Save to Wishlist'}
-            </button>
           </div>
 
           <div className="bs-divider" />
@@ -470,15 +472,17 @@ const CartPage = ({ navigate }) => {
   );
 
   return (
-    <div className="bs-container-narrow bs-fade-page" style={{ maxWidth: 980 }}>
+    <div className="bs-container-narrow bs-fade-page bs-cart-page">
       <div className="bs-breadcrumb">
         <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span><span className="bs-cur">Cart</span>
       </div>
-      <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:32, margin:'8px 0 8px' }}>Your Cart</h1>
-      <div className="bs-cart-headline-row">
-        <p className="bs-muted" style={{ margin:0 }}>
-          {count} item{count>1?'s':''} in cart. {selectedCount} selected for checkout.
-        </p>
+      <div className="bs-cart-page-head">
+        <div className="bs-cart-title-block">
+          <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:32, margin:'0 0 8px' }}>Your Cart</h1>
+          <p className="bs-muted" style={{ margin:0 }}>
+            {count} item{count>1?'s':''} in cart. {selectedCount} selected for checkout.
+          </p>
+        </div>
         <button type="button" className="bs-cart-clear-btn" onClick={clear}>
           <Icon name="trash" size={14} /> Clear cart
         </button>
