@@ -110,6 +110,26 @@ jobs:
           fi
           rm -f "$NGINX_BACKUP"
 
+          BOOKSHOP_NGINX_SITE="/etc/nginx/sites-available/bookshop.realmindxgh.com"
+          if [ -f "$BOOKSHOP_NGINX_SITE" ]; then
+            BOOKSHOP_NGINX_BACKUP="$BOOKSHOP_NGINX_SITE.realmindx-backup"
+            cp "$BOOKSHOP_NGINX_SITE" "$BOOKSHOP_NGINX_BACKUP"
+            if ! python3 deployment/install_nginx_seo_routes.py "$BOOKSHOP_NGINX_SITE"; then
+              mv "$BOOKSHOP_NGINX_BACKUP" "$BOOKSHOP_NGINX_SITE"
+              echo "Managed bookshop nginx route installer failed; restored the previous configuration."
+              exit 1
+            fi
+            if ! nginx -t; then
+              mv "$BOOKSHOP_NGINX_BACKUP" "$BOOKSHOP_NGINX_SITE"
+              nginx -t
+              echo "Managed bookshop nginx route update failed; restored the previous configuration."
+              exit 1
+            fi
+            rm -f "$BOOKSHOP_NGINX_BACKUP"
+          else
+            echo "Bookshop nginx site file not found at $BOOKSHOP_NGINX_SITE; skipping bookshop SEO route installation."
+          fi
+
           echo "── Reloading nginx ──"
           systemctl reload nginx
 

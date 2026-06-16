@@ -7,7 +7,7 @@ from .cli import register_cli
 from .config import Config
 from .extensions import cors, csrf, db, limiter, login_manager, migrate
 from .models import User
-from .seo_pages import news_article_page
+from .seo_pages import bookshop_public_page, news_article_page
 
 
 def create_app(config_object=Config):
@@ -62,6 +62,43 @@ def create_app(config_object=Config):
     @app.get("/news/<slug>", strict_slashes=False)
     def news_article(slug):
         return news_article_page(slug)
+
+    @app.get("/", strict_slashes=False)
+    def bookshop_root_page():
+        return bookshop_public_page("")
+
+    @app.get("/products", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/products/<path:tail>", strict_slashes=False)
+    def bookshop_products_page(tail):
+        return bookshop_public_page(f"products/{tail}".rstrip("/"))
+
+    @app.get("/subjects", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/subjects/<path:tail>", strict_slashes=False)
+    def bookshop_subjects_page(tail):
+        return bookshop_public_page(f"subjects/{tail}".rstrip("/"))
+
+    @app.get("/levels", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/levels/<path:tail>", strict_slashes=False)
+    def bookshop_levels_page(tail):
+        return bookshop_public_page(f"levels/{tail}".rstrip("/"))
+
+    @app.get("/curriculum", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/curriculum/<path:tail>", strict_slashes=False)
+    @app.get("/curricula", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/curricula/<path:tail>", strict_slashes=False)
+    def bookshop_curriculum_page(tail):
+        prefix = "curricula" if request.path.strip("/").startswith("curricula") else "curriculum"
+        return bookshop_public_page(f"{prefix}/{tail}".rstrip("/"))
+
+    @app.get("/categories", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/categories/<path:tail>", strict_slashes=False)
+    def bookshop_categories_page(tail):
+        return bookshop_public_page(f"categories/{tail}".rstrip("/"))
+
+    @app.get("/publishers", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/publishers/<path:tail>", strict_slashes=False)
+    def bookshop_publishers_page(tail):
+        return bookshop_public_page(f"publishers/{tail}".rstrip("/"))
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):
