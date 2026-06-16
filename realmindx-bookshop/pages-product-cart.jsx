@@ -8,13 +8,12 @@ import { useSiteCopy } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
 import globalToast from '../src/lib/toast.js';
-import { bookshopPathForRoute, categoryHref, productHref, productMatchesSegment, productPathSegment } from './urls.js';
+import { bookshopPathForRoute, productHref, productMatchesSegment, productPathSegment } from './urls.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
-const hrefForCategory = (category) => `${PREFIX}${categoryHref(category)}`;
 const hrefForProduct = (book) => `${PREFIX}${productHref(book)}`;
 
 const Accordion = ({ title, children, defaultOpen = false }) => {
@@ -82,7 +81,7 @@ const ReviewForm = ({ productId }) => {
           <Icon name="check" size={20} />
           <div>
             <strong>Review received - thank you!</strong>
-            <p>It will appear here after our team approves it.</p>
+            <p>Thanks for sharing your experience.</p>
           </div>
         </div>
       </div>
@@ -128,7 +127,7 @@ const ReviewForm = ({ productId }) => {
         {busy ? 'Submitting...' : 'Submit Review'}
       </button>
       <div className="bs-review-form-hint" style={{ marginTop: 10 }}>
-        Your review will be marked as a verified purchase after moderation. Your email is never shown publicly.
+        Your email is never shown publicly.
       </div>
     </form>
   );
@@ -143,7 +142,7 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
   const { books, loading: catalogLoading } = useCatalog();
   const siteCopy = useSiteCopy();
   const book = books.find(b => b.id === bookId) || books.find(b => productMatchesSegment(b, bookSlug)) || null;
-  const { add } = useCart();
+  const { add, buyNow } = useCart();
   const wishlist = useWishlist();
   const [qty, setQty] = React.useState(1);
   const [activeImg, setActiveImg] = React.useState(0);
@@ -246,7 +245,7 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
       <div className="bs-breadcrumb">
         <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span>
         <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop</a><span className="bs-sep">/</span>
-        <a href={hrefForCategory(book.cat)} onClick={(e)=>{e.preventDefault();navigate('shop',{cat:book.cat});}}>{book.catName}</a><span className="bs-sep">/</span>
+        <span>{book.catName}</span><span className="bs-sep">/</span>
         <span className="bs-cur">{book.title}</span>
       </div>
 
@@ -290,9 +289,13 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
                 onClick={() => add(book.id, qty)}>
                 <Icon name="bag" size={18} /> Add to Cart
               </button>
+              <button className="bs-btn bs-btn-navy bs-btn-lg bs-btn-block" disabled={!book.stock}
+                onClick={() => { buyNow(book.id, qty); navigate('checkout'); }}>
+                Buy Now
+              </button>
             </div>
             <button
-              className={`bs-btn bs-btn-outline-navy bs-btn-block${wishlist?.has(book.id) ? ' bs-wishlisted' : ''}`}
+              className={`bs-btn bs-btn-outline-navy bs-btn-sm bs-pdp-wishlist-btn${wishlist?.has(book.id) ? ' bs-wishlisted' : ''}`}
               onClick={() => { wishlist?.toggle(book.id); globalToast.success(wishlist?.has(book.id) ? 'Removed from wishlist' : 'Added to wishlist'); }}
             >
               <Icon name="heart" size={17} /> {wishlist?.has(book.id) ? 'Saved to Wishlist ✓' : 'Save to Wishlist'}
@@ -358,7 +361,7 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
             ) : (
               <div className="bs-review-empty">
                 <div className="bs-rating-big">0.0</div>
-                <div className="bs-muted" style={{ fontSize:13, marginTop:6 }}>No approved buyer ratings yet.</div>
+                <div className="bs-muted" style={{ fontSize:13, marginTop:6 }}>No buyer ratings yet.</div>
               </div>
             )}
           </div>
@@ -384,7 +387,7 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
               </div>
             )) : (
               <div className="bs-review-card">
-                <p className="bs-review-body">Buyer reviews will appear here after customers rate this product and admin approves the review.</p>
+                <p className="bs-review-body">Buyer reviews will appear here after customers rate this product.</p>
               </div>
             )}
             {hasBackendProduct && reviewEligibility.eligible && <ReviewForm key={book.id} productId={book.id} />}
@@ -419,12 +422,25 @@ const AuthReturnActions = ({ navigate, route = 'cart' }) => (
 );
 
 const CartPage = ({ navigate }) => {
-  const { detailed, subtotal, bulkDiscounts, bulkSaving, setQty, remove, count, loading: cartLoading } = useCart();
+  const {
+    detailed,
+    selectedSubtotal,
+    selectedBulkDiscounts,
+    selectedBulkSaving,
+    setQty,
+    remove,
+    clear,
+    toggleSelected,
+    selectAll,
+    count,
+    selectedCount,
+    loading: cartLoading,
+  } = useCart();
   const wishlist = useWishlist();
   const { books } = useCatalog();
   // Delivery is NOT estimated on the cart page — location has not been chosen yet.
   // The exact fee is calculated once the user selects a delivery zone at checkout.
-  const cartTotal = subtotal - (bulkSaving || 0);
+  const cartTotal = selectedSubtotal - (selectedBulkSaving || 0);
 
   // Suggested products: same categories as cart items, not already in cart, in stock
   const cartIds = new Set(detailed.map(b => b.id));
@@ -459,16 +475,33 @@ const CartPage = ({ navigate }) => {
         <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span><span className="bs-cur">Cart</span>
       </div>
       <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:32, margin:'8px 0 8px' }}>Your Cart</h1>
-      <p className="bs-muted" style={{ marginBottom:20 }}>{count} item{count>1?'s':''} ready for checkout.</p>
+      <div className="bs-cart-headline-row">
+        <p className="bs-muted" style={{ margin:0 }}>
+          {count} item{count>1?'s':''} in cart. {selectedCount} selected for checkout.
+        </p>
+        <button type="button" className="bs-cart-clear-btn" onClick={clear}>
+          <Icon name="trash" size={14} /> Clear cart
+        </button>
+      </div>
 
       <div className="bs-cart-layout">
         <div>
           {detailed.map((b, i) => (
-            <div className="bs-cart-item" key={b.id}>
+            <div className={`bs-cart-item${b.selected ? '' : ' is-unselected'}`} key={b.id}>
+              <button
+                type="button"
+                className={`bs-cart-select${b.selected && b.stock ? ' selected' : ''}`}
+                aria-label={`${b.selected && b.stock ? 'Unselect' : 'Select'} ${b.title} for checkout`}
+                disabled={!b.stock}
+                onClick={() => toggleSelected(b.id)}
+              >
+                {b.selected && b.stock && <Icon name="check" size={14} />}
+              </button>
               <div className="bs-cart-item-cover"><CoverPlaceholder title={b.title} idx={i} small image={b.image} /></div>
               <div className="bs-cart-item-mid">
                 <span className="bs-cat-badge">{b.catName}</span>
                 <div className="bs-cart-item-title">{b.title}</div>
+                {!b.stock && <span className="bs-stock-warning">Out of stock</span>}
                 <div className="bs-pcard-desc" style={{ whiteSpace:'normal' }}>{b.desc}</div>
                 {/* Save to wishlist link */}
                 <button
@@ -489,9 +522,10 @@ const CartPage = ({ navigate }) => {
 
         <aside className="bs-summary-card">
           <h3 className="bs-h3">Order Summary</h3>
-          <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(subtotal)}</span></div>
+          <div className="bs-summary-row"><span>Selected items</span><span>{selectedCount}</span></div>
+          <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(selectedSubtotal)}</span></div>
           {/* Bulk Purchase Discount — automatic for 10+ of qualifying items */}
-          {bulkSaving > 0 && bulkDiscounts.map(d => (
+          {selectedBulkSaving > 0 && selectedBulkDiscounts.map(d => (
             <div key={d.id} className="bs-summary-row bs-discount" style={{ fontSize:13 }}>
               <span style={{ maxWidth:200, lineHeight:1.4 }}>
                 Bulk Purchase Discount for Retailers &amp; Schools<br/>
@@ -510,8 +544,11 @@ const CartPage = ({ navigate }) => {
           </p>
           <div className="bs-summary-row bs-total"><span>Subtotal</span><span>{cedis(cartTotal)}</span></div>
           <div className="bs-cart-cta-row" style={{ marginTop:18 }}>
-            <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-flex" onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
+            <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-flex" disabled={selectedCount === 0} onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
             <button className="bs-btn bs-btn-navy bs-btn-lg bs-btn-flex" onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
+            {selectedCount === 0 && (
+              <button className="bs-btn bs-btn-outline-navy bs-btn-flex" onClick={selectAll}>Select all items</button>
+            )}
           </div>
           <AuthReturnActions navigate={navigate} route="cart" />
           <div className="bs-secure-note"><Icon name="lock" size={14} /> Secure checkout powered by Paystack</div>

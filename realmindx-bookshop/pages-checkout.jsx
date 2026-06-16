@@ -60,7 +60,14 @@ const MiniSummary = ({ detailed, total, delivery, subtotal }) => (
 );
 
 const CheckoutPage = ({ navigate }) => {
-  const { detailed, subtotal, count, clear, bulkSaving = 0, loading: cartLoading } = useCart();
+  const {
+    selectedDetailed: detailed,
+    selectedSubtotal: subtotal,
+    selectedCount: count,
+    clearSelected,
+    selectedBulkSaving: bulkSaving = 0,
+    loading: cartLoading,
+  } = useCart();
   const session = getDemoSession();
   const [step, setStep] = React.useState(0);
   const [method, setMethod] = React.useState('delivery');
@@ -298,8 +305,8 @@ const CheckoutPage = ({ navigate }) => {
           </div>
         </div>
         <div className="bs-confirm-actions">
-          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clear(); navigate('track'); }}>Track Your Order</button>
-          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clear(); navigate('home'); }}>Continue Shopping</button>
+          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clearSelected(); navigate('track'); }}>Track Your Order</button>
+          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clearSelected(); navigate('home'); }}>Continue Shopping</button>
         </div>
       </div>
     </div>
@@ -324,7 +331,7 @@ const CheckoutPage = ({ navigate }) => {
               <label className="bs-field" style={{ marginBottom:8 }}><span style={{ fontFamily:'Montserrat', fontWeight:600, fontSize:13, color:'var(--bs-navy)', display:'block', marginBottom:7 }}>Delivery Method</span></label>
               <div className={`bs-radio-card${method==='delivery'?' sel':''}`} onClick={() => setMethod('delivery')}>
                 <span className="bs-radio-dot" /><div><div className="bs-rc-title">Home Delivery</div><div className="bs-rc-sub">Within 48 hours, nationwide</div></div>
-                <span className="bs-rc-price">{selectedZone ? cedis(Number(selectedZone.fee)) : isApiMode() && deliveryZones.length > 0 ? 'Select area' : cedis(15)}</span>
+                <span className="bs-rc-price">{selectedZone ? cedis(Number(selectedZone.fee)) : ''}</span>
               </div>
               <div className={`bs-radio-card${method==='pickup'?' sel':''}`} onClick={() => setMethod('pickup')}>
                 <span className="bs-radio-dot" /><div><div className="bs-rc-title">Pickup at Dome Pillar 2</div><div className="bs-rc-sub">Ready next working day</div></div><span className="bs-rc-price">Free</span>
@@ -340,7 +347,7 @@ const CheckoutPage = ({ navigate }) => {
                       <option value="">Select your area</option>
                       {deliveryZones.map(z => (
                         <option key={z.id} value={String(z.id)}>
-                          {z.name} {Number(z.fee) > 0 ? `(${cedis(Number(z.fee))})` : '(Contact for quote)'}
+                          {z.name}
                         </option>
                       ))}
                       <option value="other">Other area</option>

@@ -49,14 +49,24 @@ const readSavedWishlist = () => {
 };
 
 const WishlistProvider = ({ children }) => {
+  const { books, loading: catalogLoading } = useCatalog();
   const [items, setItems] = React.useState(readSavedWishlist);
   const itemsRef = React.useRef(items);
+  const validIds = React.useMemo(() => new Set(books.map(book => book.id)), [books]);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(items));
     itemsRef.current = items;
   }, [items]);
+
+  React.useEffect(() => {
+    if (catalogLoading || books.length === 0) return;
+    setItems(prev => {
+      const next = prev.filter(id => validIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [books.length, catalogLoading, validIds]);
 
   const toggle = (bookId) => {
     const hadItem = itemsRef.current.includes(bookId);
@@ -74,7 +84,7 @@ const WishlistProvider = ({ children }) => {
     trackWishlistAction('remove', { productId: bookId });
   };
   const has    = (bookId) => items.includes(bookId);
-  const count  = items.length;
+  const count  = catalogLoading ? items.length : items.filter(id => validIds.has(id)).length;
 
   return (
     <WishlistCtx.Provider value={{ items, count, toggle, add, remove, has }}>
@@ -95,7 +105,11 @@ const readSavedCart = () => {
     const parsed = JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY) || '[]');
     return Array.isArray(parsed)
       ? parsed
-        .map(item => ({ id: item.id, qty: Math.max(1, Number(item.qty || 1)) }))
+        .map(item => ({
+          id: item.id,
+          qty: Math.max(1, Number(item.qty || 1)),
+          selected: item.selected !== false,
+        }))
         .filter(item => item.id !== undefined && item.id !== null)
       : [];
   } catch {
@@ -130,16 +144,39 @@ const CartProviderInner = ({ children, navigate }) => {
     itemsRef.current = items;
   }, [items]);
 
+  React.useEffect(() => {
+    if (catalogLoading || books.length === 0) return;
+    const validIds = new Set(books.map(book => book.id));
+    setItems(prev => {
+      const next = prev.filter(item => validIds.has(item.id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [books, catalogLoading]);
+
   const add = (bookId, qty = 1) => {
     const safeQty = Math.max(1, Number(qty) || 1);
     setItems(prev => {
       const ex = prev.find(i => i.id === bookId);
-      if (ex) return prev.map(i => i.id === bookId ? { ...i, qty: i.qty + safeQty } : i);
-      return [...prev, { id: bookId, qty: safeQty }];
+      if (ex) return prev.map(i => i.id === bookId ? { ...i, qty: i.qty + safeQty, selected: true } : i);
+      return [...prev, { id: bookId, qty: safeQty, selected: true }];
     });
     const b = books.find(x => x.id === bookId);
     globalToast.success(`Added "${b ? b.title : 'item'}" to cart`);
     trackCartAction('add', { productId: bookId, quantity: safeQty });
+  };
+  const buyNow = (bookId, qty = 1) => {
+    const safeQty = Math.max(1, Number(qty) || 1);
+    setItems(prev => {
+      const exists = prev.some(item => item.id === bookId);
+      const next = prev.map(item => (
+        item.id === bookId
+          ? { ...item, qty: safeQty, selected: true }
+          : { ...item, selected: false }
+      ));
+      return exists ? next : [...next, { id: bookId, qty: safeQty, selected: true }];
+    });
+    trackCartAction('add', { productId: bookId, quantity: safeQty });
+    navigate?.('checkout');
   };
   const setQty = (bookId, qty) => {
     const nextQty = Math.max(1, Number(qty) || 1);
@@ -156,16 +193,26 @@ const CartProviderInner = ({ children, navigate }) => {
     if (current) trackCartAction('remove', { productId: bookId, quantity: current.qty });
     setItems(prev => prev.filter(i => i.id !== bookId));
   };
+  const toggleSelected = (bookId) => setItems(prev => prev.map(item => (
+    item.id === bookId ? { ...item, selected: item.selected === false } : item
+  )));
+  const selectAll = () => setItems(prev => prev.map(item => ({ ...item, selected: true })));
+  const deselectAll = () => setItems(prev => prev.map(item => ({ ...item, selected: false })));
   const clear  = () => setItems([]);
+  const clearSelected = () => setItems(prev => prev.filter(item => item.selected === false));
 
   // Resolve against the live catalogue; drop items whose product was
   // removed/unpublished in the admin console so totals stay correct.
+  const rawCount = items.reduce((s, item) => s + item.qty, 0);
   const detailed = items
-    .map(i => { const b = books.find(x => x.id === i.id); return b ? { ...b, qty: i.qty } : null; })
+    .map(i => { const b = books.find(x => x.id === i.id); return b ? { ...b, qty: i.qty, selected: i.selected !== false } : null; })
     .filter(Boolean);
-  const count = items.reduce((s, item) => s + item.qty, 0);
+  const selectedDetailed = detailed.filter(item => item.selected && item.stock);
+  const count = catalogLoading ? rawCount : detailed.reduce((s, item) => s + item.qty, 0);
+  const selectedCount = selectedDetailed.reduce((s, item) => s + item.qty, 0);
   const subtotal = detailed.reduce((s, b) => s + b.price * b.qty, 0);
-  const loading = catalogLoading && count > 0 && detailed.length === 0;
+  const selectedSubtotal = selectedDetailed.reduce((s, b) => s + b.price * b.qty, 0);
+  const loading = catalogLoading && rawCount > 0 && detailed.length === 0;
 
   // Bulk Purchase Discount — applies when qty >= 10 for items whose category
   // has a bulk_discount_percent set (e.g. the "Bulk / Schools" category).
@@ -180,9 +227,43 @@ const CartProviderInner = ({ children, navigate }) => {
       saving: b.price * b.qty * (b.bulkDiscountPct / 100),
     }));
   const bulkSaving = bulkDiscounts.reduce((s, d) => s + d.saving, 0);
+  const selectedBulkDiscounts = selectedDetailed
+    .filter(b => b.qty >= 10 && b.bulkDiscountPct > 0)
+    .map(b => ({
+      id: b.id,
+      title: b.title,
+      qty: b.qty,
+      pct: b.bulkDiscountPct,
+      saving: b.price * b.qty * (b.bulkDiscountPct / 100),
+    }));
+  const selectedBulkSaving = selectedBulkDiscounts.reduce((s, d) => s + d.saving, 0);
 
   return (
-    <CartCtx.Provider value={{ items, detailed, count, subtotal, bulkDiscounts, bulkSaving, add, setQty, remove, clear, navigate, loading, catalogLoading }}>
+    <CartCtx.Provider value={{
+      items,
+      detailed,
+      selectedDetailed,
+      count,
+      selectedCount,
+      subtotal,
+      selectedSubtotal,
+      bulkDiscounts,
+      bulkSaving,
+      selectedBulkDiscounts,
+      selectedBulkSaving,
+      add,
+      buyNow,
+      setQty,
+      remove,
+      clear,
+      clearSelected,
+      toggleSelected,
+      selectAll,
+      deselectAll,
+      navigate,
+      loading,
+      catalogLoading,
+    }}>
       {children}
     </CartCtx.Provider>
   );

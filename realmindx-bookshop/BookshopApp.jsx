@@ -85,8 +85,8 @@ const routeFromPath = () => {
 const pathForRoute = (route, params = {}) => prefixedPath(bookshopPathForRoute(route, params));
 
 // Paystack confirmation page: shown when user returns from Paystack payment
-const PaystackReturnPage = ({ orderRef, navigate, clear }) => {
-  React.useEffect(() => { clear(); }, [clear]);
+const PaystackReturnPage = ({ orderRef, navigate, clearSelected }) => {
+  React.useEffect(() => { clearSelected(); }, [clearSelected]);
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-confirm" style={{ padding:'60px 24px' }}>
@@ -328,7 +328,7 @@ const App = () => {
   }
   const mainClassName = `bs-page${route === 'login' || route === 'signup' ? ' bs-page-auth' : ''}`;
 
-  const { clear } = React.useContext(CartCtx) || {};
+  const { clearSelected } = React.useContext(CartCtx) || {};
 
   // Show Paystack confirmation if returning from payment
   if (paystackReturn) {
@@ -339,7 +339,7 @@ const App = () => {
           <PaystackReturnPage
             orderRef={paystackReturn}
             navigate={(r) => { setPaystackReturn(null); navigate(r); }}
-            clear={clear || (() => {})}
+            clearSelected={clearSelected || (() => {})}
           />
         </main>
         <Footer navigate={navigate} />
