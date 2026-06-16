@@ -15,6 +15,7 @@ from uuid import uuid4
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
 from sqlalchemy import func, or_
+from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
 from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
@@ -1383,23 +1384,56 @@ def list_products():
     return jsonify(items=[product_json(row, include_private=True) for row in rows])
 
 
-def _products_without_images_query():
-    return (
-        Product.query
-        .outerjoin(UploadedFile, Product.image_file_id == UploadedFile.id)
-        .filter(or_(Product.image_file_id.is_(None), UploadedFile.id.is_(None)))
-    )
+def _uploaded_file_exists(uploaded_file):
+    if not uploaded_file:
+        return False
+
+    upload_root = Path(current_app.config["UPLOAD_FOLDER"])
+    candidates = []
+    if uploaded_file.storage_path:
+        stored_path = Path(uploaded_file.storage_path)
+        candidates.append(stored_path if stored_path.is_absolute() else upload_root / stored_path)
+    if uploaded_file.visibility and uploaded_file.category and uploaded_file.stored_filename:
+        candidates.append(upload_root / uploaded_file.visibility / uploaded_file.category / uploaded_file.stored_filename)
+
+    seen = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        if str(resolved) in seen:
+            continue
+        seen.add(str(resolved))
+        try:
+            if resolved.is_file() and resolved.stat().st_size > 0:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _products_without_display_images(active_only=None):
+    query = Product.query.options(joinedload(Product.image_file))
+    if active_only is True:
+        query = query.filter(Product.is_active.is_(True))
+    elif active_only is False:
+        query = query.filter(Product.is_active.is_(False))
+    return [
+        product for product in query.order_by(Product.created_at.desc()).all()
+        if not _uploaded_file_exists(product.image_file)
+    ]
 
 
 @admin_bp.get("/products/missing-images")
 @login_required
 @permission_required("products.view")
 def products_missing_images():
-    query = _products_without_images_query()
+    products = _products_without_display_images()
     return jsonify(
-        total=query.count(),
-        published=query.filter(Product.is_active.is_(True)).count(),
-        draft=query.filter(Product.is_active.is_(False)).count(),
+        total=len(products),
+        published=sum(1 for product in products if product.is_active),
+        draft=sum(1 for product in products if not product.is_active),
     )
 
 
@@ -1407,7 +1441,7 @@ def products_missing_images():
 @login_required
 @permission_required("products.edit")
 def unpublish_products_missing_images():
-    products = _products_without_images_query().filter(Product.is_active.is_(True)).all()
+    products = _products_without_display_images(active_only=True)
     product_ids = [product.id for product in products]
     for product in products:
         product.is_active = False
