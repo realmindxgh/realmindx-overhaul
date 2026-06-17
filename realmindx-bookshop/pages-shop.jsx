@@ -28,6 +28,7 @@ const FILTER_GROUPS = [
 ];
 
 const FILTER_PREVIEW_LIMIT = 5;
+const SEARCHABLE_FILTER_KEYS = new Set(['subjects']);
 const BATCH = 40;
 
 const filterGroupForTaxonomy = (taxonomy) => FILTER_GROUPS.find((group) => group.taxonomy === taxonomy) || null;
@@ -490,9 +491,10 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
         const items = taxonomies[group.key] || [];
         if (items.length === 0) return null;
         const query = searchTerms[group.key].trim().toLowerCase();
-        const filteredItems = query ? items.filter((item) => item.label.toLowerCase().includes(query)) : items;
-        const visibleItems = query ? filteredItems : filteredItems.slice(0, FILTER_PREVIEW_LIMIT);
-        const hiddenCount = query ? 0 : Math.max(0, items.length - visibleItems.length);
+        const searchable = SEARCHABLE_FILTER_KEYS.has(group.key) && items.length > FILTER_PREVIEW_LIMIT;
+        const filteredItems = searchable && query ? items.filter((item) => item.label.toLowerCase().includes(query)) : items;
+        const visibleItems = searchable && !query ? filteredItems.slice(0, FILTER_PREVIEW_LIMIT) : filteredItems;
+        const hiddenCount = searchable && !query ? Math.max(0, items.length - visibleItems.length) : 0;
         const selected = filters[group.key] || [];
 
         return (
@@ -502,7 +504,7 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
               <Icon name="chevDown" size={16} className="bs-chev" />
             </button>
             <div className="bs-filter-sec-body">
-              {items.length > FILTER_PREVIEW_LIMIT && (
+              {searchable && (
                 <input
                   type="search"
                   className="bs-filter-search"

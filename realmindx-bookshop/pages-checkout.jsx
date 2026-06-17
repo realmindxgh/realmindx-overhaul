@@ -86,6 +86,7 @@ const CheckoutPage = ({ navigate }) => {
   }));
   const [errors, setErrors] = React.useState({});
   const [orderRef, setOrderRef] = React.useState('');
+  const [confirmedOrder, setConfirmedOrder] = React.useState(null);
   const [placing, setPlacing] = React.useState(false);
   const [orderError, setOrderError] = React.useState('');
   const [turnstileToken, setTurnstileToken] = React.useState('');
@@ -277,6 +278,12 @@ const CheckoutPage = ({ navigate }) => {
 
       // Payment-on-delivery orders are registered immediately. Online payment
       // only reaches this point in local mode where Paystack is unavailable.
+      setConfirmedOrder({
+        items: detailed.map(item => ({ ...item })),
+        count,
+        total,
+      });
+      clearSelected();
       setStep(2);
     } catch (err) {
       const msg = err?.message || 'Could not place the order. Please try again.';
@@ -328,6 +335,10 @@ const CheckoutPage = ({ navigate }) => {
   };
   const set = (k) => (ev) => setForm(f => ({ ...f, [k]: ev.target.value }));
 
+  const confirmedItems = confirmedOrder?.items || detailed;
+  const confirmedCount = confirmedOrder?.count ?? count;
+  const confirmedTotal = confirmedOrder?.total ?? total;
+
   if (step === 2) return (
     <div className="bs-container bs-fade-page">
       <StepBar step={2} />
@@ -339,16 +350,16 @@ const CheckoutPage = ({ navigate }) => {
         <div className="bs-confirm-summary">
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:14 }}>
             <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>What you ordered</span>
-            <span className="bs-muted" style={{ fontSize:13 }}>{count} items</span>
+            <span className="bs-muted" style={{ fontSize:13 }}>{confirmedCount} items</span>
           </div>
-          {detailed.map((b,i) => (
+          {confirmedItems.map((b,i) => (
             <div key={b.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', fontSize:14 }}>
               <span>{b.qty} x {b.title}</span><span style={{ fontFamily:'Montserrat', fontWeight:600 }}>{cedis(b.price*b.qty)}</span>
             </div>
           ))}
           <div className="bs-summary-row bs-total" style={{ fontSize:18, marginTop:10 }}>
             <span>{paymentMethod === 'cash_on_delivery' ? 'Due on delivery' : 'Total paid'}</span>
-            <span>{cedis(total)}</span>
+            <span>{cedis(confirmedTotal)}</span>
           </div>
           <div className="bs-secure-note" style={{ justifyContent:'flex-start', marginTop:14 }}>
             <Icon name="truck" size={16} /> {method === 'delivery' ? 'Estimated delivery: within 48 hours' : 'Ready for pickup at Dome Pillar 2 tomorrow'}
