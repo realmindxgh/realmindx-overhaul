@@ -1026,7 +1026,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
             </div>
           )}
           <div className="bs-shop-toolbar">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="bs-toolbar-left">
               <button className="bs-filter-mobile-btn" onClick={() => setDrawer(true)}><Icon name="filter" size={16} /> Filter</button>
               <span className="bs-shop-count">
                 {allLoaded
