@@ -87,6 +87,16 @@ def server_blocks(text):
                     break
 
 
+def server_names(block):
+    for match in re.finditer(r"(?m)^\s*server_name\s+([^;]+);", block):
+        for name in match.group(1).split():
+            yield name.strip()
+
+
+def block_has_server_name(block, hostname):
+    return any(name == hostname for name in server_names(block))
+
+
 def insertion_anchor(block):
     comment_anchor = re.search(
         r"(?m)^\s*# .*(?:Flask API|API).*\n(?=\s*location\s+/api/\s*\{)",
@@ -100,16 +110,20 @@ def insertion_anchor(block):
     return re.search(r"(?m)^\s*root\s+", block)
 
 
-def install_route(text):
+def remove_managed_block(text, start_marker, end_marker):
     marker_pattern = re.compile(
-        rf"\n[ \t]*# BEGIN REALMINDX MANAGED SEO ROUTES\n"
+        rf"\n[ \t]*{re.escape(start_marker.strip())}\n"
         rf".*?"
-        rf"[ \t]*# END REALMINDX MANAGED SEO ROUTES\n+",
+        rf"[ \t]*{re.escape(end_marker.strip())}\n+",
         re.DOTALL,
     )
-    text = marker_pattern.sub("\n", text)
+    return marker_pattern.sub("\n", text)
+
+
+def install_route(text):
+    text = remove_managed_block(text, START_MARKER, END_MARKER)
     for start, end, block in server_blocks(text):
-        if not re.search(r"(?m)^\s*server_name\s+[^;]*\brealmindxgh\.com\b[^;]*;", block):
+        if not block_has_server_name(block, "realmindxgh.com"):
             continue
         if not re.search(r"(?m)^\s*listen\s+443\b", block):
             continue
@@ -122,15 +136,11 @@ def install_route(text):
 
 
 def install_bookshop_route(text):
-    marker_pattern = re.compile(
-        rf"\n[ \t]*# BEGIN REALMINDX MANAGED BOOKSHOP SEO ROUTES\n"
-        rf".*?"
-        rf"[ \t]*# END REALMINDX MANAGED BOOKSHOP SEO ROUTES\n+",
-        re.DOTALL,
-    )
-    text = marker_pattern.sub("\n", text)
+    text = remove_managed_block(text, BOOKSHOP_START_MARKER, BOOKSHOP_END_MARKER)
+    if not has_https_server_name(text, "realmindxgh.com"):
+        text = remove_managed_block(text, START_MARKER, END_MARKER)
     for start, end, block in server_blocks(text):
-        if not re.search(r"(?m)^\s*server_name\s+[^;]*\bbookshop\.realmindxgh\.com\b[^;]*;", block):
+        if not block_has_server_name(block, "bookshop.realmindxgh.com"):
             continue
         if not re.search(r"(?m)^\s*listen\s+443\b", block):
             continue
@@ -143,9 +153,8 @@ def install_bookshop_route(text):
 
 
 def has_https_server_name(text, hostname):
-    pattern = re.compile(rf"(?m)^\s*server_name\s+[^;]*\b{re.escape(hostname)}\b[^;]*;")
     return any(
-        pattern.search(block) and re.search(r"(?m)^\s*listen\s+443\b", block)
+        block_has_server_name(block, hostname) and re.search(r"(?m)^\s*listen\s+443\b", block)
         for _, _, block in server_blocks(text)
     )
 
