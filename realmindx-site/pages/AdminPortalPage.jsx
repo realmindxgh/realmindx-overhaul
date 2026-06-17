@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { Icon, DatePickerField } from '../assets/components.jsx';
 import { resetManagedContent, JOB_LEVELS, JOB_SUBJECTS, JOB_TYPES } from '../../src/lib/managedContent.js';
 import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
+import { usePublicServicesState } from '../../src/lib/siteContent.js';
 import { API_BASE, api, isApiMode } from '../../src/lib/apiClient.js';
 import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib/demoAccounts.js';
 import { signOut } from '../../src/lib/authClient.js';
@@ -493,15 +494,15 @@ const CONFIG = {
     fields: [
       field('title', 'Title'),
       field('category', 'Category'),
-      field('summary', 'Summary', 'textarea'),
-      field('body', 'Intro / Fallback Body', 'textarea', { help: 'Shown before the sections, or used as the full article if no sections are added.' }),
-      field('sections', 'Article Sections', 'article-sections', { help: 'Add headings, body text, images, and captions for the full news article.' }),
       field('image_file_id', 'Post Image', 'image', { aspectRatio: 16/9, cropTitle: 'Crop News Image (16:9)', guide: [
         { icon: 'target',   text: 'Ideal ratio: 16:9. Standard widescreen format used on news cards and the article header.' },
         { icon: 'image',    text: 'Crop tip: pick an image that visually summarises the story. For events, show attendees. For announcements, use the relevant product, person, or location.' },
         { icon: 'camera',   text: 'Minimum size: 1200 x 675 px. A strong header image is the biggest driver of people clicking through to read the article.' },
         { icon: 'check',    text: 'This image also appears in newsletters when the post is reused. Make it recognisable and eye-catching at small sizes.' },
       ] }),
+      field('summary', 'Summary', 'textarea'),
+      field('body', 'Intro / Fallback Body', 'textarea', { help: 'Shown before the sections, or used as the full article if no sections are added.' }),
+      field('sections', 'Article Sections', 'article-sections', { help: 'Add headings, body text, images, and captions for the full news article.' }),
       field('date', 'Display Date', 'date', { placeholder: 'No display date set' }),
       field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
@@ -684,6 +685,118 @@ const adminAssetUrl = value => {
 };
 
 const rowImageUrl = row => adminAssetUrl(row.image_url || row.image || row.logo_url || row.cover_url);
+
+const insertMarkdownLink = (value, selectionStart, selectionEnd, href, label) => {
+  const text = String(value || '');
+  const safeStart = Math.max(0, Math.min(Number(selectionStart) || 0, text.length));
+  const safeEnd = Math.max(safeStart, Math.min(Number(selectionEnd) || safeStart, text.length));
+  const selectedText = text.slice(safeStart, safeEnd);
+  const leadingWhitespace = selectedText.match(/^\s*/)?.[0].length || 0;
+  const trailingWhitespace = selectedText.match(/\s*$/)?.[0].length || 0;
+  const coreStart = safeStart + leadingWhitespace;
+  const coreEnd = safeEnd - trailingWhitespace;
+  const linkLabel = text.slice(coreStart, coreEnd) || label || 'Service';
+  const link = `[${linkLabel}](${href})`;
+  return {
+    nextValue: `${text.slice(0, coreStart)}${link}${text.slice(coreEnd)}`,
+    cursor: coreStart + link.length,
+  };
+};
+
+const ServiceLinkTextarea = ({ value, onChange, rows = 5, placeholder, textareaClassName = 'form-textarea' }) => {
+  const { items: services } = usePublicServicesState();
+  const textareaRef = React.useRef(null);
+  const selectionRef = React.useRef({ start: 0, end: 0 });
+  const [selectedHref, setSelectedHref] = React.useState('');
+
+  React.useEffect(() => {
+    if (!services.length) return;
+    setSelectedHref(current => {
+      if (current && services.some(service => service.href === current)) return current;
+      return services[0]?.href || '';
+    });
+  }, [services]);
+
+  const rememberSelection = event => {
+    const target = event.target;
+    selectionRef.current = {
+      start: target.selectionStart ?? 0,
+      end: target.selectionEnd ?? 0,
+    };
+  };
+
+  const insertServiceLink = () => {
+    const service = services.find(item => item.href === selectedHref) || services[0];
+    if (!service) return;
+    const { nextValue, cursor } = insertMarkdownLink(
+      value,
+      selectionRef.current.start,
+      selectionRef.current.end,
+      service.href,
+      service.label,
+    );
+    onChange(nextValue);
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  };
+
+  return (
+    <div className="markdown-service-editor">
+      <div className="markdown-service-toolbar">
+        <label className="markdown-service-select">
+          <span>Service</span>
+          <select
+            className="form-select markdown-service-select-control"
+            value={selectedHref}
+            onChange={event => setSelectedHref(event.target.value)}
+            disabled={!services.length}
+          >
+            {services.length ? (
+              services.map(service => (
+                <option key={service.href || service.id} value={service.href}>
+                  {service.label}
+                </option>
+              ))
+            ) : (
+              <option value="">No services available</option>
+            )}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn btn-outline-navy btn-sm markdown-service-button"
+          onMouseDown={event => event.preventDefault()}
+          onClick={insertServiceLink}
+          disabled={!services.length}
+          title="Insert the selected service link at the cursor"
+        >
+          <Icon name="paperclip" size={14} stroke={2} />
+          <span>Insert service link</span>
+        </button>
+      </div>
+      <textarea
+        ref={textareaRef}
+        className={textareaClassName}
+        rows={rows}
+        value={value}
+        onChange={event => {
+          rememberSelection(event);
+          onChange(event.target.value);
+        }}
+        onSelect={rememberSelection}
+        onMouseUp={rememberSelection}
+        onKeyUp={rememberSelection}
+        onClick={rememberSelection}
+        onFocus={rememberSelection}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+};
 
 const normalizeFormValue = (value, itemField) => {
   if (itemField.type === 'number') return value === '' ? null : Number(value);
@@ -1111,16 +1224,15 @@ const ArticleSectionsField = ({ sections, onChange }) => {
                 <option value="large">Large</option>
               </select>
             </label>
-            <label className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <div className="form-group article-section-body-group" style={{ gridColumn: '1 / -1' }}>
               <span className="form-label">Section Body</span>
-              <textarea
-                className="form-textarea"
-                rows={5}
+              <ServiceLinkTextarea
                 value={section.body || ''}
-                onChange={event => updateSection(index, { body: event.target.value })}
+                onChange={body => updateSection(index, { body })}
+                rows={5}
                 placeholder="Write this part of the article. Use blank lines for separate paragraphs."
               />
-            </label>
+            </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <span className="form-label">Section Image</span>
               <ImageUploadField
@@ -1286,13 +1398,22 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
                 onChange={sections => setForm(prev => ({ ...prev, [itemField.name]: sections }))}
               />
             ) : itemField.type === 'textarea' ? (
-              <textarea
-                className="form-textarea"
-                rows={4}
-                placeholder={fieldPlaceholder(itemField, config)}
-                value={form[itemField.name]}
-                onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.value }))}
-              />
+              config.collection === 'news' && itemField.name === 'body' ? (
+                <ServiceLinkTextarea
+                  value={form[itemField.name]}
+                  onChange={value => setForm(prev => ({ ...prev, [itemField.name]: value }))}
+                  rows={4}
+                  placeholder={fieldPlaceholder(itemField, config)}
+                />
+              ) : (
+                <textarea
+                  className="form-textarea"
+                  rows={4}
+                  placeholder={fieldPlaceholder(itemField, config)}
+                  value={form[itemField.name]}
+                  onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.value }))}
+                />
+              )
             ) : (itemField.type === 'select' || itemField.type === 'category-select' || itemField.type === 'delivery-zone-select') ? (
               <select
                 className="form-select"
@@ -3189,6 +3310,42 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
           border-radius: 12px;
           box-shadow: none;
         }
+        .markdown-service-editor { display: grid; gap: 10px; }
+        .markdown-service-toolbar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: flex-end;
+          gap: 10px;
+          padding: 12px;
+          border: 1px solid var(--gray-200);
+          border-radius: 10px;
+          background: #fbfcfe;
+        }
+        .markdown-service-select {
+          display: grid;
+          gap: 6px;
+          flex: 1 1 220px;
+          min-width: 220px;
+          font-size: 0.78rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: var(--navy);
+        }
+        .markdown-service-select-control {
+          height: 40px;
+          min-height: 40px;
+          padding: 0 12px;
+        }
+        .markdown-service-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          height: 40px;
+          min-height: 40px;
+          white-space: nowrap;
+        }
+        .article-section-body-group .markdown-service-editor { margin-top: 8px; }
         .admin-modal-close {
           position: absolute;
           top: 16px;
