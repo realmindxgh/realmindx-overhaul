@@ -2,6 +2,7 @@
 import { Icon, Stars, cedis, CoverPlaceholder, Logo } from './shared.jsx';
 import { useCatalog } from './catalog.jsx';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
+import { bookMatchesBookshopSearch } from '../src/lib/bookshopTaxonomy.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { trackCartAction, trackSearchClick, trackWishlistAction } from '../src/lib/analytics.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
@@ -14,23 +15,6 @@ const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
 const hrefForProduct = (book) => `${PREFIX}${productHref(book)}`;
 const hrefForBrowse = (taxonomy, value = '') => `${PREFIX}${bookshopPathForRoute('shop', { taxonomy, value })}`;
-
-const bookMatchesSearchTerm = (book, query) => {
-  const haystack = [
-    book.title,
-    book.short,
-    book.desc,
-    book.full,
-    book.catName,
-    book.author,
-    book.publisher,
-    book.subject,
-    book.levelName || book.grade || book.level,
-    book.curriculumName || book.curriculum,
-    ...(book.tags || []),
-  ].filter(Boolean).join(' ').toLowerCase();
-  return haystack.includes(query);
-};
 
 // ---------- Wishlist store ----------
 const WishlistCtx = React.createContext(null);
@@ -434,9 +418,8 @@ const Navbar = ({ route, navigate }) => {
   const suggestions = React.useMemo(() => {
     const t = q.trim();
     if (t.length < 2) return [];
-    const lower = t.toLowerCase();
     return books
-      .filter((book) => bookMatchesSearchTerm(book, lower))
+      .filter((book) => bookMatchesBookshopSearch(book, t))
       .slice(0, 6);
   }, [books, q]);
 

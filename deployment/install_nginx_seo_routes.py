@@ -120,6 +120,49 @@ def remove_managed_block(text, start_marker, end_marker):
     return marker_pattern.sub("\n", text)
 
 
+def remove_location_blocks(block, predicates):
+    ranges = []
+    for match in re.finditer(r"(?m)^\s*location\s+[^\{]+\{", block):
+        header = match.group(0)
+        if not any(predicate(header) for predicate in predicates):
+            continue
+        depth = 0
+        for index in range(match.start(), len(block)):
+            if block[index] == "{":
+                depth += 1
+            elif block[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    ranges.append((match.start(), index + 1))
+                    break
+    if not ranges:
+        return block
+    cleaned = []
+    cursor = 0
+    for start, end in ranges:
+        cleaned.append(block[cursor:start])
+        cursor = end
+    cleaned.append(block[cursor:])
+    return "".join(cleaned)
+
+
+def remove_legacy_main_routes(block):
+    return remove_location_blocks(block, [
+        lambda header: re.search(r"location\s*=\s*/sitemap\.xml\s*\{", header) is not None,
+        lambda header: re.search(r"location\s*=\s*/robots\.txt\s*\{", header) is not None,
+        lambda header: "/news/" in header,
+    ])
+
+
+def remove_legacy_bookshop_routes(block):
+    return remove_location_blocks(block, [
+        lambda header: re.search(r"location\s*=\s*/sitemap\.xml\s*\{", header) is not None,
+        lambda header: re.search(r"location\s*=\s*/robots\.txt\s*\{", header) is not None,
+        lambda header: re.search(r"location\s*=\s*/\s*\{", header) is not None,
+        lambda header: "products|subjects|levels|curriculum|curricula|categories|publishers" in header,
+    ])
+
+
 def install_route(text):
     text = remove_managed_block(text, START_MARKER, END_MARKER)
     for start, end, block in server_blocks(text):
@@ -127,6 +170,8 @@ def install_route(text):
             continue
         if not re.search(r"(?m)^\s*listen\s+443\b", block):
             continue
+        block = remove_legacy_main_routes(block)
+        text = text[:start] + block + text[end:]
         anchor = insertion_anchor(block)
         if not anchor:
             continue
@@ -144,6 +189,8 @@ def install_bookshop_route(text):
             continue
         if not re.search(r"(?m)^\s*listen\s+443\b", block):
             continue
+        block = remove_legacy_bookshop_routes(block)
+        text = text[:start] + block + text[end:]
         anchor = insertion_anchor(block)
         if not anchor:
             continue

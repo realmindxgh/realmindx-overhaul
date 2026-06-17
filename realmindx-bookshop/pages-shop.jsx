@@ -4,7 +4,7 @@ import { ProductCard, ListCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { trackSearch } from '../src/lib/analytics.js';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
-import { findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
+import { bookMatchesBookshopSearch, findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute } from './urls.js';
@@ -52,24 +52,6 @@ const createFilterState = (ceiling, browse = {}, query = '') => {
   return base;
 };
 
-const bookSearchFields = (book) => ([
-  book.title,
-  book.short,
-  book.desc,
-  book.full,
-  book.catName,
-  book.author,
-  book.publisher,
-  book.subject,
-  book.levelName || book.grade || book.level,
-  book.curriculumName || book.curriculum,
-  ...getBookshopSeoProfile('category', book.catName).aliases,
-  ...getBookshopSeoProfile('subject', book.subject).aliases,
-  ...getBookshopSeoProfile('level', book.levelName || book.grade || book.level).aliases,
-  ...getBookshopSeoProfile('curriculum', book.curriculumName || book.curriculum).aliases,
-  ...(book.tags || []),
-]).filter(Boolean).join(' ').toLowerCase();
-
 const matchesRatingFilters = (book, filters) => {
   const stars = Math.round(book.rating || 0);
   return (filters.ratingMin === '' || stars >= filters.ratingMin)
@@ -77,9 +59,7 @@ const matchesRatingFilters = (book, filters) => {
 };
 
 const matchesQueryFilters = (book, query) => {
-  const trimmed = String(query || '').trim().toLowerCase();
-  if (!trimmed) return true;
-  return bookSearchFields(book).includes(trimmed);
+  return bookMatchesBookshopSearch(book, query);
 };
 
 const matchesCatalogueFilters = (book, filters, options = {}) => {
@@ -804,12 +784,22 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   const filteredBrowseLinks = React.useMemo(() => {
     const query = browseQuery.trim().toLowerCase();
     if (!query) return browseLinks;
-    return browseLinks.filter((item) => [
-      item.label,
-      item.name,
-      ...(item.aliases || []),
-      ...(item.popularSearches || []),
-    ].filter(Boolean).join(' ').toLowerCase().includes(query));
+    return browseLinks.filter((item) => {
+      const plainText = [
+        item.label,
+        item.name,
+        ...(item.aliases || []),
+        ...(item.popularSearches || []),
+      ].filter(Boolean).join(' ').toLowerCase();
+      const pseudoBook = {
+        catName: item.taxonomy === 'category' ? item.label : '',
+        subject: item.taxonomy === 'subject' ? item.label : '',
+        levelName: item.taxonomy === 'level' ? item.label : '',
+        curriculumName: item.taxonomy === 'curriculum' ? item.label : '',
+        publisher: item.taxonomy === 'publisher' ? item.label : '',
+      };
+      return plainText.includes(query) || bookMatchesBookshopSearch(pseudoBook, browseQuery);
+    });
   }, [browseLinks, browseQuery]);
   const isSubjectFinder = initialBrowse.taxonomy === 'subject' && !hasScopedBrowse;
   const selectedSubjectItems = React.useMemo(() => {

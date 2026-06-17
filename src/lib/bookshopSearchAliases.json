@@ -1,0 +1,390 @@
+{
+  "subject": [
+    {
+      "id": "mathematics",
+      "canonical": "Mathematics",
+      "displayName": "Mathematics",
+      "aliases": [
+        "maths",
+        "math",
+        "mathematics books",
+        "maths books",
+        "math books",
+        "mathematics textbooks",
+        "maths textbooks",
+        "math textbooks",
+        "BECE maths",
+        "BECE math",
+        "BECE mathematics",
+        "WASSCE maths",
+        "WASSCE math",
+        "WASSCE mathematics",
+        "core maths",
+        "elective maths",
+        "numeracy"
+      ],
+      "popularSearches": [
+        "BECE maths",
+        "WASSCE maths",
+        "maths textbooks",
+        "core maths"
+      ]
+    },
+    {
+      "id": "english-language",
+      "canonical": "English Language",
+      "displayName": "English Language",
+      "aliases": [
+        "English",
+        "English books",
+        "English textbooks",
+        "grammar books",
+        "reading books",
+        "composition books",
+        "comprehension books",
+        "BECE English",
+        "WASSCE English"
+      ],
+      "popularSearches": [
+        "grammar books",
+        "reading books",
+        "BECE English",
+        "WASSCE English"
+      ]
+    },
+    {
+      "id": "science",
+      "canonical": "Science",
+      "displayName": "Science",
+      "aliases": [
+        "science books",
+        "science textbooks",
+        "integrated science",
+        "integrated science books",
+        "BECE science",
+        "WASSCE science"
+      ],
+      "popularSearches": [
+        "Integrated Science books",
+        "BECE science",
+        "WASSCE science"
+      ]
+    },
+    {
+      "id": "computing",
+      "canonical": "Computing",
+      "displayName": "Computing",
+      "aliases": [
+        "ICT",
+        "ICT books",
+        "computer studies",
+        "computer studies books",
+        "computer science books",
+        "computing textbooks",
+        "JHS ICT",
+        "coding books"
+      ],
+      "popularSearches": [
+        "ICT books",
+        "computer studies books",
+        "JHS ICT"
+      ]
+    },
+    {
+      "id": "religious-and-moral-education",
+      "canonical": "Religious and Moral Education",
+      "displayName": "Religious and Moral Education",
+      "aliases": [
+        "RME",
+        "RME books",
+        "religious moral education"
+      ],
+      "popularSearches": [
+        "RME books"
+      ]
+    },
+    {
+      "id": "social-studies",
+      "canonical": "Social Studies",
+      "displayName": "Social Studies",
+      "aliases": [
+        "social studies books",
+        "social studies textbooks",
+        "BECE social studies",
+        "WASSCE social studies"
+      ],
+      "popularSearches": [
+        "BECE social studies",
+        "social studies textbooks"
+      ]
+    },
+    {
+      "id": "ghanaian-language",
+      "canonical": "Ghanaian Language",
+      "displayName": "Ghanaian Language",
+      "aliases": [
+        "Ghanaian languages",
+        "local language books",
+        "Twi books",
+        "Akan books",
+        "Ga books",
+        "Ewe books"
+      ],
+      "popularSearches": [
+        "Twi books",
+        "Ghanaian language books"
+      ]
+    }
+  ],
+  "curriculum": [
+    {
+      "id": "ges-nacca-curriculum",
+      "canonical": "GES / NaCCA Curriculum",
+      "displayName": "GES/NaCCA Curriculum",
+      "aliases": [
+        "GES",
+        "NaCCA",
+        "GES textbooks",
+        "NaCCA books",
+        "NaCCA curriculum books",
+        "Ghana curriculum books",
+        "basic school books",
+        "Ghana education service books",
+        "standards based curriculum",
+        "common core programme",
+        "CCP books",
+        "BECE books",
+        "WASSCE books",
+        "WAEC books"
+      ],
+      "popularSearches": [
+        "GES textbooks",
+        "NaCCA books",
+        "Ghana curriculum books",
+        "BECE books"
+      ]
+    },
+    {
+      "id": "cambridge-international-curriculum",
+      "canonical": "Cambridge International Curriculum",
+      "displayName": "Cambridge International Curriculum",
+      "aliases": [
+        "Cambridge",
+        "Cambridge books",
+        "Cambridge textbooks",
+        "Cambridge curriculum books",
+        "IGCSE books"
+      ],
+      "popularSearches": [
+        "Cambridge textbooks",
+        "IGCSE books"
+      ]
+    },
+    {
+      "id": "british-english-national-curriculum",
+      "canonical": "British / English National Curriculum",
+      "displayName": "British / English National Curriculum",
+      "aliases": [
+        "British curriculum",
+        "English national curriculum",
+        "UK curriculum books"
+      ],
+      "popularSearches": [
+        "British curriculum books"
+      ]
+    },
+    {
+      "id": "tvet-ctvet-curriculum",
+      "canonical": "TVET / CTVET Curriculum",
+      "displayName": "TVET / CTVET Curriculum",
+      "aliases": [
+        "TVET",
+        "CTVET",
+        "technical curriculum",
+        "vocational books"
+      ],
+      "popularSearches": [
+        "TVET books",
+        "CTVET books"
+      ]
+    }
+  ],
+  "level": [
+    {
+      "id": "junior-high-lower-secondary",
+      "canonical": "Junior High / Lower Secondary",
+      "displayName": "Junior High School",
+      "aliases": [
+        "JHS",
+        "JHS books",
+        "Junior High",
+        "Junior High School",
+        "Junior Secondary School",
+        "Lower Secondary",
+        "Basic 7",
+        "Basic 8",
+        "Basic 9",
+        "JHS 1",
+        "JHS 2",
+        "JHS 3",
+        "BECE",
+        "BECE books",
+        "BECE textbooks"
+      ],
+      "popularSearches": [
+        "BECE books",
+        "Basic 7 books",
+        "Basic 8 books",
+        "Basic 9 books"
+      ]
+    },
+    {
+      "id": "senior-high-upper-secondary",
+      "canonical": "Senior High / Upper Secondary",
+      "displayName": "Senior High School",
+      "aliases": [
+        "SHS",
+        "SHS books",
+        "Senior High",
+        "Senior High School",
+        "Upper Secondary",
+        "SSS",
+        "WASSCE",
+        "WASSCE books",
+        "WASSCE textbooks"
+      ],
+      "popularSearches": [
+        "WASSCE books",
+        "SHS textbooks"
+      ]
+    },
+    {
+      "id": "lower-primary",
+      "canonical": "Lower Primary",
+      "displayName": "Lower Primary",
+      "aliases": [
+        "Basic 1",
+        "Basic 2",
+        "Basic 3",
+        "Primary 1",
+        "Primary 2",
+        "Primary 3",
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "popularSearches": [
+        "Basic 1 books",
+        "Basic 2 books",
+        "Basic 3 books"
+      ]
+    },
+    {
+      "id": "upper-primary",
+      "canonical": "Upper Primary",
+      "displayName": "Upper Primary",
+      "aliases": [
+        "Basic 4",
+        "Basic 5",
+        "Basic 6",
+        "Primary 4",
+        "Primary 5",
+        "Primary 6",
+        "P4",
+        "P5",
+        "P6"
+      ],
+      "popularSearches": [
+        "Basic 4 books",
+        "Basic 5 books",
+        "Basic 6 books"
+      ]
+    },
+    {
+      "id": "kindergarten",
+      "canonical": "Kindergarten",
+      "displayName": "Kindergarten",
+      "aliases": [
+        "KG",
+        "KG 1",
+        "KG 2",
+        "kindergarten books"
+      ],
+      "popularSearches": [
+        "KG books"
+      ]
+    }
+  ],
+  "category": [
+    {
+      "id": "textbooks",
+      "canonical": "Textbooks",
+      "displayName": "Textbooks",
+      "aliases": [
+        "text books",
+        "school books",
+        "school textbooks",
+        "textbooks in Ghana",
+        "BECE textbooks",
+        "WASSCE textbooks",
+        "JHS textbooks",
+        "SHS textbooks"
+      ],
+      "popularSearches": [
+        "school books",
+        "BECE textbooks",
+        "WASSCE textbooks"
+      ]
+    },
+    {
+      "id": "curriculum",
+      "canonical": "Curriculum Books",
+      "displayName": "Curriculum Books",
+      "aliases": [
+        "curriculum books",
+        "Ghana curriculum books",
+        "basic school books",
+        "approved textbooks",
+        "school syllabus books"
+      ],
+      "popularSearches": [
+        "Ghana curriculum books",
+        "approved textbooks"
+      ]
+    },
+    {
+      "id": "past",
+      "canonical": "Past Questions",
+      "displayName": "Past Questions",
+      "aliases": [
+        "past questions",
+        "past papers",
+        "BECE past questions",
+        "WASSCE past questions",
+        "solved past questions",
+        "exam revision books"
+      ],
+      "popularSearches": [
+        "BECE past questions",
+        "WASSCE past questions"
+      ]
+    },
+    {
+      "id": "stationery",
+      "canonical": "Stationery",
+      "displayName": "Stationery",
+      "aliases": [
+        "stationery",
+        "school supplies",
+        "exercise books",
+        "writing materials",
+        "mathematical set",
+        "pencils"
+      ],
+      "popularSearches": [
+        "exercise books",
+        "mathematical set"
+      ]
+    }
+  ]
+}

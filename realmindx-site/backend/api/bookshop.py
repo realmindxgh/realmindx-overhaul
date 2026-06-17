@@ -14,6 +14,7 @@ from sqlalchemy import or_
 
 from ..analytics import queue_analytics_event
 from ..audit import audit
+from ..bookshop_search import product_search_filter, taxonomy_filter_terms
 from ..email_service import (
     OutboundEmail,
     bookshop_email_shell,
@@ -100,20 +101,9 @@ def list_products():
     curriculum = request.args.get("curriculum")
     publisher = request.args.get("publisher")
     if q:
-        like = f"%{q}%"
-        query = query.outerjoin(ProductCategory).filter(
-            or_(
-                Product.name.ilike(like),
-                Product.short_description.ilike(like),
-                Product.full_description.ilike(like),
-                Product.subject.ilike(like),
-                Product.level.ilike(like),
-                Product.curriculum.ilike(like),
-                Product.author.ilike(like),
-                Product.publisher.ilike(like),
-                ProductCategory.name.ilike(like),
-            )
-        )
+        search_filter = product_search_filter(q)
+        if search_filter is not None:
+            query = query.outerjoin(ProductCategory).filter(search_filter)
     if category:
         if category == "curriculum":
             query = query.filter(Product.curriculum.isnot(None), Product.curriculum != "")
@@ -127,11 +117,11 @@ def list_products():
         else:
             query = query.filter(Product.category.has(ProductCategory.slug == category))
     if subject:
-        query = query.filter(Product.subject == subject)
+        query = query.filter(or_(*(Product.subject.ilike(term) for term in taxonomy_filter_terms("subject", subject))))
     if level:
-        query = query.filter(Product.level == level)
+        query = query.filter(or_(*(Product.level.ilike(term) for term in taxonomy_filter_terms("level", level))))
     if curriculum:
-        query = query.filter(Product.curriculum == curriculum)
+        query = query.filter(or_(*(Product.curriculum.ilike(term) for term in taxonomy_filter_terms("curriculum", curriculum))))
     if publisher:
         query = query.filter(Product.publisher == publisher)
     products = query.order_by(Product.featured.desc(), Product.created_at.desc()).limit(100).all()

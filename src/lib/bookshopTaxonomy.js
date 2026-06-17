@@ -1,9 +1,30 @@
 import { slugify } from './seoRoutes.js';
 import { TEACHING_CURRICULA, TEACHING_LEVELS, TEACHING_SUBJECTS } from './teachingOptions.js';
+import SEARCH_ALIAS_GROUPS from './bookshopSearchAliases.json';
 
 const clean = (value = '') => String(value || '').trim();
 const idFor = (value, fallback = 'other') => slugify(clean(value)) || fallback;
 const asTitle = (value, fallback) => clean(value) || fallback;
+export const normalizeBookshopSearchText = (value = '') => String(value || '')
+  .normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/&/g, ' and ')
+  .replace(/[^a-zA-Z0-9]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+const uniqueClean = (values = []) => {
+  const result = [];
+  const seen = new Set();
+  values.flat().forEach((value) => {
+    const text = clean(value);
+    const key = normalizeBookshopSearchText(text);
+    if (!text || !key || seen.has(key)) return;
+    seen.add(key);
+    result.push(text);
+  });
+  return result;
+};
 
 const ALL_SUBJECTS = 'All Subjects';
 const ALL_LEVELS = 'All Levels';
@@ -58,6 +79,31 @@ const previewItems = (items, preferredIds = [], limit = 4) => {
 
 const taxonomyMap = (items) => new Map(items.map((item) => [item.id, item]));
 const canonicalBySlug = (options) => new Map(options.map((option) => [idFor(option, ''), option]));
+const aliasGroupsFor = (taxonomy) => SEARCH_ALIAS_GROUPS[taxonomy] || [];
+const aliasGroupValues = (entry = {}) => uniqueClean([
+  entry.id,
+  entry.canonical,
+  entry.displayName,
+  entry.aliases || [],
+  entry.popularSearches || [],
+]);
+const findAliasGroup = (taxonomy, value = '', explicitId = '') => {
+  const keys = new Set([
+    idFor(explicitId, ''),
+    idFor(value, ''),
+    normalizeBookshopSearchText(value),
+  ].filter(Boolean));
+  return aliasGroupsFor(taxonomy).find((entry) => aliasGroupValues(entry).some((candidate) => (
+    keys.has(idFor(candidate, '')) || keys.has(normalizeBookshopSearchText(candidate))
+  ))) || null;
+};
+const canonicalFromAliasGroup = (taxonomy, value) => findAliasGroup(taxonomy, value)?.canonical || '';
+const displayLabelFor = (taxonomy, label, id = '') => findAliasGroup(taxonomy, label, id)?.displayName || label;
+const filterBookSearchAliasTerms = (taxonomy, normalizedValue, values = []) => values.filter((value) => {
+  const text = normalizeBookshopSearchText(value);
+  if (!/\b(bece|wassce)\b/.test(text)) return true;
+  return taxonomy === 'level' || (taxonomy === 'category' && /\bpast\b/.test(normalizedValue));
+});
 
 const SUBJECT_LOOKUP = canonicalBySlug([ALL_SUBJECTS, ...TEACHING_SUBJECTS, SUBJECT_OTHER]);
 const LEVEL_LOOKUP = canonicalBySlug([ALL_LEVELS, ...TEACHING_LEVELS, LEVEL_OTHER]);
@@ -288,13 +334,15 @@ export const getBookshopSeoProfile = (taxonomy, value = '') => {
   const isLanding = !source.id && !source.label && !source.name && !clean(value);
   const label = isLanding ? '' : (source.label || source.name || value || taxonomyLabel(taxonomy));
   const id = isLanding ? '' : idFor(source.id || label, '');
-  const profile = SEO_PROFILES[taxonomy]?.[id] || fallbackSeoProfile(taxonomy, label, id);
+  const aliasGroup = findAliasGroup(taxonomy, label, id);
+  const displayLabel = clean(aliasGroup?.displayName || label);
+  const profile = SEO_PROFILES[taxonomy]?.[id] || fallbackSeoProfile(taxonomy, displayLabel || label, id);
   return {
     ...profile,
-    label: clean(label),
+    label: displayLabel,
     id,
-    aliases: [...new Set([...(profile.aliases || [])])],
-    popularSearches: [...new Set([...(profile.popularSearches || [])])],
+    aliases: uniqueClean([profile.aliases || [], aliasGroup?.aliases || []]),
+    popularSearches: uniqueClean([profile.popularSearches || [], aliasGroup?.popularSearches || []]),
   };
 };
 
@@ -303,6 +351,15 @@ const canonicalOrAlias = (value, lookup, aliases = [], fallback = '') => {
   if (!raw) return fallback;
   const slug = idFor(raw, '');
   if (lookup.has(slug)) return lookup.get(slug);
+  const taxonomy = aliases === subjectAliases
+    ? 'subject'
+    : aliases === levelAliases
+      ? 'level'
+      : aliases === curriculumAliases
+        ? 'curriculum'
+        : '';
+  const aliasCanonical = taxonomy ? canonicalFromAliasGroup(taxonomy, raw) : '';
+  if (aliasCanonical) return aliasCanonical;
   const alias = aliases.find((entry) => entry.pattern.test(raw));
   if (alias) return alias.value;
   return raw;
@@ -324,6 +381,72 @@ export const normalizeBookshopTaxonomyValue = (taxonomy, value) => {
   }
 };
 
+export const getBookshopTaxonomySearchTerms = (taxonomy, value = '', options = {}) => {
+  const raw = clean(value);
+  const normalized = normalizeBookshopTaxonomyValue(taxonomy, raw) || raw;
+  const id = idFor(normalized, '');
+  const profile = getBookshopSeoProfile(taxonomy, { id, label: normalized });
+  const aliasGroup = findAliasGroup(taxonomy, normalized || raw, id);
+  const normalizedValue = normalizeBookshopSearchText(normalized);
+  const profileAliases = options.forBookSearch
+    ? filterBookSearchAliasTerms(taxonomy, normalizedValue, profile.aliases || [])
+    : profile.aliases || [];
+  const profilePopularSearches = options.forBookSearch
+    ? filterBookSearchAliasTerms(taxonomy, normalizedValue, profile.popularSearches || [])
+    : profile.popularSearches || [];
+  const groupAliases = options.forBookSearch
+    ? filterBookSearchAliasTerms(taxonomy, normalizedValue, aliasGroup?.aliases || [])
+    : aliasGroup?.aliases || [];
+  const groupPopularSearches = options.forBookSearch
+    ? filterBookSearchAliasTerms(taxonomy, normalizedValue, aliasGroup?.popularSearches || [])
+    : aliasGroup?.popularSearches || [];
+  return uniqueClean([
+    raw,
+    normalized,
+    profile.label,
+    profileAliases,
+    profilePopularSearches,
+    aliasGroup?.canonical,
+    aliasGroup?.displayName,
+    groupAliases,
+    groupPopularSearches,
+  ]);
+};
+
+export const bookshopSearchTextForBook = (book = {}) => uniqueClean([
+  book.title,
+  book.name,
+  book.short,
+  book.desc,
+  book.full,
+  book.catName,
+  book.category,
+  book.author,
+  book.publisher,
+  book.isbn,
+  book.product_type,
+  book.delivery_note,
+  getBookshopTaxonomySearchTerms('category', book.catName || book.category || book.cat, { forBookSearch: true }),
+  getBookshopTaxonomySearchTerms('subject', book.subject, { forBookSearch: true }),
+  getBookshopTaxonomySearchTerms('level', book.levelName || book.grade || book.level, { forBookSearch: true }),
+  getBookshopTaxonomySearchTerms('curriculum', book.curriculumName || book.curriculum, { forBookSearch: true }),
+  getBookshopTaxonomySearchTerms('publisher', book.publisher, { forBookSearch: true }),
+  book.tags || [],
+]).map(normalizeBookshopSearchText).join(' ');
+
+const GENERIC_SEARCH_TOKENS = new Set(['book', 'books', 'textbook', 'textbooks', 'ghana', 'school', 'schools']);
+
+export const bookMatchesBookshopSearch = (book, query) => {
+  const normalizedQuery = normalizeBookshopSearchText(query);
+  if (!normalizedQuery) return true;
+  const haystack = bookshopSearchTextForBook(book);
+  if (haystack.includes(normalizedQuery)) return true;
+  const tokens = normalizedQuery
+    .split(' ')
+    .filter((token) => token.length > 1 && !GENERIC_SEARCH_TOKENS.has(token));
+  return tokens.length > 0 && tokens.every((token) => haystack.includes(token));
+};
+
 const buildDynamicTaxonomy = (books, taxonomy, getValue, options = {}) => {
   const counts = new Map();
   const labels = new Map();
@@ -343,7 +466,7 @@ const buildDynamicTaxonomy = (books, taxonomy, getValue, options = {}) => {
     .map(([id, count]) => {
       const label = labels.get(id);
       const profile = getBookshopSeoProfile(taxonomy, { id, label });
-      return taxon(taxonomy, label, count, {
+      return taxon(taxonomy, profile.label || displayLabelFor(taxonomy, label, id), count, {
         id,
         icon: options.icon,
         fallbackLabel: otherLabel,
@@ -361,7 +484,7 @@ const buildCategoryTaxonomy = (books, categories) => categories
   .filter((category) => category?.id && category.id !== 'all')
   .map((category) => {
     const profile = getBookshopSeoProfile('category', { id: category.id, label: category.name });
-    return taxon('category', category.name, countMatches(books, (book) => book.cat === category.id), {
+    return taxon('category', profile.label || displayLabelFor('category', category.name, category.id), countMatches(books, (book) => book.cat === category.id), {
       id: category.id,
       icon: category.icon || 'book',
       description: category.description || profile.intro || profile.description,
