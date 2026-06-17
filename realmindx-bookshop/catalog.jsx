@@ -77,6 +77,7 @@ const fromApiProduct = (p) => {
   const curriculum = curriculumName ? `curriculum-${slugifyCat(curriculumName)}` : '';
   return normalizeCatalogBook({
     id: String(p.id),
+    slug: p.slug || '',
     title: p.name,
     cat: p.category_slug || slugifyCat(p.category || ''),
     catName: p.category || 'General',
@@ -163,6 +164,7 @@ const mapProducts = (products, cats) => {
     const badges = Array.isArray(p.badges) ? p.badges : [];
     return normalizeCatalogBook({
       id: String(p.id), title: p.name,
+      slug: p.slug || '',
       cat: catInfo.slug, catName: catInfo.name,
       curriculum, curriculumName,
       price: Number(p.price) || 0,
