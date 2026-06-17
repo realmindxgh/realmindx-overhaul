@@ -30,6 +30,7 @@ const COLLECTION_TO_ENDPOINT = {
   productReviews: 'product-reviews',
   categories: 'categories',
   flyers: 'flyers',
+  deliveryZones: 'delivery-zones',
   promoCodes: 'promo-codes',
   services: 'services',
   partners: 'partners',

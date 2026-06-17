@@ -1011,8 +1011,37 @@
 @media (max-width: 900px) { .bs-cart-layout { grid-template-columns: 1fr; } }
 .bs-cart-page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin: 8px 0 12px; }
 .bs-cart-title-block { min-width: 0; }
-.bs-cart-clear-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 0 13px; border: 1px solid rgba(214,69,69,.16); border-radius: 999px; background: rgba(214,69,69,.1); color: var(--bs-error); font-family:'Montserrat',sans-serif; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; transition: background .18s, border-color .18s, color .18s, transform .18s; }
-.bs-cart-clear-btn:hover { background: rgba(214,69,69,.16); border-color: rgba(214,69,69,.3); transform: translateY(-1px); }
+.bs-cart-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid #ff8f8f;
+  border-radius: 999px;
+  background: #ffe3e3;
+  color: #d64545;
+  font-family:'Montserrat',sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  white-space: nowrap;
+  transition: background .18s, border-color .18s, color .18s, transform .18s, box-shadow .18s;
+  box-shadow: 0 8px 18px rgba(214,69,69,.16);
+}
+.bs-cart-clear-btn:hover {
+  background: #ffd7d7;
+  border-color: #ff7575;
+  color: #b71f1f;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(214,69,69,.22);
+}
+.bs-cart-clear-btn:focus-visible {
+  outline: 2px solid rgba(214,69,69,.45);
+  outline-offset: 2px;
+}
 .bs-cart-item { position: relative; display: grid; grid-template-columns: 34px 92px minmax(0, 1fr); gap: 18px; min-height: 164px; padding: 24px 0; border-bottom: 1px solid var(--bs-border); align-items: center; transition: opacity .18s; }
 .bs-cart-item.is-unselected { opacity: .62; }
 .bs-cart-select { width: 30px; height: 30px; border: 1.8px solid #111827; box-shadow: inset 0 0 0 1px #111827; border-radius: 50%; color: var(--bs-navy); background: #fff; display: flex; align-items: center; justify-content: center; transition: background .18s, border-color .18s, box-shadow .18s; }
@@ -1088,6 +1117,75 @@
 .bs-field-error { color: var(--bs-error); font-size: 12px; margin-top: 5px; }
 .bs-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 560px) { .bs-field-row { grid-template-columns: 1fr; } }
+.bs-zone-picker { position: relative; }
+.bs-zone-input {
+  width: 100%;
+  height: 48px;
+  border: 1.5px solid var(--bs-border);
+  border-radius: var(--bs-radius-sm);
+  padding: 0 15px;
+  font-size: 15px;
+  color: var(--bs-text);
+  background: #fff;
+}
+.bs-zone-input:focus {
+  outline: none;
+  border-color: var(--bs-navy);
+  box-shadow: 0 0 0 3px rgba(20,54,112,.1);
+}
+.bs-zone-input[aria-invalid="true"] { border-color: var(--bs-error); }
+.bs-zone-results {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 285px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(20,54,112,.16);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(13,37,80,.15);
+}
+.bs-zone-result,
+.bs-zone-other {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--bs-navy);
+  background: transparent;
+}
+.bs-zone-result:hover,
+.bs-zone-result:focus-visible,
+.bs-zone-other:hover,
+.bs-zone-other:focus-visible {
+  outline: none;
+  background: rgba(20,54,112,.06);
+}
+.bs-zone-result strong {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+}
+.bs-zone-result span,
+.bs-zone-empty {
+  font-size: 12px;
+  color: var(--bs-muted);
+}
+.bs-zone-empty { padding: 10px 12px; line-height: 1.5; }
+.bs-zone-other {
+  margin-top: 4px;
+  border: 1px dashed rgba(20,54,112,.24);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  background: #fffaf0;
+}
 .bs-radio-card { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1.5px solid var(--bs-border); border-radius: var(--bs-radius-sm); cursor: pointer; transition: all .2s; margin-bottom: 12px; }
 .bs-radio-card.sel { border-color: var(--bs-navy); background: rgba(20,54,112,.03); }
 .bs-radio-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--bs-border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }

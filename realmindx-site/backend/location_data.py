@@ -47,6 +47,8 @@ def canonical_delivery_locations(value):
         .filter(
             DeliveryZone.id.in_(requested_ids),
             DeliveryZone.is_active.is_(True),
+            DeliveryZone.is_delivery_area.is_(True),
+            DeliveryZone.is_search_alias_only.is_(False),
         )
         .all()
     )

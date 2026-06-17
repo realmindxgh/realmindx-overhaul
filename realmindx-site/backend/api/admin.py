@@ -36,6 +36,7 @@ from ..email_service import (
     send_email,
 )
 from ..extensions import db
+from ..delivery_locations import format_location_aliases
 from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
 from ..models import (
@@ -2153,26 +2154,70 @@ def delete_category(category_id):
 
 @admin_bp.get("/delivery-zones")
 @login_required
-@permission_required("priceAdjustment.view")
+@permission_required("deliveryZones.view")
 def delivery_zones():
     rows = DeliveryZone.query.order_by(DeliveryZone.sort_order.asc(), DeliveryZone.name.asc()).all()
     return jsonify(items=[delivery_zone_json(row) for row in rows])
 
 
+def _delivery_zone_payload(zone, payload):
+    name = (payload.get("name") or (zone.name if zone else "")).strip()
+    if not name:
+        raise ValueError("Delivery zone name is required.")
+    duplicate = DeliveryZone.query.filter(func.lower(DeliveryZone.name) == name.lower())
+    if zone:
+        duplicate = duplicate.filter(DeliveryZone.id != zone.id)
+    if duplicate.first():
+        raise ValueError("A delivery zone with this name already exists.")
+    raw_aliases = payload.get("aliases", payload.get("aliases_text", None))
+
+    def text_value(field):
+        if field in payload:
+            return (str(payload.get(field) or "").strip() or None)
+        return getattr(zone, field, None) if zone else None
+
+    def numeric_value(field, default=0):
+        if field in payload:
+            return _decimalish(payload.get(field), default)
+        return float(getattr(zone, field, default) or default) if zone else default
+
+    def integer_value(field, default=0):
+        if field in payload:
+            return int(payload.get(field) or default)
+        return int(getattr(zone, field, default) or default) if zone else default
+
+    def bool_value(field, default):
+        if field in payload:
+            return _boolish(payload.get(field))
+        return bool(getattr(zone, field, default)) if zone else default
+
+    values = {
+        "name": name,
+        "fee": numeric_value("fee"),
+        "description": text_value("description"),
+        "aliases": format_location_aliases(raw_aliases, name) if raw_aliases is not None else (zone.aliases if zone else None),
+        "region": text_value("region"),
+        "district_or_municipality": text_value("district_or_municipality"),
+        "nearby_major_town": text_value("nearby_major_town"),
+        "delivery_zone_label": text_value("delivery_zone_label"),
+        "sort_order": integer_value("sort_order"),
+        "is_active": bool_value("is_active", True),
+        "is_delivery_area": bool_value("is_delivery_area", True),
+        "is_search_alias_only": bool_value("is_search_alias_only", False),
+    }
+    return values
+
+
 @admin_bp.post("/delivery-zones")
 @login_required
-@permission_required("priceAdjustment.edit")
+@permission_required("deliveryZones.create")
 def create_delivery_zone():
     payload = request.get_json(silent=True) or {}
-    zone = DeliveryZone(
-        name=(payload.get("name") or "").strip(),
-        fee=payload.get("fee") or 0,
-        description=payload.get("description"),
-        sort_order=payload.get("sort_order") or 0,
-        is_active=bool(payload.get("is_active", True)),
-    )
-    if not zone.name:
-        return jsonify(error="Delivery zone name is required."), 400
+    try:
+        values = _delivery_zone_payload(None, payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    zone = DeliveryZone(**values)
     db.session.add(zone)
     db.session.flush()
     log_action("create_delivery_zone", "delivery_zone", zone.id)
@@ -2182,13 +2227,16 @@ def create_delivery_zone():
 
 @admin_bp.put("/delivery-zones/<int:zone_id>")
 @login_required
-@permission_required("priceAdjustment.edit")
+@permission_required("deliveryZones.edit")
 def update_delivery_zone(zone_id):
     zone = db.get_or_404(DeliveryZone, zone_id)
     payload = request.get_json(silent=True) or {}
-    for field in ["name", "fee", "description", "sort_order", "is_active"]:
-        if field in payload:
-            setattr(zone, field, payload[field])
+    try:
+        values = _delivery_zone_payload(zone, payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    for field, value in values.items():
+        setattr(zone, field, value)
     log_action("update_delivery_zone", "delivery_zone", zone.id)
     db.session.commit()
     return jsonify(delivery_zone=delivery_zone_json(zone))
@@ -2196,7 +2244,7 @@ def update_delivery_zone(zone_id):
 
 @admin_bp.delete("/delivery-zones/<int:zone_id>")
 @login_required
-@permission_required("priceAdjustment.edit")
+@permission_required("deliveryZones.delete")
 def delete_delivery_zone(zone_id):
     zone = db.get_or_404(DeliveryZone, zone_id)
     log_action("delete_delivery_zone", "delivery_zone", zone.id, {"name": zone.name})

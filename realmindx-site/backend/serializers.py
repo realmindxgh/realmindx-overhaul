@@ -1,6 +1,7 @@
 from .extensions import db
 from .models import UploadedFile
 from .order_status import normalize_order_status
+from .delivery_locations import delivery_zone_aliases
 
 
 def user_json(user):
@@ -172,6 +173,10 @@ def order_json(order):
         "payment_provider": order.payment_provider,
         "payment_authorization_url": order.payment_authorization_url,
         "subtotal_amount": float(order.subtotal_amount) if order.subtotal_amount is not None else None,
+        "bulk_discount_amount": float(order.bulk_discount_amount or 0),
+        "promo_code": order.promo_code,
+        "promo_applies_to": order.promo_applies_to,
+        "promo_discount_amount": float(order.promo_discount_amount or 0),
         "total_amount": float(order.total_amount) if order.total_amount else None,
         "items": [
             {
@@ -191,6 +196,14 @@ def delivery_zone_json(zone):
         "name": zone.name,
         "fee": float(zone.fee or 0),
         "description": zone.description,
+        "aliases": delivery_zone_aliases(zone),
+        "aliases_text": getattr(zone, "aliases", None) or "",
+        "region": getattr(zone, "region", None),
+        "district_or_municipality": getattr(zone, "district_or_municipality", None),
+        "nearby_major_town": getattr(zone, "nearby_major_town", None),
+        "delivery_zone_label": getattr(zone, "delivery_zone_label", None),
+        "is_delivery_area": getattr(zone, "is_delivery_area", True),
+        "is_search_alias_only": getattr(zone, "is_search_alias_only", False),
         "is_active": zone.is_active,
         "sort_order": zone.sort_order,
     }

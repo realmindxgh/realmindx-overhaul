@@ -42,7 +42,11 @@ const readSavedWishlist = () => {
   if (typeof window === 'undefined') return [];
   try {
     const parsed = JSON.parse(window.localStorage.getItem(WISHLIST_STORAGE_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.filter(id => id !== undefined && id !== null) : [];
+    return Array.isArray(parsed)
+      ? parsed
+        .map(id => String(id).trim())
+        .filter(Boolean)
+      : [];
   } catch {
     return [];
   }
@@ -52,7 +56,7 @@ const WishlistProvider = ({ children }) => {
   const { books, loading: catalogLoading } = useCatalog();
   const [items, setItems] = React.useState(readSavedWishlist);
   const itemsRef = React.useRef(items);
-  const validIds = React.useMemo(() => new Set(books.map(book => book.id)), [books]);
+  const validIds = React.useMemo(() => new Set(books.map(book => String(book.id))), [books]);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -63,28 +67,31 @@ const WishlistProvider = ({ children }) => {
   React.useEffect(() => {
     if (catalogLoading || books.length === 0) return;
     setItems(prev => {
-      const next = prev.filter(id => validIds.has(id));
+      const next = prev.filter(id => validIds.has(String(id)));
       return next.length === prev.length ? prev : next;
     });
   }, [books.length, catalogLoading, validIds]);
 
   const toggle = (bookId) => {
-    const hadItem = itemsRef.current.includes(bookId);
-    setItems(prev => (hadItem ? prev.filter(id => id !== bookId) : [...prev, bookId]));
-    trackWishlistAction(hadItem ? 'remove' : 'add', { productId: bookId });
+    const id = String(bookId);
+    const hadItem = itemsRef.current.map(item => String(item)).includes(id);
+    setItems(prev => (hadItem ? prev.filter(item => String(item) !== id) : [...prev, id]));
+    trackWishlistAction(hadItem ? 'remove' : 'add', { productId: id });
   };
   const add = (bookId) => {
-    if (itemsRef.current.includes(bookId)) return;
-    setItems(prev => [...prev, bookId]);
-    trackWishlistAction('add', { productId: bookId });
+    const id = String(bookId);
+    if (itemsRef.current.map(item => String(item)).includes(id)) return;
+    setItems(prev => [...prev, id]);
+    trackWishlistAction('add', { productId: id });
   };
   const remove = (bookId) => {
-    if (!itemsRef.current.includes(bookId)) return;
-    setItems(prev => prev.filter(id => id !== bookId));
-    trackWishlistAction('remove', { productId: bookId });
+    const id = String(bookId);
+    if (!itemsRef.current.map(item => String(item)).includes(id)) return;
+    setItems(prev => prev.filter(item => String(item) !== id));
+    trackWishlistAction('remove', { productId: id });
   };
-  const has    = (bookId) => items.includes(bookId);
-  const count  = catalogLoading ? items.length : items.filter(id => validIds.has(id)).length;
+  const has    = (bookId) => items.map(item => String(item)).includes(String(bookId));
+  const count  = catalogLoading ? items.length : items.filter(id => validIds.has(String(id))).length;
 
   return (
     <WishlistCtx.Provider value={{ items, count, toggle, add, remove, has }}>
@@ -106,11 +113,11 @@ const readSavedCart = () => {
     return Array.isArray(parsed)
       ? parsed
         .map(item => ({
-          id: item.id,
+          id: String(item.id),
           qty: Math.max(1, Number(item.qty || 1)),
           selected: item.selected !== false,
         }))
-        .filter(item => item.id !== undefined && item.id !== null)
+        .filter(item => item.id !== 'undefined' && item.id !== 'null' && item.id !== '')
       : [];
   } catch {
     return [];
@@ -146,56 +153,63 @@ const CartProviderInner = ({ children, navigate }) => {
 
   React.useEffect(() => {
     if (catalogLoading || books.length === 0) return;
-    const validIds = new Set(books.map(book => book.id));
+    const validIds = new Set(books.map(book => String(book.id)));
     setItems(prev => {
-      const next = prev.filter(item => validIds.has(item.id));
+      const next = prev.filter(item => validIds.has(String(item.id)));
       return next.length === prev.length ? prev : next;
     });
   }, [books, catalogLoading]);
 
   const add = (bookId, qty = 1) => {
     const safeQty = Math.max(1, Number(qty) || 1);
+    const id = String(bookId);
     setItems(prev => {
-      const ex = prev.find(i => i.id === bookId);
-      if (ex) return prev.map(i => i.id === bookId ? { ...i, qty: i.qty + safeQty, selected: true } : i);
-      return [...prev, { id: bookId, qty: safeQty, selected: true }];
+      const ex = prev.find(i => String(i.id) === id);
+      if (ex) return prev.map(i => String(i.id) === id ? { ...i, qty: i.qty + safeQty, selected: true } : i);
+      return [...prev, { id, qty: safeQty, selected: true }];
     });
-    const b = books.find(x => x.id === bookId);
+    const b = books.find(x => String(x.id) === id);
     globalToast.success(`Added "${b ? b.title : 'item'}" to cart`);
-    trackCartAction('add', { productId: bookId, quantity: safeQty });
+    trackCartAction('add', { productId: id, quantity: safeQty });
   };
   const buyNow = (bookId, qty = 1) => {
     const safeQty = Math.max(1, Number(qty) || 1);
+    const id = String(bookId);
     setItems(prev => {
-      const exists = prev.some(item => item.id === bookId);
+      const exists = prev.some(item => String(item.id) === id);
       const next = prev.map(item => (
-        item.id === bookId
+        String(item.id) === id
           ? { ...item, qty: safeQty, selected: true }
           : { ...item, selected: false }
       ));
-      return exists ? next : [...next, { id: bookId, qty: safeQty, selected: true }];
+      return exists ? next : [...next, { id, qty: safeQty, selected: true }];
     });
-    trackCartAction('add', { productId: bookId, quantity: safeQty });
+    trackCartAction('add', { productId: id, quantity: safeQty });
     navigate?.('checkout');
   };
   const setQty = (bookId, qty) => {
     const nextQty = Math.max(1, Number(qty) || 1);
-    const current = itemsRef.current.find(item => item.id === bookId);
+    const id = String(bookId);
+    const current = itemsRef.current.find(item => String(item.id) === id);
     if (current) {
       const delta = nextQty - current.qty;
-      if (delta > 0) trackCartAction('add', { productId: bookId, quantity: delta });
-      if (delta < 0) trackCartAction('remove', { productId: bookId, quantity: Math.abs(delta) });
+      if (delta > 0) trackCartAction('add', { productId: id, quantity: delta });
+      if (delta < 0) trackCartAction('remove', { productId: id, quantity: Math.abs(delta) });
     }
-    setItems(prev => prev.map(i => i.id === bookId ? { ...i, qty: nextQty } : i));
+    setItems(prev => prev.map(i => String(i.id) === id ? { ...i, qty: nextQty } : i));
   };
   const remove = (bookId) => {
-    const current = itemsRef.current.find(item => item.id === bookId);
-    if (current) trackCartAction('remove', { productId: bookId, quantity: current.qty });
-    setItems(prev => prev.filter(i => i.id !== bookId));
+    const id = String(bookId);
+    const current = itemsRef.current.find(item => String(item.id) === id);
+    if (current) trackCartAction('remove', { productId: id, quantity: current.qty });
+    setItems(prev => prev.filter(i => String(i.id) !== id));
   };
-  const toggleSelected = (bookId) => setItems(prev => prev.map(item => (
-    item.id === bookId ? { ...item, selected: item.selected === false } : item
-  )));
+  const toggleSelected = (bookId) => {
+    const id = String(bookId);
+    setItems(prev => prev.map(item => (
+      String(item.id) === id ? { ...item, selected: item.selected === false } : item
+    )));
+  };
   const selectAll = () => setItems(prev => prev.map(item => ({ ...item, selected: true })));
   const deselectAll = () => setItems(prev => prev.map(item => ({ ...item, selected: false })));
   const clear  = () => setItems([]);
@@ -205,7 +219,7 @@ const CartProviderInner = ({ children, navigate }) => {
   // removed/unpublished in the admin console so totals stay correct.
   const rawCount = items.reduce((s, item) => s + item.qty, 0);
   const detailed = items
-    .map(i => { const b = books.find(x => x.id === i.id); return b ? { ...b, qty: i.qty, selected: i.selected !== false } : null; })
+    .map(i => { const b = books.find(x => String(x.id) === String(i.id)); return b ? { ...b, qty: i.qty, selected: i.selected !== false } : null; })
     .filter(Boolean);
   const selectedDetailed = detailed.filter(item => item.selected && item.stock);
   const count = catalogLoading ? rawCount : detailed.reduce((s, item) => s + item.qty, 0);

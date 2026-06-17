@@ -20,7 +20,9 @@ from ..email_service import (
     bookshop_order_summary_table,
     send_email,
 )
+from ..delivery_locations import delivery_zone_matches
 from ..location_data import GHANA_REGIONS
+from ..order_pricing import calculate_order_pricing, validate_promo_code_record
 from ..order_status import ORDER_STATUS_ALIASES, normalize_order_status
 from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
@@ -57,11 +59,21 @@ def find_delivery_zone(payload):
     zone_id = payload.get("delivery_zone_id")
     if zone_id:
         zone = db.session.get(DeliveryZone, zone_id)
-        if zone and zone.is_active:
+        if (
+            zone
+            and zone.is_active
+            and getattr(zone, "is_delivery_area", True)
+            and not getattr(zone, "is_search_alias_only", False)
+        ):
             return zone
     zone_name = (payload.get("delivery_zone") or payload.get("delivery_zone_name") or payload.get("location") or "").strip()
     if zone_name:
-        return DeliveryZone.query.filter(DeliveryZone.name.ilike(zone_name), DeliveryZone.is_active.is_(True)).first()
+        zones = DeliveryZone.query.filter(
+            DeliveryZone.is_active.is_(True),
+            DeliveryZone.is_delivery_area.is_(True),
+            DeliveryZone.is_search_alias_only.is_(False),
+        ).all()
+        return next((zone for zone in zones if delivery_zone_matches(zone, zone_name)), None)
     return None
 
 
@@ -281,7 +293,16 @@ def create_order_review():
 
 @bookshop_bp.get("/delivery-zones")
 def list_delivery_zones():
-    zones = DeliveryZone.query.filter_by(is_active=True).order_by(DeliveryZone.sort_order.asc(), DeliveryZone.name.asc()).all()
+    zones = (
+        DeliveryZone.query
+        .filter(
+            DeliveryZone.is_active.is_(True),
+            DeliveryZone.is_delivery_area.is_(True),
+            DeliveryZone.is_search_alias_only.is_(False),
+        )
+        .order_by(DeliveryZone.sort_order.asc(), DeliveryZone.name.asc())
+        .all()
+    )
     return jsonify(items=[delivery_zone_json(zone) for zone in zones])
 
 
@@ -401,6 +422,33 @@ def create_order():
     if delivery_method == "delivery" and custom_delivery_area and delivery_region not in GHANA_REGIONS:
         return jsonify(error="Select a valid Ghana region for the custom delivery area."), 400
 
+    order_items = []
+    for item in items:
+        product = db.session.get(Product, item.get("product_id")) if item.get("product_id") else None
+        quantity = max(int(item.get("quantity") or 1), 1)
+        name = product.name if product else (item.get("product_name") or "Requested item")
+        unit_price = Decimal(str(product.price if product else item.get("unit_price") or 0))
+        order_items.append({
+            "product_id": product.id if product else None,
+            "name": name,
+            "unit_price": unit_price,
+            "quantity": quantity,
+            "bulk_discount_percent": Decimal(str(product.category.bulk_discount_percent or 0)) if product and product.category else Decimal("0"),
+            "bulk_min_qty": int(product.category.bulk_min_qty or 10) if product and product.category else 10,
+        })
+
+    pricing_preview = calculate_order_pricing(order_items, delivery_fee=delivery_fee, promo=None)
+    promo_code_value = (payload.get("promo_code") or "").strip().upper() or None
+    promo_row = None
+    if promo_code_value:
+        promo_row, error, status = validate_promo_code_record(
+            promo_code_value,
+            pricing_preview["goods_total_amount"] + pricing_preview["delivery_fee_amount"],
+        )
+        if error:
+            return jsonify(error=error), status
+    pricing = calculate_order_pricing(order_items, delivery_fee=delivery_fee, promo=promo_row)
+
     order = Order(
         order_reference=new_order_reference(),
         user_id=current_user.id if current_user.is_authenticated else None,
@@ -418,32 +466,34 @@ def create_order():
         payment_status="unpaid" if payment_method == "cash_on_delivery" else "pending",
         payment_method=payment_method,
         payment_provider="cash_on_delivery" if payment_method == "cash_on_delivery" else None,
+        bulk_discount_amount=pricing["bulk_discount_amount"],
+        promo_code=pricing["promo_code"],
+        promo_applies_to=pricing["promo_applies_to"],
+        promo_discount_amount=pricing["promo_discount_amount"],
         analytics_session_key=(request.cookies.get("rmx_analytics_session") or "").strip() or None,
         analytics_visitor_key=(request.cookies.get("rmx_analytics_visitor") or "").strip() or None,
     )
     if not order.customer_name or not order.phone:
         return jsonify(error="Customer name and phone are required."), 400
 
-    total = Decimal("0")
     db.session.add(order)
     db.session.flush()
-    for item in items:
-        product = db.session.get(Product, item.get("product_id")) if item.get("product_id") else None
-        quantity = max(int(item.get("quantity") or 1), 1)
-        name = product.name if product else (item.get("product_name") or "Requested item")
-        unit_price = Decimal(str(product.price if product else item.get("unit_price") or 0))
-        total += unit_price * quantity
-        db.session.add(OrderItem(order_id=order.id, product_id=product.id if product else None, product_name=name, unit_price=unit_price, quantity=quantity))
-    order.subtotal_amount = total
-    order.total_amount = total + delivery_fee
+    for item in order_items:
+        db.session.add(OrderItem(order_id=order.id, product_id=item["product_id"], product_name=item["name"], unit_price=item["unit_price"], quantity=item["quantity"]))
+    order.subtotal_amount = pricing["subtotal_amount"]
+    order.total_amount = pricing["total_amount"]
     audit("order_placed", "order", order.id, {
         "order_reference": order.order_reference,
         "customer_email": email,
-        "total": float(total + delivery_fee),
+        "total": float(pricing["total_amount"]),
+        "subtotal": float(pricing["subtotal_amount"]),
+        "bulk_discount": float(pricing["bulk_discount_amount"]),
+        "promo_code": order.promo_code,
+        "promo_discount": float(pricing["promo_discount_amount"]),
         "delivery_method": order.delivery_method,
         "payment_method": order.payment_method,
         "delivery_region": order.delivery_region,
-        "items": len(items),
+        "items": len(order_items),
     })
     db.session.commit()
 

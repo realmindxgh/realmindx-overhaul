@@ -5,6 +5,7 @@ import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
 import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
 import { CatalogProvider, useCatalog } from './catalog.jsx';
+import { api, isApiMode } from '../src/lib/apiClient.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 import { trackPageView } from '../src/lib/analytics.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from '../src/lib/head.js';
@@ -23,6 +24,61 @@ const prefixedPath = (path) => `${PREFIX}${path}`;
 const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'track', 'login', 'signup', 'account', 'orders', 'review']);
 const canonicalUrlForRoute = (route, params = {}) => `${canonicalBookshopBase}${bookshopPathForRoute(route, params)}`;
 const browseParam = (taxonomy, value = '') => ({ taxonomy, value });
+const BOOKSHOP_SHIPPING_DETAILS = {
+  '@type': 'OfferShippingDetails',
+  shippingDestination: {
+    '@type': 'DefinedRegion',
+    addressCountry: 'GH',
+  },
+  shippingRate: {
+    '@type': 'MonetaryAmount',
+    currency: 'GHS',
+    maxValue: '200.00',
+  },
+  deliveryTime: {
+    '@type': 'ShippingDeliveryTime',
+    handlingTime: {
+      '@type': 'QuantitativeValue',
+      minValue: 0,
+      maxValue: 1,
+      unitCode: 'DAY',
+    },
+    transitTime: {
+      '@type': 'QuantitativeValue',
+      minValue: 1,
+      maxValue: 2,
+      unitCode: 'DAY',
+    },
+  },
+};
+const BOOKSHOP_RETURN_POLICY = {
+  '@type': 'MerchantReturnPolicy',
+  applicableCountry: 'GH',
+  returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+  merchantReturnDays: 7,
+  returnMethod: 'https://schema.org/ReturnByMail',
+  returnFees: 'https://schema.org/ReturnFeesCustomerResponsibility',
+};
+
+const productReviewStructuredData = (review) => {
+  const ratingValue = Number(review?.rating || 0);
+  if (ratingValue <= 0) return null;
+  return {
+    '@type': 'Review',
+    author: {
+      '@type': 'Person',
+      name: review.customer_name || 'Verified Buyer',
+    },
+    datePublished: review.created_at ? String(review.created_at).split('T')[0] : undefined,
+    reviewBody: [review.title, review.comment].filter(Boolean).join(' - ') || `${ratingValue}-star review from a verified buyer.`,
+    reviewRating: {
+      '@type': 'Rating',
+      ratingValue,
+      bestRating: 5,
+      worstRating: 1,
+    },
+  };
+};
 
 const queryBrowseParam = (search) => {
   const mappings = [
@@ -153,6 +209,11 @@ const App = () => {
       : params;
   const canonicalPath = bookshopPathForRoute(route, canonicalParams);
   const canonicalUrl = `${canonicalBookshopBase}${canonicalPath}`;
+  const [seoProductReviewState, setSeoProductReviewState] = React.useState({
+    productId: null,
+    loaded: false,
+    items: [],
+  });
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -180,6 +241,29 @@ const App = () => {
       productId: activeProduct?.id || null,
     });
   }, [activeProduct?.id, canonicalPath, params.q, route]);
+
+  React.useEffect(() => {
+    let alive = true;
+    const productId = String(activeProduct?.id || '');
+    if (route !== 'product' || !productId || !isApiMode() || !/^\d+$/.test(productId)) {
+      setSeoProductReviewState({ productId: null, loaded: true, items: [] });
+      return undefined;
+    }
+    setSeoProductReviewState({ productId, loaded: false, items: [] });
+    api.fetchProductReviews(productId)
+      .then((data) => {
+        if (!alive) return;
+        setSeoProductReviewState({
+          productId,
+          loaded: true,
+          items: Array.isArray(data.items) ? data.items.slice(0, 3) : [],
+        });
+      })
+      .catch(() => {
+        if (alive) setSeoProductReviewState({ productId, loaded: true, items: [] });
+      });
+    return () => { alive = false; };
+  }, [activeProduct?.id, route]);
 
   React.useEffect(() => {
     let alive = true;
@@ -216,31 +300,56 @@ const App = () => {
 
     if (route === 'product') {
       if (activeProduct) {
+        const reviewCount = Number(activeProduct.reviews || 0);
+        const ratingValue = Number(activeProduct.rating || 0);
+        const productId = String(activeProduct.id || '');
+        const needsReviewFetch = isApiMode() && /^\d+$/.test(productId);
+        const reviewsLoaded = !needsReviewFetch
+          || (seoProductReviewState.productId === productId && seoProductReviewState.loaded);
+        const approvedReviews = reviewsLoaded
+          ? seoProductReviewState.items.map(productReviewStructuredData).filter(Boolean)
+          : [];
         currentMeta = {
           title: `${activeProduct.title} | RealMindX Bookshop`,
           desc: activeProduct.short || activeProduct.desc || activeProduct.full || meta.product.desc,
         };
         image = activeProduct.image || BOOKSHOP_DEFAULT_IMAGE;
-        structuredData = {
-          '@context': 'https://schema.org',
-          '@type': 'Product',
-          name: activeProduct.title,
-          description: currentMeta.desc,
-          image: image ? [image] : undefined,
-          sku: String(activeProduct.id),
-          category: activeProduct.catName,
-          brand: {
-            '@type': 'Brand',
-            name: activeProduct.publisher || 'RealMindX Bookshop',
-          },
-          offers: {
-            '@type': 'Offer',
-            priceCurrency: 'GHS',
-            price: activeProduct.price,
-            availability: activeProduct.stock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-            url: canonicalUrl,
-          },
-        };
+        if (!reviewCount || reviewsLoaded) {
+          structuredData = {
+            '@context': 'https://schema.org',
+            '@type': 'Product',
+            name: activeProduct.title,
+            description: currentMeta.desc,
+            image: image ? [image] : undefined,
+            sku: String(activeProduct.id),
+            category: activeProduct.catName,
+            brand: {
+              '@type': 'Brand',
+              name: activeProduct.publisher || 'RealMindX Bookshop',
+            },
+            offers: {
+              '@type': 'Offer',
+              priceCurrency: 'GHS',
+              price: activeProduct.price,
+              availability: activeProduct.stock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+              url: canonicalUrl,
+              shippingDetails: BOOKSHOP_SHIPPING_DETAILS,
+              hasMerchantReturnPolicy: BOOKSHOP_RETURN_POLICY,
+            },
+          };
+          if (reviewCount > 0 && ratingValue > 0) {
+            structuredData.aggregateRating = {
+              '@type': 'AggregateRating',
+              ratingValue,
+              reviewCount,
+              bestRating: 5,
+              worstRating: 1,
+            };
+          }
+          if (approvedReviews.length) {
+            structuredData.review = approvedReviews;
+          }
+        }
       } else {
         currentMeta = {
           title: 'Product Not Found | RealMindX Bookshop',
@@ -289,7 +398,7 @@ const App = () => {
     setHeadMeta('twitter:image', image);
     setHeadLink('canonical', canonicalUrl);
     setStructuredData('bookshop-route-seo', structuredData);
-  }, [route, params.cat, params.id, params.q, params.slug, params.taxonomy, params.value, activeProduct, activeBrowse, activeBrowseCount, browseTaxonomy, browseValue, canonicalUrl, books, catalogLoading]);
+  }, [route, params.cat, params.id, params.q, params.slug, params.taxonomy, params.value, activeProduct, activeBrowse, activeBrowseCount, browseTaxonomy, browseValue, canonicalUrl, books, catalogLoading, seoProductReviewState]);
 
   React.useEffect(() => {
     document.body.classList.add('bs-has-bottomnav');

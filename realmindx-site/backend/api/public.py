@@ -22,6 +22,7 @@ from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
 from ..models import ContactMessage, Flyer, GalleryItem, News, NewsletterSubscriber, Product, ProductCategory, Resource, SiteSetting, UploadedFile
+from ..order_pricing import validate_promo_code_record
 from ..security import require_turnstile
 
 public_bp = Blueprint("public", __name__)
@@ -627,27 +628,12 @@ def initialize_donation_paystack():
 @limiter.limit("20/minute")
 def validate_promo_code():
     """Validate a promo code and return its discount details."""
-    from ..models import PromoCode
-    from datetime import date
     payload = request.get_json(silent=True) or {}
     code = (payload.get("code") or "").strip().upper()
     order_total = float(payload.get("order_total") or 0)
-    if not code:
-        return jsonify(valid=False, error="No code provided."), 400
-
-    row = PromoCode.query.filter_by(code=code, is_active=True).first()
-    if not row:
-        return jsonify(valid=False, error="This code is not valid or has expired."), 404
-
-    today = date.today()
-    if row.valid_from and today < row.valid_from:
-        return jsonify(valid=False, error="This code is not yet active."), 400
-    if row.valid_until and today > row.valid_until:
-        return jsonify(valid=False, error="This code has expired."), 400
-    if row.max_uses and row.uses_count >= row.max_uses:
-        return jsonify(valid=False, error="This code has reached its usage limit."), 400
-    if order_total < float(row.min_order_amount or 0):
-        return jsonify(valid=False, error=f"Minimum order of GH₵{float(row.min_order_amount):.2f} required for this code."), 400
+    row, error, status = validate_promo_code_record(code, order_total)
+    if error:
+        return jsonify(valid=False, error=error), status
 
     return jsonify(
         valid=True,
@@ -657,7 +643,6 @@ def validate_promo_code():
         applies_to=row.applies_to,
         description=row.description or "",
     )
-
 
 @public_bp.get("/flyers")
 def flyers():

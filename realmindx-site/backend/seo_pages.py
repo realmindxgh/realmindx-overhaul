@@ -14,10 +14,34 @@ from .api.public import (
     upload_public_url,
 )
 from .extensions import db
-from .models import News, Product, ProductCategory
+from .models import DeliveryZone, News, Product, ProductCategory, ProductReview
 
 
 BOOKSHOP_DEFAULT_IMAGE = f"{BOOKSHOP_SITE_BASE_URL}/og-image-bookshop.png"
+BOOKSHOP_SHIPPING_RATE_FALLBACK_MAX = 200.0
+BOOKSHOP_DELIVERY_TIME = {
+    "@type": "ShippingDeliveryTime",
+    "handlingTime": {
+        "@type": "QuantitativeValue",
+        "minValue": 0,
+        "maxValue": 1,
+        "unitCode": "DAY",
+    },
+    "transitTime": {
+        "@type": "QuantitativeValue",
+        "minValue": 1,
+        "maxValue": 2,
+        "unitCode": "DAY",
+    },
+}
+BOOKSHOP_RETURN_POLICY = {
+    "@type": "MerchantReturnPolicy",
+    "applicableCountry": "GH",
+    "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
+    "merchantReturnDays": 7,
+    "returnMethod": "https://schema.org/ReturnByMail",
+    "returnFees": "https://schema.org/ReturnFeesCustomerResponsibility",
+}
 
 
 def _replace_title(document, title):
@@ -142,6 +166,7 @@ def _render_document(
     image,
     markup,
     schema=None,
+    schema_id="route-seo",
     route_data=None,
     og_type=None,
     site_name=None,
@@ -163,9 +188,10 @@ def _render_document(
     document = _set_canonical(document, canonical)
     if schema:
         payload = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
+        safe_schema_id = escape(schema_id, quote=True)
         document = document.replace(
             "</head>",
-            f'    <script type="application/ld+json" data-seo-id="route-seo">{payload}</script>\n  </head>',
+            f'    <script type="application/ld+json" data-seo-id="{safe_schema_id}">{payload}</script>\n  </head>',
             1,
         )
     if route_data is not None:
@@ -322,6 +348,94 @@ def _find_taxonomy_label(taxonomy, slug):
     return next((value.strip() for value in rows if value and slugify(value) == slug), None)
 
 
+def _approved_product_reviews(product):
+    return (
+        ProductReview.query.filter(
+            ProductReview.product_id == product.id,
+            ProductReview.status.in_(["approved", "published"]),
+            ProductReview.rating >= 1,
+            ProductReview.rating <= 5,
+        )
+        .order_by(ProductReview.created_at.desc(), ProductReview.id.desc())
+    )
+
+
+def _bookshop_product_rating_summary(product):
+    ratings = [
+        int(row[0] or 0)
+        for row in db.session.query(ProductReview.rating)
+        .filter(
+            ProductReview.product_id == product.id,
+            ProductReview.status.in_(["approved", "published"]),
+            ProductReview.rating >= 1,
+            ProductReview.rating <= 5,
+        )
+        .all()
+    ]
+    if not ratings:
+        return 0, 0
+    return round(sum(ratings) / len(ratings), 1), len(ratings)
+
+
+def _bookshop_product_reviews(product, limit=3):
+    reviews = _approved_product_reviews(product).limit(limit).all()
+    payload = []
+    for review in reviews:
+        body = (review.title or review.comment or "").strip()
+        if review.title and review.comment:
+            body = f"{review.title} - {review.comment}".strip()
+        if not body:
+            body = f"{int(review.rating or 0)}-star review from a verified buyer."
+        item = {
+            "@type": "Review",
+            "author": {
+                "@type": "Person",
+                "name": review.customer_name or "Verified Buyer",
+            },
+            "reviewBody": body,
+            "reviewRating": {
+                "@type": "Rating",
+                "ratingValue": int(review.rating or 0),
+                "bestRating": 5,
+                "worstRating": 1,
+            },
+        }
+        if review.created_at:
+            item["datePublished"] = review.created_at.date().isoformat()
+        payload.append(item)
+    return payload
+
+
+def _bookshop_shipping_rate_max():
+    fees = [
+        float(row[0] or 0)
+        for row in db.session.query(DeliveryZone.fee)
+        .filter(
+            DeliveryZone.is_active.is_(True),
+            DeliveryZone.is_delivery_area.is_(True),
+            DeliveryZone.is_search_alias_only.is_(False),
+        )
+        .all()
+    ]
+    return max(fees or [BOOKSHOP_SHIPPING_RATE_FALLBACK_MAX])
+
+
+def _bookshop_shipping_details():
+    return {
+        "@type": "OfferShippingDetails",
+        "shippingDestination": {
+            "@type": "DefinedRegion",
+            "addressCountry": "GH",
+        },
+        "shippingRate": {
+            "@type": "MonetaryAmount",
+            "currency": "GHS",
+            "maxValue": f"{_bookshop_shipping_rate_max():.2f}",
+        },
+        "deliveryTime": BOOKSHOP_DELIVERY_TIME,
+    }
+
+
 def bookshop_public_page(path=""):
     document = _frontend_document()
     if document is None:
@@ -349,13 +463,20 @@ def bookshop_public_page(path=""):
         slug = clean_path.split("/", 1)[1]
         product = Product.query.filter_by(slug=slug, is_active=True).first()
         if not product and re.search(r"-\d+$", slug):
-            product = Product.query.filter_by(id=slug.rsplit("-", 1)[1], is_active=True).first()
+            try:
+                product_id = int(slug.rsplit("-", 1)[1])
+            except (TypeError, ValueError):
+                product_id = None
+            if product_id is not None:
+                product = Product.query.filter_by(id=product_id, is_active=True).first()
         if product:
             title = f"{product.name} | RealMindX Bookshop"
             description = product.short_description or product.full_description or "Educational books and learning materials available from RealMindX Bookshop."
             image = _absolute_url(upload_public_url(product.image_file), BOOKSHOP_SITE_BASE_URL) or BOOKSHOP_DEFAULT_IMAGE
             profile = {"title": title, "description": description, "intro": description}
             og_type = "product"
+            approved_reviews = _bookshop_product_reviews(product, limit=3)
+            rating_average, rating_count = _bookshop_product_rating_summary(product)
             schema = {
                 "@context": "https://schema.org",
                 "@type": "Product",
@@ -363,14 +484,31 @@ def bookshop_public_page(path=""):
                 "description": description,
                 "image": image,
                 "sku": str(product.id),
+                "category": product.category.name if product.category else "Educational books",
+                "brand": {
+                    "@type": "Brand",
+                    "name": product.publisher or "RealMindX Bookshop",
+                },
                 "offers": {
                     "@type": "Offer",
                     "priceCurrency": "GHS",
                     "price": str(product.price),
                     "availability": "https://schema.org/InStock" if product.stock_status == "in_stock" else "https://schema.org/OutOfStock",
                     "url": canonical,
+                    "shippingDetails": _bookshop_shipping_details(),
+                    "hasMerchantReturnPolicy": BOOKSHOP_RETURN_POLICY,
                 },
             }
+            if rating_count:
+                schema["aggregateRating"] = {
+                    "@type": "AggregateRating",
+                    "ratingValue": rating_average,
+                    "reviewCount": rating_count,
+                    "bestRating": 5,
+                    "worstRating": 1,
+                }
+            if approved_reviews:
+                schema["review"] = approved_reviews
         else:
             status = 404
             robots = "noindex, follow"
@@ -418,6 +556,7 @@ def bookshop_public_page(path=""):
         image=image,
         markup=_bookshop_markup(profile["title"].split("|", 1)[0].strip(), profile["intro"]),
         schema=schema,
+        schema_id="bookshop-route-seo",
         og_type=og_type,
         site_name="RealMindX Bookshop",
     )

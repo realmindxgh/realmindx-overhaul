@@ -22,6 +22,7 @@ const NAV = [
   { key: 'productReviews', label: 'Product Reviews', group: 'Bookshop', icon: 'award' },
   { key: 'categories', label: 'Categories', group: 'Bookshop', icon: 'package' },
   { key: 'flyers', label: 'Flyers', group: 'Bookshop', icon: 'image' },
+  { key: 'deliveryZones', label: 'Delivery Prices', group: 'Bookshop', icon: 'money' },
   { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
   { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
   { key: 'orderReviews', label: 'Order Reviews', group: 'Bookshop', icon: 'message' },
@@ -132,7 +133,7 @@ const expandPermissionsForSave = permissions => {
   addLegacy('jobs', 'manage_jobs');
   addLegacy('applications', 'view_applications');
   if (selected.has('applications.edit')) selected.add('manage_applications');
-  if ([...selected].some(key => ['products.', 'productReviews.', 'categories.', 'flyers.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_products');
+  if ([...selected].some(key => ['products.', 'productReviews.', 'categories.', 'flyers.', 'deliveryZones.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_products');
   if ([...selected].some(key => ['orders.', 'orderReviews.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_orders');
   if ([...selected].some(key => key.startsWith('news.'))) selected.add('manage_news');
   if ([...selected].some(key => key.startsWith('gallery.'))) selected.add('manage_gallery');
@@ -288,6 +289,28 @@ const CONFIG = {
     ],
     columns: ['name', 'slug', 'bulk_discount_percent', 'is_active'],
     columnLabels: { bulk_discount_percent: 'Bulk Discount %' },
+  },
+  deliveryZones: {
+    title: 'Delivery Prices',
+    description: 'Set checkout delivery areas, searchable aliases, and the delivery fee from Dome Pillar 2.',
+    collection: 'deliveryZones',
+    createLabel: 'Add Location',
+    fields: [
+      field('name', 'Display Location', 'text', { help: 'The clean location name customers see at checkout.' }),
+      field('aliases_text', 'Search Aliases', 'textarea', { help: 'Comma-separated or one per line. Examples: Sarpeiman, Kitasi, Kwadjo Ashong.' }),
+      field('fee', 'Delivery Fee (GHS)', 'number', { help: 'Use multiples of 5. Pickup at Dome Pillar 2 should remain 0 and not be a delivery area.' }),
+      field('region', 'Region'),
+      field('district_or_municipality', 'District / Municipality'),
+      field('nearby_major_town', 'Nearby Major Town'),
+      field('delivery_zone_label', 'Delivery Belt'),
+      field('description', 'Checkout / Admin Note', 'textarea'),
+      field('sort_order', 'Sort Order', 'number'),
+      field('is_active', 'Active', 'checkbox', { toggleLabel: 'Available in admin and checkout' }),
+      field('is_delivery_area', 'Show at checkout', 'checkbox', { toggleLabel: 'Show this location in checkout search' }),
+      field('is_search_alias_only', 'Alias Only', 'checkbox', { toggleLabel: 'Use only as a hidden search alias' }),
+    ],
+    columns: ['name', 'fee', 'region', 'nearby_major_town', 'delivery_zone_label', 'is_active'],
+    columnLabels: { nearby_major_town: 'Nearby Town', delivery_zone_label: 'Delivery Belt', is_active: 'Active' },
   },
   services: {
     title: 'Services',
@@ -675,6 +698,7 @@ const normalizeFormValue = (value, itemField) => {
 
 const valueForInput = (value, itemField) => {
   if (itemField.type === 'tags') return Array.isArray(value) ? value.join(', ') : value || '';
+  if (itemField.type === 'textarea') return Array.isArray(value) ? value.join('\n') : value || '';
   if (itemField.type === 'checkbox') return Boolean(value);
   if (itemField.type === 'image') return value ?? ''; // stores file ID
   if (itemField.type === 'category-select' || itemField.type === 'delivery-zone-select') return value ?? '';
@@ -1294,7 +1318,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
               </select>
             ) : itemField.type === 'checkbox' ? (
               <label className="permission-item" style={{ maxWidth: 240 }}>
-                <span className="perm-label">Visible publicly</span>
+                <span className="perm-label">{itemField.toggleLabel || itemField.label}</span>
                 <span className="toggle-switch">
                   <input
                     type="checkbox"

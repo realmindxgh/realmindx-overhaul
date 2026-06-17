@@ -108,8 +108,40 @@ def bookshop_order_summary_table(order):
         )
 
     subtotal = Decimal(str(getattr(order, "subtotal_amount", 0) or 0))
+    bulk_discount_amount = Decimal(str(getattr(order, "bulk_discount_amount", 0) or 0))
     delivery_fee = Decimal(str(getattr(order, "delivery_fee", 0) or 0))
-    total_amount = Decimal(str(getattr(order, "total_amount", 0) or (subtotal + delivery_fee)))
+    promo_discount_amount = Decimal(str(getattr(order, "promo_discount_amount", 0) or 0))
+    promo_code = (getattr(order, "promo_code", None) or "").strip().upper()
+    promo_applies_to = (getattr(order, "promo_applies_to", None) or "").strip().lower()
+    total_amount = Decimal(str(getattr(order, "total_amount", 0) or (subtotal + delivery_fee - bulk_discount_amount - promo_discount_amount)))
+
+    discount_rows = []
+    if bulk_discount_amount > 0:
+        discount_rows.append(
+            f"""
+            <tr style="background:#fbfcfe;">
+              <td colspan="3" style="padding:0 14px 12px;color:#1f7a37;font-weight:700;text-align:right;">Bulk purchase discount</td>
+              <td style="padding:0 14px 12px;color:#1f7a37;font-weight:700;text-align:right;">-GH&#8373;{float(bulk_discount_amount):,.2f}</td>
+            </tr>
+            """
+        )
+    if promo_discount_amount > 0:
+        promo_label = "Promo discount"
+        if promo_code:
+            if promo_applies_to == "delivery":
+                promo_label = f"Delivery discount ({escape(promo_code)})"
+            elif promo_applies_to == "all":
+                promo_label = f"Promo ({escape(promo_code)}) on order"
+            else:
+                promo_label = f"Promo ({escape(promo_code)}) on products"
+        discount_rows.append(
+            f"""
+            <tr style="background:#fbfcfe;">
+              <td colspan="3" style="padding:0 14px 12px;color:#1f7a37;font-weight:700;text-align:right;">{promo_label}</td>
+              <td style="padding:0 14px 12px;color:#1f7a37;font-weight:700;text-align:right;">-GH&#8373;{float(promo_discount_amount):,.2f}</td>
+            </tr>
+            """
+        )
 
     return f"""
     <div style="margin:18px 0 22px;border:1px solid #dce5f0;border-radius:12px;overflow:hidden;">
@@ -125,6 +157,7 @@ def bookshop_order_summary_table(order):
           <td colspan="3" style="padding:12px 14px;color:#53657d;font-weight:700;text-align:right;">Subtotal</td>
           <td style="padding:12px 14px;color:#1a2a40;font-weight:700;text-align:right;">GH&#8373;{float(subtotal):,.2f}</td>
         </tr>
+        {''.join(discount_rows)}
         <tr style="background:#fbfcfe;">
           <td colspan="3" style="padding:0 14px 12px;color:#53657d;font-weight:700;text-align:right;">Delivery fee</td>
           <td style="padding:0 14px 12px;color:#1a2a40;font-weight:700;text-align:right;">GH&#8373;{float(delivery_fee):,.2f}</td>

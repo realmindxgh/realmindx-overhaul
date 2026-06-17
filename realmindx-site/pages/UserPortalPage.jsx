@@ -8,7 +8,7 @@ import { queueToast } from '../../src/lib/toast.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { useCropUpload } from '../../src/lib/useCropUpload.jsx';
 import VerifiedContactField from '../../src/lib/VerifiedContactField.jsx';
-import { splitLocationIds, teachingLocationsFromZones } from '../../src/lib/ghanaLocations.js';
+import { normaliseLocationSearch, splitLocationIds, teachingLocationsFromZones } from '../../src/lib/ghanaLocations.js';
 import {
   TEACHING_CURRICULA,
   TEACHING_LEVELS,
@@ -725,7 +725,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     setForm(prev => ({ ...prev, preferred_location_ids: next.join(', ') }));
   };
   const filteredLocations = locationOptions.filter(location =>
-    location.name.toLowerCase().includes(locationFilter.trim().toLowerCase()),
+    (location.searchText || normaliseLocationSearch(location.name)).includes(normaliseLocationSearch(locationFilter)),
   );
   const customCurricula = selectedCurricula.filter(c => !KNOWN_CURRICULA.includes(c));
   const [newCurriculum, setNewCurriculum] = React.useState('');
@@ -1364,7 +1364,7 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
     setForm(prev => ({ ...prev, [field]: next.join(', ') }));
   };
   const filteredAlertLocations = locationOptions.filter(location =>
-    location.name.toLowerCase().includes(locationFilter.trim().toLowerCase()),
+    (location.searchText || normaliseLocationSearch(location.name)).includes(normaliseLocationSearch(locationFilter)),
   );
 
   return (

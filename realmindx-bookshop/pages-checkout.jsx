@@ -20,7 +20,7 @@ const AuthReturnActions = ({ navigate }) => !isLoggedIn() ? (
   </div>
 ) : null;
 import TurnstileField from '../src/lib/TurnstileField.jsx';
-import { GHANA_REGIONS } from '../src/lib/ghanaLocations.js';
+import { GHANA_REGIONS, deliveryLocationAliases, deliveryLocationSearchText, normaliseLocationSearch } from '../src/lib/ghanaLocations.js';
 
 const StepBar = ({ step }) => {
   const labels = ['Delivery','Payment','Confirm'];
@@ -39,7 +39,7 @@ const StepBar = ({ step }) => {
   );
 };
 
-const MiniSummary = ({ detailed, total, delivery, subtotal }) => (
+const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, promoProductDiscount = 0, promoDeliveryDiscount = 0, promoOrderDiscount = 0, promoCode = '' }) => (
   <div className="bs-mini-summary desktop">
     <h3 className="bs-h3" style={{ fontSize:16, marginBottom:14 }}>Order Summary</h3>
     {detailed.map((b,i) => (
@@ -54,7 +54,11 @@ const MiniSummary = ({ detailed, total, delivery, subtotal }) => (
     ))}
     <div className="bs-divider" style={{ margin:'14px 0' }} />
     <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(subtotal)}</span></div>
+    {bulkSaving > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Bulk discount</span><span>-{cedis(bulkSaving)}</span></div>}
+    {promoProductDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Promo {promoCode} on products</span><span>-{cedis(promoProductDiscount)}</span></div>}
     <div className="bs-summary-row"><span>Delivery</span><span>{cedis(delivery)}</span></div>
+    {promoDeliveryDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Delivery discount</span><span>-{cedis(promoDeliveryDiscount)}</span></div>}
+    {promoOrderDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Promo {promoCode} on order</span><span>-{cedis(promoOrderDiscount)}</span></div>}
     <div className="bs-summary-row bs-total" style={{ fontSize:18 }}><span>Total</span><span>{cedis(total)}</span></div>
   </div>
 );
@@ -94,6 +98,8 @@ const CheckoutPage = ({ navigate }) => {
   // Delivery zones — fetched from API in API mode, fallback to fixed fee
   const [deliveryZones, setDeliveryZones] = React.useState([]);
   const [selectedZoneId, setSelectedZoneId] = React.useState('');
+  const [zoneSearch, setZoneSearch] = React.useState('');
+  const [zonePickerOpen, setZonePickerOpen] = React.useState(false);
   const [loadingZones, setLoadingZones] = React.useState(false);
 
   React.useEffect(() => {
@@ -101,7 +107,12 @@ const CheckoutPage = ({ navigate }) => {
     setLoadingZones(true);
     api.fetchDeliveryZones()
       .then(data => setDeliveryZones(
-        (data.items || []).filter(zone => zone.is_active !== false && !/pickup/i.test(zone.name || '')),
+        (data.items || []).filter(zone =>
+          zone.is_active !== false
+          && zone.is_delivery_area !== false
+          && zone.is_search_alias_only !== true
+          && !/pickup/i.test(zone.name || ''),
+        ),
       ))
       .catch(() => {})
       .finally(() => setLoadingZones(false));
@@ -127,11 +138,41 @@ const CheckoutPage = ({ navigate }) => {
   }, [session?.role]);
 
   const selectedZone = deliveryZones.find(z => String(z.id) === selectedZoneId);
+  React.useEffect(() => {
+    if (selectedZone && zoneSearch !== selectedZone.name) setZoneSearch(selectedZone.name);
+  }, [selectedZone?.id]);
   const customDeliveryArea = selectedZoneId === 'other';
+  const zoneQuery = normaliseLocationSearch(zoneSearch);
+  const filteredDeliveryZones = (zoneQuery
+    ? deliveryZones.filter(zone => deliveryLocationSearchText(zone).includes(zoneQuery))
+    : deliveryZones
+  ).slice(0, 12);
+  const selectDeliveryZone = zone => {
+    setSelectedZoneId(String(zone.id));
+    setZoneSearch(zone.name);
+    setZonePickerOpen(false);
+    setErrors(prev => ({ ...prev, address: '' }));
+  };
+  const selectOtherDeliveryArea = () => {
+    setSelectedZoneId('other');
+    setZoneSearch('Other area');
+    setZonePickerOpen(false);
+  };
+  const commitTypedZone = () => {
+    const query = normaliseLocationSearch(zoneSearch);
+    if (!query) return;
+    const exact = deliveryZones.find(zone => {
+      const values = [zone.name, ...deliveryLocationAliases(zone)];
+      return values.some(value => normaliseLocationSearch(value) === query);
+    });
+    if (exact) selectDeliveryZone(exact);
+  };
   const deliveryFee = method !== 'delivery' ? 0
     : (isApiMode() && deliveryZones.length > 0)
       ? (selectedZone ? Number(selectedZone.fee) : 0)
       : 15;  // fallback for local mode
+  const subtotalAfterBulk = Math.max(0, subtotal - (bulkSaving || 0));
+  const orderBase = subtotalAfterBulk + deliveryFee;
 
   // Promo code
   const [promoInput, setPromoInput] = React.useState('');
@@ -144,7 +185,7 @@ const CheckoutPage = ({ navigate }) => {
     setCheckingPromo(true); setPromoError('');
     try {
       const result = isApiMode()
-        ? await api.validatePromoCode(promoInput.trim().toUpperCase(), subtotal)
+        ? await api.validatePromoCode(promoInput.trim().toUpperCase(), orderBase)
         : { valid: promoInput.toUpperCase() === 'STUDENT10', discount_type: 'percentage', discount_value: 10, applies_to: 'products', description: 'Student discount', code: 'STUDENT10' };
       if (result.valid) {
         setAppliedPromo(result);
@@ -159,15 +200,24 @@ const CheckoutPage = ({ navigate }) => {
   };
 
   // Compute discounts from applied promo
-  const promoProductDiscount = (!appliedPromo || appliedPromo.applies_to === 'delivery') ? 0
-    : appliedPromo.discount_type === 'percentage' ? subtotal * (appliedPromo.discount_value / 100)
-    : appliedPromo.discount_value;
-  const promoDeliveryDiscount = (!appliedPromo || appliedPromo.applies_to === 'products') ? 0
-    : appliedPromo.discount_type === 'percentage' ? deliveryFee * (appliedPromo.discount_value / 100)
-    : Math.min(appliedPromo.discount_value, deliveryFee);
-
-  const delivery = deliveryFee - promoDeliveryDiscount;
-  const total = subtotal - (bulkSaving || 0) - promoProductDiscount + Math.max(0, delivery);
+  const promoScope = (appliedPromo?.applies_to || '').toLowerCase();
+  const promoBaseAmount = !appliedPromo
+    ? 0
+    : promoScope === 'delivery'
+      ? deliveryFee
+      : promoScope === 'all'
+        ? orderBase
+        : subtotalAfterBulk;
+  const promoDiscount = !appliedPromo
+    ? 0
+    : appliedPromo.discount_type === 'percentage'
+      ? promoBaseAmount * (appliedPromo.discount_value / 100)
+      : Math.min(appliedPromo.discount_value, promoBaseAmount);
+  const promoProductDiscount = promoScope === 'products' ? promoDiscount : 0;
+  const promoDeliveryDiscount = promoScope === 'delivery' ? promoDiscount : 0;
+  const promoOrderDiscount = promoScope === 'all' ? promoDiscount : 0;
+  const delivery = Math.max(0, deliveryFee - promoDeliveryDiscount);
+  const total = Math.max(0, orderBase - promoDiscount);
 
   React.useEffect(() => { window.scrollTo(0,0); }, [step]);
 
@@ -342,16 +392,56 @@ const CheckoutPage = ({ navigate }) => {
                 {isApiMode() && deliveryZones.length > 0 && (
                   <div className="bs-field" style={{ marginTop:18 }}>
                     <label>Delivery Area *</label>
-                    <select ref={zoneRef} aria-invalid={Boolean(errors.address && !selectedZoneId)} className="bs-field" style={{ height:48, borderRadius:'var(--bs-radius-sm)', border:'1.5px solid var(--bs-border)', padding:'0 15px', fontSize:15, color:'var(--bs-text)', background:'#fff' }}
-                      value={selectedZoneId} onChange={e => setSelectedZoneId(e.target.value)}>
-                      <option value="">Select your area</option>
-                      {deliveryZones.map(z => (
-                        <option key={z.id} value={String(z.id)}>
-                          {z.name}
-                        </option>
-                      ))}
-                      <option value="other">Other area</option>
-                    </select>
+                    <div className="bs-zone-picker">
+                      <input
+                        ref={zoneRef}
+                        aria-invalid={Boolean(errors.address && !selectedZoneId)}
+                        aria-expanded={zonePickerOpen}
+                        aria-controls="delivery-zone-results"
+                        className="bs-zone-input"
+                        type="search"
+                        value={zoneSearch}
+                        placeholder={loadingZones ? 'Loading delivery areas...' : 'Search your town or area'}
+                        onFocus={() => setZonePickerOpen(true)}
+                        onChange={event => {
+                          setZoneSearch(event.target.value);
+                          setZonePickerOpen(true);
+                          if (selectedZoneId && selectedZone?.name !== event.target.value) setSelectedZoneId('');
+                        }}
+                        onBlur={() => {
+                          commitTypedZone();
+                          window.setTimeout(() => setZonePickerOpen(false), 120);
+                        }}
+                      />
+                      {zonePickerOpen && (
+                        <div className="bs-zone-results" id="delivery-zone-results" role="listbox">
+                          {filteredDeliveryZones.map(zone => (
+                            <button
+                              key={zone.id}
+                              type="button"
+                              role="option"
+                              className="bs-zone-result"
+                              onMouseDown={event => event.preventDefault()}
+                              onClick={() => selectDeliveryZone(zone)}
+                            >
+                              <strong>{zone.name}</strong>
+                              <span>{[zone.nearby_major_town, zone.region].filter(Boolean).join(' · ') || zone.delivery_zone_label || 'Delivery area'}</span>
+                            </button>
+                          ))}
+                          {filteredDeliveryZones.length === 0 && (
+                            <div className="bs-zone-empty">No exact match yet. Choose “Other area” and we will confirm the delivery fee.</div>
+                          )}
+                          <button
+                            type="button"
+                            className="bs-zone-other"
+                            onMouseDown={event => event.preventDefault()}
+                            onClick={selectOtherDeliveryArea}
+                          >
+                            My area is not listed
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     {selectedZone?.description && (
                       <p style={{ fontSize:12, color:'var(--bs-muted)', marginTop:4 }}>{selectedZone.description}</p>
                     )}
@@ -432,9 +522,10 @@ const CheckoutPage = ({ navigate }) => {
                 {promoProductDiscount > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Promo ({appliedPromo.code}) on products</span><span>-{cedis(promoProductDiscount)}</span></div>}
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:15 }}>
                   <span>Delivery {selectedZone ? `(${selectedZone.name})` : ''}</span>
-                  <span>{method === 'pickup' ? 'Free' : cedis(deliveryFee)}</span>
+                  <span>{method === 'pickup' ? 'Free' : cedis(delivery)}</span>
                 </div>
                 {promoDeliveryDiscount > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Delivery discount ({appliedPromo.code})</span><span>-{cedis(promoDeliveryDiscount)}</span></div>}
+                {promoOrderDiscount > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Promo ({appliedPromo.code}) on order</span><span>-{cedis(promoOrderDiscount)}</span></div>}
               </div>
 
               <div className="bs-summary-row bs-total" style={{ fontSize:22, borderTop:'1px solid var(--bs-border)', paddingTop:14, marginTop:0 }}><span>Total</span><span>{cedis(total)}</span></div>
@@ -455,7 +546,17 @@ const CheckoutPage = ({ navigate }) => {
           )}
         </div>
 
-        <MiniSummary detailed={detailed} total={total} delivery={delivery} subtotal={subtotal} />
+        <MiniSummary
+          detailed={detailed}
+          total={total}
+          delivery={delivery}
+          subtotal={subtotal}
+          bulkSaving={bulkSaving}
+          promoProductDiscount={promoProductDiscount}
+          promoDeliveryDiscount={promoDeliveryDiscount}
+          promoOrderDiscount={promoOrderDiscount}
+          promoCode={appliedPromo?.code || ''}
+        />
       </div>
     </div>
   );
