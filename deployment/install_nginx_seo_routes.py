@@ -87,6 +87,19 @@ def server_blocks(text):
                     break
 
 
+def insertion_anchor(block):
+    comment_anchor = re.search(
+        r"(?m)^\s*# .*(?:Flask API|API).*\n(?=\s*location\s+/api/\s*\{)",
+        block,
+    )
+    if comment_anchor:
+        return comment_anchor
+    anchor = re.search(r"(?m)^\s*location\s+/api/\s*\{", block)
+    if anchor:
+        return anchor
+    return re.search(r"(?m)^\s*root\s+", block)
+
+
 def install_route(text):
     marker_pattern = re.compile(
         rf"\n[ \t]*# BEGIN REALMINDX MANAGED SEO ROUTES\n"
@@ -100,11 +113,9 @@ def install_route(text):
             continue
         if not re.search(r"(?m)^\s*listen\s+443\b", block):
             continue
-        anchor = re.search(r"(?m)^\s*location\s+/api/\s*\{", block)
+        anchor = insertion_anchor(block)
         if not anchor:
-            anchor = re.search(r"(?m)^\s*root\s+", block)
-        if not anchor:
-            raise RuntimeError("Could not find an insertion point in the main HTTPS server block.")
+            continue
         insert_at = start + anchor.start()
         return text[:insert_at] + ROUTE_BLOCK + "\n" + text[insert_at:]
     raise RuntimeError("Could not find the main realmindxgh.com HTTPS server block.")
@@ -123,11 +134,9 @@ def install_bookshop_route(text):
             continue
         if not re.search(r"(?m)^\s*listen\s+443\b", block):
             continue
-        anchor = re.search(r"(?m)^\s*location\s+/api/\s*\{", block)
+        anchor = insertion_anchor(block)
         if not anchor:
-            anchor = re.search(r"(?m)^\s*root\s+", block)
-        if not anchor:
-            raise RuntimeError("Could not find an insertion point in the bookshop HTTPS server block.")
+            continue
         insert_at = start + anchor.start()
         return text[:insert_at] + BOOKSHOP_ROUTE_BLOCK + "\n" + text[insert_at:]
     raise RuntimeError("Could not find the bookshop.realmindxgh.com HTTPS server block.")
