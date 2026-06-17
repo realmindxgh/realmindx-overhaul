@@ -1,8 +1,8 @@
 import React from 'react';
-import { Icon, cedis } from './shared.jsx';
+import { Icon, LoadingState, cedis } from './shared.jsx';
 import { useCart } from './chrome.jsx';
 import { submitMessage } from '../src/lib/managedContent.js';
-import { useSiteCopy, usePublicSettings } from '../src/lib/siteContent.js';
+import { usePublicSettings, useSiteCopyState } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { resendVerificationOtp, signIn, signOut, signUp, syncSessionFromApi, verifyEmailOtp } from '../src/lib/authClient.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
@@ -382,57 +382,78 @@ const ContactPage = ({ navigate }) => {
   );
 };
 
-const InfoPage = ({ navigate }) => (
-  <div className="bs-fade-page">
-    <div className="bs-info-hero">
-      <div className="bs-container">
-        <span className="bs-eyebrow">About</span>
-        <h1 className="bs-h1">About RealMindX Bookshop.</h1>
-      </div>
-    </div>
-    <div className="bs-container">
-      <div className="bs-info-layout">
-        <div>
-          <div className="bs-info-section">
-            <h2 className="bs-h3">Our Story</h2>
-            <p>RealMindX Bookshop is the retail arm of RealMindX Education Limited - Ghana's comprehensive educational services provider. We exist to put the right learning materials into the hands of every student, parent and teacher, at prices that make sense.</p>
-            <p>From curriculum titles to past questions, readers and stationery, every item we stock is chosen with one question in mind: does this help a Ghanaian learner thrive?</p>
-          </div>
-          <div className="bs-info-section">
-            <h2 className="bs-h3">What We Sell</h2>
-            <p>Textbooks for multiple curricula, BECE and WASSCE past questions, graded readers, exercise books, mathematical sets, art supplies and everyday stationery are available at both wholesale and retail prices.</p>
-          </div>
-          <div className="bs-info-section">
-            <h2 className="bs-h3">Delivery Information</h2>
-            <p>Orders are dispatched as quickly as stock and payment allow. Delivery fees are calculated at checkout based on your selected location, and free pickup is available at Dome Pillar 2, Accra.</p>
-          </div>
-          <div className="bs-info-section">
-            <h2 className="bs-h3">Return Policy</h2>
-            <p>Unused items in their original condition may be returned within 7 days for an exchange or store credit. Damaged or incorrect items are replaced free of charge - simply reach out on WhatsApp and we'll make it right.</p>
-          </div>
-          <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('shop')}>Start Shopping <Icon name="arrow" size={16} /></button>
-        </div>
+const BOOKSHOP_ABOUT_STORY_FALLBACK = "RealMindX Bookshop is the retail arm of RealMindX Education Limited - Ghana's comprehensive educational services provider. We exist to put the right learning materials into the hands of every student, parent and teacher, at prices that make sense.\n\nFrom curriculum titles to past questions, readers and stationery, every item we stock is chosen with one question in mind: does this help a Ghanaian learner thrive?";
+const BOOKSHOP_INVENTORY_FALLBACK = 'Textbooks for multiple curricula, BECE and WASSCE past questions, graded readers, exercise books, mathematical sets, art supplies and everyday stationery are available at both wholesale and retail prices.';
+const BOOKSHOP_DELIVERY_FALLBACK = 'Orders are dispatched as quickly as stock and payment allow. Delivery fees are calculated at checkout based on the selected location, and free pickup is available at our Dome Pillar 2 shop.';
+const BOOKSHOP_RETURNS_FALLBACK = "Unused items in their original condition may be returned within 7 days for an exchange or store credit. Damaged or incorrect items are replaced free of charge - simply reach out on WhatsApp and we'll make it right.";
 
-        <aside className="bs-info-sidebar">
-          <h4>Quick Contact</h4>
-          <div className="bs-contact-row"><Icon name="pin" size={18} className="bs-ci" /><div><div className="bs-cr-label">Address</div><div className="bs-cr-val">Dome Pillar 2, Accra</div></div></div>
-          <div className="bs-contact-row"><Icon name="phone" size={18} className="bs-ci" /><div><div className="bs-cr-label">Phone</div><div className="bs-cr-val">+233 55 803 9190</div></div></div>
-          <div className="bs-contact-row"><Icon name="mail" size={18} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">info@realmindxgh.com</div></div></div>
-          <h4 style={{ marginTop: 24 }}>Opening Hours</h4>
-          <div className="bs-table-scroll">
-            <table className="bs-hours-table" style={{ color: 'var(--bs-text)' }}>
-              <tbody>
-                <tr><td>Mon - Fri</td><td style={{ color: 'var(--bs-navy)' }}>8:00 - 18:00</td></tr>
-                <tr><td>Saturday</td><td style={{ color: 'var(--bs-navy)' }}>9:00 - 16:00</td></tr>
-                <tr><td>Sunday</td><td style={{ color: 'var(--bs-navy)' }}>Closed</td></tr>
-              </tbody>
-            </table>
+const CopyParagraphs = ({ value }) => String(value || '')
+  .split(/\n\s*\n/)
+  .filter(Boolean)
+  .map((paragraph, index) => <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>);
+
+const InfoPage = ({ navigate }) => {
+  const settings = usePublicSettings();
+  const { copy: siteCopy, loading: copyLoading } = useSiteCopyState({ waitForApi: true });
+
+  if (copyLoading) {
+    return (
+      <div className="bs-container bs-fade-page">
+        <LoadingState title="Loading bookshop information" body="Getting the latest delivery, return, and shop details." />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bs-fade-page">
+      <div className="bs-info-hero">
+        <div className="bs-container">
+          <span className="bs-eyebrow">About</span>
+          <h1 className="bs-h1">{siteCopy.bookshop_about_title || 'About RealMindX Bookshop.'}</h1>
+        </div>
+      </div>
+      <div className="bs-container">
+        <div className="bs-info-layout">
+          <div>
+            <div className="bs-info-section">
+              <h2 className="bs-h3">Our Story</h2>
+              <CopyParagraphs value={siteCopy.bookshop_about_story || BOOKSHOP_ABOUT_STORY_FALLBACK} />
+            </div>
+            <div className="bs-info-section">
+              <h2 className="bs-h3">What We Sell</h2>
+              <CopyParagraphs value={siteCopy.bookshop_about_inventory || BOOKSHOP_INVENTORY_FALLBACK} />
+            </div>
+            <div className="bs-info-section">
+              <h2 className="bs-h3">Delivery Information</h2>
+              <CopyParagraphs value={siteCopy.bookshop_pdp_delivery_info || BOOKSHOP_DELIVERY_FALLBACK} />
+            </div>
+            <div className="bs-info-section">
+              <h2 className="bs-h3">Return Policy</h2>
+              <CopyParagraphs value={siteCopy.bookshop_pdp_return_policy || BOOKSHOP_RETURNS_FALLBACK} />
+            </div>
+            <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('shop')}>Start Shopping <Icon name="arrow" size={16} /></button>
           </div>
-        </aside>
+
+          <aside className="bs-info-sidebar">
+            <h4>Quick Contact</h4>
+            <div className="bs-contact-row"><Icon name="pin" size={18} className="bs-ci" /><div><div className="bs-cr-label">Address</div><div className="bs-cr-val">{settings.contact_address}</div></div></div>
+            <div className="bs-contact-row"><Icon name="phone" size={18} className="bs-ci" /><div><div className="bs-cr-label">Phone</div><div className="bs-cr-val">{settings.contact_phone_1}</div></div></div>
+            <div className="bs-contact-row"><Icon name="mail" size={18} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">{settings.contact_email}</div></div></div>
+            <h4 style={{ marginTop: 24 }}>Opening Hours</h4>
+            <div className="bs-table-scroll">
+              <table className="bs-hours-table" style={{ color: 'var(--bs-text)' }}>
+                <tbody>
+                  <tr><td colSpan="2">{settings.working_hours_weekday}</td></tr>
+                  <tr><td colSpan="2">{settings.working_hours_saturday}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const BOOKSHOP_PRIVACY_SECTIONS = [
   ['Who We Are', 'The RealMindX Bookshop at new.realmindxgh.com/bookshop is operated by RealMindX Education Limited, an education company based in Ghana. This Privacy Policy explains how we collect, use, store, and protect your personal information when you shop with us. For questions about this policy, contact us at info@realmindxgh.com.'],

@@ -502,17 +502,25 @@ export const usePublicSettings = () => {
   return { ...CONTACT_DEFAULTS, ...live };
 };
 
-export const useSiteCopy = () => {
+export const useSiteCopyState = ({ waitForApi = false } = {}) => {
   const localContent = useManagedContent();
-  const { items: apiCopy, failed } = useApiItems(api.fetchSiteCopy);
+  const { items: apiCopy, failed, loading } = useApiItems(api.fetchSiteCopy);
 
   const localCopy = localContent.siteCopy?.length ? localContent.siteCopy : DEFAULT_SITE_COPY;
-  const source = isApiMode() && !failed && apiCopy?.length ? apiCopy : localCopy;
-  return publicItems(source).reduce((acc, item) => {
+  const waitingForFreshCopy = waitForApi && isApiMode() && loading && !failed;
+  const source = waitingForFreshCopy
+    ? []
+    : isApiMode() && !failed && apiCopy?.length
+      ? apiCopy
+      : localCopy;
+  const copy = publicItems(source).reduce((acc, item) => {
     acc[item.key] = item.value;
     return acc;
   }, {});
+  return { copy, loading: waitingForFreshCopy, failed };
 };
+
+export const useSiteCopy = () => useSiteCopyState().copy;
 
 export const renderTextWithLinks = (text) => {
   if (!text) return '';

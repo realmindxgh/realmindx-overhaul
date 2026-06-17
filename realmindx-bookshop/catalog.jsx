@@ -21,6 +21,9 @@ const normalizeCatalogBook = (book) => {
 };
 
 const FALLBACK_BOOKS = DEMO_BOOKS.map(normalizeCatalogBook);
+const IS_DEVELOPMENT = import.meta.env.DEV;
+const EMPTY_CATEGORIES = [{ id: 'all', name: 'All Books', icon: 'grid' }];
+const EMPTY_TAXONOMIES = buildBookshopTaxonomies([], EMPTY_CATEGORIES);
 
 // ============================================================
 // Catalog adapter - two modes:
@@ -39,12 +42,13 @@ const FALLBACK_FLYERS = [
 ];
 
 const CatalogCtx = React.createContext({
-  books: FALLBACK_BOOKS,
-  categories: FALLBACK_CATEGORIES,
-  taxonomies: buildBookshopTaxonomies(FALLBACK_BOOKS, FALLBACK_CATEGORIES),
-  flyers: FALLBACK_FLYERS,
+  books: [],
+  categories: EMPTY_CATEGORIES,
+  taxonomies: EMPTY_TAXONOMIES,
+  flyers: [],
   priceCeiling: 80,
-  loading: false,
+  loading: true,
+  error: '',
 });
 export const useCatalog = () => React.useContext(CatalogCtx);
 
@@ -185,11 +189,12 @@ const mapProducts = (products, cats) => {
 // â”€â”€ API-mode CatalogProvider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ApiCatalogProvider = ({ children }) => {
   const [books, setBooks] = React.useState([]);
-  const [categories, setCategories] = React.useState([{ id: 'all', name: 'All Books', icon: 'grid' }]);
-  const [taxonomies, setTaxonomies] = React.useState(buildBookshopTaxonomies(FALLBACK_BOOKS, FALLBACK_CATEGORIES));
+  const [categories, setCategories] = React.useState(EMPTY_CATEGORIES);
+  const [taxonomies, setTaxonomies] = React.useState(EMPTY_TAXONOMIES);
   const [flyers, setFlyers] = React.useState([]);
   const [priceCeiling, setPriceCeiling] = React.useState(80);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
 
   React.useEffect(() => {
     let cancelled = false;
@@ -211,24 +216,23 @@ const ApiCatalogProvider = ({ children }) => {
         const mappedFlyers = (flyerData.items || []).map(fromApiFlyer);
         const mappedTaxonomies = buildBookshopTaxonomies(mappedBooks, mappedCats);
 
-        // In API mode, show only admin-backed products. Demo catalog data is kept
-        // strictly as an offline fallback when the API is unavailable altogether.
         setBooks(mappedBooks);
-        setCategories(mappedCats.length ? mappedCats : [{ id: 'all', name: 'All Books', icon: 'grid' }]);
+        setCategories(mappedCats.length ? mappedCats : EMPTY_CATEGORIES);
         setTaxonomies(mappedTaxonomies);
         setFlyers(mappedFlyers);
+        setError('');
 
         const maxPrice = mappedBooks.reduce((m, b) => Math.max(m, b.price), 0);
         setPriceCeiling(Math.max(80, Math.ceil(maxPrice / 10) * 10));
       } catch (err) {
-        console.warn('[CatalogProvider] API fetch failed, using fallback:', err.message);
+        console.warn('[CatalogProvider] API fetch failed:', err.message);
         if (cancelled) return;
-        setBooks(FALLBACK_BOOKS);
-        setCategories(FALLBACK_CATEGORIES);
-        setTaxonomies(buildBookshopTaxonomies(FALLBACK_BOOKS, FALLBACK_CATEGORIES));
-        setFlyers(FALLBACK_FLYERS);
-        const fallbackMax = FALLBACK_BOOKS.reduce((m, b) => Math.max(m, b.price), 0);
-        setPriceCeiling(Math.max(80, Math.ceil(fallbackMax / 10) * 10));
+        setBooks([]);
+        setCategories(EMPTY_CATEGORIES);
+        setTaxonomies(EMPTY_TAXONOMIES);
+        setFlyers([]);
+        setPriceCeiling(80);
+        setError('Could not load the latest bookshop catalog.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -238,13 +242,27 @@ const ApiCatalogProvider = ({ children }) => {
   }, []);
 
   return (
-    <CatalogCtx.Provider value={{ books, categories, taxonomies, flyers, priceCeiling, loading }}>
+    <CatalogCtx.Provider value={{ books, categories, taxonomies, flyers, priceCeiling, loading, error }}>
       {children}
     </CatalogCtx.Provider>
   );
 };
 
-// â”€â”€ Local-mode CatalogProvider (unchanged behaviour) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const ProductionEmptyCatalogProvider = ({ children }) => (
+  <CatalogCtx.Provider value={{
+    books: [],
+    categories: EMPTY_CATEGORIES,
+    taxonomies: EMPTY_TAXONOMIES,
+    flyers: [],
+    priceCeiling: 80,
+    loading: false,
+    error: 'Bookshop catalog API is not configured.',
+  }}>
+    {children}
+  </CatalogCtx.Provider>
+);
+
+// â”€â”€ Local-mode CatalogProvider (development only) â”€â”€â”€â”€â”€â”€â”€â”€
 const LocalCatalogProvider = ({ children }) => {
   const content = useManagedContent();
 
@@ -258,10 +276,14 @@ const LocalCatalogProvider = ({ children }) => {
     const taxonomies = buildBookshopTaxonomies(books, categories);
     const maxPrice = books.reduce((m, b) => Math.max(m, b.price), 0);
     const priceCeiling = Math.max(80, Math.ceil(maxPrice / 10) * 10);
-    return { books, categories, taxonomies, flyers, priceCeiling, loading: false };
+    return { books, categories, taxonomies, flyers, priceCeiling, loading: false, error: '' };
   }, [content]);
 
   return <CatalogCtx.Provider value={value}>{children}</CatalogCtx.Provider>;
 };
 
-export const CatalogProvider = isApiMode() ? ApiCatalogProvider : LocalCatalogProvider;
+export const CatalogProvider = isApiMode()
+  ? ApiCatalogProvider
+  : IS_DEVELOPMENT
+    ? LocalCatalogProvider
+    : ProductionEmptyCatalogProvider;

@@ -6,8 +6,10 @@ import { bookMatchesBookshopSearch } from '../src/lib/bookshopTaxonomy.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { trackCartAction, trackSearchClick, trackWishlistAction } from '../src/lib/analytics.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
+import { isApiMode } from '../src/lib/apiClient.js';
 import { usePublicSettings } from '../src/lib/siteContent.js';
 import globalToast from '../src/lib/toast.js';
+import { clearCheckoutDraft } from './checkoutStorage.js';
 import { bookshopPathForRoute, productHref, productPathSegment } from './urls.js';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
@@ -21,19 +23,55 @@ const WishlistCtx = React.createContext(null);
 const useWishlist = () => React.useContext(WishlistCtx);
 
 const WISHLIST_STORAGE_KEY = 'rmx.bookshop.wishlist.v1';
+const LEGACY_WISHLIST_STORAGE_KEYS = [
+  'rmx.bookshop.wishlist',
+  'realmindx.bookshop.wishlist',
+  'bookshop.wishlist',
+];
+
+const storage = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage || null;
+  } catch {
+    return null;
+  }
+};
+
+const removeStorageKeys = (keys) => {
+  const store = storage();
+  if (!store) return;
+  keys.forEach((key) => {
+    try {
+      store.removeItem(key);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+  });
+};
+
+const parseStorageJson = (key) => {
+  const store = storage();
+  if (!store) return null;
+  try {
+    const raw = store.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    store.removeItem(key);
+    return null;
+  }
+};
+
+const legacyDemoProductId = (id) => isApiMode() && /^b\d+$/i.test(String(id || '').trim());
 
 const readSavedWishlist = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(WISHLIST_STORAGE_KEY) || '[]');
-    return Array.isArray(parsed)
-      ? parsed
-        .map(id => String(id).trim())
-        .filter(Boolean)
-      : [];
-  } catch {
-    return [];
-  }
+  const parsed = parseStorageJson(WISHLIST_STORAGE_KEY);
+  removeStorageKeys(LEGACY_WISHLIST_STORAGE_KEYS);
+  return Array.isArray(parsed)
+    ? parsed
+      .map(id => String(id).trim())
+      .filter(id => id && !legacyDemoProductId(id))
+    : [];
 };
 
 const WishlistProvider = ({ children }) => {
@@ -75,7 +113,7 @@ const WishlistProvider = ({ children }) => {
     trackWishlistAction('remove', { productId: id });
   };
   const has    = (bookId) => items.map(item => String(item)).includes(String(bookId));
-  const count  = catalogLoading ? items.length : items.filter(id => validIds.has(String(id))).length;
+  const count  = catalogLoading ? 0 : items.filter(id => validIds.has(String(id))).length;
 
   return (
     <WishlistCtx.Provider value={{ items, count, toggle, add, remove, has }}>
@@ -89,23 +127,62 @@ const CartCtx = React.createContext(null);
 const useCart = () => React.useContext(CartCtx);
 
 const CART_STORAGE_KEY = 'rmx.bookshop.cart.v1';
+const LEGACY_CART_STORAGE_KEYS = [
+  'rmx.bookshop.cart',
+  'realmindx.bookshop.cart',
+  'bookshop.cart',
+  'bookshopCart',
+];
+
+const normalizeStoredCartItem = (item) => {
+  const rawId = typeof item === 'string' || typeof item === 'number'
+    ? item
+    : item?.id ?? item?.productId ?? item?.product_id ?? item?.bookId;
+  const id = String(rawId ?? '').trim();
+  if (!id || id === 'undefined' || id === 'null' || legacyDemoProductId(id)) return null;
+  const qty = typeof item === 'object' && item !== null
+    ? item.qty ?? item.quantity
+    : 1;
+  return {
+    id,
+    qty: Math.max(1, Number(qty || 1)),
+    selected: typeof item === 'object' && item !== null ? item.selected !== false : true,
+  };
+};
+
+const normalizeStoredCart = (value) => (
+  Array.isArray(value)
+    ? value.map(normalizeStoredCartItem).filter(Boolean)
+    : []
+);
 
 const readSavedCart = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(CART_STORAGE_KEY) || '[]');
-    return Array.isArray(parsed)
-      ? parsed
-        .map(item => ({
-          id: String(item.id),
-          qty: Math.max(1, Number(item.qty || 1)),
-          selected: item.selected !== false,
-        }))
-        .filter(item => item.id !== 'undefined' && item.id !== 'null' && item.id !== '')
-      : [];
-  } catch {
-    return [];
+  const store = storage();
+  if (!store) return [];
+  const current = normalizeStoredCart(parseStorageJson(CART_STORAGE_KEY));
+  if (current.length > 0 || store.getItem(CART_STORAGE_KEY)) {
+    removeStorageKeys(LEGACY_CART_STORAGE_KEYS);
+    return current;
   }
+
+  for (const key of LEGACY_CART_STORAGE_KEYS) {
+    const migrated = normalizeStoredCart(parseStorageJson(key));
+    if (migrated.length > 0) {
+      try {
+        store.setItem(CART_STORAGE_KEY, JSON.stringify(migrated));
+      } catch {
+        // Ignore migration write failures; in-memory cart still works.
+      }
+      removeStorageKeys(LEGACY_CART_STORAGE_KEYS);
+      return migrated;
+    }
+  }
+  removeStorageKeys(LEGACY_CART_STORAGE_KEYS);
+  return [];
+};
+
+const clearBookshopCartStorage = () => {
+  removeStorageKeys([CART_STORAGE_KEY, ...LEGACY_CART_STORAGE_KEYS]);
 };
 
 const mainPortalHref = () => {
@@ -125,7 +202,7 @@ const CartProvider = ({ children, navigate }) => {
 };
 
 const CartProviderInner = ({ children, navigate }) => {
-  const { books, loading: catalogLoading } = useCatalog();
+  const { books, loading: catalogLoading, error: catalogError } = useCatalog();
   const [items, setItems] = React.useState(readSavedCart);
   const itemsRef = React.useRef(items);
 
@@ -134,6 +211,10 @@ const CartProviderInner = ({ children, navigate }) => {
     window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
     itemsRef.current = items;
   }, [items]);
+
+  React.useEffect(() => {
+    if (items.length === 0) clearCheckoutDraft();
+  }, [items.length]);
 
   React.useEffect(() => {
     if (catalogLoading || books.length === 0) return;
@@ -196,7 +277,14 @@ const CartProviderInner = ({ children, navigate }) => {
   };
   const selectAll = () => setItems(prev => prev.map(item => ({ ...item, selected: true })));
   const deselectAll = () => setItems(prev => prev.map(item => ({ ...item, selected: false })));
-  const clear  = () => setItems([]);
+  const clear  = () => {
+    clearBookshopCartStorage();
+    clearCheckoutDraft();
+    setItems([]);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('rmx-bookshop-cart-cleared'));
+    }
+  };
   const clearSelected = () => setItems(prev => prev.filter(item => item.selected === false));
 
   // Resolve against the live catalogue; drop items whose product was
@@ -206,11 +294,14 @@ const CartProviderInner = ({ children, navigate }) => {
     .map(i => { const b = books.find(x => String(x.id) === String(i.id)); return b ? { ...b, qty: i.qty, selected: i.selected !== false } : null; })
     .filter(Boolean);
   const selectedDetailed = detailed.filter(item => item.selected && item.stock);
-  const count = catalogLoading ? rawCount : detailed.reduce((s, item) => s + item.qty, 0);
+  const count = catalogLoading ? 0 : detailed.reduce((s, item) => s + item.qty, 0);
   const selectedCount = selectedDetailed.reduce((s, item) => s + item.qty, 0);
   const subtotal = detailed.reduce((s, b) => s + b.price * b.qty, 0);
   const selectedSubtotal = selectedDetailed.reduce((s, b) => s + b.price * b.qty, 0);
   const loading = catalogLoading && rawCount > 0 && detailed.length === 0;
+  const error = !catalogLoading && catalogError && rawCount > 0 && detailed.length === 0
+    ? catalogError
+    : '';
 
   // Bulk Purchase Discount — applies when qty >= 10 for items whose category
   // has a bulk_discount_percent set (e.g. the "Bulk / Schools" category).
@@ -261,6 +352,7 @@ const CartProviderInner = ({ children, navigate }) => {
       navigate,
       loading,
       catalogLoading,
+      error,
     }}>
       {children}
     </CartCtx.Provider>
@@ -357,6 +449,7 @@ const Navbar = ({ route, navigate }) => {
   const { count: wishlistCount } = useWishlist();
   const { books, taxonomies } = useCatalog();
   const [catsOpen, setCatsOpen] = React.useState(false);
+  const [openBrowseGroup, setOpenBrowseGroup] = React.useState('');
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState('');
@@ -385,6 +478,7 @@ const Navbar = ({ route, navigate }) => {
     if (e) e.preventDefault();
     setMenuOpen(false);
     setCatsOpen(false);
+    setOpenBrowseGroup('');
     navigate(r);
   };
 
@@ -518,29 +612,53 @@ const Navbar = ({ route, navigate }) => {
             </button>
 
             <div className="bs-nav-cats" ref={catsRef}>
-              <button className="bs-nav-cats-btn" onClick={() => setCatsOpen(o => !o)} aria-expanded={catsOpen}>
-                <span>Quick Search</span> <Icon name="chevDown" size={15} />
+              <button
+                className="bs-nav-cats-btn"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setCatsOpen(open => {
+                    if (open) setOpenBrowseGroup('');
+                    return !open;
+                  });
+                }}
+                aria-expanded={catsOpen}
+              >
+                <Icon name="search" size={15} />
+                <span>Quick Search</span>
+                <Icon name="chevDown" size={14} />
               </button>
               <div className={`bs-cats-menu${catsOpen ? ' open' : ''}`}>
+                <button
+                  type="button"
+                  className="bs-cats-menu-entry bs-cats-search-entry"
+                  onClick={() => {
+                    setCatsOpen(false);
+                    setOpenBrowseGroup('');
+                    openSearch();
+                  }}
+                >
+                  <Icon name="search" size={18} className="bs-ci" /> Search by title or keyword
+                </button>
                 <a className="bs-cats-menu-entry" href={hrefForRoute('shop')} onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop'); }}>
                   <Icon name="grid" size={18} className="bs-ci" /> All Books
                 </a>
                 {browseGroups.map((group) => (
-                  <div className="bs-cats-flyout" key={group.taxonomy}>
-                    <a
+                  <div className={`bs-cats-flyout${openBrowseGroup === group.taxonomy ? ' open' : ''}`} key={group.taxonomy}>
+                    <button
+                      type="button"
                       className="bs-cats-menu-entry has-submenu"
-                      href={hrefForBrowse(group.taxonomy)}
-                      onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { taxonomy: group.taxonomy }); }}
+                      aria-expanded={openBrowseGroup === group.taxonomy}
+                      onClick={() => setOpenBrowseGroup(current => current === group.taxonomy ? '' : group.taxonomy)}
                     >
                       <span className="bs-cats-menu-label"><Icon name={group.icon} size={17} className="bs-ci" /> {group.title}</span>
-                      <Icon name="chevR" size={14} className="bs-ci" />
-                    </a>
+                      <Icon name={openBrowseGroup === group.taxonomy ? 'chevDown' : 'chevR'} size={14} className="bs-ci" />
+                    </button>
                     <div className="bs-cats-submenu">
                       {group.items.map((item) => (
                         <a
                           key={`${group.taxonomy}-${item.id}`}
                           href={hrefForBrowse(group.taxonomy, item.id)}
-                          onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { taxonomy: group.taxonomy, value: item.id }); }}
+                          onClick={(e) => { e.preventDefault(); setCatsOpen(false); setOpenBrowseGroup(''); navigate('shop', { taxonomy: group.taxonomy, value: item.id }); }}
                         >
                           {item.label}
                         </a>
@@ -548,7 +666,7 @@ const Navbar = ({ route, navigate }) => {
                       <a
                         className="bs-cats-submenu-viewall"
                         href={hrefForBrowse(group.taxonomy)}
-                        onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop', { taxonomy: group.taxonomy }); }}
+                        onClick={(e) => { e.preventDefault(); setCatsOpen(false); setOpenBrowseGroup(''); navigate('shop', { taxonomy: group.taxonomy }); }}
                       >
                         See all {group.allLabel.toLowerCase()}
                       </a>
@@ -562,7 +680,7 @@ const Navbar = ({ route, navigate }) => {
               <Icon name="truck" size={15} />
               <span>Track Order</span>
             </button>
-            <NavUserMenu navigate={navigate} />
+            <div className="bs-nav-user-slot"><NavUserMenu navigate={navigate} /></div>
             <button className="bs-icon-btn" aria-label={`Wishlist, ${wishlistCount} items`} onClick={() => navigate('wishlist')} title="Wishlist">
               <Icon name="heart" size={20} />
               {wishlistCount > 0 && <span className="bs-cart-badge">{wishlistCount}</span>}
@@ -576,7 +694,11 @@ const Navbar = ({ route, navigate }) => {
             <button
               className={`bs-hamburger${menuOpen ? ' open' : ''}`}
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-              onClick={() => setMenuOpen(o => !o)}
+              onClick={() => {
+                setCatsOpen(false);
+                setOpenBrowseGroup('');
+                setMenuOpen(o => !o);
+              }}
             >
               <span/><span/><span/>
             </button>
@@ -588,7 +710,7 @@ const Navbar = ({ route, navigate }) => {
       {/* Note: no redundant close button here — the hamburger in the navbar already animates to X */}
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
         <nav className="bs-mm-links">
-          {[['home','Home'],['shop','Shop'],['wishlist','Wishlist'],['cart','Cart'],['track','Track Order'],['contact','Contact'],['about','About']].map(([r,l]) => (
+          {[['home','Home'],['shop','Shop'],['track','Track Order'],['contact','Contact'],['about','About']].map(([r,l]) => (
             <a key={r} href={hrefForRoute(r)} className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
               {l}
             </a>
@@ -886,4 +1008,4 @@ const ListCard = ({ book, idx = 0, navigate, searchContext = null }) => {
   );
 };
 
-export { CartCtx, useCart, CartProvider, WishlistCtx, useWishlist, WishlistProvider, Navbar, Footer, WhatsAppFab, BottomNav, ProductCard, ListCard };
+export { CartCtx, useCart, CartProvider, clearBookshopCartStorage, WishlistCtx, useWishlist, WishlistProvider, Navbar, Footer, WhatsAppFab, BottomNav, ProductCard, ListCard };

@@ -5,12 +5,14 @@ import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
 import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
 import { CatalogProvider, useCatalog } from './catalog.jsx';
+import { Icon, LoadingState, cedis } from './shared.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 import { trackPageView } from '../src/lib/analytics.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from '../src/lib/head.js';
 import { BOOKSHOP_BASE_URL, BOOKSHOP_DEFAULT_IMAGE } from '../src/lib/seoRoutes.js';
 import { findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
+import { clearCheckoutDraft, clearCheckoutSuccess } from './checkoutStorage.js';
 import { bookshopPathForRoute, canonicalBookshopBase, productHref, productMatchesSegment, productPathSegment } from './urls.js';
 
 const GOLD_ACCENT = '#ffcc01';
@@ -141,8 +143,115 @@ const routeFromPath = () => {
 const pathForRoute = (route, params = {}) => prefixedPath(bookshopPathForRoute(route, params));
 
 // Paystack confirmation page: shown when user returns from Paystack payment
-const PaystackReturnPage = ({ orderRef, navigate, clearSelected }) => {
-  React.useEffect(() => { clearSelected(); }, [clearSelected]);
+const isPaidOrder = (order) => String(order?.payment_status || '').toLowerCase() === 'paid';
+
+const PaystackReturnPage = ({ orderRef, navigate, clearCart }) => {
+  const [state, setState] = React.useState(() => ({
+    status: isApiMode() ? 'checking' : 'paid',
+    order: null,
+    error: '',
+  }));
+  const clearCartRef = React.useRef(clearCart);
+  const clearedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    clearCartRef.current = clearCart;
+  }, [clearCart]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+
+    const finish = (order = null) => {
+      if (cancelled) return;
+      if (!clearedRef.current) {
+        clearCartRef.current?.();
+        clearCheckoutDraft();
+        clearCheckoutSuccess();
+        clearedRef.current = true;
+      }
+      setState({ status: 'paid', order, error: '' });
+    };
+
+    if (!isApiMode()) {
+      finish(null);
+      return () => { cancelled = true; };
+    }
+
+    const checkPayment = async (attempt = 0) => {
+      try {
+        const data = await api.trackOrders(orderRef);
+        const order = (data.items || []).find(item => item.order_reference === orderRef) || data.items?.[0] || null;
+        if (isPaidOrder(order)) {
+          finish(order);
+          return;
+        }
+        if (attempt < 4) {
+          timer = window.setTimeout(() => checkPayment(attempt + 1), 1500);
+          return;
+        }
+        if (!cancelled) setState({ status: 'pending', order, error: '' });
+      } catch (err) {
+        if (attempt < 2) {
+          timer = window.setTimeout(() => checkPayment(attempt + 1), 1500);
+          return;
+        }
+        if (!cancelled) setState({ status: 'error', order: null, error: err?.message || 'Could not confirm payment yet.' });
+      }
+    };
+
+    checkPayment();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [orderRef]);
+
+  if (state.status === 'checking') {
+    return (
+      <div className="bs-container bs-fade-page">
+        <LoadingState
+          title="Confirming payment"
+          body="Checking the payment status before we clear your cart."
+        />
+      </div>
+    );
+  }
+
+  if (state.status === 'pending') {
+    return (
+      <div className="bs-container bs-fade-page">
+        <div className="bs-confirm" style={{ padding:'60px 24px' }}>
+          <div className="bs-empty-icon"><Icon name="clock" size={40} /></div>
+          <h1 className="bs-h2">Payment is still confirming</h1>
+          <p className="bs-muted">Order <strong>{orderRef}</strong> has not been marked paid yet. Your cart has not been cleared.</p>
+          <div className="bs-confirm-actions" style={{ marginTop:28 }}>
+            <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('track')}>Track Your Order</button>
+            <button className="bs-btn bs-btn-outline-navy bs-btn-lg" onClick={() => window.location.reload()}>Check Again</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <div className="bs-container bs-fade-page">
+        <div className="bs-confirm" style={{ padding:'60px 24px' }}>
+          <div className="bs-empty-icon"><Icon name="refresh" size={40} /></div>
+          <h1 className="bs-h2">Could not confirm payment</h1>
+          <p className="bs-muted">{state.error} Your cart has not been cleared.</p>
+          <div className="bs-confirm-actions" style={{ marginTop:28 }}>
+            <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('track')}>Track Your Order</button>
+            <button className="bs-btn bs-btn-outline-navy bs-btn-lg" onClick={() => window.location.reload()}>Try Again</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const orderItems = state.order?.items || [];
+  const paidTotal = Number(state.order?.total_amount || 0);
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-confirm" style={{ padding:'60px 24px' }}>
@@ -151,6 +260,26 @@ const PaystackReturnPage = ({ orderRef, navigate, clearSelected }) => {
         </div>
         <h1 className="bs-h2">Payment received!</h1>
         <p className="bs-muted">Your order <strong>{orderRef}</strong> has been placed and payment confirmed. A confirmation email is on its way.</p>
+        {orderItems.length > 0 && (
+          <div className="bs-confirm-summary">
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:14 }}>
+              <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>What you ordered</span>
+              <span className="bs-muted" style={{ fontSize:13 }}>{orderItems.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0)} items</span>
+            </div>
+            {orderItems.map((item, index) => (
+              <div key={`${item.product_id || item.product_name}-${index}`} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', fontSize:14 }}>
+                <span>{Number(item.quantity) || 1} x {item.product_name}</span>
+                <span style={{ fontFamily:'Montserrat', fontWeight:600 }}>{cedis((Number(item.unit_price) || 0) * (Number(item.quantity) || 1))}</span>
+              </div>
+            ))}
+            {paidTotal > 0 && (
+              <div className="bs-summary-row bs-total" style={{ fontSize:18, marginTop:10 }}>
+                <span>Total paid</span>
+                <span>{cedis(paidTotal)}</span>
+              </div>
+            )}
+          </div>
+        )}
         <div className="bs-confirm-actions" style={{ marginTop:28 }}>
           <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('track')}>Track Your Order</button>
           <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('shop')}>Continue Shopping</button>
@@ -437,7 +566,7 @@ const App = () => {
   }
   const mainClassName = `bs-page${route === 'login' || route === 'signup' ? ' bs-page-auth' : ''}`;
 
-  const { clearSelected } = React.useContext(CartCtx) || {};
+  const { clear: clearCart } = React.useContext(CartCtx) || {};
 
   // Show Paystack confirmation if returning from payment
   if (paystackReturn) {
@@ -448,7 +577,7 @@ const App = () => {
           <PaystackReturnPage
             orderRef={paystackReturn}
             navigate={(r) => { setPaystackReturn(null); navigate(r); }}
-            clearSelected={clearSelected || (() => {})}
+            clearCart={clearCart || (() => {})}
           />
         </main>
         <Footer navigate={navigate} />

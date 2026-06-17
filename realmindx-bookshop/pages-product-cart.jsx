@@ -4,7 +4,7 @@ import { useCart, useWishlist, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { trackProductView } from '../src/lib/analytics.js';
-import { useSiteCopy } from '../src/lib/siteContent.js';
+import { useSiteCopyState } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
 import globalToast from '../src/lib/toast.js';
@@ -26,13 +26,35 @@ const Accordion = ({ title, children, defaultOpen = false }) => {
   );
 };
 
-const QtyStepper = ({ qty, setQty, sm = false }) => (
-  <div className={`bs-qty-stepper${sm ? ' sm' : ''}`}>
-    <button onClick={() => setQty(Math.max(1, qty - 1))} aria-label="Decrease"><Icon name="minus" size={16} /></button>
-    <input value={qty} onChange={e => { const v = parseInt(e.target.value); setQty(isNaN(v) ? 1 : Math.max(1, v)); }} aria-label="Quantity" />
-    <button onClick={() => setQty(qty + 1)} aria-label="Increase"><Icon name="plus" size={16} /></button>
-  </div>
-);
+const QtyStepper = ({ qty, setQty, sm = false, onMinimumDecrease }) => {
+  const decrease = () => {
+    if (qty <= 1 && onMinimumDecrease) {
+      onMinimumDecrease();
+      return;
+    }
+    setQty(Math.max(1, qty - 1));
+  };
+
+  return (
+    <div className={`bs-qty-stepper${sm ? ' sm' : ''}`}>
+      <button onClick={decrease} aria-label={qty <= 1 && onMinimumDecrease ? 'Remove item' : 'Decrease quantity'}><Icon name="minus" size={16} /></button>
+      <input
+        value={qty}
+        onChange={e => {
+          const value = parseInt(e.target.value, 10);
+          if (Number.isNaN(value)) return;
+          if (value < 1 && onMinimumDecrease) {
+            onMinimumDecrease();
+            return;
+          }
+          setQty(Math.max(1, value));
+        }}
+        aria-label="Quantity"
+      />
+      <button onClick={() => setQty(qty + 1)} aria-label="Increase quantity"><Icon name="plus" size={16} /></button>
+    </div>
+  );
+};
 
 // Only customers with a completed order for this product see this form.
 // Identity and verified-purchase status come from the signed-in account and
@@ -140,7 +162,7 @@ const PDP_RETURNS_FALLBACK = 'Unused items in original condition can be returned
 
 const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
   const { books, loading: catalogLoading } = useCatalog();
-  const siteCopy = useSiteCopy();
+  const { copy: siteCopy, loading: siteCopyLoading } = useSiteCopyState({ waitForApi: true });
   const book = books.find(b => b.id === bookId) || books.find(b => productMatchesSegment(b, bookSlug)) || null;
   const { add, buyNow } = useCart();
   const wishlist = useWishlist();
@@ -321,10 +343,10 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
               exercises and revision questions - ideal for both classroom teaching and self-study at home.`}
             </Accordion>
             <Accordion title="Delivery information">
-              <span style={{ whiteSpace: 'pre-line' }}>{siteCopy.bookshop_pdp_delivery_info || PDP_DELIVERY_FALLBACK}</span>
+              <span style={{ whiteSpace: 'pre-line' }}>{siteCopyLoading ? 'Loading current delivery information...' : siteCopy.bookshop_pdp_delivery_info || PDP_DELIVERY_FALLBACK}</span>
             </Accordion>
             <Accordion title="Return policy">
-              <span style={{ whiteSpace: 'pre-line' }}>{siteCopy.bookshop_pdp_return_policy || PDP_RETURNS_FALLBACK}</span>
+              <span style={{ whiteSpace: 'pre-line' }}>{siteCopyLoading ? 'Loading current return policy...' : siteCopy.bookshop_pdp_return_policy || PDP_RETURNS_FALLBACK}</span>
             </Accordion>
           </div>
         </div>
@@ -437,9 +459,11 @@ const CartPage = ({ navigate }) => {
     count,
     selectedCount,
     loading: cartLoading,
+    error: cartError,
   } = useCart();
   const wishlist = useWishlist();
   const { books } = useCatalog();
+  const [pendingRemoval, setPendingRemoval] = React.useState(null);
   // Delivery is NOT estimated on the cart page — location has not been chosen yet.
   // The exact fee is calculated once the user selects a delivery zone at checkout.
   const cartTotal = selectedSubtotal - (selectedBulkSaving || 0);
@@ -456,6 +480,15 @@ const CartPage = ({ navigate }) => {
       <LoadingState
         title="Loading your cart"
         body="Restoring your saved items from the latest catalog."
+      />
+    </div>
+  );
+
+  if (cartError) return (
+    <div className="bs-container bs-fade-page">
+      <LoadingState
+        title="Could not load your cart"
+        body="We could not confirm your saved items against the latest catalog. Please refresh or try again shortly."
       />
     </div>
   );
@@ -503,20 +536,34 @@ const CartPage = ({ navigate }) => {
               </button>
               <div className="bs-cart-item-cover"><CoverPlaceholder title={b.title} idx={i} small image={b.image} /></div>
               <div className="bs-cart-item-mid">
-                <span className="bs-cat-badge">{b.catName}</span>
+                <div className="bs-cart-meta-row">
+                  <span className="bs-cat-badge">{b.catName}</span>
+                  <button
+                    type="button"
+                    className={`bs-cart-wishlist-link${wishlist?.has(b.id) ? ' active' : ''}`}
+                    aria-label={wishlist?.has(b.id) ? `Remove ${b.title} from wishlist` : `Save ${b.title} to wishlist`}
+                    aria-pressed={wishlist?.has(b.id)}
+                    title={wishlist?.has(b.id) ? 'Remove from wishlist' : 'Save to wishlist'}
+                    onClick={() => {
+                      const wasSaved = wishlist?.has(b.id);
+                      wishlist?.toggle(b.id);
+                      globalToast.success(wasSaved ? 'Removed from wishlist' : 'Saved to wishlist');
+                    }}
+                  >
+                    <Icon name="heart" size={16} />
+                  </button>
+                </div>
                 <div className="bs-cart-item-title">{b.title}</div>
                 {!b.stock && <span className="bs-stock-warning">Out of stock</span>}
                 <div className="bs-pcard-desc" style={{ whiteSpace:'normal' }}>{b.desc}</div>
-                {/* Save to wishlist link */}
-                <button
-                  className="bs-cart-wishlist-link"
-                  onClick={() => { wishlist?.toggle(b.id); }}
-                >
-                  <Icon name="heart" size={13} /> {wishlist?.has(b.id) ? 'Remove from Wishlist' : 'Save to Wishlist'}
-                </button>
               </div>
               <div className="bs-cart-item-right">
-                <QtyStepper qty={b.qty} setQty={(q)=>setQty(b.id,q)} sm />
+                <QtyStepper
+                  qty={b.qty}
+                  setQty={(q)=>setQty(b.id,q)}
+                  onMinimumDecrease={() => setPendingRemoval(b)}
+                  sm
+                />
                 <span className="bs-cart-subtotal">{cedis(b.price * b.qty)}</span>
                 <button className="bs-remove-btn" aria-label="Remove" onClick={() => remove(b.id)}><Icon name="trash" size={18} /></button>
               </div>
@@ -572,6 +619,45 @@ const CartPage = ({ navigate }) => {
             {suggestions.map((b, i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}
           </div>
         </section>
+      )}
+
+      {pendingRemoval && (
+        <div className="bs-modal-scrim" role="presentation" onClick={() => setPendingRemoval(null)}>
+          <div
+            className="bs-modal-box bs-cart-remove-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bs-cart-remove-title"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="bs-modal-head">
+              <div>
+                <span className="bs-eyebrow">Cart item</span>
+                <h3 className="bs-h3" id="bs-cart-remove-title">Remove this book?</h3>
+              </div>
+              <button type="button" className="bs-modal-close" aria-label="Cancel removal" onClick={() => setPendingRemoval(null)}>
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <div className="bs-modal-body">
+              <p>Quantity cannot go below one. Remove <strong>{pendingRemoval.title}</strong> from your cart instead?</p>
+            </div>
+            <div className="bs-modal-foot">
+              <button type="button" className="bs-btn bs-btn-outline-navy" onClick={() => setPendingRemoval(null)}>Keep item</button>
+              <button
+                type="button"
+                className="bs-btn bs-cart-remove-confirm"
+                onClick={() => {
+                  remove(pendingRemoval.id);
+                  setPendingRemoval(null);
+                  globalToast.success('Item removed from cart');
+                }}
+              >
+                <Icon name="trash" size={15} /> Remove item
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

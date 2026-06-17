@@ -5,10 +5,84 @@ import { submitOrder } from '../src/lib/managedContent.js';
 import { isApiMode, api } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
+import {
+  clearCheckoutDraft,
+  clearCheckoutSuccess,
+  readCheckoutDraft,
+  readCheckoutSuccess,
+  writeCheckoutDraft,
+  writeCheckoutSuccess,
+} from './checkoutStorage.js';
 import { normalizeOrderStatus } from '../src/lib/orderStatus.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+const PHONE_RE = /^[0-9+\s]{9,}$/;
+const IS_DEVELOPMENT = import.meta.env.DEV;
+const INTERNAL_DELIVERY_NOTE_RE = /\badmin\b|set\s+(?:the\s+)?delivery\s+fee|delivery\s+zones?/i;
+
+const cleanCheckoutForm = (value = {}) => ({
+  name: String(value.name || ''),
+  phone: String(value.phone || ''),
+  email: String(value.email || ''),
+  address: String(value.address || ''),
+  city: String(value.city || ''),
+  region: String(value.region || ''),
+});
+
+const cartSignatureFor = (items = []) => items
+  .map(item => `${String(item.id)}:${Number(item.qty || 1)}:${item.selected === false ? 0 : 1}`)
+  .sort()
+  .join('|');
+
+const hasRequiredCheckoutDetails = ({
+  form,
+  method,
+  selectedZoneId,
+  customDeliveryArea,
+  requireZone,
+}) => {
+  const data = cleanCheckoutForm(form);
+  if (!data.name.trim()) return false;
+  if (!PHONE_RE.test(data.phone)) return false;
+  if (!EMAIL_RE.test(data.email)) return false;
+  if (method !== 'delivery') return true;
+  if (requireZone && !selectedZoneId) return false;
+  if (!data.address.trim()) return false;
+  if (customDeliveryArea && !data.city.trim()) return false;
+  if (customDeliveryArea && !data.region) return false;
+  return true;
+};
+
+const snapshotCheckoutItems = (items = []) => items.map(item => ({
+  id: item.id,
+  title: item.title,
+  qty: item.qty,
+  price: item.price,
+}));
+
+const buildCheckoutSuccess = ({
+  orderRef,
+  form,
+  method,
+  paymentMethod,
+  items,
+  count,
+  total,
+  order = null,
+}) => ({
+  orderRef,
+  form: cleanCheckoutForm(form),
+  method,
+  paymentMethod,
+  confirmedOrder: {
+    items,
+    count,
+    total,
+    paymentStatus: order?.payment_status || '',
+  },
+});
 
 const AuthReturnActions = ({ navigate }) => !isLoggedIn() ? (
   <div className="bs-auth-return-actions">
@@ -22,16 +96,23 @@ const AuthReturnActions = ({ navigate }) => !isLoggedIn() ? (
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import { GHANA_REGIONS, deliveryLocationAliases, deliveryLocationSearchText, normaliseLocationSearch } from '../src/lib/ghanaLocations.js';
 
-const StepBar = ({ step }) => {
-  const labels = ['Delivery','Payment','Confirm'];
+const StepBar = ({ step, canVisit = () => false, onStepChange = null }) => {
+  const labels = ['Basic information', 'Payment', 'Success'];
   return (
-    <div className="bs-steps">
+    <div className="bs-steps" aria-label="Checkout progress">
       {labels.map((l, i) => (
         <React.Fragment key={l}>
-          <div className={`bs-step${step === i ? ' active' : ''}${step > i ? ' done' : ''}`}>
+          <button
+            type="button"
+            className={`bs-step${step === i ? ' active' : ''}${step > i ? ' done' : ''}${canVisit(i) && i !== step ? ' clickable' : ''}`}
+            aria-current={step === i ? 'step' : undefined}
+            aria-label={`${l}${step > i ? ', completed' : step === i ? ', current step' : ''}`}
+            disabled={!onStepChange || !canVisit(i) || i === step}
+            onClick={() => onStepChange?.(i)}
+          >
             <span className="bs-step-num">{step > i ? <Icon name="check" size={16} /> : i+1}</span>
             <span className="bs-step-label">{l}</span>
-          </div>
+          </button>
           {i < 2 && <span className={`bs-step-line${step > i ? ' done' : ''}`} />}
         </React.Fragment>
       ))}
@@ -68,25 +149,46 @@ const CheckoutPage = ({ navigate }) => {
     selectedDetailed: detailed,
     selectedSubtotal: subtotal,
     selectedCount: count,
-    clearSelected,
+    clear: clearCart,
     selectedBulkSaving: bulkSaving = 0,
     loading: cartLoading,
+    error: cartError,
   } = useCart();
   const session = getDemoSession();
-  const [step, setStep] = React.useState(0);
-  const [method, setMethod] = React.useState('delivery');
-  const [paymentMethod, setPaymentMethod] = React.useState('online');
-  const [form, setForm] = React.useState(() => ({
-    name: [session?.firstName, session?.lastName].filter(Boolean).join(' '),
-    phone: session?.phone || '',
-    email: session?.email || '',
-    address: '',
-    city: '',
-    region: '',
-  }));
+  const initialDraft = React.useMemo(readCheckoutDraft, []);
+  const initialSuccess = React.useMemo(readCheckoutSuccess, []);
+  const restoredDraftSignatureRef = React.useRef(initialDraft?.cartSignature || '');
+  const restoredSuccessRef = React.useRef(Boolean(initialSuccess));
+  const [step, setStep] = React.useState(() => (
+    initialSuccess?.confirmedOrder
+      ? 2
+      : initialDraft?.step === 1 && hasRequiredCheckoutDetails({
+        form: initialDraft.form,
+        method: initialDraft.method || 'delivery',
+        selectedZoneId: initialDraft.selectedZoneId || '',
+        customDeliveryArea: initialDraft.selectedZoneId === 'other',
+        requireZone: false,
+      })
+        ? 1
+        : 0
+  ));
+  const [method, setMethod] = React.useState(() => initialSuccess?.method || initialDraft?.method || 'delivery');
+  const [paymentMethod, setPaymentMethod] = React.useState(() => initialSuccess?.paymentMethod || initialDraft?.paymentMethod || 'online');
+  const [form, setForm] = React.useState(() => {
+    const defaultForm = cleanCheckoutForm({
+      name: [session?.firstName, session?.lastName].filter(Boolean).join(' '),
+      phone: session?.phone || '',
+      email: session?.email || '',
+      address: '',
+      city: '',
+      region: '',
+    });
+    const savedForm = initialSuccess?.form || initialDraft?.form;
+    return cleanCheckoutForm(savedForm ? { ...defaultForm, ...savedForm } : defaultForm);
+  });
   const [errors, setErrors] = React.useState({});
-  const [orderRef, setOrderRef] = React.useState('');
-  const [confirmedOrder, setConfirmedOrder] = React.useState(null);
+  const [orderRef, setOrderRef] = React.useState(() => initialSuccess?.orderRef || '');
+  const [confirmedOrder, setConfirmedOrder] = React.useState(() => initialSuccess?.confirmedOrder || null);
   const [placing, setPlacing] = React.useState(false);
   const [orderError, setOrderError] = React.useState('');
   const [turnstileToken, setTurnstileToken] = React.useState('');
@@ -98,10 +200,10 @@ const CheckoutPage = ({ navigate }) => {
 
   // Delivery zones — fetched from API in API mode, fallback to fixed fee
   const [deliveryZones, setDeliveryZones] = React.useState([]);
-  const [selectedZoneId, setSelectedZoneId] = React.useState('');
-  const [zoneSearch, setZoneSearch] = React.useState('');
+  const [selectedZoneId, setSelectedZoneId] = React.useState(() => initialDraft?.selectedZoneId || '');
+  const [zoneSearch, setZoneSearch] = React.useState(() => initialDraft?.zoneSearch || '');
   const [zonePickerOpen, setZonePickerOpen] = React.useState(false);
-  const [loadingZones, setLoadingZones] = React.useState(false);
+  const [loadingZones, setLoadingZones] = React.useState(() => isApiMode());
 
   React.useEffect(() => {
     if (!isApiMode()) return;
@@ -139,6 +241,10 @@ const CheckoutPage = ({ navigate }) => {
   }, [session?.role]);
 
   const selectedZone = deliveryZones.find(z => String(z.id) === selectedZoneId);
+  const selectedZoneDescription = String(selectedZone?.description || '').trim();
+  const publicZoneDescription = selectedZoneDescription && !INTERNAL_DELIVERY_NOTE_RE.test(selectedZoneDescription)
+    ? selectedZoneDescription
+    : '';
   React.useEffect(() => {
     if (selectedZone && zoneSearch !== selectedZone.name) setZoneSearch(selectedZone.name);
   }, [selectedZone?.id]);
@@ -185,9 +291,12 @@ const CheckoutPage = ({ navigate }) => {
     if (!promoInput.trim()) return;
     setCheckingPromo(true); setPromoError('');
     try {
+      const code = promoInput.trim().toUpperCase();
       const result = isApiMode()
-        ? await api.validatePromoCode(promoInput.trim().toUpperCase(), orderBase)
-        : { valid: promoInput.toUpperCase() === 'STUDENT10', discount_type: 'percentage', discount_value: 10, applies_to: 'products', description: 'Student discount', code: 'STUDENT10' };
+        ? await api.validatePromoCode(code, orderBase)
+        : IS_DEVELOPMENT && code === 'STUDENT10'
+          ? { valid: true, discount_type: 'percentage', discount_value: 10, applies_to: 'products', description: 'Student discount', code: 'STUDENT10' }
+          : { valid: false, error: 'Invalid promo code.' };
       if (result.valid) {
         setAppliedPromo(result);
         setPromoInput('');
@@ -219,12 +328,82 @@ const CheckoutPage = ({ navigate }) => {
   const promoOrderDiscount = promoScope === 'all' ? promoDiscount : 0;
   const delivery = Math.max(0, deliveryFee - promoDeliveryDiscount);
   const total = Math.max(0, orderBase - promoDiscount);
+  const cartSignature = React.useMemo(() => cartSignatureFor(detailed), [detailed]);
+  const zoneRequired = method === 'delivery' && isApiMode() && deliveryZones.length > 0;
+  const stepOneComplete = hasRequiredCheckoutDetails({
+    form,
+    method,
+    selectedZoneId,
+    customDeliveryArea,
+    requireZone: zoneRequired,
+  });
 
   React.useEffect(() => { window.scrollTo(0,0); }, [step]);
+
+  React.useEffect(() => {
+    if (!restoredSuccessRef.current || cartLoading) return;
+    if (count > 0) {
+      clearCheckoutSuccess();
+      setConfirmedOrder(null);
+      setOrderRef('');
+      setStep(0);
+      restoredSuccessRef.current = false;
+    }
+  }, [cartLoading, count]);
+
+  React.useEffect(() => {
+    if (cartLoading || step < 1) return;
+    if (!cartSignature || count === 0) {
+      clearCheckoutDraft();
+      setStep(0);
+      return;
+    }
+    if (restoredDraftSignatureRef.current && restoredDraftSignatureRef.current !== cartSignature) {
+      restoredDraftSignatureRef.current = '';
+      setStep(0);
+      return;
+    }
+    if (!loadingZones && !stepOneComplete) {
+      setStep(0);
+    }
+  }, [cartLoading, cartSignature, count, loadingZones, step, stepOneComplete]);
+
+  React.useEffect(() => {
+    if (cartLoading || step === 2) return;
+    if (count === 0 || !cartSignature) {
+      clearCheckoutDraft();
+      return;
+    }
+    const draftStep = step >= 1 && stepOneComplete ? 1 : 0;
+    writeCheckoutDraft({
+      step: draftStep,
+      form: cleanCheckoutForm(form),
+      method,
+      paymentMethod,
+      selectedZoneId,
+      zoneSearch,
+      cartSignature,
+    });
+    restoredDraftSignatureRef.current = cartSignature;
+  }, [
+    cartLoading,
+    cartSignature,
+    count,
+    form,
+    method,
+    paymentMethod,
+    selectedZoneId,
+    step,
+    stepOneComplete,
+    zoneSearch,
+  ]);
 
   const placeOrder = async () => {
     setPlacing(true);
     setOrderError('');
+    const orderedItems = snapshotCheckoutItems(detailed);
+    const orderedCount = count;
+    const orderedTotal = total;
     const orderItems = detailed.map(b => ({
       product_id: Number(b.id) || undefined,
       product_name: b.title,
@@ -263,6 +442,17 @@ const CheckoutPage = ({ navigate }) => {
           const payData = await api.initPaystackPayment(order.id, callbackUrl);
           const authUrl = payData?.payment?.authorization_url;
           if (authUrl) {
+            writeCheckoutDraft({
+              step: 1,
+              form: cleanCheckoutForm(form),
+              method,
+              paymentMethod,
+              selectedZoneId,
+              zoneSearch,
+              cartSignature,
+              pendingOrderId: order.id,
+              pendingOrderRef: ref,
+            });
             window.location.href = authUrl;
             return; // user is redirected to Paystack — don't advance step
           }
@@ -278,12 +468,20 @@ const CheckoutPage = ({ navigate }) => {
 
       // Payment-on-delivery orders are registered immediately. Online payment
       // only reaches this point in local mode where Paystack is unavailable.
-      setConfirmedOrder({
-        items: detailed.map(item => ({ ...item })),
-        count,
-        total,
+      const success = buildCheckoutSuccess({
+        orderRef: ref,
+        form,
+        method,
+        paymentMethod,
+        items: orderedItems,
+        count: orderedCount,
+        total: orderedTotal,
+        order,
       });
-      clearSelected();
+      setConfirmedOrder(success.confirmedOrder);
+      writeCheckoutSuccess(success);
+      clearCheckoutDraft();
+      clearCart();
       setStep(2);
     } catch (err) {
       const msg = err?.message || 'Could not place the order. Please try again.';
@@ -293,11 +491,20 @@ const CheckoutPage = ({ navigate }) => {
     }
   };
 
-  if (cartLoading && step < 2) return (
+  if ((cartLoading || (step === 1 && method === 'delivery' && loadingZones)) && step < 2) return (
     <div className="bs-container bs-fade-page">
       <LoadingState
         title="Loading checkout"
         body="Restoring your saved books before payment."
+      />
+    </div>
+  );
+
+  if (cartError && step < 2) return (
+    <div className="bs-container bs-fade-page">
+      <LoadingState
+        title="Could not load checkout"
+        body="We could not confirm your saved cart against the latest catalog. Please refresh or try again shortly."
       />
     </div>
   );
@@ -313,8 +520,8 @@ const CheckoutPage = ({ navigate }) => {
   const validate = () => {
     const e = {};
     if (!form.name.trim()) e.name = 'Required';
-    if (!/^[0-9+\s]{9,}$/.test(form.phone)) e.phone = 'Enter a valid phone number';
-    if (!/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Enter a valid email';
+    if (!PHONE_RE.test(form.phone)) e.phone = 'Enter a valid phone number';
+    if (!EMAIL_RE.test(form.email)) e.email = 'Enter a valid email';
     if (method === 'delivery' && isApiMode() && deliveryZones.length > 0 && !selectedZoneId) e.address = 'Please select your delivery area first.';
     else if (method === 'delivery' && !form.address.trim()) e.address = 'Required for delivery';
     if (method === 'delivery' && customDeliveryArea && !form.city.trim()) e.city = 'Enter your delivery town or area';
@@ -366,8 +573,8 @@ const CheckoutPage = ({ navigate }) => {
           </div>
         </div>
         <div className="bs-confirm-actions">
-          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clearSelected(); navigate('track'); }}>Track Your Order</button>
-          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clearSelected(); navigate('home'); }}>Continue Shopping</button>
+          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clearCheckoutSuccess(); clearCart(); navigate('track'); }}>Track Your Order</button>
+          <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clearCheckoutSuccess(); clearCart(); navigate('home'); }}>Continue Shopping</button>
         </div>
       </div>
     </div>
@@ -375,7 +582,14 @@ const CheckoutPage = ({ navigate }) => {
 
   return (
     <div className="bs-container bs-fade-page">
-      <StepBar step={step} />
+      <StepBar
+        step={step}
+        canVisit={targetStep => targetStep === 0 || (targetStep === 1 && stepOneComplete)}
+        onStepChange={targetStep => {
+          if (targetStep === 0) setStep(0);
+          if (targetStep === 1 && stepOneComplete) setStep(1);
+        }}
+      />
       <div className="bs-checkout-layout">
         <div>
           <div className="bs-mobile-summary-bar"><span>Show order summary</span><span>{cedis(total)}</span></div>
@@ -453,8 +667,8 @@ const CheckoutPage = ({ navigate }) => {
                         </div>
                       )}
                     </div>
-                    {selectedZone?.description && (
-                      <p style={{ fontSize:12, color:'var(--bs-muted)', marginTop:4 }}>{selectedZone.description}</p>
+                    {publicZoneDescription && (
+                      <p style={{ fontSize:12, color:'var(--bs-muted)', marginTop:4 }}>{publicZoneDescription}</p>
                     )}
                   </div>
                 )}
@@ -479,7 +693,7 @@ const CheckoutPage = ({ navigate }) => {
                 {!customDeliveryArea && <div className="bs-field"><label>Region</label><select value={form.region} onChange={set('region')}><option value="">Select region (optional)</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div>}
               </>}
 
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:10 }} onClick={() => { if (validate()) setStep(1); }}>Continue to Payment <Icon name="arrow" size={16} /></button>
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:10 }} onClick={() => { if (validate()) { clearCheckoutSuccess(); setStep(1); } }}>Continue to Payment <Icon name="arrow" size={16} /></button>
               <AuthReturnActions navigate={navigate} />
             </div>
           )}

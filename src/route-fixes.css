@@ -3471,13 +3471,14 @@ html {
   background: #ffd7d7 !important;
   border-color: #ff7575 !important;
   color: #b71f1f !important;
-  box-shadow: 0 10px 22px rgba(214, 69, 69, 0.22) !important;
+  box-shadow: none !important;
 }
 
 .bs .bs-cart-clear-btn:hover {
   background: #ffcaca !important;
   border-color: #f05252 !important;
   color: #991b1b !important;
+  box-shadow: none !important;
 }
 
 #rmx-toast-root {
