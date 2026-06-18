@@ -4138,7 +4138,7 @@ html {
   .bs .bs-category-marquee {
     width: 100vw !important;
     margin-left: calc(50% - 50vw) !important;
-    overflow-x: auto !important;
+    overflow-x: hidden !important;
     overflow-y: hidden !important;
     scrollbar-width: none;
   }
@@ -4148,11 +4148,11 @@ html {
   }
 
   .bs .bs-category-marquee-track {
-    animation: none !important;
-    transform: none !important;
+    animation: bsCategoryMarquee 42s linear infinite !important;
     width: max-content !important;
     padding: 14px 16px !important;
     gap: 8px !important;
+    will-change: transform;
   }
 
   .bs .bs-category-marquee-item {
