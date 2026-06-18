@@ -382,6 +382,153 @@ def my_orders():
     )
 
 
+def _send_order_placed_notifications(order):
+    paid_online = (
+        order.payment_method == "online"
+        and (order.payment_status or "").lower() == "paid"
+    )
+    first_name = (order.customer_name or "").split()[0] or "there"
+    delivery_info = (
+        "Pickup from our Dome Pillar 2 shop"
+        if order.delivery_method == "pickup"
+        else f"Delivery to {order.location or 'the address on file'}"
+    )
+    payment_info = (
+        "Payment on delivery"
+        if order.payment_method == "cash_on_delivery"
+        else "Online payment confirmed via Paystack"
+    )
+
+    if order.phone:
+        payment_sentence = (
+            "Your Paystack payment has been confirmed. "
+            if paid_online
+            else "Payment is due on delivery. "
+        )
+        send_sms(
+            order.phone,
+            f"Hi {first_name}, your RealMindX Bookshop order {order.order_reference} "
+            f"has been placed. {payment_sentence}"
+            f"Our team will contact you within 1 business day to arrange receipt of your package. "
+            f"Reply STOP to opt out."
+        )
+
+    order_summary_html = bookshop_order_summary_table(order)
+    customer_order_meta_html = f"""
+    <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
+      <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
+      <p style="margin:0 0 6px;"><strong>Fulfilment:</strong> {escape(delivery_info)}</p>
+      <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
+      <p style="margin:0;"><strong>Contact number:</strong> {escape(order.phone or "not provided")}</p>
+    </div>
+    """
+    staff_order_meta_html = f"""
+    <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
+      <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
+      <p style="margin:0 0 6px;"><strong>Customer:</strong> {escape(order.customer_name)}</p>
+      <p style="margin:0 0 6px;"><strong>Email:</strong>
+        <a href="mailto:{escape(order.email)}" style="color:#143670;text-decoration:none;">{escape(order.email)}</a>
+      </p>
+      <p style="margin:0 0 6px;"><strong>Phone:</strong> {escape(order.phone or "not provided")}</p>
+      <p style="margin:0 0 6px;"><strong>Fulfilment:</strong> {escape(delivery_info)}</p>
+      <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
+      <p style="margin:0;font-weight:800;"><strong>Total:</strong> GH&#8373;{float(order.total_amount):,.2f}</p>
+    </div>
+    """
+    payment_confirmation = (
+        "<p>Your Paystack payment has been confirmed, so your order is now placed and ready for our team to process.</p>"
+        if paid_online
+        else "<p>Your order is now placed. Payment will be collected when your order is delivered or collected.</p>"
+    )
+
+    send_email(OutboundEmail(
+        to=order.email,
+        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+        subject=f"Your RealMindX Bookshop order has been placed: {order.order_reference}",
+        html=bookshop_email_shell(
+            "Your order has been placed!",
+            f"""
+            <p>Hello {escape(first_name)},</p>
+            {payment_confirmation}
+
+            {customer_order_meta_html}
+            {order_summary_html}
+
+            <p>Our team will contact you within <strong>1 business day</strong> with the next fulfilment update.</p>
+            <p>If you need anything sooner, contact us on any of the channels below and we&rsquo;ll help right away.</p>
+            <p>We appreciate your trust in RealMindX and look forward to fulfilling your order.</p>
+            """,
+            cta_label="Visit the Bookshop",
+            cta_url=current_app.config.get("BOOKSHOP_URL", ""),
+            eyebrow="RealMindX Bookshop",
+            preheader=f"Order {order.order_reference} placed. We will be in touch within 1 business day.",
+        ),
+    ))
+
+    staff_subject_prefix = "Paid bookshop order" if paid_online else "New bookshop order"
+    send_email(OutboundEmail(
+        to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
+        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+        subject=f"{staff_subject_prefix} {order.order_reference} from {order.customer_name}",
+        html=bookshop_email_shell(
+            f"New order from {escape(order.customer_name)}",
+            f"""
+            <p>A new order has been placed via the RealMindX Bookshop.</p>
+            {staff_order_meta_html}
+            {order_summary_html}
+            """,
+            cta_label="View in Admin Dashboard",
+            cta_url=f"{current_app.config['BASE_URL']}/admin/dashboard",
+            eyebrow="RealMindX Internal: New Order Alert",
+        ),
+    ))
+
+
+def _validate_paystack_confirmation(order, data):
+    if (data.get("status") or "").lower() != "success":
+        return False, "Paystack has not confirmed a successful payment."
+    reference = str(data.get("reference") or "").strip()
+    if not reference or reference != str(order.payment_reference or "").strip():
+        return False, "The Paystack reference does not match this order."
+    try:
+        paid_amount = int(data.get("amount"))
+    except (TypeError, ValueError):
+        return False, "Paystack did not return a valid payment amount."
+    expected_amount = int(Decimal(str(order.total_amount or 0)) * 100)
+    if paid_amount != expected_amount:
+        return False, "The confirmed Paystack amount does not match the order total."
+    currency = str(data.get("currency") or "").strip().upper()
+    if currency and currency != "GHS":
+        return False, "The confirmed Paystack currency does not match the order currency."
+    metadata = data.get("metadata") or {}
+    metadata_order_id = metadata.get("order_id")
+    if metadata_order_id not in {None, "", order.id, str(order.id)}:
+        return False, "The Paystack transaction metadata does not match this order."
+    return True, ""
+
+
+def _confirm_paystack_order(order, data, source):
+    if (order.payment_status or "").lower() == "paid":
+        return False
+    valid, error = _validate_paystack_confirmation(order, data)
+    if not valid:
+        raise ValueError(error)
+
+    order.payment_provider = "paystack"
+    order.payment_status = "paid"
+    order.paid_at = datetime.now(timezone.utc)
+    order.status = "confirmed"
+    audit("paystack_payment_confirmed", "order", order.id, {
+        "order_reference": order.order_reference,
+        "reference": order.payment_reference,
+        "amount": float(order.total_amount or 0),
+        "source": source,
+    }, actor_email=order.email)
+    db.session.commit()
+    _send_order_placed_notifications(order)
+    return True
+
+
 @bookshop_bp.post("/orders")
 @limiter.limit("8/hour")
 def create_order():
@@ -452,7 +599,7 @@ def create_order():
         location=location,
         delivery_region=delivery_region,
         notes=(payload.get("notes") or "").strip() or None,
-        status="new",
+        status="new" if payment_method == "cash_on_delivery" else "awaiting_payment",
         payment_status="unpaid" if payment_method == "cash_on_delivery" else "pending",
         payment_method=payment_method,
         payment_provider="cash_on_delivery" if payment_method == "cash_on_delivery" else None,
@@ -472,7 +619,8 @@ def create_order():
         db.session.add(OrderItem(order_id=order.id, product_id=item["product_id"], product_name=item["name"], unit_price=item["unit_price"], quantity=item["quantity"]))
     order.subtotal_amount = pricing["subtotal_amount"]
     order.total_amount = pricing["total_amount"]
-    audit("order_placed", "order", order.id, {
+    audit_action = "order_placed" if payment_method == "cash_on_delivery" else "order_payment_started"
+    audit(audit_action, "order", order.id, {
         "order_reference": order.order_reference,
         "customer_email": email,
         "total": float(pricing["total_amount"]),
@@ -487,94 +635,8 @@ def create_order():
     })
     db.session.commit()
 
-    # SMS confirmation — sent immediately after order is placed
-    if order.phone:
-        first = (order.customer_name or "").split()[0] or "there"
-        send_sms(
-            order.phone,
-            f"Hi {first}, your RealMindX Bookshop order {order.order_reference} "
-            f"has been placed. "
-            f"{'Payment is due on delivery. ' if order.payment_method == 'cash_on_delivery' else 'Online payment is pending. '}"
-            f"Our team will contact you within 1 business day to arrange receipt of your package. "
-            f"Reply STOP to opt out."
-        )
-
-    first_name = (order.customer_name or "").split()[0] or "there"
-    delivery_info = (
-        "Pickup from our Dome Pillar 2 shop"
-        if order.delivery_method == "pickup"
-        else f"Delivery to {order.location or 'the address on file'}"
-    )
-    payment_info = (
-        "Payment on delivery"
-        if order.payment_method == "cash_on_delivery"
-        else "Online payment via Paystack"
-    )
-    order_summary_html = bookshop_order_summary_table(order)
-    customer_order_meta_html = f"""
-    <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
-      <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
-      <p style="margin:0 0 6px;"><strong>Fulfilment:</strong> {escape(delivery_info)}</p>
-      <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
-      <p style="margin:0;"><strong>Contact number:</strong> {escape(order.phone or "not provided")}</p>
-    </div>
-    """
-    staff_order_meta_html = f"""
-    <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
-      <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
-      <p style="margin:0 0 6px;"><strong>Customer:</strong> {escape(order.customer_name)}</p>
-      <p style="margin:0 0 6px;"><strong>Email:</strong>
-        <a href="mailto:{escape(email)}" style="color:#143670;text-decoration:none;">{escape(email)}</a>
-      </p>
-      <p style="margin:0 0 6px;"><strong>Phone:</strong> {escape(order.phone or "not provided")}</p>
-      <p style="margin:0 0 6px;"><strong>Fulfilment:</strong> {escape(delivery_info)}</p>
-      <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
-      <p style="margin:0;font-weight:800;"><strong>Total:</strong> GH&#8373;{float(order.total_amount):,.2f}</p>
-    </div>
-    """
-
-    # Customer confirmation — warm, detailed, professional
-    send_email(OutboundEmail(
-        to=email,
-        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"Your RealMindX Bookshop order has been placed: {order.order_reference}",
-        html=bookshop_email_shell(
-            "Your order has been placed!",
-            f"""
-            <p>Hello {escape(first_name)},</p>
-            <p>Thank you for shopping with <strong>RealMindX Bookshop</strong>. Your order has been placed successfully and our team is reviewing it now.</p>
-
-            {customer_order_meta_html}
-            {order_summary_html}
-
-            <p>Our team will contact you within <strong>1 business day</strong> to confirm your order.</p>
-            <p>If you need anything sooner, contact us on any of the channels below and we&rsquo;ll help right away.</p>
-            <p>We appreciate your trust in RealMindX and look forward to fulfilling your order.</p>
-            """,
-            cta_label="Visit the Bookshop",
-            cta_url=current_app.config.get("BOOKSHOP_URL", ""),
-            eyebrow="RealMindX Bookshop",
-            preheader=f"Order {order.order_reference} placed. We will be in touch within 1 business day.",
-        ),
-    ))
-
-    # Internal staff notification
-    send_email(OutboundEmail(
-        to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
-        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"New bookshop order {order.order_reference} from {order.customer_name}",
-        html=bookshop_email_shell(
-            f"New order from {escape(order.customer_name)}",
-            f"""
-            <p>A new order has been placed via the RealMindX Bookshop.</p>
-            {staff_order_meta_html}
-            {order_summary_html}
-            """,
-            cta_label="View in Admin Dashboard",
-            cta_url=f"{current_app.config['BASE_URL']}/admin/dashboard",
-            eyebrow="RealMindX Internal: New Order Alert",
-        ),
-    ))
+    if order.payment_method == "cash_on_delivery":
+        _send_order_placed_notifications(order)
     return jsonify(order=order_json(order)), 201
 
 
@@ -626,6 +688,50 @@ def initialize_paystack_payment(order_id):
     return jsonify(order=order_json(order), payment=data)
 
 
+@bookshop_bp.post("/orders/paystack/verify")
+@limiter.limit("15/hour")
+def verify_paystack_payment():
+    payload = request.get_json(silent=True) or {}
+    order_reference = str(payload.get("order_reference") or "").strip().upper()
+    if not order_reference:
+        return jsonify(error="Order reference is required."), 400
+
+    order = Order.query.filter_by(order_reference=order_reference).first()
+    if not order:
+        return jsonify(error="Order not found."), 404
+    if order.payment_method != "online":
+        return jsonify(error="This order is not awaiting an online payment."), 400
+    if order.payment_status == "paid":
+        return jsonify(order=order_json(order), message="Payment is already confirmed.")
+    if not order.payment_reference:
+        return jsonify(error="Paystack payment has not been initialized for this order."), 409
+
+    secret_key = current_app.config.get("PAYSTACK_SECRET_KEY")
+    if not secret_key:
+        return jsonify(error="Paystack is not configured for this environment."), 503
+
+    try:
+        response = requests.get(
+            f"https://api.paystack.co/transaction/verify/{order.payment_reference}",
+            headers={"Authorization": f"Bearer {secret_key}"},
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json().get("data") or {}
+    except requests.RequestException:
+        current_app.logger.exception("Paystack verification failed for order %s", order.order_reference)
+        return jsonify(error="Payment confirmation is temporarily unavailable. Please try again."), 502
+
+    try:
+        newly_confirmed = _confirm_paystack_order(order, data, "callback_verification")
+    except ValueError as exc:
+        return jsonify(error=str(exc), order=order_json(order)), 409
+    return jsonify(
+        order=order_json(order),
+        message="Payment confirmed and order placed." if newly_confirmed else "Payment was already confirmed.",
+    )
+
+
 @bookshop_bp.post("/paystack/webhook")
 @csrf.exempt
 def paystack_webhook():
@@ -643,17 +749,16 @@ def paystack_webhook():
     if event.get("event") == "charge.success" and reference:
         order = Order.query.filter_by(payment_reference=reference).first()
         if order:
-            order.payment_provider = "paystack"
-            order.payment_status = "paid"
-            order.paid_at = datetime.now(timezone.utc)
-            if normalize_order_status(order.status) == "new" or str(order.status or "").strip().lower() == "received":
-                order.status = "confirmed"
-            audit("paystack_payment_confirmed", "order", order.id, {
-                "order_reference": order.order_reference,
-                "reference": reference,
-                "amount": float(order.total_amount or 0),
-            }, actor_email=order.email)
-            db.session.commit()
+            try:
+                _confirm_paystack_order(order, data, "webhook")
+            except ValueError as exc:
+                audit("paystack_payment_rejected", "order", order.id, {
+                    "order_reference": order.order_reference,
+                    "reference": reference,
+                    "reason": str(exc),
+                }, actor_email=order.email)
+                db.session.commit()
+                return jsonify(error=str(exc)), 400
     return jsonify(message="Webhook processed.")
 
 

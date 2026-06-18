@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import '../realmindx-site/assets/styles.css';
 import '../realmindx-site/styles/pages.css';
@@ -17,7 +17,7 @@ import AdminPortalPage from '../realmindx-site/pages/AdminPortalPage.jsx';
 import { AdminLoginPage, StaffLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
 import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
-import { usePublicGalleryState, usePublicNewsState, usePublicServices, useSiteCopy, renderTextWithLinks } from './lib/siteContent.js';
+import { usePublicGalleryState, usePublicNewsState, usePublicServices, usePublicServicesState, useSiteCopy, renderTextWithLinks } from './lib/siteContent.js';
 import { API_BASE, api, isApiMode } from './lib/apiClient.js';
 import { trackNewsServiceClick, trackPageView } from './lib/analytics.js';
 import { setHeadLink, setHeadMeta, setStructuredData } from './lib/head.js';
@@ -192,6 +192,22 @@ const serviceSlugFromHref = (href) => {
   }
 };
 
+const internalRouteFromHref = (href) => {
+  if (!href || typeof window === 'undefined') return null;
+  try {
+    const url = new URL(href, window.location.origin);
+    const mainSiteHosts = new Set([
+      window.location.hostname,
+      'realmindxgh.com',
+      'www.realmindxgh.com',
+    ]);
+    if (!mainSiteHosts.has(url.hostname)) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+};
+
 const NewsArticleBody = ({ item, onLinkClick }) => {
   const sections = Array.isArray(item.sections) ? item.sections : [];
   const introParagraphs = String(item.body || item.excerpt || '')
@@ -247,6 +263,7 @@ const NewsCard = ({ item }) => (
 
 const NewsPage = ({ articleSlug = null }) => {
   const newsState = usePublicNewsState(200);
+  const navigate = useNavigate();
   const allItems = newsState.items;
   const [page, setPage] = React.useState(1);
 
@@ -259,17 +276,23 @@ const NewsPage = ({ articleSlug = null }) => {
   const handleArticleLinkClick = React.useCallback((event) => {
     const anchor = event.target.closest('a[href]');
     if (!anchor || !selectedItem?.id) return;
-    const serviceId = serviceSlugFromHref(anchor.getAttribute('href'));
-    if (!serviceId) return;
-    trackNewsServiceClick({
-      newsId: selectedItem.id,
-      serviceId,
-      path: newsPath(selectedItem),
-      href: anchor.getAttribute('href'),
-      label: anchor.textContent?.trim() || 'Service link',
-      source: 'news_article_body',
-    });
-  }, [selectedItem]);
+    const href = anchor.getAttribute('href');
+    const serviceId = serviceSlugFromHref(href);
+    if (serviceId) {
+      trackNewsServiceClick({
+        newsId: selectedItem.id,
+        serviceId,
+        path: newsPath(selectedItem),
+        href,
+        label: anchor.textContent?.trim() || 'Service link',
+        source: 'news_article_body',
+      });
+    }
+    const internalRoute = internalRouteFromHref(href);
+    if (!internalRoute || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(internalRoute);
+  }, [navigate, selectedItem]);
   const relatedItems = articleSlug && selectedItem
     ? allItems.filter(item => item.id !== selectedItem.id).slice(0, 3)
     : [];
@@ -679,7 +702,8 @@ const newsMeta = (item) => ({
 
 const RouteTitle = () => {
   const location = useLocation();
-  const services = usePublicServices();
+  const servicesState = usePublicServicesState();
+  const services = servicesState.items;
   const newsState = usePublicNewsState(200);
   React.useEffect(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
@@ -713,6 +737,9 @@ const RouteTitle = () => {
           },
           url: `${SITE_BASE_URL}${servicePath(service.id)}`,
         };
+      } else if (servicesState.loading) {
+        meta = PAGE_META['/services'];
+        canonicalPath = '/services';
       } else {
         meta = {
           title: 'Service Not Found | RealMindX Education',
@@ -772,7 +799,7 @@ const RouteTitle = () => {
     setHeadMeta('twitter:image', image);
     setHeadLink('canonical', url);
     setStructuredData('route-seo', structuredData);
-  }, [location.pathname, newsState.failed, newsState.items, newsState.loading, services]);
+  }, [location.pathname, newsState.failed, newsState.items, newsState.loading, services, servicesState.loading]);
   return null;
 };
 

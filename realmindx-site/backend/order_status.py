@@ -10,6 +10,7 @@ ORDER_STATUS_ALIASES = {
 }
 
 CANONICAL_ORDER_STATUSES = {
+    "awaiting_payment",
     "new",
     "confirmed",
     "shipped",

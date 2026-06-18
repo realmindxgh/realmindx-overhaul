@@ -638,6 +638,10 @@ def _valid_orders(orders):
         order for order in orders
         if (order.status or "").lower() not in {"cancelled", "canceled", "deleted"}
         and (order.payment_status or "").lower() != "failed"
+        and not (
+            (order.payment_method or "").lower() == "online"
+            and (order.payment_status or "").lower() != "paid"
+        )
     ]
 
 

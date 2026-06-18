@@ -758,7 +758,9 @@ const CheckoutPage = ({ navigate }) => {
               {orderError && <p className="bs-track-error" role="alert" style={{ marginTop:14 }}>{orderError}</p>}
               <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}>
                 <Icon name={paymentMethod === 'online' ? 'lock' : 'truck'} size={17} />
-                {placing ? 'Placing order...' : paymentMethod === 'online' ? `Pay ${cedis(total)} Online` : `Confirm Order · Pay ${cedis(total)} on Delivery`}
+                {placing
+                  ? paymentMethod === 'online' ? 'Opening secure payment...' : 'Placing order...'
+                  : paymentMethod === 'online' ? `Pay ${cedis(total)} Online` : `Confirm Order · Pay ${cedis(total)} on Delivery`}
               </button>
               <AuthReturnActions navigate={navigate} />
               <div className="bs-trust-badges">
@@ -801,6 +803,7 @@ const formatOrderDate = (value) => {
 };
 
 const statusRank = {
+  awaiting_payment: 0,
   new: 1,
   confirmed: 2,
   shipped: 3,
@@ -813,15 +816,16 @@ const trackingTimeline = (order) => {
   const payment = String(order?.payment_status || 'unpaid').toLowerCase();
   const paid = payment === 'paid';
   const payOnDelivery = order?.payment_method === 'cash_on_delivery';
+  const awaitingPayment = status === 'awaiting_payment' && !paid;
   const method = String(order?.delivery_method || '').toLowerCase();
   const deliveryLabel = method === 'pickup' ? 'Ready for Pickup' : 'Out for Delivery';
   const rank = statusRank[status] || (paid ? 2 : 1);
-  const current = status === 'cancelled' ? 1 : Math.max(rank, paid ? 2 : 1);
+  const current = awaitingPayment ? 0 : status === 'cancelled' ? 1 : Math.max(rank, paid ? 2 : 1);
 
   return {
     current,
     steps: [
-      { label:'Order Received', time:formatOrderDate(order?.created_at), icon:'check' },
+      { label: awaitingPayment ? 'Payment Started' : 'Order Received', time:formatOrderDate(order?.created_at), icon: awaitingPayment ? 'lock' : 'check' },
       {
         label: paid ? 'Payment Confirmed' : payOnDelivery ? 'Payment on Delivery' : 'Payment Pending',
         time: paid ? formatOrderDate(order?.paid_at || order?.updated_at) : payOnDelivery ? 'Payment will be collected when the order arrives' : 'Awaiting payment confirmation',
@@ -908,12 +912,13 @@ const TrackPage = ({ navigate }) => {
 
         {orders.map(order => {
           const timeline = trackingTimeline(order);
+          const awaitingPayment = normalizeOrderStatus(order.status) === 'awaiting_payment' && String(order.payment_status || '').toLowerCase() !== 'paid';
           return (
           <div className="bs-fade-page" style={{ marginTop:32 }}>
             <div className="bs-summary-card bs-track-card" style={{ position:'static' }}>
               <div style={{ display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:8 }}>
                 <div><div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Order</div><div style={{ fontFamily:'JetBrains Mono', fontSize:16, color:'var(--bs-navy)', marginTop:4 }}>{order.order_reference}</div></div>
-                <div style={{ textAlign:'right' }}><div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Placed</div><div style={{ marginTop:4, fontSize:14 }}>{formatOrderDate(order.created_at)}</div></div>
+                <div style={{ textAlign:'right' }}><div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>{awaitingPayment ? 'Started' : 'Placed'}</div><div style={{ marginTop:4, fontSize:14 }}>{formatOrderDate(order.created_at)}</div></div>
               </div>
               <div className="bs-divider" />
               <div style={{ marginBottom:8 }}>

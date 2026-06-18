@@ -3283,6 +3283,32 @@ html {
   margin: 0 0 16px;
 }
 
+.news-article-body a.content-link,
+.news-modal-copy a.content-link {
+  color: #075eb8;
+  font-weight: 700;
+  text-decoration-line: underline;
+  text-decoration-color: #d8a900;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+.news-article-body a.content-link:hover,
+.news-article-body a.content-link:focus-visible,
+.news-modal-copy a.content-link:hover,
+.news-modal-copy a.content-link:focus-visible {
+  color: var(--navy);
+  text-decoration-color: var(--yellow);
+}
+
+.news-article-body a.content-link:focus-visible,
+.news-modal-copy a.content-link:focus-visible {
+  border-radius: 3px;
+  outline: 3px solid rgba(255, 204, 1, 0.35);
+  outline-offset: 2px;
+}
+
 .news-modal-section,
 .news-article-section {
   margin-top: 28px;

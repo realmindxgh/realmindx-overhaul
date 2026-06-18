@@ -111,6 +111,7 @@ export const api = {
   bulkPriceAdjust: (type, value, direction) => apiFetch('/admin/products/bulk-price-adjust', { method: 'POST', body: { type, value, direction } }),
   bulkDeliveryAdjust: (type, value, direction) => apiFetch('/admin/delivery-zones/bulk-adjust', { method: 'POST', body: { type, value, direction } }),
   initPaystackPayment: (orderId, callbackUrl) => apiFetch(`/orders/${orderId}/paystack/initialize`, { method: 'POST', body: { callback_url: callbackUrl } }),
+  verifyPaystackPayment: (orderReference) => apiFetch('/orders/paystack/verify', { method: 'POST', body: { order_reference: orderReference } }),
   createProductReview: (productId, payload) => apiFetch(`/products/${productId}/reviews`, { method: 'POST', body: payload }),
   fetchProductReviews: (productId) => apiFetch(`/products/${productId}/reviews`),
   fetchProductReviewEligibility: (productId) => apiFetch(`/products/${productId}/review-eligibility`),

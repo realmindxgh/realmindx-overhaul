@@ -180,6 +180,16 @@ const PaystackReturnPage = ({ orderRef, navigate, clearCart }) => {
 
     const checkPayment = async (attempt = 0) => {
       try {
+        try {
+          const verified = await api.verifyPaystackPayment(orderRef);
+          if (isPaidOrder(verified?.order)) {
+            finish(verified.order);
+            return;
+          }
+        } catch {
+          // The webhook may still be processing. Fall back to the stored status
+          // and retry briefly without clearing the customer's cart.
+        }
         const data = await api.trackOrders(orderRef);
         const order = (data.items || []).find(item => item.order_reference === orderRef) || data.items?.[0] || null;
         if (isPaidOrder(order)) {

@@ -337,7 +337,9 @@ export const usePublicServicesState = () => {
   }, [apiState.refresh]);
 
   const localServices = localContent.services?.length ? localContent.services : DEFAULT_SERVICES;
-  const source = isApiMode() ? (apiState.items || []) : localServices;
+  const source = isApiMode()
+    ? (apiState.failed ? localServices : (apiState.items || []))
+    : localServices;
   return {
     ...apiState,
     items: sortServices(source),
@@ -557,6 +559,7 @@ export const renderTextWithLinks = (text) => {
         {
           key,
           href: linkUrl,
+          className: 'content-link',
           target: isExternal ? '_blank' : undefined,
           rel: isExternal ? 'noopener noreferrer' : undefined,
         },

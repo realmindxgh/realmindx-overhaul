@@ -18,6 +18,8 @@ export const normalizeOrderStatus = (status, fallback = 'new') => {
 export const orderStatusLabel = (status) => {
   const normalized = normalizeOrderStatus(status);
   switch (normalized) {
+    case 'awaiting_payment':
+      return 'Awaiting payment';
     case 'new':
       return 'Placed';
     case 'confirmed':
