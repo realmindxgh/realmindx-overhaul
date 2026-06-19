@@ -209,7 +209,7 @@ export default function ImageCropModal({
     }}>
       <div style={{ position: 'relative', background: '#fff', borderRadius: 18, padding: '24px 24px 20px', maxWidth: `min(${VW + 80}px, 95vw)`, width: '100%', maxHeight: 'calc(100svh - 32px)', overflowY: 'auto' }}>
         <button type="button" onClick={onCancel} aria-label="Close image cropper" style={{
-          position: 'absolute', top: 14, right: 14, zIndex: 2,
+          position: 'sticky', top: 0, zIndex: 3, float: 'right', marginBottom: -38,
           width: 38, height: 38, display: 'grid', placeItems: 'center',
           border: '1.5px solid #d9e1ee', borderRadius: '50%',
           background: '#fff', color: '#143670', fontSize: 23,
@@ -228,7 +228,12 @@ export default function ImageCropModal({
 
         <img ref={imgRef} src={src} onLoad={onLoad} style={{ display: 'none' }} alt="" crossOrigin="anonymous" />
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+        <div style={{
+          position: 'sticky', bottom: -20, zIndex: 3,
+          display: 'flex', gap: 10, margin: '14px -24px -20px',
+          padding: '14px 24px 20px', borderTop: '1px solid #e2e8f0',
+          background: '#fff', boxShadow: '0 -12px 24px rgba(13,39,82,.06)',
+        }}>
           <button type="button" onClick={applyCrop} style={{
             flex: 1, padding: '12px', background: '#143670', color: '#fff',
             border: 'none', borderRadius: 9, fontFamily: 'Montserrat,sans-serif',

@@ -278,12 +278,13 @@ html {
   padding: 28px;
   position: relative;
   box-shadow: 0 28px 90px rgba(1, 17, 38, 0.32);
+  overscroll-behavior: contain;
 }
 
 .admin-modal-close {
-  position: absolute;
-  top: 16px;
-  right: 16px;
+  position: sticky;
+  top: 0;
+  margin: -12px 0 -26px auto;
   z-index: 5;
   width: 38px;
   height: 38px;
@@ -2472,6 +2473,7 @@ html {
   border-radius: 12px;
   box-shadow: 0 30px 100px rgba(1, 17, 38, 0.34);
   position: relative;
+  overscroll-behavior: contain;
 }
 
 .service-modal * {
@@ -2479,9 +2481,9 @@ html {
 }
 
 .service-modal-close {
-  position: absolute;
+  position: sticky;
   top: 14px;
-  right: 14px;
+  margin: 14px 14px -56px auto;
   z-index: 3;
   width: 42px;
   height: 42px;
@@ -2493,6 +2495,7 @@ html {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  flex: 0 0 42px;
 }
 
 .service-modal-media {
@@ -2563,10 +2566,16 @@ html {
 }
 
 .service-modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 24px;
+  padding: 16px 0 4px;
+  background: #fff;
+  box-shadow: 0 -14px 24px rgba(1, 17, 38, 0.06);
 }
 
 .news-card {
@@ -3222,9 +3231,10 @@ html {
 }
 
 .site-modal-close {
-  position: absolute;
+  position: sticky;
   top: 16px;
-  right: 16px;
+  float: right;
+  margin: 16px 16px -60px 0;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -3245,6 +3255,26 @@ html {
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 26px 80px rgba(4, 18, 38, 0.35);
+  overscroll-behavior: contain;
+}
+
+.news-modal-copy > .btn:last-child {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 12px;
+  box-shadow: 0 0 0 12px #fff, 0 -14px 24px rgba(4, 18, 38, 0.06);
+}
+
+.admin-modal-actions-sticky {
+  position: sticky;
+  bottom: -28px;
+  z-index: 4;
+  margin: 12px -28px -28px !important;
+  padding: 16px 28px 20px;
+  border-top: 1px solid rgba(20, 54, 112, 0.12);
+  background: #fff;
+  box-shadow: 0 -14px 26px rgba(1, 17, 38, 0.07);
 }
 
 .news-modal-hero {

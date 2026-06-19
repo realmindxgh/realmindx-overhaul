@@ -1,5 +1,5 @@
 import React from 'react';
-import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, BottomNav } from './chrome.jsx';
+import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, ScrollToTopFab, BottomNav } from './chrome.jsx';
 import { HomePage, ShopPage } from './pages-shop.jsx';
 import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
@@ -591,6 +591,7 @@ const App = () => {
           />
         </main>
         <Footer navigate={navigate} />
+        <ScrollToTopFab route="home" />
         <WhatsAppFab route="home" />
         <BottomNav route="home" navigate={navigate} />
       </div>
@@ -602,6 +603,7 @@ const App = () => {
       <Navbar route={route} navigate={navigate} />
       <main className={mainClassName}>{page}</main>
       <Footer navigate={navigate} />
+      <ScrollToTopFab route={route} />
       <WhatsAppFab route={route} />
       <BottomNav route={route} navigate={navigate} />
     </div>

@@ -1472,7 +1472,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
           </div>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+      <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 12 }}>
         <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : (initialItem ? 'Save Changes' : config.createLabel)}</button>
         <button className="btn btn-outline-navy" type="button" onClick={onCancel}>Cancel</button>
       </div>

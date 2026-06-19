@@ -171,7 +171,7 @@ const NavUserPill = () => {
           </a>
           <div className="nav-user-dropdown-divider" />
           <button className="nav-user-menu-item danger" onClick={handleSignOut}>
-            <span className="menu-icon"><Icon name="x" size={15} stroke={2.5} /></span>
+            <span className="menu-icon"><Icon name="logout" size={15} stroke={2.2} /></span>
             Sign Out
           </button>
         </div>

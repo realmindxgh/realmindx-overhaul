@@ -468,7 +468,7 @@ const BOOKSHOP_PRIVACY_SECTIONS = [
   ['Cookies', 'We use a session cookie to maintain your login state and shopping cart between pages. This cookie is essential to the operation of the bookshop. We do not use third-party tracking cookies or advertising cookies.'],
   ["Children's Privacy", 'The RealMindX Bookshop is not directed at children under the age of 13. Parents and guardians may purchase on behalf of children. If you believe a child under 13 has independently provided us with personal information, contact us at info@realmindxgh.com and we will delete it promptly.'],
   ['Changes to This Policy', 'We may update this Privacy Policy from time to time. Changes will be posted on this page with an updated effective date. For significant changes we will notify registered customers by email.'],
-  ['Contact', 'RealMindX Bookshop, RealMindX Education Limited, info@realmindxgh.com, +233 55 803 9190, Dome Pillar 2, Accra, Ghana.'],
+  ['Contact', 'RealMindX Bookshop\nRealMindX Education Limited\ninfo@realmindxgh.com\n+233 55 803 9190\nDome Pillar 2, Accra, Ghana.'],
 ];
 
 const BOOKSHOP_TERMS_SECTIONS = [
@@ -484,7 +484,7 @@ const BOOKSHOP_TERMS_SECTIONS = [
   ['Product Reviews', 'Registered users may submit product reviews. Reviews must be honest, relevant to the product, and free from offensive, defamatory, or misleading content. We reserve the right to remove reviews that violate these standards or that appear to be fraudulent. We do not remove legitimate negative reviews.'],
   ['Intellectual Property', 'All content on the bookshop website including text, images, product descriptions, logos, and design is the intellectual property of RealMindX Education Limited or its suppliers. You may not reproduce bookshop content without our prior written consent.'],
   ['Limitation of Liability', 'To the fullest extent permitted by Ghanaian law, our liability for any claim arising from a bookshop purchase is limited to the value of the specific item or items in dispute. We are not liable for indirect losses, loss of data, loss of profit, or consequential damages arising from your use of the bookshop or any purchase made through it.'],
-  ['Contact', 'RealMindX Bookshop, RealMindX Education Limited, info@realmindxgh.com, +233 55 803 9190, Dome Pillar 2, Accra, Ghana. Monday to Friday 7am to 5pm, Saturday 10am to 2pm.'],
+  ['Contact', 'RealMindX Bookshop\nRealMindX Education Limited\ninfo@realmindxgh.com\n+233 55 803 9190\nDome Pillar 2, Accra, Ghana.\nMonday to Friday: 7am to 5pm\nSaturday: 10am to 2pm'],
 ];
 
 const BookshopLegalPage = ({ type = 'privacy' }) => {
@@ -908,7 +908,7 @@ const AccountPage = ({ navigate }) => {
                 await signOut();
                 navigate('home');
               }}>
-                <Icon name="x" size={16} /> Sign Out
+                <Icon name="logout" size={16} /> Sign Out
               </button>
             </div>
           </aside>

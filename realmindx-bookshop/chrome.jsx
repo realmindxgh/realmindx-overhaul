@@ -430,12 +430,9 @@ const NavUserMenu = ({ navigate }) => {
           <button className="bs-user-dd-item" onClick={() => { setOpen(false); navigate('account'); }}>
             <Icon name="user" size={16} /> My Account
           </button>
-          <button className="bs-user-dd-item" onClick={() => { setOpen(false); navigate('track'); }}>
-            <Icon name="truck" size={16} /> Track an Order
-          </button>
           <div className="bs-user-dd-divider" />
           <button className="bs-user-dd-item bs-user-dd-signout" onClick={handleSignOut}>
-            <Icon name="x" size={16} /> Sign Out
+            <Icon name="logout" size={16} /> Sign Out
           </button>
         </div>
       )}
@@ -813,6 +810,30 @@ const WhatsAppFab = ({ route }) => (
   </a>
 );
 
+const ScrollToTopFab = ({ route }) => {
+  const [visible, setVisible] = React.useState(false);
+  const whatsappHidden = WHATSAPP_HIDDEN_ROUTES.has(route);
+
+  React.useEffect(() => {
+    const update = () => setVisible(window.scrollY > 480);
+    window.addEventListener('scroll', update, { passive: true });
+    update();
+    return () => window.removeEventListener('scroll', update);
+  }, []);
+
+  if (!visible) return null;
+  return (
+    <button
+      type="button"
+      className={`bs-scrolltop-fab${whatsappHidden ? ' is-solo' : ''}`}
+      aria-label="Back to top"
+      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+    >
+      <Icon name="arrowUp" size={21} stroke={2.2} />
+    </button>
+  );
+};
+
 // ---------- Mobile bottom nav ----------
 const BottomNav = ({ route, navigate }) => {
   const { count } = useCart();
@@ -1016,4 +1037,4 @@ const ListCard = ({ book, idx = 0, navigate, searchContext = null }) => {
   );
 };
 
-export { CartCtx, useCart, CartProvider, clearBookshopCartStorage, WishlistCtx, useWishlist, WishlistProvider, Navbar, Footer, WhatsAppFab, BottomNav, ProductCard, ListCard };
+export { CartCtx, useCart, CartProvider, clearBookshopCartStorage, WishlistCtx, useWishlist, WishlistProvider, Navbar, Footer, WhatsAppFab, ScrollToTopFab, BottomNav, ProductCard, ListCard };

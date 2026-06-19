@@ -339,7 +339,7 @@ const Sidebar = ({ active, setActive, user, sidebarOpen, setSidebarOpen, applica
           <span className="nav-icon"><Icon name="home" size={17} stroke={1.9} /></span> Back to RealMindX
         </a>
         <button className="portal-nav-item" style={{ color: 'var(--danger)', width: '100%', textAlign: 'left' }} onClick={async () => { await signOut(); queueToast("You've been signed out.", 'success'); window.location.href = '/login'; }}>
-          <span className="nav-icon"><Icon name="x" size={17} stroke={1.9} /></span> Sign Out
+          <span className="nav-icon"><Icon name="logout" size={17} stroke={1.9} /></span> Sign Out
         </button>
       </div>
     </aside>
@@ -1079,7 +1079,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
           )}
         </div>
         {error && <p className="form-error" style={{ marginTop: 12 }}>{error}</p>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</button>
           <button className="btn btn-outline-navy" type="button" onClick={onCancel}>Cancel</button>
         </div>
@@ -1471,7 +1471,7 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
               </span>
             </label>
             {error && <p className="form-error">{error}</p>}
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
               <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Alert'}</button>
               <button className="btn btn-outline-navy" type="button" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
@@ -1989,7 +1989,7 @@ const UserPortalPage = () => {
                   View / Edit Profile
                 </button>
                 <button type="button" role="menuitem" onClick={handleSignOut}>
-                  <Icon name="x" size={16} stroke={1.9} />
+                  <Icon name="logout" size={16} stroke={1.9} />
                   Sign Out
                 </button>
               </div>
