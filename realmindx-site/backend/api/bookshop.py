@@ -15,6 +15,7 @@ from sqlalchemy import or_
 from ..analytics import queue_analytics_event
 from ..audit import audit
 from ..bookshop_search import product_search_filter, taxonomy_filter_terms
+from ..checkout_details import upsert_checkout_detail
 from ..email_service import (
     OutboundEmail,
     bookshop_email_shell,
@@ -551,11 +552,18 @@ def create_order():
         return jsonify(error="Choose online payment or payment on delivery."), 400
     delivery_zone = find_delivery_zone(payload)
     delivery_fee = Decimal("0") if delivery_method == "pickup" else Decimal(str(delivery_zone.fee if delivery_zone else 0))
-    location = (payload.get("location") or "").strip() or None
+    delivery_address = (payload.get("delivery_address") or "").strip()
+    delivery_city = (payload.get("delivery_city") or "").strip()
     delivery_region = (payload.get("delivery_region") or "").strip() or None
     custom_delivery_area = bool(payload.get("custom_delivery_area"))
-    if delivery_method == "delivery" and not location:
-        return jsonify(error="Delivery address is required."), 400
+    location_parts = [
+        delivery_city if custom_delivery_area else delivery_zone.name if delivery_zone else "",
+        delivery_address,
+        delivery_region,
+    ]
+    location = (payload.get("location") or "").strip() or ", ".join(filter(None, location_parts)) or None
+    if delivery_method == "delivery" and not delivery_zone and not (custom_delivery_area and delivery_city):
+        return jsonify(error="Choose a delivery area."), 400
     if delivery_method == "delivery" and custom_delivery_area and delivery_region not in GHANA_REGIONS:
         return jsonify(error="Select a valid Ghana region for the custom delivery area."), 400
 
@@ -617,6 +625,17 @@ def create_order():
     db.session.flush()
     for item in order_items:
         db.session.add(OrderItem(order_id=order.id, product_id=item["product_id"], product_name=item["name"], unit_price=item["unit_price"], quantity=item["quantity"]))
+    if current_user.is_authenticated and delivery_method == "delivery":
+        upsert_checkout_detail(current_user.id, {
+            "customer_name": order.customer_name,
+            "email": order.email,
+            "phone": order.phone,
+            "delivery_zone_id": order.delivery_zone_id,
+            "delivery_zone_name": order.delivery_zone_name,
+            "delivery_address": delivery_address,
+            "delivery_city": delivery_city or (delivery_zone.name if delivery_zone else ""),
+            "delivery_region": delivery_region,
+        })
     order.subtotal_amount = pricing["subtotal_amount"]
     order.total_amount = pricing["total_amount"]
     audit_action = "order_placed" if payment_method == "cash_on_delivery" else "order_payment_started"

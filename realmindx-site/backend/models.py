@@ -304,6 +304,30 @@ class DeliveryZone(TimestampMixin, db.Model):
     sort_order = db.Column(db.Integer, default=0, nullable=False)
 
 
+class CheckoutDetail(TimestampMixin, db.Model):
+    __tablename__ = "checkout_details"
+    __table_args__ = (
+        UniqueConstraint("user_id", "fingerprint", name="uq_checkout_detail_user_fingerprint"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    label = db.Column(db.String(120), nullable=True)
+    customer_name = db.Column(db.String(160), nullable=False)
+    email = db.Column(db.String(255), nullable=False)
+    phone = db.Column(db.String(40), nullable=False)
+    delivery_zone_id = db.Column(db.Integer, db.ForeignKey("delivery_zones.id"), nullable=True, index=True)
+    delivery_zone_name = db.Column(db.String(160), nullable=True)
+    address = db.Column(db.String(255), nullable=True)
+    city = db.Column(db.String(160), nullable=True)
+    region = db.Column(db.String(80), nullable=True)
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+    last_used_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    fingerprint = db.Column(db.String(64), nullable=False)
+
+    delivery_zone = db.relationship("DeliveryZone")
+
+
 class OrderItem(TimestampMixin, db.Model):
     __tablename__ = "order_items"
 

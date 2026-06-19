@@ -20,7 +20,6 @@ const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 const PHONE_RE = /^[0-9+\s]{9,}$/;
 const IS_DEVELOPMENT = import.meta.env.DEV;
-const INTERNAL_DELIVERY_NOTE_RE = /\badmin\b|set\s+(?:the\s+)?delivery\s+fee|delivery\s+zones?/i;
 
 const cleanCheckoutForm = (value = {}) => ({
   name: String(value.name || ''),
@@ -49,7 +48,6 @@ const hasRequiredCheckoutDetails = ({
   if (!EMAIL_RE.test(data.email)) return false;
   if (method !== 'delivery') return true;
   if (requireZone && !selectedZoneId) return false;
-  if (!data.address.trim()) return false;
   if (customDeliveryArea && !data.city.trim()) return false;
   if (customDeliveryArea && !data.region) return false;
   return true;
@@ -204,6 +202,10 @@ const CheckoutPage = ({ navigate }) => {
   const [zoneSearch, setZoneSearch] = React.useState(() => initialDraft?.zoneSearch || '');
   const [zonePickerOpen, setZonePickerOpen] = React.useState(false);
   const [loadingZones, setLoadingZones] = React.useState(() => isApiMode());
+  const [savedDetails, setSavedDetails] = React.useState([]);
+  const [selectedSavedDetailId, setSelectedSavedDetailId] = React.useState('');
+  const [savedDetailsError, setSavedDetailsError] = React.useState('');
+  const [savingDetails, setSavingDetails] = React.useState(false);
 
   React.useEffect(() => {
     if (!isApiMode()) return;
@@ -224,27 +226,26 @@ const CheckoutPage = ({ navigate }) => {
   React.useEffect(() => {
     let alive = true;
     if (!session?.role || !isApiMode()) return undefined;
-    api.fetchProfile()
-      .then((data) => {
-        if (!alive || !data?.profile) return;
-        const profile = data.profile;
-        setForm((prev) => ({
-          ...prev,
-          name: prev.name || [profile.first_name, profile.last_name].filter(Boolean).join(' '),
-          phone: prev.phone || profile.phone || '',
-          email: prev.email || profile.email || '',
-          address: prev.address || profile.location || '',
-        }));
-      })
-      .catch(() => {});
+    Promise.allSettled([api.fetchProfile(), api.fetchCheckoutDetails()])
+      .then(([profileResult, detailsResult]) => {
+        if (!alive) return;
+        if (profileResult.status === 'fulfilled' && profileResult.value?.profile) {
+          const profile = profileResult.value.profile;
+          setForm((prev) => ({
+            ...prev,
+            name: prev.name || [profile.first_name, profile.last_name].filter(Boolean).join(' '),
+            phone: prev.phone || profile.phone || '',
+            email: prev.email || profile.email || '',
+          }));
+        }
+        if (detailsResult.status === 'fulfilled') {
+          setSavedDetails(detailsResult.value?.items || []);
+        }
+      });
     return () => { alive = false; };
   }, [session?.role]);
 
   const selectedZone = deliveryZones.find(z => String(z.id) === selectedZoneId);
-  const selectedZoneDescription = String(selectedZone?.description || '').trim();
-  const publicZoneDescription = selectedZoneDescription && !INTERNAL_DELIVERY_NOTE_RE.test(selectedZoneDescription)
-    ? selectedZoneDescription
-    : '';
   React.useEffect(() => {
     if (selectedZone && zoneSearch !== selectedZone.name) setZoneSearch(selectedZone.name);
   }, [selectedZone?.id]);
@@ -253,12 +254,29 @@ const CheckoutPage = ({ navigate }) => {
   const filteredDeliveryZones = (zoneQuery
     ? deliveryZones.filter(zone => deliveryLocationSearchText(zone).includes(zoneQuery))
     : deliveryZones
-  ).slice(0, 12);
+  )
+    .slice()
+    .sort((first, second) => {
+      if (zoneQuery) {
+        const firstExact = [first.name, ...deliveryLocationAliases(first)]
+          .some(value => normaliseLocationSearch(value) === zoneQuery);
+        const secondExact = [second.name, ...deliveryLocationAliases(second)]
+          .some(value => normaliseLocationSearch(value) === zoneQuery);
+        if (firstExact !== secondExact) return firstExact ? -1 : 1;
+      }
+      return String(first.name || '').localeCompare(String(second.name || ''), 'en', { sensitivity: 'base' });
+    })
+    .slice(0, 12);
   const selectDeliveryZone = zone => {
     setSelectedZoneId(String(zone.id));
     setZoneSearch(zone.name);
     setZonePickerOpen(false);
-    setErrors(prev => ({ ...prev, address: '' }));
+    setForm(prev => ({
+      ...prev,
+      city: zone.name || prev.city,
+      region: zone.region || prev.region,
+    }));
+    setErrors(prev => ({ ...prev, zone: '', region: '' }));
   };
   const selectOtherDeliveryArea = () => {
     setSelectedZoneId('other');
@@ -273,6 +291,31 @@ const CheckoutPage = ({ navigate }) => {
       return values.some(value => normaliseLocationSearch(value) === query);
     });
     if (exact) selectDeliveryZone(exact);
+  };
+  const applySavedDetails = detailId => {
+    setSelectedSavedDetailId(detailId);
+    const detail = savedDetails.find(item => String(item.id) === String(detailId));
+    if (!detail) return;
+    setForm(prev => ({
+      ...prev,
+      name: detail.customer_name || prev.name,
+      phone: detail.phone || prev.phone,
+      email: detail.email || prev.email,
+      address: detail.address || '',
+      city: detail.city || detail.delivery_zone_name || '',
+      region: detail.region || '',
+    }));
+    const zone = deliveryZones.find(item =>
+      String(item.id) === String(detail.delivery_zone_id)
+      || normaliseLocationSearch(item.name) === normaliseLocationSearch(detail.delivery_zone_name),
+    );
+    if (zone) {
+      selectDeliveryZone(zone);
+    } else if (detail.city || detail.delivery_zone_name) {
+      setSelectedZoneId('other');
+      setZoneSearch(detail.city || detail.delivery_zone_name);
+    }
+    setSavedDetailsError('');
   };
   const deliveryFee = method !== 'delivery' ? 0
     : (isApiMode() && deliveryZones.length > 0)
@@ -419,6 +462,8 @@ const CheckoutPage = ({ navigate }) => {
         location: method === 'delivery'
           ? [customDeliveryArea ? form.city : selectedZone?.name, form.address, form.region].filter(Boolean).join(', ')
           : 'Dome Pillar 2, Accra',
+        delivery_address: method === 'delivery' ? form.address : '',
+        delivery_city: method === 'delivery' ? (customDeliveryArea ? form.city : selectedZone?.name || form.city) : '',
         delivery_zone_id: selectedZone?.id || null,
         delivery_region: method === 'delivery' ? form.region : '',
         custom_delivery_area: customDeliveryArea,
@@ -522,14 +567,13 @@ const CheckoutPage = ({ navigate }) => {
     if (!form.name.trim()) e.name = 'Required';
     if (!PHONE_RE.test(form.phone)) e.phone = 'Enter a valid phone number';
     if (!EMAIL_RE.test(form.email)) e.email = 'Enter a valid email';
-    if (method === 'delivery' && isApiMode() && deliveryZones.length > 0 && !selectedZoneId) e.address = 'Please select your delivery area first.';
-    else if (method === 'delivery' && !form.address.trim()) e.address = 'Required for delivery';
+    if (method === 'delivery' && isApiMode() && deliveryZones.length > 0 && !selectedZoneId) e.zone = 'Please select your delivery area first.';
     if (method === 'delivery' && customDeliveryArea && !form.city.trim()) e.city = 'Enter your delivery town or area';
     if (method === 'delivery' && customDeliveryArea && !form.region) e.region = 'Select your region';
     setErrors(e);
     const first = Object.keys(e)[0];
     if (first) {
-      const ref = first === 'address' && isApiMode() && deliveryZones.length > 0 && !selectedZoneId
+      const ref = first === 'zone'
         ? zoneRef
         : { name: nameRef, phone: phoneRef, email: emailRef, address: addressRef }[first];
       requestAnimationFrame(() => {
@@ -541,6 +585,38 @@ const CheckoutPage = ({ navigate }) => {
     return Object.keys(e).length === 0;
   };
   const set = (k) => (ev) => setForm(f => ({ ...f, [k]: ev.target.value }));
+  const continueToPayment = async () => {
+    if (!validate()) return;
+    clearCheckoutSuccess();
+    setSavedDetailsError('');
+    if (session?.role && isApiMode() && method === 'delivery') {
+      setSavingDetails(true);
+      try {
+        const result = await api.saveCheckoutDetails({
+          customer_name: form.name,
+          email: form.email,
+          phone: form.phone,
+          delivery_zone_id: selectedZone?.id || null,
+          delivery_zone_name: selectedZone?.name || (customDeliveryArea ? form.city : ''),
+          address: form.address,
+          city: customDeliveryArea ? form.city : selectedZone?.name || form.city,
+          region: form.region,
+        });
+        if (result?.detail) {
+          setSavedDetails(prev => [
+            result.detail,
+            ...prev.filter(item => String(item.id) !== String(result.detail.id)),
+          ]);
+          setSelectedSavedDetailId(String(result.detail.id));
+        }
+      } catch (error) {
+        setSavedDetailsError(error?.message || 'Your details could not be saved, but you can still complete checkout.');
+      } finally {
+        setSavingDetails(false);
+      }
+    }
+    setStep(1);
+  };
 
   const confirmedItems = confirmedOrder?.items || detailed;
   const confirmedCount = confirmedOrder?.count ?? count;
@@ -597,11 +673,32 @@ const CheckoutPage = ({ navigate }) => {
           {step === 0 && (
             <div className="bs-form-card">
               <h3 className="bs-h3">Delivery details</h3>
+              {session?.role && savedDetails.length > 0 && (
+                <div className="bs-saved-checkout-picker">
+                  <div className="bs-saved-checkout-icon"><Icon name="refresh" size={18} /></div>
+                  <div className="bs-saved-checkout-copy">
+                    <strong>Use previous checkout details</strong>
+                    <span>Select a saved or previously used contact and delivery set.</span>
+                  </div>
+                  <select
+                    value={selectedSavedDetailId}
+                    onChange={event => applySavedDetails(event.target.value)}
+                    aria-label="Use previous checkout details"
+                  >
+                    <option value="">Choose details</option>
+                    {savedDetails.map(detail => (
+                      <option key={`${detail.source}-${detail.id}`} value={detail.id}>
+                        {detail.label} · {detail.customer_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="bs-field-row">
-                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name</label><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" />{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
-                <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number</label><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." />{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
+                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name *</label><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" />{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
+                <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number *</label><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." />{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
               </div>
-              <div className={`bs-field${errors.email?' err':''}`}><label>Email</label><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" />{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
+              <div className={`bs-field${errors.email?' err':''}`}><label>Email *</label><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" />{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
 
               <label className="bs-field" style={{ marginBottom:8 }}><span style={{ fontFamily:'Montserrat', fontWeight:600, fontSize:13, color:'var(--bs-navy)', display:'block', marginBottom:7 }}>Delivery Method</span></label>
               <div className={`bs-radio-card${method==='delivery'?' sel':''}`} onClick={() => setMethod('delivery')}>
@@ -620,7 +717,7 @@ const CheckoutPage = ({ navigate }) => {
                     <div className="bs-zone-picker">
                       <input
                         ref={zoneRef}
-                        aria-invalid={Boolean(errors.address && !selectedZoneId)}
+                        aria-invalid={Boolean(errors.zone)}
                         aria-expanded={zonePickerOpen}
                         aria-controls="delivery-zone-results"
                         className="bs-zone-input"
@@ -667,9 +764,7 @@ const CheckoutPage = ({ navigate }) => {
                         </div>
                       )}
                     </div>
-                    {publicZoneDescription && (
-                      <p style={{ fontSize:12, color:'var(--bs-muted)', marginTop:4 }}>{publicZoneDescription}</p>
-                    )}
+                    {errors.zone && <div className="bs-field-error">{errors.zone}</div>}
                   </div>
                 )}
                 {customDeliveryArea && (
@@ -689,11 +784,18 @@ const CheckoutPage = ({ navigate }) => {
                     </div>
                   </div>
                 )}
-                <div className={`bs-field${errors.address?' err':''}`} style={{ marginTop:customDeliveryArea ? 0 : 18 }}><label>Delivery Address</label><textarea ref={addressRef} aria-invalid={Boolean(errors.address)} value={form.address} onChange={set('address')} placeholder="House number, street, landmark..." />{errors.address && <div className="bs-field-error">{errors.address}</div>}</div>
-                {!customDeliveryArea && <div className="bs-field"><label>Region</label><select value={form.region} onChange={set('region')}><option value="">Select region (optional)</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div>}
+                <div className="bs-field" style={{ marginTop:customDeliveryArea ? 0 : 18 }}>
+                  <label>Landmark or delivery directions <span className="bs-optional-label">(optional)</span></label>
+                  <textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." />
+                  <p className="bs-field-help">We will contact you to confirm the precise landmark and delivery directions.</p>
+                </div>
+                {!customDeliveryArea && <div className="bs-field"><label>Region <span className="bs-optional-label">(auto-filled)</span></label><select value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div>}
               </>}
 
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:10 }} onClick={() => { if (validate()) { clearCheckoutSuccess(); setStep(1); } }}>Continue to Payment <Icon name="arrow" size={16} /></button>
+              {savedDetailsError && <p className="bs-saved-checkout-error">{savedDetailsError}</p>}
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:10 }} disabled={savingDetails} onClick={continueToPayment}>
+                {savingDetails ? 'Saving details...' : 'Continue to Payment'} {!savingDetails && <Icon name="arrow" size={16} />}
+              </button>
               <AuthReturnActions navigate={navigate} />
             </div>
           )}
@@ -724,19 +826,29 @@ const CheckoutPage = ({ navigate }) => {
                 </button>
               </div>
               {/* Promo code */}
-              <div className="bs-promo-row" style={{ marginBottom:4 }}>
-                <input placeholder="Promo code" value={promoInput} onChange={e => setPromoInput(e.target.value.toUpperCase())}
-                  style={{ flex:1, height:44, border:'1.5px solid var(--bs-border)', borderRadius:'var(--bs-radius-sm)', padding:'0 14px', fontSize:14 }} />
-                <button className="bs-btn bs-btn-gold" style={{ padding:'0 20px', height:44, fontWeight:800, letterSpacing:'0.04em', flexShrink:0 }} disabled={checkingPromo} onClick={applyPromo}>
+              <div className="bs-promo-entry">
+                <div className="bs-promo-entry-heading">
+                  <span className="bs-promo-entry-icon"><Icon name="spark" size={17} /></span>
+                  <div><strong>Have a promo code?</strong><span>Apply it before confirming your order.</span></div>
+                </div>
+                <div className="bs-promo-row">
+                  <input placeholder="Enter promo code" value={promoInput} onChange={e => setPromoInput(e.target.value.toUpperCase())} />
+                  <button className="bs-btn bs-btn-gold" disabled={checkingPromo} onClick={applyPromo}>
                   {checkingPromo ? '…' : 'Apply'}
-                </button>
+                  </button>
+                </div>
               </div>
-              {promoError && <p style={{ fontSize:12, color:'var(--bs-error)', marginBottom:10 }}>{promoError}</p>}
+              {promoError && <p className="bs-promo-error">{promoError}</p>}
               {appliedPromo && (
-                <div style={{ background:'#e6f4ea', border:'1px solid #b7dfbf', borderRadius:8, padding:'10px 14px', marginBottom:10, fontSize:13 }}>
-                  <strong>{appliedPromo.code}</strong> applied:{' '}
-                  {appliedPromo.description || `${appliedPromo.discount_value}${appliedPromo.discount_type === 'percentage' ? '%' : ' GH₵'} off ${appliedPromo.applies_to}`}
-                  <button onClick={() => setAppliedPromo(null)} style={{ marginLeft:10, fontSize:11, color:'#888', background:'none', border:'none', cursor:'pointer' }}>Remove</button>
+                <div className="bs-applied-promo">
+                  <span className="bs-applied-promo-check"><Icon name="check" size={16} /></span>
+                  <div className="bs-applied-promo-copy">
+                    <strong>{appliedPromo.code}</strong>
+                    <span>{appliedPromo.description || `${appliedPromo.discount_value}${appliedPromo.discount_type === 'percentage' ? '%' : ' GH₵'} off ${appliedPromo.applies_to}`}</span>
+                  </div>
+                  <button type="button" className="bs-applied-promo-delete" onClick={() => setAppliedPromo(null)} aria-label={`Remove promo code ${appliedPromo.code}`}>
+                    <Icon name="trash" size={17} />
+                  </button>
                 </div>
               )}
 

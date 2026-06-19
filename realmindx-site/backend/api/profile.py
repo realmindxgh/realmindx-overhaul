@@ -9,10 +9,11 @@ from markupsafe import escape
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..audit import audit
+from ..checkout_details import checkout_detail_json, list_checkout_details, upsert_checkout_detail
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
 from ..location_data import canonical_delivery_locations, joined_location_ids, joined_location_names
-from ..models import ContactChangeToken, JobAlertPreference, UploadedFile, User, UserProfile
+from ..models import CheckoutDetail, ContactChangeToken, JobAlertPreference, UploadedFile, User, UserProfile
 from ..serializers import user_json
 from ..sms_service import normalise_phone, send_sms
 from ..upload_utils import save_upload
@@ -230,6 +231,63 @@ def update_account():
     audit("account_name_updated", "user", current_user.id, {"email": current_user.email})
     db.session.commit()
     return jsonify(user=user_json(current_user))
+
+
+@profile_bp.get("/me/checkout-details")
+@login_required
+def get_checkout_details():
+    return jsonify(items=list_checkout_details(current_user))
+
+
+@profile_bp.post("/me/checkout-details")
+@login_required
+def save_checkout_details():
+    payload = request.get_json(silent=True) or {}
+    try:
+        detail = upsert_checkout_detail(current_user.id, payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    audit("checkout_details_saved", "checkout_detail", detail.id, {"user_id": current_user.id})
+    db.session.commit()
+    return jsonify(detail=checkout_detail_json(detail)), 201
+
+
+@profile_bp.put("/me/checkout-details/<int:detail_id>")
+@login_required
+def update_checkout_details(detail_id):
+    detail = CheckoutDetail.query.filter_by(id=detail_id, user_id=current_user.id).first_or_404()
+    payload = request.get_json(silent=True) or {}
+    merged = {
+        "label": payload.get("label", detail.label),
+        "customer_name": payload.get("customer_name", detail.customer_name),
+        "email": payload.get("email", detail.email),
+        "phone": payload.get("phone", detail.phone),
+        "delivery_zone_id": payload.get("delivery_zone_id", detail.delivery_zone_id),
+        "delivery_zone_name": payload.get("delivery_zone_name", detail.delivery_zone_name),
+        "address": payload.get("address", detail.address),
+        "city": payload.get("city", detail.city),
+        "region": payload.get("region", detail.region),
+        "is_default": payload.get("is_default", detail.is_default),
+    }
+    try:
+        next_detail = upsert_checkout_detail(current_user.id, merged)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    if next_detail.id != detail.id:
+        db.session.delete(detail)
+    audit("checkout_details_updated", "checkout_detail", next_detail.id, {"user_id": current_user.id})
+    db.session.commit()
+    return jsonify(detail=checkout_detail_json(next_detail))
+
+
+@profile_bp.delete("/me/checkout-details/<int:detail_id>")
+@login_required
+def delete_checkout_details(detail_id):
+    detail = CheckoutDetail.query.filter_by(id=detail_id, user_id=current_user.id).first_or_404()
+    db.session.delete(detail)
+    audit("checkout_details_deleted", "checkout_detail", detail_id, {"user_id": current_user.id})
+    db.session.commit()
+    return jsonify(message="Saved checkout details deleted.")
 
 
 @profile_bp.post("/me/contact-change/request")
