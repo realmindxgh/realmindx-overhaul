@@ -624,9 +624,9 @@ const UnsubscribePage = () => {
 const NotFoundPage = () => (
   <SiteInfoPage
     eyebrow="404"
-    title="Page Not Found"
-    body="That address is not part of the current RealMindX route map."
-    actions={[{ label: 'Go Home', href: '/' }, { label: 'View Bookshop', href: 'https://bookshop.realmindxgh.com', variant: 'btn-outline' }]}
+    title="Sorry, we couldn’t find that page"
+    body="Please check the web address for a typo. If it looks correct, return to the homepage or visit the RealMindX Bookshop."
+    actions={[{ label: 'Back to Homepage', href: '/' }, { label: 'Visit Bookshop', href: 'https://bookshop.realmindxgh.com', variant: 'btn-outline' }]}
   />
 );
 

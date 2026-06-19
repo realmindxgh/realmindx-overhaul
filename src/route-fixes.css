@@ -3287,11 +3287,8 @@ html {
 .news-modal-copy a.content-link {
   color: #075eb8;
   font-weight: 700;
-  text-decoration-line: underline;
-  text-decoration-color: #d8a900;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
-  transition: color 160ms ease, text-decoration-color 160ms ease;
+  text-decoration: none;
+  transition: color 160ms ease;
 }
 
 .news-article-body a.content-link:hover,
@@ -3299,7 +3296,6 @@ html {
 .news-modal-copy a.content-link:hover,
 .news-modal-copy a.content-link:focus-visible {
   color: var(--navy);
-  text-decoration-color: var(--yellow);
 }
 
 .news-article-body a.content-link:focus-visible,

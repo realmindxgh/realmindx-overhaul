@@ -443,6 +443,34 @@ const NavUserMenu = ({ navigate }) => {
   );
 };
 
+const SearchSuggestionList = ({ suggestions, query, onSelect, onSubmit, className = '' }) => (
+  <div className={`bs-search-suggestions${className ? ` ${className}` : ''}`} role="listbox">
+    {suggestions.map((book) => (
+      <a
+        key={book.id}
+        href={hrefForProduct(book)}
+        role="option"
+        className="bs-search-sug-item"
+        onMouseDown={event => event.preventDefault()}
+        onClick={event => onSelect(event, book)}
+      >
+        <Icon name="book" size={13} className="bs-ci" style={{ color: 'var(--bs-navy)', opacity: 0.45, flexShrink: 0 }} />
+        <span className="bs-sug-title">{book.title}</span>
+        <span className="bs-sug-cat">{[book.subject, book.levelName || book.grade || book.level, book.catName].filter(Boolean).slice(0, 2).join(' · ') || book.catName}</span>
+      </a>
+    ))}
+    <button
+      type="button"
+      className="bs-sug-all"
+      onMouseDown={event => event.preventDefault()}
+      onClick={onSubmit}
+    >
+      <Icon name="search" size={13} />
+      <span>See all results for <strong>"{query.trim()}"</strong></span>
+    </button>
+  </div>
+);
+
 // ---------- Navbar ----------
 const Navbar = ({ route, navigate }) => {
   const { count } = useCart();
@@ -451,11 +479,10 @@ const Navbar = ({ route, navigate }) => {
   const [catsOpen, setCatsOpen] = React.useState(false);
   const [openBrowseGroup, setOpenBrowseGroup] = React.useState('');
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const [searching, setSearching] = React.useState(false);
   const [q, setQ] = React.useState('');
-  const [searchFocused, setSearchFocused] = React.useState(false);
+  const [searchSurface, setSearchSurface] = React.useState('');
   const catsRef = React.useRef(null);
-  const searchWrapRef = React.useRef(null);
+  const catsSearchRef = React.useRef(null);
   // Bumped on every explicit search submission so ShopPage remounts even when
   // the same query text is submitted twice in a row (e.g. search "pencils",
   // clear it in-page, search "pencils" again — params.q alone wouldn't change).
@@ -474,6 +501,12 @@ const Navbar = ({ route, navigate }) => {
     return () => { document.body.style.overflow = ''; };
   }, [menuOpen]);
 
+  React.useEffect(() => {
+    if (!catsOpen) return undefined;
+    const frame = window.requestAnimationFrame(() => catsSearchRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [catsOpen]);
+
   const go = (r, e) => {
     if (e) e.preventDefault();
     setMenuOpen(false);
@@ -482,29 +515,25 @@ const Navbar = ({ route, navigate }) => {
     navigate(r);
   };
 
-  const openSearch = () => {
-    setSearching(true);
-    // Small delay so the input is in the DOM before focusing
-    setTimeout(() => {
-      const inp = searchWrapRef.current?.querySelector('input');
-      if (inp) inp.focus();
-    }, 60);
-  };
-
-  const closeSearch = () => {
-    setSearching(false);
-    setSearchFocused(false);
-    setQ('');
-  };
-
   const submitSearch = (e) => {
     if (e) e.preventDefault();
     const t = q.trim();
     // sq makes every submission unique even for a repeated query, so the
     // ShopPage remount key below always changes and re-applies initialQuery.
     navigate('shop', t ? { q: t, sq: ++searchSeq.current } : {});
-    setSearching(false);
-    setSearchFocused(false);
+    setCatsOpen(false);
+    setOpenBrowseGroup('');
+    setSearchSurface('');
+  };
+
+  const selectSuggestion = (event, book) => {
+    event.preventDefault();
+    trackSearchClick({ term: q, productId: book.id, scope: 'bookshop', path: '/bookshop/products', source: 'suggestions' });
+    navigate('product', { id: book.id, slug: productPathSegment(book) });
+    setCatsOpen(false);
+    setOpenBrowseGroup('');
+    setSearchSurface('');
+    setQ('');
   };
 
   // Live suggestions now search the same fields that power the dedicated
@@ -533,27 +562,27 @@ const Navbar = ({ route, navigate }) => {
     { title: 'Item Type', allLabel: 'Item Types', taxonomy: 'category', icon: 'box', items: taxonomies.categories || [] },
   ];
 
-  const showSuggestions = suggestions.length > 0 && (searching || searchFocused);
+  const showNavSuggestions = suggestions.length > 0 && searchSurface === 'nav';
+  const showMenuSuggestions = suggestions.length > 0 && searchSurface === 'menu';
 
   return (
     <>
-      <nav className={`bs-nav${searching ? ' bs-searching' : ''}`}>
+      <nav className="bs-nav">
         <div className="bs-nav-inner">
           <Logo href={hrefForRoute('home')} onClick={(e) => go('home', e)} />
 
-          {/* Search wrapper — always in DOM; hidden on mobile until searching */}
-          <div className="bs-nav-search-wrap" ref={searchWrapRef}>
+          <div className="bs-nav-search-wrap">
             <form className="bs-nav-search" onSubmit={submitSearch} autoComplete="off">
               <Icon name="search" size={19} className="bs-search-icn" />
               <input
                 value={q}
                 onChange={e => setQ(e.target.value)}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setTimeout(() => setSearchFocused(false), 160)}
+                onFocus={() => setSearchSurface('nav')}
+                onBlur={() => setTimeout(() => setSearchSurface(current => current === 'nav' ? '' : current), 160)}
                 placeholder="Search textbooks, curriculum, stationery..."
                 aria-label="Search the shop"
                 aria-autocomplete="list"
-                aria-expanded={showSuggestions}
+                aria-expanded={showNavSuggestions}
               />
               {/* Submit button — inside the input, right side, visible when query has text */}
               {q.trim() && (
@@ -564,53 +593,10 @@ const Navbar = ({ route, navigate }) => {
             </form>
 
             {/* Live suggestions dropdown */}
-            {showSuggestions && (
-              <div className="bs-search-suggestions" role="listbox">
-                {suggestions.map((b) => (
-                  <a
-                    key={b.id}
-                    href={hrefForProduct(b)}
-                    role="option"
-                    className="bs-search-sug-item"
-                    onMouseDown={e => e.preventDefault()} /* prevent input blur before click */
-                    onClick={(e) => {
-                      e.preventDefault();
-                      trackSearchClick({ term: q, productId: b.id, scope: 'bookshop', path: '/bookshop/products', source: 'suggestions' });
-                      navigate('product', { id: b.id, slug: productPathSegment(b) });
-                      setSearching(false);
-                      setSearchFocused(false);
-                      setQ('');
-                    }}
-                  >
-                    <Icon name="book" size={13} className="bs-ci" style={{ color: 'var(--bs-navy)', opacity: 0.45, flexShrink: 0 }} />
-                    <span className="bs-sug-title">{b.title}</span>
-                    <span className="bs-sug-cat">{[b.subject, b.levelName || b.grade || b.level, b.catName].filter(Boolean).slice(0, 2).join(' · ') || b.catName}</span>
-                  </a>
-                ))}
-                <button
-                  type="button"
-                  className="bs-sug-all"
-                  onMouseDown={e => e.preventDefault()}
-                  onClick={submitSearch}
-                >
-                  <Icon name="search" size={13} />
-                  <span>See all results for <strong>"{q.trim()}"</strong></span>
-                </button>
-              </div>
-            )}
+            {showNavSuggestions && <SearchSuggestionList suggestions={suggestions} query={q} onSelect={selectSuggestion} onSubmit={submitSearch} />}
           </div>
 
-          {/* Dismiss X — outside the search bar, to the right — only shown on mobile when searching */}
-          <button className="bs-search-dismiss" type="button" aria-label="Close search" onClick={closeSearch}>
-            <Icon name="close" size={20} />
-          </button>
-
           <div className="bs-nav-actions">
-            {/* Mobile search open trigger — no X here any more */}
-            <button className="bs-icon-btn bs-nav-search-toggle" aria-label="Search" onClick={openSearch}>
-              <Icon name="search" size={21} />
-            </button>
-
             <div className="bs-nav-cats" ref={catsRef}>
               <button
                 className="bs-nav-cats-btn"
@@ -628,17 +614,39 @@ const Navbar = ({ route, navigate }) => {
                 <Icon name="chevDown" size={14} />
               </button>
               <div className={`bs-cats-menu${catsOpen ? ' open' : ''}`}>
-                <button
-                  type="button"
-                  className="bs-cats-menu-entry bs-cats-search-entry"
-                  onClick={() => {
-                    setCatsOpen(false);
-                    setOpenBrowseGroup('');
-                    openSearch();
-                  }}
-                >
-                  <Icon name="search" size={18} className="bs-ci" /> Search by title or keyword
-                </button>
+                <div className="bs-cats-search-wrap">
+                  <form className="bs-cats-search-form" onSubmit={submitSearch} autoComplete="off">
+                    <Icon name="search" size={18} className="bs-search-icn" />
+                    <input
+                      ref={catsSearchRef}
+                      value={q}
+                      onChange={event => setQ(event.target.value)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter') submitSearch(event);
+                      }}
+                      onFocus={() => setSearchSurface('menu')}
+                      onBlur={() => setTimeout(() => setSearchSurface(current => current === 'menu' ? '' : current), 160)}
+                      placeholder="Search textbooks, curriculum, stationery..."
+                      aria-label="Search the shop"
+                      aria-autocomplete="list"
+                      aria-expanded={showMenuSuggestions}
+                    />
+                    {q.trim() && (
+                      <button type="submit" className="bs-cats-search-go" aria-label="Search">
+                        <Icon name="arrow" size={15} />
+                      </button>
+                    )}
+                  </form>
+                  {showMenuSuggestions && (
+                    <SearchSuggestionList
+                      suggestions={suggestions}
+                      query={q}
+                      onSelect={selectSuggestion}
+                      onSubmit={submitSearch}
+                      className="bs-cats-search-suggestions"
+                    />
+                  )}
+                </div>
                 <a className="bs-cats-menu-entry" href={hrefForRoute('shop')} onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop'); }}>
                   <Icon name="grid" size={18} className="bs-ci" /> All Books
                 </a>

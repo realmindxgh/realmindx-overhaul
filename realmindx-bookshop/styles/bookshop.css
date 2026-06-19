@@ -138,16 +138,6 @@
 }
 .bs-search-go:hover { background: var(--bs-navy-light); transform: translateY(-50%) scale(1.08); }
 
-/* Outside dismiss (X) button — hidden on desktop, shown on mobile when searching */
-.bs-search-dismiss {
-  display: none;
-  width: 36px; height: 40px; min-width: 36px; flex-shrink: 0;
-  align-items: center; justify-content: center;
-  color: var(--bs-navy); border-radius: var(--bs-radius-sm);
-  transition: background .2s;
-}
-.bs-search-dismiss:hover { background: var(--bs-off-white); }
-
 /* Live suggestions dropdown */
 .bs-search-suggestions {
   position: absolute; top: calc(100% + 8px); left: 0; right: 0;
@@ -200,35 +190,63 @@
 .bs-icon-btn:hover { background: var(--bs-off-white); }
 .bs-cart-badge { position: absolute; top: 5px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--bs-gold-live); color: var(--bs-navy); font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 10px; display: flex; align-items: center; justify-content: center; line-height: 1; box-shadow: 0 2px 6px rgba(0,0,0,.18); }
 .bs-hamburger { display: none; }
-.bs-nav-search-toggle { display: none; }
-.bs-cats-search-entry {
+.bs-cats-search-wrap {
+  position: relative;
   width: 100%;
-  min-height: 46px;
-  padding: 0 16px;
   margin: 2px 0 6px;
-  border: 1.5px solid var(--bs-border) !important;
-  border-radius: 999px !important;
-  background: var(--bs-off-white);
-  color: #8d96a8;
-  font-family: inherit !important;
-  font-size: 14px !important;
-  font-weight: 400 !important;
-  letter-spacing: 0 !important;
-  text-transform: none !important;
-  text-align: left;
-  box-shadow: none;
-  gap: 12px;
 }
-.bs-cats-search-entry:hover,
-.bs-cats-search-entry:focus-visible {
-  background: #fff;
-  border-color: var(--bs-navy) !important;
+.bs-cats-search-form {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.bs-cats-search-form input {
+  width: 100%;
+  height: 46px;
+  padding: 0 44px 0 42px;
+  border: 1.5px solid var(--bs-border);
+  border-radius: 999px;
+  background: var(--bs-off-white);
   color: var(--bs-text);
+  font: inherit;
+  font-size: 14px;
+}
+.bs-cats-search-form input::placeholder { color: var(--bs-muted); }
+.bs-cats-search-form input:focus {
+  outline: none;
+  background: #fff;
+  border-color: var(--bs-navy);
   box-shadow: 0 0 0 3px rgba(20,54,112,.12);
 }
-.bs-cats-search-entry .bs-ci {
+.bs-cats-search-form .bs-search-icn {
+  left: 14px;
   color: var(--bs-navy);
-  flex-shrink: 0;
+}
+.bs-cats-menu button.bs-cats-search-go {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bs-navy);
+  color: #fff;
+  transform: translateY(-50%);
+}
+.bs-cats-menu button.bs-cats-search-go:hover { background: var(--bs-navy-light); color: #fff; }
+.bs-cats-search-suggestions {
+  position: static;
+  margin-top: 7px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+.bs-cats-menu .bs-cats-search-suggestions .bs-search-sug-item,
+.bs-cats-menu .bs-cats-search-suggestions .bs-sug-all {
+  padding: 9px 10px;
+  border-radius: 0;
 }
 @media (max-width: 1024px) { .bs-nav-cats-btn span { display: none; } }
 @media (max-width: 768px) {
@@ -249,9 +267,8 @@
     flex-shrink: 0;
   }
 
-  /* Hide the full search field until requested; keep Quick Search available. */
+  /* Mobile search lives directly inside the Quick Search dropdown. */
   .bs-nav-search-wrap { display: none; }
-  .bs-nav-search-toggle { display: none; }
   .bs-nav-user-slot { display: none; }
   .bs-nav-cats { display: block; }
   .bs-nav-cats-btn {
@@ -307,18 +324,6 @@
   .bs-hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5.5px, 5.5px); }
   .bs-hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
   .bs-hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5.5px, -5.5px); }
-
-  /* When searching: hide logo + nav-actions, show search wrap + dismiss X */
-  .bs-nav.bs-searching .bs-logo { display: none; }
-  .bs-nav.bs-searching .bs-nav-actions { display: none; }
-  .bs-nav.bs-searching .bs-nav-search-wrap {
-    display: flex;
-    flex: 1;
-    max-width: none;
-  }
-  .bs-nav.bs-searching .bs-search-dismiss { display: flex; }
-  /* Suggestions sit below the input on mobile too */
-  .bs-nav.bs-searching .bs-search-suggestions { left: 0; right: 0; }
 }
 /* Bookshop mobile menu — matches main site dropdown style */
 .bs-mobile-menu {
@@ -917,27 +922,40 @@
 }
 @media (max-width: 520px) {
   .bs-shop-toolbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
-    gap: 9px;
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 8px;
     padding: 9px 0 11px;
   }
   .bs-toolbar-left {
-    width: 100%;
-    justify-content: space-between;
+    width: auto;
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    gap: 8px;
   }
   .bs-toolbar-right {
-    width: 100%;
-    justify-content: flex-end;
+    width: auto;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .bs-shop-count {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  button.bs-filter-mobile-btn {
+    flex: 0 0 auto;
+    height: 34px;
+    padding: 0 11px;
   }
   .bs-sort-select {
-    width: auto;
-    min-width: 132px;
-    max-width: 152px;
-    height: 38px;
-    padding: 0 32px 0 11px;
-    background-position: right 10px center;
+    width: 132px;
+    min-width: 0;
+    max-width: 132px;
+    height: 36px;
+    padding: 0 28px 0 10px;
+    background-position: right 8px center;
     font-size: 12px;
   }
 }
