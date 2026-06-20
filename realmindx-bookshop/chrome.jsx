@@ -801,7 +801,7 @@ const Footer = ({ navigate }) => {
 };
 
 // ---------- Floating WhatsApp ----------
-const WHATSAPP_HIDDEN_ROUTES = new Set(['cart', 'checkout', 'track', 'login', 'signup']);
+const WHATSAPP_HIDDEN_ROUTES = new Set(['cart', 'checkout', 'track', 'login', 'signup', 'account', 'orders']);
 
 const WhatsAppFab = ({ route }) => (
   WHATSAPP_HIDDEN_ROUTES.has(route) ? null :

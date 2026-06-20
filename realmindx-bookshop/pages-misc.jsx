@@ -4,7 +4,7 @@ import { useCart } from './chrome.jsx';
 import { submitMessage } from '../src/lib/managedContent.js';
 import { usePublicSettings, useSiteCopyState } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
-import { resendVerificationOtp, signIn, signOut, signUp, syncSessionFromApi, verifyEmailOtp } from '../src/lib/authClient.js';
+import { completeTwoFactorLogin, resendVerificationOtp, signIn, signOut, signUp, syncSessionFromApi, verifyEmailOtp } from '../src/lib/authClient.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { consumeBookshopAuthReturn } from './authReturn.js';
@@ -32,6 +32,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
   });
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const [pendingVerificationEmail, setPendingVerificationEmail] = React.useState('');
+  const [pendingTwoFactorEmail, setPendingTwoFactorEmail] = React.useState('');
   const [otp, setOtp] = React.useState('');
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -114,6 +115,13 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       globalToast.success(result?.message || 'Account created. Enter the code sent to your email.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
+      if (err?.code === 'requires_two_factor' || err?.data?.requires_two_factor) {
+        setPendingTwoFactorEmail(err.data?.email || form.email);
+        setOtp('');
+        globalToast.info(err.data?.message || 'Enter the security code sent to your email.');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       if (err?.data?.requires_verification) {
         setPendingVerificationEmail(err.data.email || form.email);
         globalToast.info('Enter the code we sent to your email before signing in.');
@@ -170,6 +178,27 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     }
   };
 
+  const verifyTwoFactor = async event => {
+    event.preventDefault();
+    setError('');
+    if (otp.replace(/\D/g, '').length !== 6) {
+      setErr('Enter the 6 digit security code from your email.', otpRef);
+      return;
+    }
+    setLoading(true);
+    try {
+      await completeTwoFactorLogin({ otp, role: 'user' });
+      setPendingTwoFactorEmail('');
+      setOtp('');
+      globalToast.success('Signed in securely to the bookshop.');
+      navigate(consumeBookshopAuthReturn('home'));
+    } catch (err) {
+      setErr(err?.message || 'Could not verify that security code.', otpRef);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="bs-auth bs-fade-page">
       <div className="bs-auth-brand">
@@ -203,13 +232,37 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
 
       <div className="bs-auth-form-wrap">
         <div className="bs-auth-form">
-          <h2 className="bs-h2">{pendingVerificationEmail ? 'Verify Your Email' : isLogin ? 'Sign In' : 'Create Account'}</h2>
+          <h2 className="bs-h2">{pendingTwoFactorEmail ? 'Security Check' : pendingVerificationEmail ? 'Verify Your Email' : isLogin ? 'Sign In' : 'Create Account'}</h2>
           <p className="bs-sub">
-            {pendingVerificationEmail
+            {pendingTwoFactorEmail
+              ? `Enter the 6 digit security code sent to ${pendingTwoFactorEmail}.`
+              : pendingVerificationEmail
               ? `Enter the 6 digit code sent to ${pendingVerificationEmail}.`
               : isLogin ? 'Enter your details to continue.' : 'It only takes a minute.'}
           </p>
-          {pendingVerificationEmail ? (
+          {pendingTwoFactorEmail ? (
+            <form onSubmit={verifyTwoFactor}>
+              <div className="bs-field">
+                <label>Security Code</label>
+                <input
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="123456"
+                  ref={otpRef}
+                  value={otp}
+                  onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  required
+                  autoComplete="one-time-code"
+                />
+              </div>
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
+                {loading ? 'Checking...' : 'Complete Sign In'}
+              </button>
+              <div className="bs-auth-alt">
+                Code expired? <button type="button" className="bs-link-button" onClick={() => { setPendingTwoFactorEmail(''); setOtp(''); }} disabled={loading}>Sign in again</button>
+              </div>
+            </form>
+          ) : pendingVerificationEmail ? (
             <form onSubmit={verifyOtp}>
               <div className="bs-field">
                 <label>Verification Code</label>
@@ -782,7 +835,42 @@ const useSession = () => {
   return session;
 };
 
-const AccountPage = ({ navigate }) => {
+const AccountSidebar = ({
+  navigate,
+  active = 'overview',
+  onSavedDetails,
+  onSecurity,
+}) => (
+  <aside className="bs-account-ref-sidebar">
+    <nav aria-label="My account">
+      <p>My Account</p>
+      <button className={active === 'overview' ? 'active' : ''} type="button" onClick={() => navigate('account')}>
+        <Icon name="home" size={16} /> Overview
+      </button>
+      <button className={active === 'orders' ? 'active' : ''} type="button" onClick={() => navigate('orders')}>
+        <Icon name="truck" size={16} /> Orders
+      </button>
+      <button className={active === 'track' ? 'active' : ''} type="button" onClick={() => navigate('track')}>
+        <Icon name="search" size={16} /> Track Order
+      </button>
+      <button type="button" onClick={() => (onSavedDetails ? onSavedDetails() : navigate('account'))}>
+        <Icon name="pin" size={16} /> Saved Details
+      </button>
+      <button type="button" onClick={() => (onSecurity ? onSecurity() : navigate('account'))}>
+        <Icon name="shield" size={16} /> Security
+      </button>
+      <div className="bs-account-ref-nav-divider" />
+      <button className="signout" type="button" onClick={async () => {
+        await signOut();
+        navigate('home');
+      }}>
+        <Icon name="logout" size={16} /> Sign Out
+      </button>
+    </nav>
+  </aside>
+);
+
+const LegacyAccountPage = ({ navigate }) => {
   const session = useSession();
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -1007,6 +1095,876 @@ const AccountPage = ({ navigate }) => {
 
 // ─── Orders page ──────────────────────────────────────────────────────────────
 
+const ExperimentalAccountPage = ({ navigate }) => {
+  const session = useSession();
+  const [orders, setOrders] = React.useState([]);
+  const [orderCount, setOrderCount] = React.useState(0);
+  const [checkoutDetails, setCheckoutDetails] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [modalOrder, setModalOrder] = React.useState(null);
+  const [editingName, setEditingName] = React.useState(false);
+  const [nameForm, setNameForm] = React.useState({ firstName: '', lastName: '' });
+  const [nameSaving, setNameSaving] = React.useState(false);
+  const [nameError, setNameError] = React.useState('');
+  const [deletingDetailId, setDeletingDetailId] = React.useState('');
+
+  React.useEffect(() => {
+    setNameForm({
+      firstName: session?.firstName || '',
+      lastName: session?.lastName || '',
+    });
+  }, [session?.firstName, session?.lastName]);
+
+  React.useEffect(() => {
+    if (!session?.role || !isApiMode()) {
+      setLoading(false);
+      return undefined;
+    }
+    let alive = true;
+    Promise.allSettled([
+      api.fetchMyOrders('per_page=4&sort=newest'),
+      api.fetchCheckoutDetails(),
+    ]).then(([ordersResult, detailsResult]) => {
+      if (!alive) return;
+      if (ordersResult.status === 'fulfilled') {
+        setOrders(ordersResult.value?.items || []);
+        setOrderCount(Number(ordersResult.value?.total || ordersResult.value?.items?.length || 0));
+      }
+      if (detailsResult.status === 'fulfilled') {
+        setCheckoutDetails(detailsResult.value?.items || []);
+      }
+    }).finally(() => {
+      if (alive) setLoading(false);
+    });
+    return () => { alive = false; };
+  }, [session?.role]);
+
+  if (!session?.role) {
+    return (
+      <div className="bs-container bs-fade-page" style={{ paddingTop: 80, paddingBottom: 80, textAlign: 'center' }}>
+        <div className="bs-empty-state">
+          <div className="bs-empty-icon"><Icon name="user" size={38} /></div>
+          <h2 className="bs-h2">Sign in to view your account</h2>
+          <p className="bs-muted">Access your order history, checkout details, and account settings.</p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
+            <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('login')}>Sign In</button>
+            <button className="bs-btn bs-btn-outline-navy" onClick={() => navigate('signup')}>Create Account</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const displayName = [session.firstName, session.lastName].filter(Boolean).join(' ') || 'Account';
+  const initials = session.initials || (
+    [(session.firstName || '')[0], (session.lastName || '')[0]].filter(Boolean).join('').toUpperCase() || 'ME'
+  );
+  const profileReady = Boolean(session.emailVerified && session.phone && checkoutDetails.length);
+  const refreshAccount = async () => {
+    await syncSessionFromApi();
+  };
+  const saveName = async event => {
+    event.preventDefault();
+    setNameError('');
+    if (!nameForm.firstName.trim()) {
+      setNameError('First name is required.');
+      return;
+    }
+    setNameSaving(true);
+    try {
+      if (isApiMode()) {
+        await api.updateAccount({
+          first_name: nameForm.firstName.trim(),
+          last_name: nameForm.lastName.trim(),
+        });
+      }
+      await refreshAccount();
+      setEditingName(false);
+      globalToast.success('Account name updated.');
+    } catch (error) {
+      setNameError(error.message || 'Could not update your name.');
+    } finally {
+      setNameSaving(false);
+    }
+  };
+  const deleteCheckoutDetail = async detail => {
+    if (!detail?.can_delete || !isApiMode()) return;
+    setDeletingDetailId(String(detail.id));
+    try {
+      await api.deleteCheckoutDetails(detail.id);
+      setCheckoutDetails(prev => prev.filter(item => String(item.id) !== String(detail.id)));
+      globalToast.success('Saved checkout details removed.');
+    } catch (error) {
+      globalToast.error(error.message || 'Could not remove those checkout details.');
+    } finally {
+      setDeletingDetailId('');
+    }
+  };
+
+  return (
+    <div className="bs-fade-page bs-account-v2-page">
+      <section className="bs-account-v2-hero">
+        <div className="bs-container">
+          <div className="bs-account-v2-hero-card">
+            <div className="bs-account-v2-identity">
+              <div className="bs-account-v2-avatar">
+                {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : initials}
+              </div>
+              <div className="bs-account-v2-identity-copy">
+                <span className="bs-account-v2-eyebrow">RealMindX Bookshop account</span>
+                <h1>{displayName}</h1>
+                <div className="bs-account-v2-meta">
+                  <span><Icon name="mail" size={14} /> {session.email}</span>
+                  <span className={session.emailVerified ? 'is-verified' : 'needs-attention'}>
+                    <Icon name={session.emailVerified ? 'check' : 'shield'} size={14} />
+                    {session.emailVerified ? 'Email verified' : 'Verification needed'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="bs-account-v2-hero-side">
+              <div className="bs-account-v2-stats" aria-label="Account summary">
+                <div><strong>{orderCount}</strong><span>Orders</span></div>
+                <div><strong>{checkoutDetails.length}</strong><span>Checkout sets</span></div>
+                <div><strong>{profileReady ? 'Ready' : 'Review'}</strong><span>Profile</span></div>
+              </div>
+              <button className="bs-account-v2-shop-btn" type="button" onClick={() => navigate('shop')}>
+                Continue shopping <Icon name="arrow" size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="bs-container bs-account-v2-container">
+        <div className="bs-account-v2-layout">
+          <aside className="bs-account-v2-sidebar">
+            <nav className="bs-account-v2-nav" aria-label="Account navigation">
+              <p>My account</p>
+              <button className="active"><Icon name="user" size={16} /> Overview</button>
+              <button onClick={() => navigate('orders')}><Icon name="truck" size={16} /> All Orders</button>
+              <button onClick={() => navigate('track')}><Icon name="search" size={16} /> Track an Order</button>
+              <button onClick={() => navigate('checkout')}><Icon name="pin" size={16} /> Checkout Details</button>
+              <button onClick={() => navigate('shop')}><Icon name="shop" size={16} /> Continue Shopping</button>
+              <div className="bs-account-v2-nav-divider" />
+              <button className="is-signout" onClick={async () => {
+                await signOut();
+                navigate('home');
+              }}>
+                <Icon name="x" size={16} /> Sign Out
+              </button>
+            </nav>
+            <div className="bs-account-v2-help">
+              <span><Icon name="shield" size={18} /></span>
+              <strong>Your details stay protected</strong>
+              <p>Contact changes require verification before they take effect.</p>
+            </div>
+          </aside>
+
+          <main className="bs-account-v2-main">
+            <div className="bs-account-v2-top-grid">
+              <section className="bs-account-v2-card bs-account-v2-profile">
+                <div className="bs-account-v2-card-head">
+                  <div>
+                    <span className="bs-account-v2-card-kicker">Personal details</span>
+                    <h2>Profile & contact</h2>
+                  </div>
+                  <span className="bs-account-v2-status"><Icon name="shield" size={15} /> Protected</span>
+                </div>
+
+                <div className="bs-account-v2-name-block">
+                  <div className="bs-profile-field-head">
+                    <div>
+                      <span className="bs-billing-label">Full name</span>
+                      {!editingName && <strong className="bs-billing-val">{displayName}</strong>}
+                    </div>
+                    {!editingName && (
+                      <button type="button" className="bs-account-v2-text-btn" onClick={() => setEditingName(true)}>Edit</button>
+                    )}
+                  </div>
+                  {editingName && (
+                    <form className="bs-profile-name-form" onSubmit={saveName}>
+                      <div className="bs-field-row">
+                        <label className="bs-field">
+                          <span>First name</span>
+                          <input value={nameForm.firstName} onChange={event => setNameForm(prev => ({ ...prev, firstName: event.target.value }))} autoFocus />
+                        </label>
+                        <label className="bs-field">
+                          <span>Last name</span>
+                          <input value={nameForm.lastName} onChange={event => setNameForm(prev => ({ ...prev, lastName: event.target.value }))} />
+                        </label>
+                      </div>
+                      {nameError && <p className="verified-contact-feedback is-error">{nameError}</p>}
+                      <div className="bs-profile-form-actions">
+                        <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving}>{nameSaving ? 'Saving...' : 'Save name'}</button>
+                        <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingName(false)}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+
+                <VerifiedContactField field="email" value={session.email} verified={session.emailVerified} onUpdated={refreshAccount} />
+                <VerifiedContactField field="phone" value={session.phone} verified={session.phoneVerified} onUpdated={refreshAccount} />
+              </section>
+
+              <section className="bs-account-v2-card bs-account-v2-security">
+                <div className="bs-account-v2-card-head">
+                  <div>
+                    <span className="bs-account-v2-card-kicker">Account health</span>
+                    <h2>Security overview</h2>
+                  </div>
+                </div>
+                <div className="bs-account-v2-security-score">
+                  <div className={profileReady ? 'is-ready' : ''}>
+                    <Icon name={profileReady ? 'check' : 'shield'} size={22} />
+                  </div>
+                  <span>
+                    <strong>{profileReady ? 'Your account is ready' : 'One quick review recommended'}</strong>
+                    <small>{profileReady ? 'Your details are ready for a faster checkout.' : 'Add reusable checkout details to complete your account.'}</small>
+                  </span>
+                </div>
+                <ul className="bs-account-v2-checklist">
+                  <li className={session.emailVerified ? 'is-complete' : ''}><Icon name={session.emailVerified ? 'check' : 'clock'} size={15} /> Email verification</li>
+                  <li className={session.phone ? 'is-complete' : ''}><Icon name={session.phone ? 'check' : 'clock'} size={15} /> Phone number added</li>
+                  <li className={checkoutDetails.length ? 'is-complete' : ''}><Icon name={checkoutDetails.length ? 'check' : 'clock'} size={15} /> Reusable checkout details</li>
+                </ul>
+                <div className="bs-account-v2-security-note">
+                  <Icon name="lock" size={16} />
+                  Email and phone updates are activated only after verification.
+                </div>
+              </section>
+            </div>
+
+            <section className="bs-account-v2-card bs-account-v2-details">
+              <div className="bs-account-v2-card-head bs-account-v2-card-head-action">
+                <div>
+                  <span className="bs-account-v2-card-kicker">Faster checkout</span>
+                  <h2>Saved checkout details</h2>
+                  <p>Reuse contact information and delivery locations from previous purchases.</p>
+                </div>
+                <button className="bs-account-v2-add-btn" type="button" onClick={() => navigate('checkout')}>
+                  <Icon name="plus" size={16} /> Add at checkout
+                </button>
+              </div>
+
+              {loading ? (
+                <div className="bs-account-v2-details-grid">
+                  {[1, 2].map(item => <div className="bs-skeleton bs-account-v2-detail-skeleton" key={item} />)}
+                </div>
+              ) : checkoutDetails.length === 0 ? (
+                <div className="bs-account-v2-empty">
+                  <span><Icon name="pin" size={24} /></span>
+                  <div><strong>No checkout details saved yet</strong><p>Complete a delivery checkout and your details will be available here next time.</p></div>
+                  <button type="button" onClick={() => navigate('shop')}>Start shopping</button>
+                </div>
+              ) : (
+                <div className="bs-account-v2-details-grid">
+                  {checkoutDetails.slice(0, 4).map(detail => {
+                    const place = [detail.city || detail.delivery_zone_name, detail.region].filter(Boolean).join(', ');
+                    const removing = deletingDetailId === String(detail.id);
+                    return (
+                      <article className="bs-account-v2-detail-card" key={`${detail.source}-${detail.id}`}>
+                        <div className="bs-account-v2-detail-top">
+                          <span className="bs-account-v2-detail-icon"><Icon name="pin" size={18} /></span>
+                          <div>
+                            <strong>{detail.label || 'Delivery details'}</strong>
+                            <span>{detail.source === 'saved' ? 'Saved details' : 'From order history'}</span>
+                          </div>
+                          {detail.is_default && <em>Default</em>}
+                        </div>
+                        <div className="bs-account-v2-detail-body">
+                          <strong>{detail.customer_name}</strong>
+                          <span><Icon name="phone" size={13} /> {detail.phone}</span>
+                          <span><Icon name="mail" size={13} /> {detail.email}</span>
+                          <span><Icon name="pin" size={13} /> {place || 'Delivery area not specified'}</span>
+                          <small>{detail.address || 'Exact landmark will be confirmed by phone.'}</small>
+                        </div>
+                        <div className="bs-account-v2-detail-actions">
+                          <button type="button" onClick={() => navigate('checkout')}>Use at checkout</button>
+                          {detail.can_delete && (
+                            <button
+                              type="button"
+                              className="is-delete"
+                              aria-label={`Delete ${detail.label || 'saved checkout details'}`}
+                              disabled={removing}
+                              onClick={() => deleteCheckoutDetail(detail)}
+                            >
+                              <Icon name="trash" size={15} /> {removing ? 'Removing...' : 'Delete'}
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+              {checkoutDetails.length > 4 && (
+                <p className="bs-account-v2-more-details">Plus {checkoutDetails.length - 4} more available from the checkout selector.</p>
+              )}
+            </section>
+
+            <section className="bs-account-v2-card bs-account-v2-orders">
+              <div className="bs-account-v2-card-head bs-account-v2-card-head-action">
+                <div>
+                  <span className="bs-account-v2-card-kicker">Purchase history</span>
+                  <h2>Recent orders</h2>
+                </div>
+                {orders.length > 0 && (
+                  <button className="bs-account-v2-view-all" onClick={() => navigate('orders')}>
+                    View all <Icon name="arrow" size={13} />
+                  </button>
+                )}
+              </div>
+              {loading ? (
+                <div className="bs-mini-orders-grid">
+                  {[1,2,3,4].map(i => <div key={i} className="bs-skeleton bs-skeleton-order" />)}
+                </div>
+              ) : orders.length === 0 ? (
+                <div className="bs-account-v2-empty">
+                  <span><Icon name="truck" size={24} /></span>
+                  <div><strong>No orders yet</strong><p>Your recent purchases and delivery progress will appear here.</p></div>
+                  <button type="button" onClick={() => navigate('shop')}>Start shopping</button>
+                </div>
+              ) : (
+                <div className="bs-mini-orders-grid bs-account-v2-order-grid">
+                  {orders.map(order => (
+                    <MiniOrderCard key={order.id} order={order} onOpen={setModalOrder} />
+                  ))}
+                </div>
+              )}
+            </section>
+          </main>
+        </div>
+      </div>
+
+      {modalOrder && <OrderDetailModal order={modalOrder} onClose={() => setModalOrder(null)} />}
+    </div>
+  );
+};
+
+const AccountPage = ({ navigate }) => {
+  const session = useSession();
+  const [orders, setOrders] = React.useState([]);
+  const [checkoutDetails, setCheckoutDetails] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [modalOrder, setModalOrder] = React.useState(null);
+  const [editingName, setEditingName] = React.useState(false);
+  const [nameForm, setNameForm] = React.useState({ firstName: '', lastName: '' });
+  const [nameSaving, setNameSaving] = React.useState(false);
+  const [nameError, setNameError] = React.useState('');
+  const [deletingDetailId, setDeletingDetailId] = React.useState('');
+  const [editingDetail, setEditingDetail] = React.useState(null);
+  const [detailForm, setDetailForm] = React.useState({});
+  const [detailSaving, setDetailSaving] = React.useState(false);
+  const [detailError, setDetailError] = React.useState('');
+  const [securityModal, setSecurityModal] = React.useState('');
+  const [passwordForm, setPasswordForm] = React.useState({ current: '', next: '', confirm: '' });
+  const [passwordSaving, setPasswordSaving] = React.useState(false);
+  const [passwordError, setPasswordError] = React.useState('');
+  const [twoFactorState, setTwoFactorState] = React.useState({
+    enabled: Boolean(session?.twoFactorEnabled),
+    step: 'password',
+    currentPassword: '',
+    otp: '',
+    saving: false,
+    error: '',
+  });
+
+  React.useEffect(() => {
+    setNameForm({
+      firstName: session?.firstName || '',
+      lastName: session?.lastName || '',
+    });
+  }, [session?.firstName, session?.lastName]);
+
+  React.useEffect(() => {
+    setTwoFactorState(prev => ({ ...prev, enabled: Boolean(session?.twoFactorEnabled) }));
+  }, [session?.twoFactorEnabled]);
+
+  React.useEffect(() => {
+    if (!session?.role || !isApiMode()) {
+      setLoading(false);
+      return undefined;
+    }
+    let alive = true;
+    Promise.allSettled([
+      api.fetchMyOrders('per_page=4&sort=newest'),
+      api.fetchCheckoutDetails(),
+    ]).then(([ordersResult, detailsResult]) => {
+      if (!alive) return;
+      if (ordersResult.status === 'fulfilled') setOrders(ordersResult.value?.items || []);
+      if (detailsResult.status === 'fulfilled') setCheckoutDetails(detailsResult.value?.items || []);
+    }).finally(() => {
+      if (alive) setLoading(false);
+    });
+    return () => { alive = false; };
+  }, [session?.role]);
+
+  if (!session?.role) {
+    return (
+      <div className="bs-container bs-fade-page" style={{ paddingTop: 80, paddingBottom: 80, textAlign: 'center' }}>
+        <div className="bs-empty-state">
+          <div className="bs-empty-icon"><Icon name="user" size={38} /></div>
+          <h2 className="bs-h2">Sign in to view your account</h2>
+          <p className="bs-muted">Access your order history, saved checkout details, and account security.</p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
+            <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('login')}>Sign In</button>
+            <button className="bs-btn bs-btn-outline-navy" onClick={() => navigate('signup')}>Create Account</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const displayName = [session.firstName, session.lastName].filter(Boolean).join(' ') || 'Account';
+  const initials = session.initials || (
+    [(session.firstName || '')[0], (session.lastName || '')[0]].filter(Boolean).join('').toUpperCase() || 'ME'
+  );
+  const refreshAccount = async () => {
+    await syncSessionFromApi();
+  };
+  const scrollToAccountSection = id => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const openSecurityModal = async type => {
+    setSecurityModal(type);
+    if (type === 'password') {
+      setPasswordForm({ current: '', next: '', confirm: '' });
+      setPasswordError('');
+      return;
+    }
+    setTwoFactorState(prev => ({
+      ...prev,
+      step: 'password',
+      currentPassword: '',
+      otp: '',
+      error: '',
+    }));
+    if (!isApiMode()) return;
+    try {
+      const result = await api.fetchSecurityStatus();
+      setTwoFactorState(prev => ({ ...prev, enabled: Boolean(result.two_factor_enabled) }));
+    } catch (error) {
+      setTwoFactorState(prev => ({ ...prev, error: error.message || 'Could not load account security settings.' }));
+    }
+  };
+  const savePassword = async event => {
+    event.preventDefault();
+    setPasswordError('');
+    if (passwordForm.next.length < 8) {
+      setPasswordError('New password must be at least 8 characters.');
+      return;
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      setPasswordError('New passwords do not match.');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await api.changePassword({
+        current_password: passwordForm.current,
+        new_password: passwordForm.next,
+      });
+      setSecurityModal('');
+      setPasswordForm({ current: '', next: '', confirm: '' });
+      globalToast.success('Password updated successfully.');
+    } catch (error) {
+      setPasswordError(error.message || 'Could not update your password.');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+  const requestTwoFactorChange = async event => {
+    event.preventDefault();
+    const action = twoFactorState.enabled ? 'disable' : 'enable';
+    setTwoFactorState(prev => ({ ...prev, saving: true, error: '' }));
+    try {
+      const result = await api.requestTwoFactorChange({
+        action,
+        current_password: twoFactorState.currentPassword,
+      });
+      setTwoFactorState(prev => ({ ...prev, step: 'code', saving: false, error: '' }));
+      globalToast.success(result.message || 'A security code has been sent to your email.');
+    } catch (error) {
+      setTwoFactorState(prev => ({ ...prev, saving: false, error: error.message || 'Could not start that security change.' }));
+    }
+  };
+  const confirmTwoFactorChange = async event => {
+    event.preventDefault();
+    if (twoFactorState.otp.replace(/\D/g, '').length !== 6) {
+      setTwoFactorState(prev => ({ ...prev, error: 'Enter the 6 digit security code from your email.' }));
+      return;
+    }
+    setTwoFactorState(prev => ({ ...prev, saving: true, error: '' }));
+    try {
+      const result = await api.confirmTwoFactorChange({ otp: twoFactorState.otp });
+      await refreshAccount();
+      setTwoFactorState(prev => ({
+        ...prev,
+        enabled: Boolean(result.two_factor_enabled),
+        step: 'password',
+        currentPassword: '',
+        otp: '',
+        saving: false,
+      }));
+      setSecurityModal('');
+      globalToast.success(result.message || 'Two-factor authentication updated.');
+    } catch (error) {
+      setTwoFactorState(prev => ({ ...prev, saving: false, error: error.message || 'Could not verify that security code.' }));
+    }
+  };
+  const saveName = async event => {
+    event.preventDefault();
+    setNameError('');
+    if (!nameForm.firstName.trim()) {
+      setNameError('First name is required.');
+      return;
+    }
+    setNameSaving(true);
+    try {
+      if (isApiMode()) {
+        await api.updateAccount({
+          first_name: nameForm.firstName.trim(),
+          last_name: nameForm.lastName.trim(),
+        });
+      }
+      await refreshAccount();
+      setEditingName(false);
+      globalToast.success('Account name updated.');
+    } catch (error) {
+      setNameError(error.message || 'Could not update your name.');
+    } finally {
+      setNameSaving(false);
+    }
+  };
+  const deleteCheckoutDetail = async detail => {
+    if (!detail?.can_delete || !isApiMode()) return;
+    setDeletingDetailId(String(detail.id));
+    try {
+      await api.deleteCheckoutDetails(detail.id);
+      setCheckoutDetails(prev => prev.filter(item => String(item.id) !== String(detail.id)));
+      globalToast.success('Saved checkout details removed.');
+    } catch (error) {
+      globalToast.error(error.message || 'Could not remove those checkout details.');
+    } finally {
+      setDeletingDetailId('');
+    }
+  };
+  const beginDetailEdit = detail => {
+    setEditingDetail(detail);
+    setDetailError('');
+    setDetailForm({
+      label: detail.label || '',
+      customer_name: detail.customer_name || '',
+      email: detail.email || '',
+      phone: detail.phone || '',
+      delivery_zone_id: detail.delivery_zone_id || null,
+      delivery_zone_name: detail.delivery_zone_name || '',
+      address: detail.address || '',
+      city: detail.city || detail.delivery_zone_name || '',
+      region: detail.region || '',
+      is_default: Boolean(detail.is_default),
+    });
+  };
+  const saveDetail = async event => {
+    event.preventDefault();
+    if (!editingDetail?.can_delete) return;
+    setDetailSaving(true);
+    setDetailError('');
+    try {
+      const result = await api.updateCheckoutDetails(editingDetail.id, detailForm);
+      setCheckoutDetails(prev => prev.map(item => (
+        String(item.id) === String(editingDetail.id) ? result.detail : item
+      )));
+      setEditingDetail(null);
+      globalToast.success('Checkout details updated.');
+    } catch (error) {
+      setDetailError(error.message || 'Could not update those checkout details.');
+    } finally {
+      setDetailSaving(false);
+    }
+  };
+  const setDetailField = key => event => {
+    const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+    setDetailForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  return (
+    <div className="bs-fade-page bs-account-ref-page">
+      <div className="bs-container bs-account-ref-shell">
+        <AccountSidebar
+          navigate={navigate}
+          active="overview"
+          onSavedDetails={() => scrollToAccountSection('saved-checkout-details')}
+          onSecurity={() => scrollToAccountSection('account-security')}
+        />
+
+        <main className="bs-account-ref-main">
+          <section className="bs-account-ref-hero">
+            <div className="bs-account-ref-identity">
+              <div className="bs-account-ref-avatar">
+                {session.avatarUrl ? <img src={session.avatarUrl} alt="" /> : initials}
+              </div>
+              <div>
+                <span>My Account</span>
+                <h1>{displayName}</h1>
+                <div className="bs-account-ref-meta">
+                  <span><Icon name="mail" size={13} /> {session.email}</span>
+                  <span className={session.emailVerified ? 'verified' : ''}><Icon name={session.emailVerified ? 'check' : 'clock'} size={13} /> {session.emailVerified ? 'Email verified' : 'Email verification needed'}</span>
+                  {session.phone && <span><Icon name="phone" size={13} /> {session.phone}</span>}
+                  <span className={session.phoneVerified ? 'verified' : ''}><Icon name={session.phoneVerified ? 'check' : 'clock'} size={13} /> {session.phoneVerified ? 'Phone verified' : 'Phone verification needed'}</span>
+                </div>
+              </div>
+            </div>
+            <button type="button" onClick={() => navigate('shop')}>
+              <Icon name="bag" size={17} /> Continue Shopping <Icon name="arrow" size={15} />
+            </button>
+          </section>
+
+          <div className="bs-account-ref-columns">
+            <div className="bs-account-ref-left">
+              <section className="bs-account-ref-panel bs-account-ref-profile">
+                <h2>Profile &amp; Security</h2>
+                <h3>Personal Details</h3>
+                <div className="bs-account-ref-profile-row">
+                  <span className="row-icon"><Icon name="user" size={15} /></span>
+                  <span className="row-label">Full Name</span>
+                  <strong>{displayName}</strong>
+                  <span />
+                  <button type="button" onClick={() => setEditingName(value => !value)}>Edit</button>
+                </div>
+                <VerifiedContactField
+                  field="email"
+                  value={session.email}
+                  verified={session.emailVerified}
+                  onUpdated={refreshAccount}
+                  className="bs-account-ref-contact"
+                  icon={<Icon name="mail" size={15} />}
+                  editLabel="Edit"
+                  modal
+                />
+                <VerifiedContactField
+                  field="phone"
+                  value={session.phone}
+                  verified={session.phoneVerified}
+                  onUpdated={refreshAccount}
+                  className="bs-account-ref-contact"
+                  icon={<Icon name="phone" size={15} />}
+                  editLabel="Edit"
+                  modal
+                />
+              </section>
+
+              <section id="saved-checkout-details" className="bs-account-ref-panel bs-account-ref-saved">
+                <div className="bs-account-ref-panel-title">
+                  <h2>Saved Checkout Details</h2>
+                  <button type="button" onClick={() => navigate('checkout')}><Icon name="plus" size={15} /> Add new details</button>
+                </div>
+                {loading ? (
+                  <div className="bs-skeleton bs-account-ref-skeleton" />
+                ) : checkoutDetails.length === 0 ? (
+                  <div className="bs-account-ref-saved-empty">
+                    <Icon name="pin" size={24} />
+                    <strong>No saved details yet</strong>
+                    <span>Add delivery details during checkout and they will appear here.</span>
+                  </div>
+                ) : (
+                  <div className="bs-account-ref-detail-list">
+                    {checkoutDetails.slice(0, 5).map(detail => {
+                      const removing = deletingDetailId === String(detail.id);
+                      return (
+                        <article key={`${detail.source}-${detail.id}`} className="bs-account-ref-detail-row">
+                          <div className="bs-account-ref-detail-home"><Icon name="home" size={18} /></div>
+                          <div className="bs-account-ref-detail-name">
+                            {detail.is_default && <em>Default</em>}
+                            <strong>{detail.customer_name}</strong>
+                            <span>{detail.address || 'Exact landmark confirmed by phone'}</span>
+                            <small>Landmark</small>
+                          </div>
+                          <div><strong>{detail.phone}</strong><span>Phone</span></div>
+                          <div><strong>{detail.email}</strong><span>Email</span></div>
+                          <div><strong>{detail.city || detail.delivery_zone_name || '—'}</strong><span>Town/Area</span></div>
+                          <div><strong>{detail.region || '—'}</strong><span>Region</span></div>
+                          <div className="bs-account-ref-detail-actions">
+                            {detail.can_delete ? (
+                              <>
+                                <button type="button" onClick={() => beginDetailEdit(detail)}><Icon name="pencil" size={14} /> Edit</button>
+                                <button type="button" className="delete" disabled={removing} onClick={() => deleteCheckoutDetail(detail)}><Icon name="trash" size={14} /> {removing ? 'Removing' : 'Delete'}</button>
+                              </>
+                            ) : (
+                              <button type="button" onClick={() => navigate('checkout')}>Use again</button>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <div className="bs-account-ref-right">
+              <section id="account-security" className="bs-account-ref-panel bs-account-ref-security">
+                <h2>Security</h2>
+                <button type="button" onClick={() => openSecurityModal('password')}><span><Icon name="lock" size={16} /> Change Password</span><Icon name="chevR" size={15} /></button>
+                <button type="button" onClick={() => openSecurityModal('two-factor')}>
+                  <span><Icon name="shield" size={16} /> Two-Factor Authentication</span>
+                  <span className={`bs-account-ref-security-status ${twoFactorState.enabled ? 'enabled' : ''}`}>
+                    {twoFactorState.enabled ? 'On' : 'Off'}
+                  </span>
+                  <Icon name="chevR" size={15} />
+                </button>
+              </section>
+
+              <section className="bs-account-ref-panel bs-account-ref-orders">
+                <div className="bs-account-ref-panel-title">
+                  <h2>Recent Orders</h2>
+                  {orders.length > 0 && <button type="button" className="view-all" onClick={() => navigate('orders')}>View all</button>}
+                </div>
+                {loading ? (
+                  <div className="bs-skeleton bs-account-ref-order-skeleton" />
+                ) : orders.length === 0 ? (
+                  <div className="bs-account-ref-orders-empty">
+                    <span><Icon name="bag" size={30} /></span>
+                    <strong>No orders yet</strong>
+                    <button type="button" onClick={() => navigate('shop')}>Start shopping</button>
+                  </div>
+                ) : (
+                  <div className="bs-mini-orders-grid">
+                    {orders.map(order => <MiniOrderCard key={order.id} order={order} onOpen={setModalOrder} />)}
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {editingName && (
+        <div className="bs-modal-scrim" onClick={event => { if (event.target === event.currentTarget) setEditingName(false); }}>
+          <form className="bs-modal-box bs-account-security-modal" onSubmit={saveName} role="dialog" aria-modal="true" aria-label="Edit full name">
+            <div className="bs-modal-head">
+              <div><span className="bs-account-ref-modal-kicker">Personal details</span><h2>Edit full name</h2></div>
+              <button className="bs-modal-close" type="button" onClick={() => setEditingName(false)} aria-label="Close"><Icon name="close" size={19} /></button>
+            </div>
+            <div className="bs-modal-body">
+              <p className="bs-account-security-intro">This name is used across your RealMindX account and on your Bookshop orders.</p>
+              <div className="bs-field-row">
+                <label className="bs-field"><span>First name</span><input value={nameForm.firstName} onChange={event => setNameForm(prev => ({ ...prev, firstName: event.target.value }))} autoFocus required /></label>
+                <label className="bs-field"><span>Last name</span><input value={nameForm.lastName} onChange={event => setNameForm(prev => ({ ...prev, lastName: event.target.value }))} /></label>
+              </div>
+              {nameError && <p className="verified-contact-feedback is-error">{nameError}</p>}
+            </div>
+            <div className="bs-modal-foot">
+              <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingName(false)}>Cancel</button>
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving}>{nameSaving ? 'Saving...' : 'Save changes'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {securityModal === 'password' && (
+        <div className="bs-modal-scrim" onClick={event => { if (event.target === event.currentTarget) setSecurityModal(''); }}>
+          <form className="bs-modal-box bs-account-security-modal" onSubmit={savePassword} role="dialog" aria-modal="true" aria-label="Change password">
+            <div className="bs-modal-head">
+              <div><span className="bs-account-ref-modal-kicker">Account security</span><h2>Change your password</h2></div>
+              <button className="bs-modal-close" type="button" onClick={() => setSecurityModal('')} aria-label="Close"><Icon name="close" size={19} /></button>
+            </div>
+            <div className="bs-modal-body">
+              <p className="bs-account-security-intro">This changes the password for your shared RealMindX account, including the Bookshop and any other RealMindX service you use.</p>
+              <label className="bs-field"><span>Current password</span><input type="password" autoComplete="current-password" value={passwordForm.current} onChange={event => setPasswordForm(prev => ({ ...prev, current: event.target.value }))} required /></label>
+              <label className="bs-field"><span>New password</span><input type="password" autoComplete="new-password" minLength={8} value={passwordForm.next} onChange={event => setPasswordForm(prev => ({ ...prev, next: event.target.value }))} required /></label>
+              <label className="bs-field"><span>Confirm new password</span><input type="password" autoComplete="new-password" minLength={8} value={passwordForm.confirm} onChange={event => setPasswordForm(prev => ({ ...prev, confirm: event.target.value }))} required /></label>
+              {passwordError && <p className="verified-contact-feedback is-error">{passwordError}</p>}
+            </div>
+            <div className="bs-modal-foot">
+              <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setSecurityModal('')}>Cancel</button>
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={passwordSaving}>{passwordSaving ? 'Updating...' : 'Update password'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {securityModal === 'two-factor' && (
+        <div className="bs-modal-scrim" onClick={event => { if (event.target === event.currentTarget) setSecurityModal(''); }}>
+          <form
+            className="bs-modal-box bs-account-security-modal"
+            onSubmit={twoFactorState.step === 'code' ? confirmTwoFactorChange : requestTwoFactorChange}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Two-factor authentication"
+          >
+            <div className="bs-modal-head">
+              <div><span className="bs-account-ref-modal-kicker">Account security</span><h2>Two-factor authentication</h2></div>
+              <button className="bs-modal-close" type="button" onClick={() => setSecurityModal('')} aria-label="Close"><Icon name="close" size={19} /></button>
+            </div>
+            <div className="bs-modal-body">
+              <div className={`bs-account-two-factor-state ${twoFactorState.enabled ? 'enabled' : ''}`}>
+                <span><Icon name={twoFactorState.enabled ? 'check' : 'shield'} size={20} /></span>
+                <div>
+                  <strong>Email two-factor authentication is {twoFactorState.enabled ? 'on' : 'off'}</strong>
+                  <p>{twoFactorState.enabled ? 'A security code is required after your password whenever you sign in.' : 'Add a security code sent to your verified email whenever you sign in.'}</p>
+                </div>
+              </div>
+              {twoFactorState.step === 'code' ? (
+                <>
+                  <p className="bs-account-security-intro">Enter the 6 digit code sent to <strong>{session.email}</strong> to {twoFactorState.enabled ? 'disable' : 'enable'} two-factor authentication.</p>
+                  <label className="bs-field"><span>Security code</span><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={twoFactorState.otp} onChange={event => setTwoFactorState(prev => ({ ...prev, otp: event.target.value.replace(/\D/g, '').slice(0, 6) }))} required /></label>
+                </>
+              ) : (
+                <>
+                  <p className="bs-account-security-intro">Confirm with your current password. We will then email a short-lived security code to <strong>{session.email}</strong>.</p>
+                  <label className="bs-field"><span>Current password</span><input type="password" autoComplete="current-password" value={twoFactorState.currentPassword} onChange={event => setTwoFactorState(prev => ({ ...prev, currentPassword: event.target.value }))} required /></label>
+                </>
+              )}
+              {twoFactorState.error && <p className="verified-contact-feedback is-error">{twoFactorState.error}</p>}
+            </div>
+            <div className="bs-modal-foot">
+              <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setSecurityModal('')}>Cancel</button>
+              <button className={`bs-btn ${twoFactorState.enabled ? 'bs-account-security-danger' : 'bs-btn-navy'}`} type="submit" disabled={twoFactorState.saving}>
+                {twoFactorState.saving ? 'Please wait...' : twoFactorState.step === 'code' ? 'Confirm security code' : twoFactorState.enabled ? 'Disable 2FA' : 'Continue'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {editingDetail && (
+        <div className="bs-modal-scrim" onClick={event => { if (event.target === event.currentTarget) setEditingDetail(null); }}>
+          <form className="bs-modal-box bs-account-detail-edit-modal" onSubmit={saveDetail} role="dialog" aria-modal="true" aria-label="Edit saved checkout details">
+            <div className="bs-modal-head">
+              <div><span className="bs-account-ref-modal-kicker">Saved details</span><h2>Edit checkout details</h2></div>
+              <button className="bs-modal-close" type="button" onClick={() => setEditingDetail(null)} aria-label="Close"><Icon name="close" size={19} /></button>
+            </div>
+            <div className="bs-modal-body">
+              <div className="bs-field-row">
+                <label className="bs-field"><span>Label</span><input value={detailForm.label || ''} onChange={setDetailField('label')} /></label>
+                <label className="bs-field"><span>Full name</span><input value={detailForm.customer_name || ''} onChange={setDetailField('customer_name')} required /></label>
+              </div>
+              <div className="bs-field-row">
+                <label className="bs-field"><span>Phone</span><input value={detailForm.phone || ''} onChange={setDetailField('phone')} required /></label>
+                <label className="bs-field"><span>Email</span><input type="email" value={detailForm.email || ''} onChange={setDetailField('email')} required /></label>
+              </div>
+              <div className="bs-field-row">
+                <label className="bs-field"><span>Town / Area</span><input value={detailForm.city || ''} onChange={setDetailField('city')} /></label>
+                <label className="bs-field"><span>Region</span><input value={detailForm.region || ''} onChange={setDetailField('region')} /></label>
+              </div>
+              <label className="bs-field"><span>Landmark or delivery directions</span><textarea value={detailForm.address || ''} onChange={setDetailField('address')} /></label>
+              <label className="bs-account-ref-default-check"><input type="checkbox" checked={Boolean(detailForm.is_default)} onChange={setDetailField('is_default')} /> Make these my default checkout details</label>
+              {detailError && <p className="verified-contact-feedback is-error">{detailError}</p>}
+            </div>
+            <div className="bs-modal-foot">
+              <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingDetail(null)}>Cancel</button>
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={detailSaving}>{detailSaving ? 'Saving...' : 'Save changes'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+      {modalOrder && <OrderDetailModal order={modalOrder} onClose={() => setModalOrder(null)} />}
+    </div>
+  );
+};
+
 const ORDER_STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
   { value: 'new', label: 'Placed' },
@@ -1017,7 +1975,7 @@ const ORDER_STATUS_OPTIONS = [
 ];
 const ORDERS_PER_PAGE = 40; // 2 cols × 20 rows; paginate after this
 
-const OrdersPage = ({ navigate }) => {
+const LegacyOrdersPage = ({ navigate }) => {
   const session = useSession();
   const [orders, setOrders] = React.useState([]);
   const [total, setTotal] = React.useState(0);
@@ -1181,6 +2139,210 @@ const OrdersPage = ({ navigate }) => {
 };
 
 const ORDER_REVIEW_SCORES = Array.from({ length: 10 }, (_, index) => index + 1);
+
+const OrdersPage = ({ navigate }) => {
+  const session = useSession();
+  const [orders, setOrders] = React.useState([]);
+  const [total, setTotal] = React.useState(0);
+  const [pages, setPages] = React.useState(1);
+  const [page, setPage] = React.useState(1);
+  const [search, setSearch] = React.useState('');
+  const [debouncedSearch, setDebouncedSearch] = React.useState('');
+  const [sort, setSort] = React.useState('newest');
+  const [statusFilter, setStatusFilter] = React.useState('');
+  const [loading, setLoading] = React.useState(true);
+  const [modalOrder, setModalOrder] = React.useState(null);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 380);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  React.useEffect(() => {
+    if (!session?.role || !isApiMode()) {
+      setLoading(false);
+      return undefined;
+    }
+    let alive = true;
+    setLoading(true);
+    const params = new URLSearchParams({ page, per_page: ORDERS_PER_PAGE, sort });
+    if (debouncedSearch) params.set('q', debouncedSearch);
+    if (statusFilter) params.set('status', statusFilter);
+    api.fetchMyOrders(params.toString()).then(data => {
+      if (!alive) return;
+      setOrders(data.items || []);
+      setTotal(data.total || 0);
+      setPages(data.pages || 1);
+    }).catch(() => {
+      if (alive) setOrders([]);
+    }).finally(() => {
+      if (alive) setLoading(false);
+    });
+    return () => { alive = false; };
+  }, [session?.role, page, debouncedSearch, sort, statusFilter]);
+
+  if (!session?.role) {
+    return (
+      <div className="bs-container bs-fade-page" style={{ paddingTop: 80, paddingBottom: 80, textAlign: 'center' }}>
+        <div className="bs-empty-state">
+          <div className="bs-empty-icon"><Icon name="truck" size={38} /></div>
+          <h2 className="bs-h2">Sign in to view your orders</h2>
+          <p className="bs-muted">You need to be signed in to access your order history.</p>
+          <button className="bs-btn bs-btn-gold bs-btn-lg" style={{ marginTop: 16 }} onClick={() => navigate('login')}>Sign In</button>
+        </div>
+      </div>
+    );
+  }
+
+  const hasFilters = Boolean(debouncedSearch || statusFilter);
+  const resultSummary = total === 0
+    ? 'No orders found'
+    : `Showing ${Math.min((page - 1) * ORDERS_PER_PAGE + 1, total)}–${Math.min(page * ORDERS_PER_PAGE, total)} of ${total} orders`;
+
+  return (
+    <div className="bs-fade-page bs-account-ref-page bs-account-orders-page">
+      <div className="bs-container bs-account-ref-shell">
+        <AccountSidebar navigate={navigate} active="orders" />
+
+        <main className="bs-account-ref-main">
+          <section className="bs-account-orders-hero">
+            <div className="bs-account-orders-hero-copy">
+              <span className="bs-account-orders-icon"><Icon name="truck" size={25} /></span>
+              <div>
+                <span>My Account</span>
+                <h1>Orders</h1>
+                <p>Review purchases, check payment details, and follow each delivery from one place.</p>
+              </div>
+            </div>
+            <div className="bs-account-orders-hero-actions">
+              <span>{total} order{total !== 1 ? 's' : ''}</span>
+              <div className="bs-account-orders-hero-buttons">
+                <button className="secondary" type="button" onClick={() => navigate('account')}>
+                  <Icon name="chevL" size={15} /> Back to My Account
+                </button>
+                <button className="primary" type="button" onClick={() => navigate('shop')}>
+                  <Icon name="bag" size={16} /> Continue Shopping <Icon name="arrow" size={14} />
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="bs-account-ref-panel bs-account-orders-panel">
+            <div className="bs-account-orders-panel-head">
+              <div>
+                <h2>Order history</h2>
+                <p>Search by order reference or by the books included in an order.</p>
+              </div>
+              {!loading && <span className="bs-account-orders-result">{resultSummary}</span>}
+            </div>
+
+            <div className="bs-orders-toolbar bs-account-orders-toolbar">
+              <div className="bs-orders-search-wrap">
+                <Icon name="search" size={17} className="bs-otsearch-icn" />
+                <input
+                  className="bs-orders-search"
+                  type="search"
+                  placeholder="Search reference, title, or product"
+                  value={search}
+                  onChange={event => setSearch(event.target.value)}
+                  aria-label="Search orders"
+                />
+              </div>
+              <div className="bs-account-orders-selects">
+                <label>
+                  <span>Status</span>
+                  <select
+                    className="bs-orders-filter-select"
+                    value={statusFilter}
+                    onChange={event => { setStatusFilter(event.target.value); setPage(1); }}
+                    aria-label="Filter by status"
+                  >
+                    {ORDER_STATUS_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Sort</span>
+                  <select
+                    className="bs-orders-sort-select"
+                    value={sort}
+                    onChange={event => { setSort(event.target.value); setPage(1); }}
+                    aria-label="Sort orders"
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="bs-account-orders-content">
+              {loading ? (
+                <div className="bs-orders-grid">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={index} className="bs-skeleton bs-skeleton-order-card" />
+                  ))}
+                </div>
+              ) : orders.length === 0 ? (
+                <div className="bs-account-orders-empty">
+                  <span><Icon name={hasFilters ? 'search' : 'bag'} size={32} /></span>
+                  <h2>{hasFilters ? 'No matching orders' : 'No orders yet'}</h2>
+                  <p>
+                    {hasFilters
+                      ? 'Try another reference, title, or order status.'
+                      : 'When you place an order, its payment and delivery progress will appear here.'}
+                  </p>
+                  {hasFilters ? (
+                    <button type="button" className="bs-btn bs-btn-outline-navy" onClick={() => {
+                      setSearch('');
+                      setStatusFilter('');
+                      setSort('newest');
+                      setPage(1);
+                    }}>
+                      Clear filters
+                    </button>
+                  ) : (
+                    <button type="button" className="bs-btn bs-btn-gold" onClick={() => navigate('shop')}>
+                      Browse the Bookshop
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="bs-orders-grid">
+                  {orders.map(order => (
+                    <OrderCard key={order.id} order={order} onOpen={setModalOrder} />
+                  ))}
+                </div>
+              )}
+
+              {pages > 1 && (
+                <div className="bs-pagination bs-account-orders-pagination">
+                  <button className="bs-page-btn pill" disabled={page === 1} onClick={() => setPage(current => current - 1)}>
+                    <Icon name="chevL" size={15} /> Prev
+                  </button>
+                  {Array.from({ length: pages }).map((_, index) => (
+                    <button key={index} className={`bs-page-btn${page === index + 1 ? ' active' : ''}`} onClick={() => setPage(index + 1)}>
+                      {index + 1}
+                    </button>
+                  ))}
+                  <button className="bs-page-btn pill" disabled={page === pages} onClick={() => setPage(current => current + 1)}>
+                    Next <Icon name="chevR" size={15} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+        </main>
+      </div>
+
+      {modalOrder && <OrderDetailModal order={modalOrder} onClose={() => setModalOrder(null)} />}
+    </div>
+  );
+};
 
 const OrderReviewPage = ({ navigate }) => {
   const session = useSession();

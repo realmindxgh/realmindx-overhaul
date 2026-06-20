@@ -335,11 +335,15 @@ export const api = {
 
   // auth
   login: (payload) => apiFetch('/auth/login', { method: 'POST', body: payload, freshCsrf: true }),
+  completeTwoFactorLogin: (payload) => apiFetch('/auth/login/two-factor', { method: 'POST', body: payload }),
   signup: (payload) => apiFetch('/auth/signup', { method: 'POST', body: payload, freshCsrf: true }),
   verifyEmailOtp: (payload) => apiFetch('/auth/verify-email-otp', { method: 'POST', body: payload }),
   resendVerificationOtp: (payload) => apiFetch('/auth/resend-verification-otp', { method: 'POST', body: payload }),
   logout: () => apiFetch('/auth/logout', { method: 'POST' }),
   me: () => apiFetch('/auth/me'),
   changePassword: (payload) => apiFetch('/auth/change-password', { method: 'POST', body: payload }),
+  fetchSecurityStatus: () => apiFetch('/auth/security-status'),
+  requestTwoFactorChange: (payload) => apiFetch('/auth/two-factor/request', { method: 'POST', body: payload }),
+  confirmTwoFactorChange: (payload) => apiFetch('/auth/two-factor/confirm', { method: 'POST', body: payload }),
   requestPasswordReset: (payload) => apiFetch('/auth/password-reset/request', { method: 'POST', body: payload }),
 };

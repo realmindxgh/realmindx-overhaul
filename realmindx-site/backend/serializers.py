@@ -24,6 +24,7 @@ def user_json(user):
         "is_verified": user.is_verified,
         "is_active": user.is_active,
         "must_change_password": user.must_change_password,
+        "two_factor_enabled": user.two_factor_enabled,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 

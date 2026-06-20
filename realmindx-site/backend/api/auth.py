@@ -4,7 +4,7 @@ import re
 import secrets
 
 from email_validator import EmailNotValidError, validate_email
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, session
 from markupsafe import escape
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
@@ -13,7 +13,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
-from ..models import EmailVerificationToken, Role, User, UserProfile
+from ..models import AccountSecurityCode, EmailVerificationToken, Role, User, UserProfile
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
 from ..sms_service import normalise_phone
@@ -74,6 +74,60 @@ def _send_verification_otp(user):
 @auth_bp.get("/csrf-token")
 def csrf_token():
     return jsonify(csrf_token=generate_csrf())
+
+
+def _send_account_security_code(user, purpose, title):
+    now = datetime.now(timezone.utc)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    AccountSecurityCode.query.filter_by(
+        user_id=user.id,
+        purpose=purpose,
+        used_at=None,
+    ).update({"used_at": now})
+    db.session.add(
+        AccountSecurityCode(
+            user_id=user.id,
+            purpose=purpose,
+            token_hash=generate_password_hash(code),
+            expires_at=now + timedelta(minutes=10),
+        )
+    )
+    first_name = user.first_name or "there"
+    body = (
+        f"<p>Hello {escape(first_name)},</p>"
+        f"<p>Use the code below to {escape(title.lower())}. It expires in 10 minutes.</p>"
+        '<div style="text-align:center;margin:28px 0;">'
+        '<div style="display:inline-block;background:#f5f8fc;border:2px dashed #c8d5e8;'
+        'border-radius:12px;padding:18px 36px;">'
+        '<p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:2px;'
+        'text-transform:uppercase;color:#6b80a0;">Your security code</p>'
+        f'<p style="margin:0;font-size:38px;font-weight:900;letter-spacing:.22em;color:#143670;">{escape(code)}</p>'
+        "</div></div>"
+        "<p style='font-size:13px;color:#6b80a0;'>If you did not request this action, "
+        "change your password and contact RealMindX support.</p>"
+    )
+    send_email(OutboundEmail(
+        to=user.email,
+        subject=f"RealMindX security code: {code}",
+        html=app_email_shell(title, body, eyebrow="RealMindX Account Security"),
+    ))
+
+
+def _consume_account_security_code(user_id, purpose, otp):
+    now = datetime.now(timezone.utc)
+    code = (
+        AccountSecurityCode.query
+        .filter_by(user_id=user_id, purpose=purpose, used_at=None)
+        .order_by(AccountSecurityCode.created_at.desc())
+        .first()
+    )
+    expires_at = code.expires_at if code else None
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if not code or not expires_at or expires_at < now or not check_password_hash(code.token_hash, otp):
+        return False
+    code.used_at = now
+    return True
 
 
 @auth_bp.post("/signup")
@@ -175,12 +229,47 @@ def login():
             email=user.email,
         ), 403
 
+    if user.two_factor_enabled:
+        _send_account_security_code(user, "login_two_factor", "Complete your RealMindX sign in")
+        session["pending_two_factor_login"] = {
+            "user_id": user.id,
+            "remember": bool(payload.get("remember")),
+        }
+        audit("user_login_two_factor_requested", "user", user.id, {"email": user.email})
+        db.session.commit()
+        return jsonify(
+            requires_two_factor=True,
+            email=user.email,
+            message="Enter the security code sent to your email.",
+        ), 202
+
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = now
     audit("user_login", "user", user.id, {"email": user.email, "role": user.role.name if user.role else None})
     db.session.commit()
     login_user(user, remember=bool(payload.get("remember")))
+    return jsonify(user=user_json(user))
+
+
+@auth_bp.post("/login/two-factor")
+@limiter.limit("10/hour")
+def complete_two_factor_login():
+    pending = session.get("pending_two_factor_login") or {}
+    user = db.session.get(User, pending.get("user_id")) if pending.get("user_id") else None
+    otp = re.sub(r"\D", "", str((request.get_json(silent=True) or {}).get("otp") or ""))
+    if not user or len(otp) != 6:
+        return jsonify(error="That sign-in challenge is no longer valid. Sign in again."), 400
+    if not _consume_account_security_code(user.id, "login_two_factor", otp):
+        return jsonify(error="That security code is incorrect or has expired."), 400
+    now = datetime.now(timezone.utc)
+    user.failed_login_count = 0
+    user.locked_until = None
+    user.last_login_at = now
+    session.pop("pending_two_factor_login", None)
+    audit("user_login_two_factor_completed", "user", user.id, {"email": user.email})
+    db.session.commit()
+    login_user(user, remember=bool(pending.get("remember")))
     return jsonify(user=user_json(user))
 
 
@@ -215,6 +304,68 @@ def change_password():
     audit("password_changed", "user", current_user.id, {"email": current_user.email})
     db.session.commit()
     return jsonify(message="Password updated successfully.")
+
+
+@auth_bp.get("/security-status")
+@login_required
+def security_status():
+    return jsonify(
+        two_factor_enabled=bool(current_user.two_factor_enabled),
+        two_factor_method="email",
+        email=current_user.email,
+    )
+
+
+@auth_bp.post("/two-factor/request")
+@login_required
+@limiter.limit("6/hour")
+def request_two_factor_change():
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip().lower()
+    current_password = payload.get("current_password") or ""
+    if action not in {"enable", "disable"}:
+        return jsonify(error="Choose whether to enable or disable two-factor authentication."), 400
+    if not current_user.check_password(current_password):
+        return jsonify(error="Current password is incorrect."), 403
+    if action == "enable" and not current_user.is_verified:
+        return jsonify(error="Verify your email address before enabling two-factor authentication."), 400
+    if action == "enable" and current_user.two_factor_enabled:
+        return jsonify(error="Two-factor authentication is already enabled."), 400
+    if action == "disable" and not current_user.two_factor_enabled:
+        return jsonify(error="Two-factor authentication is already disabled."), 400
+    purpose = f"two_factor_{action}"
+    title = f"{action.capitalize()} two-factor authentication"
+    _send_account_security_code(current_user, purpose, title)
+    session["pending_two_factor_change"] = {"user_id": current_user.id, "action": action}
+    audit("two_factor_change_requested", "user", current_user.id, {"action": action})
+    db.session.commit()
+    return jsonify(
+        message=f"A confirmation code was sent to {current_user.email}.",
+        email=current_user.email,
+        action=action,
+    )
+
+
+@auth_bp.post("/two-factor/confirm")
+@login_required
+@limiter.limit("10/hour")
+def confirm_two_factor_change():
+    payload = request.get_json(silent=True) or {}
+    otp = re.sub(r"\D", "", str(payload.get("otp") or ""))
+    pending = session.get("pending_two_factor_change") or {}
+    action = pending.get("action")
+    if pending.get("user_id") != current_user.id or action not in {"enable", "disable"}:
+        return jsonify(error="That security request is no longer valid. Start again."), 400
+    if len(otp) != 6 or not _consume_account_security_code(current_user.id, f"two_factor_{action}", otp):
+        return jsonify(error="That security code is incorrect or has expired."), 400
+    current_user.two_factor_enabled = action == "enable"
+    session.pop("pending_two_factor_change", None)
+    audit("two_factor_changed", "user", current_user.id, {"enabled": current_user.two_factor_enabled})
+    db.session.commit()
+    return jsonify(
+        message=f"Two-factor authentication has been {'enabled' if current_user.two_factor_enabled else 'disabled'}.",
+        two_factor_enabled=current_user.two_factor_enabled,
+    )
 
 
 @auth_bp.get("/me")

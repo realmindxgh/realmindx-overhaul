@@ -39,6 +39,7 @@ const toSession = (user = {}, roleHint = 'user') => {
     permissions: Array.isArray(user.permissions) ? user.permissions : [],
     directPermissions: Array.isArray(user.direct_permissions) ? user.direct_permissions : [],
     mustChangePassword: Boolean(user.must_change_password ?? user.mustChangePassword),
+    twoFactorEnabled: Boolean(user.two_factor_enabled ?? user.twoFactorEnabled),
   };
 };
 
@@ -73,7 +74,14 @@ const invalidCredentials = (role) => {
 // role: 'admin' | 'user'
 export const signIn = async ({ email, password, role = 'user', remember = false }) => {
   if (isApiMode()) {
-    const { user } = await api.login({ email, password, remember });
+    const result = await api.login({ email, password, remember });
+    if (result?.requires_two_factor) {
+      const error = new Error(result.message || 'Enter the security code sent to your email.');
+      error.code = 'requires_two_factor';
+      error.data = result;
+      throw error;
+    }
+    const { user } = result;
     const actualRole = user?.role?.name || user?.role;
     if (role === 'admin' && actualRole !== 'admin') {
       try { await api.logout(); } catch { /* ignore cleanup errors */ }
@@ -100,6 +108,20 @@ export const signIn = async ({ email, password, role = 'user', remember = false 
   }
   saveDemoSession(account);
   return getDemoSession();
+};
+
+export const completeTwoFactorLogin = async ({ otp, role = 'user' }) => {
+  if (!isApiMode()) return getDemoSession();
+  const { user } = await api.completeTwoFactorLogin({ otp });
+  const actualRole = user?.role?.name || user?.role;
+  if (role === 'user' && actualRole && actualRole !== 'user') {
+    try { await api.logout(); } catch { /* ignore cleanup errors */ }
+    clearDemoSession();
+    throw invalidCredentials(role);
+  }
+  const session = toSession(user, actualRole || role);
+  saveDemoSession(session);
+  return session;
 };
 
 export const signUp = async ({ email, phone = '', password, firstName, lastName, acceptedTerms = false, turnstileToken = '' }) => {
