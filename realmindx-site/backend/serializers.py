@@ -146,6 +146,7 @@ def product_json(product, include_private=False):
         "rating_count": rating_count,
         "is_active": product.is_active,
         "status": "published" if product.is_active else "draft",
+        "updated_at": product.updated_at.isoformat() if product.updated_at else None,
     }
     if include_private:
         payload["source"] = getattr(product, "source", None)

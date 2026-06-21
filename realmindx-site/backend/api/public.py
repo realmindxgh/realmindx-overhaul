@@ -22,6 +22,7 @@ from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
 from ..models import ContactMessage, Flyer, GalleryItem, News, NewsletterSubscriber, Product, ProductCategory, Resource, SiteSetting, UploadedFile
+from ..og_images import book_og_version, render_book_og
 from ..order_pricing import validate_promo_code_record
 from ..security import require_turnstile
 
@@ -44,6 +45,7 @@ CRAWLABLE_PUBLIC_API_RULES = [
     "Allow: /api/resources$",
     "Allow: /api/jobs$",
     "Allow: /api/products",
+    "Allow: /api/og/books/",
     "Allow: /api/flyers/focus$",
     "Allow: /api/flyers$",
     "Allow: /api/delivery-zones$",
@@ -687,6 +689,17 @@ def services():
     response = jsonify(items=enrich_service_media(rows))
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@public_bp.get("/og/books/<int:product_id>.png")
+def book_open_graph_image(product_id):
+    product = Product.query.filter_by(id=product_id, is_active=True).first()
+    if product is None:
+        return jsonify(error="Product not found."), 404
+    response = Response(render_book_og(product, current_app.config), mimetype="image/png")
+    response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
+    response.set_etag(book_og_version(product))
+    return response.make_conditional(request)
 
 
 @public_bp.get("/site-copy")

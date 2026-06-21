@@ -9,8 +9,13 @@ import { Icon, LoadingState, cedis } from './shared.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
 import { trackPageView } from '../src/lib/analytics.js';
-import { setHeadLink, setHeadMeta, setStructuredData } from '../src/lib/head.js';
-import { BOOKSHOP_BASE_URL, BOOKSHOP_DEFAULT_IMAGE } from '../src/lib/seoRoutes.js';
+import { setFavicons, setHeadLink, setHeadMeta, setStructuredData } from '../src/lib/head.js';
+import {
+  BOOKSHOP_APPLE_TOUCH_ICON,
+  BOOKSHOP_DEFAULT_IMAGE,
+  BOOKSHOP_FAVICON,
+  bookOpenGraphImage,
+} from '../src/lib/seoRoutes.js';
 import { findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
 import { clearCheckoutDraft, clearCheckoutSuccess } from './checkoutStorage.js';
 import { bookshopPathForRoute, canonicalBookshopBase, productHref, productMatchesSegment, productPathSegment } from './urls.js';
@@ -448,18 +453,19 @@ const App = () => {
         const approvedReviews = reviewsLoaded
           ? seoProductReviewState.items.map(productReviewStructuredData).filter(Boolean)
           : [];
+        const productImage = activeProduct.image || BOOKSHOP_DEFAULT_IMAGE;
         currentMeta = {
           title: `${activeProduct.title} | RealMindX Bookshop`,
           desc: activeProduct.short || activeProduct.desc || activeProduct.full || meta.product.desc,
         };
-        image = activeProduct.image || BOOKSHOP_DEFAULT_IMAGE;
+        image = bookOpenGraphImage(activeProduct);
         if (!reviewCount || reviewsLoaded) {
           structuredData = {
             '@context': 'https://schema.org',
             '@type': 'Product',
             name: activeProduct.title,
             description: currentMeta.desc,
-            image: image ? [image] : undefined,
+            image: productImage ? [productImage] : undefined,
             sku: String(activeProduct.id),
             category: activeProduct.catName,
             brand: {
@@ -530,11 +536,15 @@ const App = () => {
     setHeadMeta('og:description', currentMeta.desc, { property: true });
     setHeadMeta('og:url', canonicalUrl, { property: true });
     setHeadMeta('og:image', image, { property: true });
+    setHeadMeta('og:image:alt', `${currentMeta.title.split('|', 1)[0].trim()} social preview`, { property: true });
+    setHeadMeta('og:image:width', '1200', { property: true });
+    setHeadMeta('og:image:height', '630', { property: true });
     setHeadMeta('og:site_name', 'RealMindX Bookshop', { property: true });
     setHeadMeta('twitter:card', 'summary_large_image');
     setHeadMeta('twitter:title', currentMeta.title);
     setHeadMeta('twitter:description', currentMeta.desc);
     setHeadMeta('twitter:image', image);
+    setFavicons({ icon: BOOKSHOP_FAVICON, appleTouchIcon: BOOKSHOP_APPLE_TOUCH_ICON });
     setHeadLink('canonical', canonicalUrl);
     setStructuredData('bookshop-route-seo', structuredData);
   }, [route, params.cat, params.id, params.q, params.slug, params.taxonomy, params.value, activeProduct, activeBrowse, activeBrowseCount, browseTaxonomy, browseValue, canonicalUrl, books, catalogLoading, seoProductReviewState]);

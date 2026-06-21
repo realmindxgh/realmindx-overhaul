@@ -105,6 +105,7 @@ const fromApiProduct = (p) => {
     featured: Boolean(p.featured),
     tags,
     image: apiAssetUrl(p.image_url) || null,
+    updatedAt: p.updated_at || '',
     // Bulk discount — set on the category (bulk_discount_percent field, min qty = 10)
     bulkDiscountPct: Number(p.bulk_discount_percent || p.category_bulk_discount_percent) || 0,
     bulkMinQty: Number(p.bulk_min_qty) || 10,

@@ -25,7 +25,34 @@ ROUTE_BLOCK = f"""{START_MARKER}
         proxy_set_header   X-Forwarded-Proto $scheme;
     }}
 
+    location = / {{
+        proxy_pass         http://127.0.0.1:5002/;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
+    }}
+
+    location ~ ^/(about|services|jobs|contact|news|gallery|resources|donate|privacy|terms)/?$ {{
+        proxy_pass         http://127.0.0.1:5002;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
+    }}
+
     location ~ ^/news/[^/]+/?$ {{
+        proxy_pass         http://127.0.0.1:5002;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
+    }}
+
+    location ~ ^/services/[^/]+/?$ {{
         proxy_pass         http://127.0.0.1:5002;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -62,7 +89,7 @@ BOOKSHOP_ROUTE_BLOCK = f"""{BOOKSHOP_START_MARKER}
         proxy_read_timeout 60;
     }}
 
-    location ~ ^/(products|subjects|levels|curriculum|curricula|categories|publishers)(/[^?#]*)?/?$ {{
+    location ~ ^/(products|subjects|levels|curriculum|curricula|categories|publishers|about|contact|privacy|terms)(/[^?#]*)?/?$ {{
         proxy_pass         http://127.0.0.1:5002;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -150,7 +177,10 @@ def remove_legacy_main_routes(block):
     return remove_location_blocks(block, [
         lambda header: re.search(r"location\s*=\s*/sitemap\.xml\s*\{", header) is not None,
         lambda header: re.search(r"location\s*=\s*/robots\.txt\s*\{", header) is not None,
+        lambda header: re.search(r"location\s*=\s*/\s*\{", header) is not None,
+        lambda header: "about|services|jobs|contact|news|gallery|resources|donate|privacy|terms" in header,
         lambda header: "/news/" in header,
+        lambda header: "/services/" in header,
     ])
 
 
@@ -159,7 +189,7 @@ def remove_legacy_bookshop_routes(block):
         lambda header: re.search(r"location\s*=\s*/sitemap\.xml\s*\{", header) is not None,
         lambda header: re.search(r"location\s*=\s*/robots\.txt\s*\{", header) is not None,
         lambda header: re.search(r"location\s*=\s*/\s*\{", header) is not None,
-        lambda header: "products|subjects|levels|curriculum|curricula|categories|publishers" in header,
+        lambda header: "products|subjects|levels|curriculum|curricula|categories|publishers|about|contact|privacy|terms" in header,
     ])
 
 

@@ -970,7 +970,7 @@ const ProductCard = ({ book, idx = 0, navigate, searchContext = null }) => {
             ? <button className={`bs-add-btn${added ? ' added' : ''}`} onClick={onAdd} aria-label="Add to cart">
                 <Icon name={added ? 'check' : 'plus'} size={18} />
               </button>
-            : <button className="bs-notify-btn" onClick={(e)=>{e.stopPropagation();}}>Notify Me</button>}
+            : <button className="bs-notify-btn" type="button" disabled>Out of Stock</button>}
         </div>
       </div>
     </div>
@@ -1031,7 +1031,7 @@ const ListCard = ({ book, idx = 0, navigate, searchContext = null }) => {
         <div className="bs-pcard-price" style={{ fontSize:18 }}>{cedis(book.price)}</div>
         {book.stock
           ? <button className="bs-btn bs-btn-navy" onClick={(e)=>{e.stopPropagation();add(book.id);}}><Icon name="plus" size={15}/> Add to Cart</button>
-          : <button className="bs-btn bs-btn-outline-navy" disabled>Notify Me</button>}
+          : <button className="bs-btn bs-btn-outline-navy" disabled>Out of Stock</button>}
       </div>
     </div>
   );

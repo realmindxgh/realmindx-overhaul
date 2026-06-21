@@ -20,7 +20,7 @@ import { Icon } from '../realmindx-site/assets/components.jsx';
 import { usePublicGalleryState, usePublicNewsState, usePublicServices, usePublicServicesState, useSiteCopy, renderTextWithLinks } from './lib/siteContent.js';
 import { API_BASE, api, isApiMode } from './lib/apiClient.js';
 import { trackNewsServiceClick, trackPageView } from './lib/analytics.js';
-import { setHeadLink, setHeadMeta, setStructuredData } from './lib/head.js';
+import { setFavicons, setHeadLink, setHeadMeta, setStructuredData } from './lib/head.js';
 import { newsPath, servicePath, SITE_BASE_URL, SITE_DEFAULT_IMAGE, slugify } from './lib/seoRoutes.js';
 
 import BookshopApp from '../realmindx-bookshop/BookshopApp.jsx';
@@ -639,6 +639,14 @@ const NewsArticleRoute = () => {
 // ── Per-route meta (title + description + OG) ─────────────────
 const BASE_URL = SITE_BASE_URL;
 const DEFAULT_IMG = SITE_DEFAULT_IMAGE;
+const absoluteSeoImage = (value) => {
+  if (!value) return DEFAULT_IMG;
+  try {
+    return new URL(value, SITE_BASE_URL).toString();
+  } catch {
+    return DEFAULT_IMG;
+  }
+};
 
 const PAGE_META = {
   '/': {
@@ -691,13 +699,13 @@ const shouldNoIndexPath = (path) => (
 const serviceMeta = (service) => ({
   title: `${service.label} | RealMindX Education Ghana`,
   desc: service.summary || service.body?.[0] || `Learn how RealMindX delivers ${service.label.toLowerCase()} services across Ghana.`,
-  image: service.img || DEFAULT_IMG,
+  image: absoluteSeoImage(service.img),
 });
 
 const newsMeta = (item) => ({
   title: `${item.title} | RealMindX News`,
   desc: item.excerpt || item.summary || item.body || 'Latest RealMindX news and updates from Ghana.',
-  image: newsAssetUrl(item.img || item.image_url) || DEFAULT_IMG,
+  image: absoluteSeoImage(newsAssetUrl(item.img || item.image_url)),
 });
 
 const RouteTitle = () => {
@@ -720,7 +728,7 @@ const RouteTitle = () => {
       if (service) {
         meta = serviceMeta(service);
         canonicalPath = servicePath(service.id);
-        image = service.img || DEFAULT_IMG;
+        image = meta.image;
         structuredData = {
           '@context': 'https://schema.org',
           '@type': 'Service',
@@ -753,7 +761,7 @@ const RouteTitle = () => {
       if (article) {
         meta = newsMeta(article);
         canonicalPath = newsPath(article);
-        image = newsAssetUrl(article.img || article.image_url) || DEFAULT_IMG;
+        image = meta.image;
         structuredData = {
           '@context': 'https://schema.org',
           '@type': 'NewsArticle',
@@ -793,10 +801,14 @@ const RouteTitle = () => {
     setHeadMeta('og:description', meta.desc, { property: true });
     setHeadMeta('og:url', url, { property: true });
     setHeadMeta('og:image', image, { property: true });
+    setHeadMeta('og:image:alt', meta.title, { property: true });
+    setHeadMeta('og:image:width', image === DEFAULT_IMG ? '1200' : null, { property: true });
+    setHeadMeta('og:image:height', image === DEFAULT_IMG ? '630' : null, { property: true });
     setHeadMeta('twitter:card', 'summary_large_image');
     setHeadMeta('twitter:title', meta.title);
     setHeadMeta('twitter:description', meta.desc);
     setHeadMeta('twitter:image', image);
+    setFavicons({ icon: '/favicon.png', appleTouchIcon: '/apple-touch-icon.png' });
     setHeadLink('canonical', url);
     setStructuredData('route-seo', structuredData);
   }, [location.pathname, newsState.failed, newsState.items, newsState.loading, services, servicesState.loading]);

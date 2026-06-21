@@ -173,6 +173,17 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
 
   React.useEffect(() => { setQty(1); setActiveImg(0); window.scrollTo(0,0); }, [bookId]);
   React.useEffect(() => {
+    if (!lightbox) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = event => event.key === 'Escape' && setLightbox(false);
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [lightbox]);
+  React.useEffect(() => {
     if (!book?.id) return;
     trackProductView({
       productId: book.id,
@@ -425,10 +436,29 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
         </div>
       </section>
 
-      <div className={`bs-lightbox${lightbox ? ' open' : ''}`} onClick={() => setLightbox(false)}>
-        <button className="bs-lightbox-close" aria-label="Close"><Icon name="close" size={24} /></button>
-        <div className="bs-lightbox-img" onClick={e => e.stopPropagation()}><CoverPlaceholder title={book.title} idx={idx} image={book.image} /></div>
-      </div>
+      {lightbox && (
+        <div
+          className="bs-lightbox open"
+          onClick={() => setLightbox(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${book.title} cover preview`}
+        >
+          <button
+            type="button"
+            className="bs-lightbox-close"
+            aria-label="Close cover preview"
+            autoFocus
+            onClick={(event) => {
+              event.stopPropagation();
+              setLightbox(false);
+            }}
+          >
+            <Icon name="close" size={24} />
+          </button>
+          <div className="bs-lightbox-img" onClick={e => e.stopPropagation()}><CoverPlaceholder title={book.title} idx={idx} image={book.image} /></div>
+        </div>
+      )}
     </div>
   );
 };

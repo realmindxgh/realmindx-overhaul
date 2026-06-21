@@ -8,15 +8,18 @@ const ensureElement = (selector, create) => {
 };
 
 export const setHeadMeta = (key, content, { property = false } = {}) => {
-  if (!content) return;
   const attr = property ? 'property' : 'name';
   const selector = `meta[${attr}="${key}"]`;
+  if (content === null || content === undefined) {
+    document.head.querySelector(selector)?.remove();
+    return;
+  }
   const node = ensureElement(selector, () => {
     const meta = document.createElement('meta');
     meta.setAttribute(attr, key);
     return meta;
   });
-  node.setAttribute('content', content);
+  node.setAttribute('content', String(content));
 };
 
 export const setHeadLink = (rel, href, extra = {}) => {
@@ -31,6 +34,32 @@ export const setHeadLink = (rel, href, extra = {}) => {
   Object.entries(extra).forEach(([key, value]) => {
     if (value) node.setAttribute(key, value);
   });
+};
+
+export const setFavicons = ({ icon, appleTouchIcon }) => {
+  if (icon) {
+    const iconLinks = [...document.head.querySelectorAll('link[rel="icon"]')];
+    if (!iconLinks.length) {
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+      iconLinks.push(link);
+    }
+    iconLinks.forEach((link) => {
+      link.setAttribute('href', icon);
+      link.setAttribute('type', icon.endsWith('.ico') ? 'image/x-icon' : 'image/png');
+    });
+    const shortcut = ensureElement('link[rel="shortcut icon"]', () => {
+      const link = document.createElement('link');
+      link.rel = 'shortcut icon';
+      return link;
+    });
+    shortcut.setAttribute('href', icon);
+    shortcut.setAttribute('type', icon.includes('.ico') ? 'image/x-icon' : 'image/png');
+  }
+  if (appleTouchIcon) {
+    setHeadLink('apple-touch-icon', appleTouchIcon, { sizes: '180x180' });
+  }
 };
 
 export const setStructuredData = (id, payload) => {

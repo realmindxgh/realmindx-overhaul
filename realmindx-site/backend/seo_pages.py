@@ -5,19 +5,29 @@ import re
 
 from flask import Response, current_app, redirect, request
 
+from .default_content import DEFAULT_SERVICES
 from .api.public import (
     BOOKSHOP_SITE_BASE_URL,
     MAIN_SITE_BASE_URL,
     enrich_news_sections,
+    enrich_service_media,
     news_public_json,
+    public_rows,
+    setting_collection,
     slugify,
     upload_public_url,
 )
 from .extensions import db
 from .models import DeliveryZone, News, Product, ProductCategory, ProductReview
+from .og_images import book_og_public_url
 
 
-BOOKSHOP_DEFAULT_IMAGE = f"{BOOKSHOP_SITE_BASE_URL}/og-image-bookshop.png"
+SITE_DEFAULT_IMAGE = f"{MAIN_SITE_BASE_URL}/static/assets/social/realmindx-education-og-1200x630.png"
+BOOKSHOP_DEFAULT_IMAGE = f"{BOOKSHOP_SITE_BASE_URL}/static/assets/social/realmindx-bookshop-og-1200x630.png"
+EDUCATION_FAVICON = f"{MAIN_SITE_BASE_URL}/favicon.png"
+EDUCATION_APPLE_TOUCH_ICON = f"{MAIN_SITE_BASE_URL}/apple-touch-icon.png"
+BOOKSHOP_FAVICON = f"{BOOKSHOP_SITE_BASE_URL}/static/assets/favicons/bookshop-favicon.ico"
+BOOKSHOP_APPLE_TOUCH_ICON = f"{BOOKSHOP_SITE_BASE_URL}/static/assets/favicons/bookshop-apple-touch-icon.png"
 BOOKSHOP_SHIPPING_RATE_FALLBACK_MAX = 200.0
 BOOKSHOP_DELIVERY_TIME = {
     "@type": "ShippingDeliveryTime",
@@ -62,11 +72,29 @@ def _set_meta(document, key, content, attribute="name"):
     return document.replace("</head>", f"    {tag}\n  </head>", 1)
 
 
+def _remove_meta(document, key, attribute="name"):
+    pattern = rf'\s*<meta\b(?=[^>]*\b{attribute}=["\']{re.escape(key)}["\'])[^>]*>\s*'
+    return re.sub(pattern, "\n", document, flags=re.IGNORECASE)
+
+
 def _set_canonical(document, url):
     tag = f'<link rel="canonical" href="{escape(url, quote=True)}" />'
     pattern = r'<link\b(?=[^>]*\brel=["\']canonical["\'])[^>]*>'
     if re.search(pattern, document, flags=re.IGNORECASE):
         return re.sub(pattern, tag, document, count=1, flags=re.IGNORECASE)
+    return document.replace("</head>", f"    {tag}\n  </head>", 1)
+
+
+def _set_link(document, rel, href, **attributes):
+    extras = "".join(
+        f' {escape(key.replace("_", "-"), quote=True)}="{escape(str(value), quote=True)}"'
+        for key, value in attributes.items()
+        if value
+    )
+    tag = f'<link rel="{escape(rel, quote=True)}" href="{escape(href, quote=True)}"{extras} />'
+    pattern = rf'<link\b(?=[^>]*\brel=["\']{re.escape(rel)}["\'])[^>]*>'
+    if re.search(pattern, document, flags=re.IGNORECASE):
+        return re.sub(pattern, tag, document, flags=re.IGNORECASE)
     return document.replace("</head>", f"    {tag}\n  </head>", 1)
 
 
@@ -147,6 +175,59 @@ def _not_found_markup():
     )
 
 
+SERVICE_IMAGE_PATHS = {
+    "recruitment": "/uploads/Redesign/hero/Teacher Recruitment (Services).jpg",
+    "development": "/uploads/Redesign/hero/Teacher Recruitment (Services).jpg",
+    "school": "/uploads/Redesign/hero/School Restructuring-3.jpg",
+    "bookshop": "/uploads/Redesign/hero/Books and Stationery (Hero).png",
+    "tutoring": "/uploads/Redesign/hero/Home Teaching-1.jpg",
+    "research": "/uploads/Redesign/hero/School Restructuring-3.jpg",
+    "secretarial": "/uploads/Redesign/hero/School Restructuring-3.jpg",
+    "special": "/uploads/Redesign/hero/Special Needs-4.jpg",
+    "consulting": "/uploads/Redesign/hero/School Restructuring-3.jpg",
+    "extracurricular": "/uploads/Redesign/hero/Home Teaching-1.jpg",
+    "homeschool": "/uploads/Redesign/hero/Home Teaching-1.jpg",
+    "schoolms": "/uploads/Redesign/hero/School Restructuring-3.jpg",
+}
+
+
+def _service_image(item):
+    value = (
+        item.get("detail_image_url")
+        or item.get("detail_image")
+        or item.get("image_url")
+        or item.get("image")
+        or SERVICE_IMAGE_PATHS.get(item.get("detail_image_key"))
+        or SERVICE_IMAGE_PATHS.get(item.get("image_key"))
+    )
+    return _absolute_url(value) or SITE_DEFAULT_IMAGE
+
+
+def _service_markup(item, image_url):
+    label = item.get("label") or item.get("title") or "RealMindX Service"
+    title = item.get("detail_title") or item.get("title") or label
+    summary = item.get("detail_summary") or item.get("summary") or ""
+    pieces = [
+        '<main class="route-page" data-seo-prerendered="service">',
+        '<section class="services-policy-hero"><div class="container">',
+        '<p class="overline">RealMindX Education Service</p>',
+        f"<h1>{escape(title)}</h1>",
+    ]
+    if summary:
+        pieces.append(f"<p>{escape(summary)}</p>")
+    pieces.append("</div></section>")
+    pieces.append('<section class="site-info-section"><div class="container">')
+    if image_url:
+        pieces.append(
+            f'<img src="{escape(image_url, quote=True)}" alt="{escape(label, quote=True)} service" '
+            'style="width:100%;max-width:900px;height:auto" />'
+        )
+    for paragraph in _paragraphs(item.get("detail_body") or item.get("body")):
+        pieces.append(f"<p>{escape(paragraph)}</p>")
+    pieces.extend(["</div></section>", "</main>"])
+    return "".join(pieces)
+
+
 def _frontend_document():
     path = Path(current_app.config["FRONTEND_DIST_DIR"]) / "index.html"
     try:
@@ -170,6 +251,11 @@ def _render_document(
     route_data=None,
     og_type=None,
     site_name=None,
+    image_alt=None,
+    image_dimensions=None,
+    favicon=None,
+    apple_touch_icon=None,
+    theme_color=None,
 ):
     document = _replace_title(document, title)
     document = _set_meta(document, "description", description)
@@ -181,11 +267,26 @@ def _render_document(
     document = _set_meta(document, "og:description", description, "property")
     document = _set_meta(document, "og:url", canonical, "property")
     document = _set_meta(document, "og:image", image, "property")
+    if image_alt:
+        document = _set_meta(document, "og:image:alt", image_alt, "property")
+    if image_dimensions:
+        document = _set_meta(document, "og:image:width", str(image_dimensions[0]), "property")
+        document = _set_meta(document, "og:image:height", str(image_dimensions[1]), "property")
+    else:
+        document = _remove_meta(document, "og:image:width", "property")
+        document = _remove_meta(document, "og:image:height", "property")
     document = _set_meta(document, "twitter:card", "summary_large_image")
     document = _set_meta(document, "twitter:title", title)
     document = _set_meta(document, "twitter:description", description)
     document = _set_meta(document, "twitter:image", image)
     document = _set_canonical(document, canonical)
+    if favicon:
+        document = _set_link(document, "icon", favicon, type="image/x-icon")
+        document = _set_link(document, "shortcut icon", favicon, type="image/x-icon")
+    if apple_touch_icon:
+        document = _set_link(document, "apple-touch-icon", apple_touch_icon, sizes="180x180")
+    if theme_color:
+        document = _set_meta(document, "theme-color", theme_color)
     if schema:
         payload = json.dumps(schema, ensure_ascii=False).replace("</", "<\\/")
         safe_schema_id = escape(schema_id, quote=True)
@@ -275,6 +376,85 @@ BOOKSHOP_LANDING_PROFILES = {
         "description": "Browse educational titles by publisher and compare textbooks, workbooks, readers and classroom materials available in Ghana.",
         "intro": "Compare available titles by publisher, then browse by curriculum, subject, level or item type.",
     },
+    "about": {
+        "title": "About the Bookshop | RealMindX",
+        "description": "Learn about RealMindX Bookshop, Ghana's educational books, stationery, and learning materials shop.",
+        "intro": "RealMindX Bookshop helps learners, parents, teachers, and schools access trusted educational books and learning materials.",
+    },
+    "contact": {
+        "title": "Contact the Bookshop | RealMindX",
+        "description": "Contact RealMindX Bookshop in Accra for educational books, delivery support, school orders, and general enquiries.",
+        "intro": "Contact the RealMindX Bookshop team for product help, school orders, delivery support, and general enquiries.",
+    },
+    "privacy": {
+        "title": "Privacy Policy | RealMindX Bookshop",
+        "description": "How RealMindX Bookshop collects, uses, and protects customer and account information.",
+        "intro": "Read how RealMindX Bookshop handles customer, account, order, and delivery information.",
+    },
+    "terms": {
+        "title": "Terms and Conditions | RealMindX Bookshop",
+        "description": "Terms governing use of the RealMindX Bookshop and purchases made through the platform.",
+        "intro": "Read the terms that apply when using the RealMindX Bookshop or placing an order.",
+    },
+}
+
+
+MAIN_PAGE_PROFILES = {
+    "": {
+        "title": "RealMindX Education | Ghana's Educational Services Provider",
+        "description": "Ghana's comprehensive educational services provider for teacher recruitment, CPD, school transformation, tutoring, books, and more.",
+        "heading": "RealMindX Education",
+    },
+    "about": {
+        "title": "About RealMindX Education | Ghana",
+        "description": "Learn about RealMindX Education Limited, our mission, leadership, and commitment to improving education across Ghana.",
+        "heading": "About RealMindX Education",
+    },
+    "services": {
+        "title": "Educational Services | RealMindX Education Ghana",
+        "description": "Explore RealMindX education services, including teacher recruitment, teacher development, school structuring, tutoring, and special education.",
+        "heading": "RealMindX Educational Services",
+    },
+    "jobs": {
+        "title": "Teaching Jobs in Ghana | RealMindX Jobs Board",
+        "description": "Browse teaching vacancies across Ghana and apply for opportunities through the RealMindX Jobs Board.",
+        "heading": "Teaching Jobs in Ghana",
+    },
+    "contact": {
+        "title": "Contact RealMindX Education | Accra, Ghana",
+        "description": "Contact RealMindX Education Limited for educational services, school support, teacher recruitment, and general enquiries.",
+        "heading": "Contact RealMindX Education",
+    },
+    "news": {
+        "title": "News and Updates | RealMindX Education",
+        "description": "Read the latest news, announcements, and education updates from RealMindX Education Limited in Ghana.",
+        "heading": "RealMindX News and Updates",
+    },
+    "gallery": {
+        "title": "Gallery | RealMindX Education Ghana",
+        "description": "View photos from RealMindX programmes, school visits, teacher training, and education events across Ghana.",
+        "heading": "RealMindX Gallery",
+    },
+    "resources": {
+        "title": "Education Resources | RealMindX Education",
+        "description": "Access helpful guides, tools, and learning resources from RealMindX Education.",
+        "heading": "Education Resources",
+    },
+    "donate": {
+        "title": "Donate | Support Education in Ghana | RealMindX",
+        "description": "Support quality education in Ghana through RealMindX learning materials, teacher development, and learner support programmes.",
+        "heading": "Support Education in Ghana",
+    },
+    "privacy": {
+        "title": "Privacy Policy | RealMindX Education",
+        "description": "How RealMindX Education Limited collects, uses, and protects personal information.",
+        "heading": "Privacy Policy",
+    },
+    "terms": {
+        "title": "Terms of Service | RealMindX Education",
+        "description": "Terms governing use of the RealMindX Education platform, job portal, services, and related features.",
+        "heading": "Terms of Service",
+    },
 }
 
 
@@ -286,6 +466,17 @@ def _bookshop_markup(title, intro):
         f"<h1 class=\"bs-h1\">{escape(title)}</h1>"
         f"<p class=\"bs-muted\" style=\"max-width:720px\">{escape(intro)}</p>"
         "</section></main>"
+    )
+
+
+def _main_page_markup(profile):
+    return (
+        '<main class="route-page" data-seo-prerendered="main-page">'
+        '<section class="page-hero route-page-hero"><div class="container">'
+        '<p class="overline">RealMindX Education</p>'
+        f"<h1>{escape(profile['heading'])}</h1>"
+        f"<p>{escape(profile['description'])}</p>"
+        "</div></section></main>"
     )
 
 
@@ -459,6 +650,8 @@ def bookshop_public_page(path=""):
         profile = BOOKSHOP_LANDING_PROFILES[route_key]
     elif clean_path == "products":
         profile = BOOKSHOP_LANDING_PROFILES["products"]
+    elif clean_path in {"about", "contact", "privacy", "terms"}:
+        profile = BOOKSHOP_LANDING_PROFILES[clean_path]
     elif clean_path.startswith("products/"):
         slug = clean_path.split("/", 1)[1]
         product = Product.query.filter_by(slug=slug, is_active=True).first()
@@ -472,7 +665,8 @@ def bookshop_public_page(path=""):
         if product:
             title = f"{product.name} | RealMindX Bookshop"
             description = product.short_description or product.full_description or "Educational books and learning materials available from RealMindX Bookshop."
-            image = _absolute_url(upload_public_url(product.image_file), BOOKSHOP_SITE_BASE_URL) or BOOKSHOP_DEFAULT_IMAGE
+            product_image = _absolute_url(upload_public_url(product.image_file), BOOKSHOP_SITE_BASE_URL)
+            image = book_og_public_url(product, BOOKSHOP_SITE_BASE_URL)
             profile = {"title": title, "description": description, "intro": description}
             og_type = "product"
             approved_reviews = _bookshop_product_reviews(product, limit=3)
@@ -482,7 +676,7 @@ def bookshop_public_page(path=""):
                 "@type": "Product",
                 "name": product.name,
                 "description": description,
-                "image": image,
+                "image": product_image or image,
                 "sku": str(product.id),
                 "category": product.category.name if product.category else "Educational books",
                 "brand": {
@@ -559,8 +753,44 @@ def bookshop_public_page(path=""):
         schema_id="bookshop-route-seo",
         og_type=og_type,
         site_name="RealMindX Bookshop",
+        image_alt=f"{profile['title'].split('|', 1)[0].strip()} social preview",
+        image_dimensions=(1200, 630),
+        favicon=BOOKSHOP_FAVICON,
+        apple_touch_icon=BOOKSHOP_APPLE_TOUCH_ICON,
+        theme_color="#062B69",
     )
     response = Response(rendered, status=status, mimetype="text/html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
+def main_public_page(path=""):
+    clean_path = str(path or "").strip("/")
+    profile = MAIN_PAGE_PROFILES.get(clean_path)
+    if profile is None:
+        return Response("Page not found.", status=404, mimetype="text/plain")
+
+    canonical = MAIN_SITE_BASE_URL if not clean_path else f"{MAIN_SITE_BASE_URL}/{clean_path}"
+    document = _frontend_document()
+    if document is None:
+        return Response("The page is temporarily unavailable.", status=503, mimetype="text/plain")
+
+    rendered = _render_document(
+        document,
+        title=profile["title"],
+        description=profile["description"],
+        canonical=canonical,
+        robots="index,follow",
+        image=SITE_DEFAULT_IMAGE,
+        markup=_main_page_markup(profile),
+        site_name="RealMindX Education",
+        image_alt=profile["heading"],
+        image_dimensions=(1200, 630),
+        favicon=EDUCATION_FAVICON,
+        apple_touch_icon=EDUCATION_APPLE_TOUCH_ICON,
+        theme_color="#143670",
+    )
+    response = Response(rendered, status=200, mimetype="text/html")
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
 
@@ -584,16 +814,21 @@ def news_article_page(slug):
             description=description,
             canonical=canonical,
             robots="noindex,follow",
-            image=f"{MAIN_SITE_BASE_URL}/og-image.png",
+            image=SITE_DEFAULT_IMAGE,
             markup=_not_found_markup(),
             route_data={"news": []},
+            image_alt="RealMindX Education",
+            image_dimensions=(1200, 630),
+            favicon=EDUCATION_FAVICON,
+            apple_touch_icon=EDUCATION_APPLE_TOUCH_ICON,
+            theme_color="#143670",
         )
         response = Response(rendered, status=404, mimetype="text/html")
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         return response
 
     sections = enrich_news_sections(row.sections or [])
-    image_url = _absolute_url(upload_public_url(row.image_file)) or f"{MAIN_SITE_BASE_URL}/og-image.png"
+    image_url = _absolute_url(upload_public_url(row.image_file)) or SITE_DEFAULT_IMAGE
     description = row.summary or next(iter(_paragraphs(row.body)), "Latest RealMindX news and updates from Ghana.")
     title = f"{row.title} | RealMindX News"
     schema = {
@@ -629,6 +864,94 @@ def news_article_page(slug):
         markup=_article_markup(row, sections, image_url),
         schema=schema,
         route_data={"news": [news_public_json(row)]},
+        image_alt=row.title,
+        favicon=EDUCATION_FAVICON,
+        apple_touch_icon=EDUCATION_APPLE_TOUCH_ICON,
+        theme_color="#143670",
+    )
+    response = Response(rendered, status=200, mimetype="text/html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
+def service_public_page(slug):
+    canonical_slug = slugify(slug)
+    canonical = f"{MAIN_SITE_BASE_URL}/services/{canonical_slug}"
+    if request.path.endswith("/"):
+        return redirect(canonical, code=301)
+
+    document = _frontend_document()
+    if document is None:
+        return Response("The service page is temporarily unavailable.", status=503, mimetype="text/plain")
+
+    services = enrich_service_media(public_rows(setting_collection("services", DEFAULT_SERVICES)))
+    service = next(
+        (
+            item for item in services
+            if slugify(item.get("id") or item.get("slug") or item.get("label") or item.get("title")) == canonical_slug
+        ),
+        None,
+    )
+    if service is None:
+        title = "Service Not Found | RealMindX Education"
+        description = "That service link does not match a currently published RealMindX service."
+        rendered = _render_document(
+            document,
+            title=title,
+            description=description,
+            canonical=canonical,
+            robots="noindex,follow",
+            image=SITE_DEFAULT_IMAGE,
+            markup=_not_found_markup(),
+            image_alt="RealMindX Education",
+            image_dimensions=(1200, 630),
+            favicon=EDUCATION_FAVICON,
+            apple_touch_icon=EDUCATION_APPLE_TOUCH_ICON,
+            theme_color="#143670",
+        )
+        response = Response(rendered, status=404, mimetype="text/html")
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
+
+    label = service.get("label") or service.get("title") or "RealMindX Service"
+    description = (
+        service.get("detail_summary")
+        or service.get("summary")
+        or next(iter(_paragraphs(service.get("detail_body") or service.get("body"))), "")
+        or f"Learn how RealMindX delivers {label.lower()} services across Ghana."
+    )
+    image_url = _service_image(service)
+    title = f"{label} | RealMindX Education Ghana"
+    schema = {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": label,
+        "description": description,
+        "image": image_url,
+        "provider": {
+            "@type": "EducationalOrganization",
+            "name": "RealMindX Education Limited",
+            "url": MAIN_SITE_BASE_URL,
+        },
+        "areaServed": {
+            "@type": "Country",
+            "name": "Ghana",
+        },
+        "url": canonical,
+    }
+    rendered = _render_document(
+        document,
+        title=title,
+        description=description,
+        canonical=canonical,
+        robots="index,follow",
+        image=image_url,
+        markup=_service_markup(service, image_url),
+        schema=schema,
+        image_alt=f"{label} from RealMindX Education",
+        favicon=EDUCATION_FAVICON,
+        apple_touch_icon=EDUCATION_APPLE_TOUCH_ICON,
+        theme_color="#143670",
     )
     response = Response(rendered, status=200, mimetype="text/html")
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"

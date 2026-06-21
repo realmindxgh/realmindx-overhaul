@@ -2,12 +2,12 @@ from flask import Flask, jsonify, redirect, request, send_from_directory
 from flask_wtf.csrf import CSRFError
 
 from .api import register_api_blueprints
-from .api.public import host_robots_response, host_sitemap_response
+from .api.public import host_robots_response, host_sitemap_response, is_bookshop_host
 from .cli import register_cli
 from .config import Config
 from .extensions import cors, csrf, db, limiter, login_manager, migrate
 from .models import User
-from .seo_pages import bookshop_public_page, news_article_page
+from .seo_pages import bookshop_public_page, main_public_page, news_article_page, service_public_page
 
 
 def create_app(config_object=Config):
@@ -63,9 +63,31 @@ def create_app(config_object=Config):
     def news_article(slug):
         return news_article_page(slug)
 
+    @app.get("/about", strict_slashes=False)
+    @app.get("/services", strict_slashes=False)
+    @app.get("/jobs", strict_slashes=False)
+    @app.get("/contact", strict_slashes=False)
+    @app.get("/news", strict_slashes=False)
+    @app.get("/gallery", strict_slashes=False)
+    @app.get("/resources", strict_slashes=False)
+    @app.get("/donate", strict_slashes=False)
+    @app.get("/privacy", strict_slashes=False)
+    @app.get("/terms", strict_slashes=False)
+    def public_page():
+        path = request.path.strip("/")
+        if is_bookshop_host():
+            return bookshop_public_page(path)
+        return main_public_page(path)
+
+    @app.get("/services/<slug>", strict_slashes=False)
+    def service_detail(slug):
+        return service_public_page(slug)
+
     @app.get("/", strict_slashes=False)
     def bookshop_root_page():
-        return bookshop_public_page("")
+        if is_bookshop_host():
+            return bookshop_public_page("")
+        return main_public_page("")
 
     @app.get("/products", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/products/<path:tail>", strict_slashes=False)

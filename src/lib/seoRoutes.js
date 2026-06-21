@@ -1,7 +1,17 @@
 export const SITE_BASE_URL = 'https://realmindxgh.com';
 export const BOOKSHOP_BASE_URL = 'https://bookshop.realmindxgh.com';
-export const SITE_DEFAULT_IMAGE = `${SITE_BASE_URL}/og-image.png`;
-export const BOOKSHOP_DEFAULT_IMAGE = `${BOOKSHOP_BASE_URL}/og-image-bookshop.png`;
+export const SITE_DEFAULT_IMAGE = `${SITE_BASE_URL}/static/assets/social/realmindx-education-og-1200x630.png`;
+export const BOOKSHOP_DEFAULT_IMAGE = `${BOOKSHOP_BASE_URL}/static/assets/social/realmindx-bookshop-og-1200x630.png`;
+export const BOOKSHOP_FAVICON = '/static/assets/favicons/bookshop-favicon-32.png?v=20260621';
+export const BOOKSHOP_APPLE_TOUCH_ICON = '/static/assets/favicons/bookshop-apple-touch-icon.png?v=20260621';
+
+export const bookOpenGraphImage = (product) => {
+  const id = String(product?.id || '').trim();
+  if (!/^\d+$/.test(id)) return BOOKSHOP_DEFAULT_IMAGE;
+  const version = String(product?.updatedAt || product?.updated_at || '').trim();
+  const query = version ? `?v=${encodeURIComponent(version)}` : '';
+  return `${BOOKSHOP_BASE_URL}/api/og/books/${id}.png${query}`;
+};
 
 export const slugify = (value = '') =>
   String(value)
