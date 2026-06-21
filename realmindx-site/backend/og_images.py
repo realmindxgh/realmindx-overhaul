@@ -12,6 +12,7 @@ except ImportError:
 
 
 OG_SIZE = (1200, 630)
+OG_TEMPLATE_VERSION = "2026-06-21-2"
 NAVY = "#062B69"
 NAVY_DARK = "#031C48"
 GOLD = "#F9A900"
@@ -110,6 +111,7 @@ def _file_stamp(path):
 def book_og_version(product):
     updated_at = product.updated_at.isoformat() if product.updated_at else ""
     raw = "|".join([
+        OG_TEMPLATE_VERSION,
         str(product.id),
         product.name or "",
         str(product.price or ""),

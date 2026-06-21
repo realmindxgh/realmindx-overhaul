@@ -4,12 +4,14 @@ export const SITE_DEFAULT_IMAGE = `${SITE_BASE_URL}/static/assets/social/realmin
 export const BOOKSHOP_DEFAULT_IMAGE = `${BOOKSHOP_BASE_URL}/static/assets/social/realmindx-bookshop-og-1200x630.png`;
 export const BOOKSHOP_FAVICON = '/static/assets/favicons/bookshop-favicon-32.png?v=20260621';
 export const BOOKSHOP_APPLE_TOUCH_ICON = '/static/assets/favicons/bookshop-apple-touch-icon.png?v=20260621';
+const BOOK_OG_TEMPLATE_VERSION = '2026-06-21-2';
 
 export const bookOpenGraphImage = (product) => {
   const id = String(product?.id || '').trim();
   if (!/^\d+$/.test(id)) return BOOKSHOP_DEFAULT_IMAGE;
   const version = String(product?.updatedAt || product?.updated_at || '').trim();
-  const query = version ? `?v=${encodeURIComponent(version)}` : '';
+  const cacheVersion = version ? `${BOOK_OG_TEMPLATE_VERSION}-${version}` : BOOK_OG_TEMPLATE_VERSION;
+  const query = `?v=${encodeURIComponent(cacheVersion)}`;
   return `${BOOKSHOP_BASE_URL}/api/og/books/${id}.png${query}`;
 };
 
