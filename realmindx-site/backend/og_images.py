@@ -173,7 +173,7 @@ def _render_book_og_cached(title, price, cover_path, cover_stamp, branding_path,
 
     price_y = max(430, title_y + 22)
     draw.text((526, price_y), "PRICE", font=price_label_font, fill=TEXT_MUTED)
-    draw.text((526, price_y + 32), f"GH₵ {float(price or 0):,.2f}", font=price_font, fill=NAVY)
+    draw.text((526, price_y + 32), f"GHS {float(price or 0):,.2f}", font=price_font, fill=NAVY)
 
     draw.text(
         (526, 558),
@@ -181,7 +181,9 @@ def _render_book_og_cached(title, price, cover_path, cover_stamp, branding_path,
         font=body_font,
         fill=TEXT_MUTED,
     )
-    draw.text((930, 590), "bookshop.realmindxgh.com", font=url_font, fill=NAVY)
+    footer_url = "bookshop.realmindxgh.com"
+    footer_width = draw.textbbox((0, 0), footer_url, font=url_font)[2]
+    draw.text((1148 - footer_width, 590), footer_url, font=url_font, fill=NAVY)
 
     output = BytesIO()
     canvas.save(output, format="PNG", optimize=True)
