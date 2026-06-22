@@ -28,7 +28,16 @@ from ..order_pricing import calculate_order_pricing, validate_promo_code_record
 from ..order_status import ORDER_STATUS_ALIASES, normalize_order_status
 from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
-from ..models import DeliveryZone, Order, OrderItem, OrderReview, Product, ProductCategory, ProductReview
+from ..models import (
+    BookshopPaymentIntent,
+    DeliveryZone,
+    Order,
+    OrderItem,
+    OrderReview,
+    Product,
+    ProductCategory,
+    ProductReview,
+)
 from ..security import require_turnstile
 from ..serializers import category_json, delivery_zone_json, order_json, order_review_json, product_json, product_review_json
 
@@ -77,6 +86,244 @@ def find_delivery_zone(payload):
         ).all()
         return next((zone for zone in zones if delivery_zone_matches(zone, zone_name)), None)
     return None
+
+
+class CheckoutValidationError(ValueError):
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+def _prepare_checkout(payload, *, payment_method=None):
+    try:
+        email = clean_email(payload.get("email"))
+    except ValueError as exc:
+        raise CheckoutValidationError(str(exc)) from exc
+
+    customer_name = (payload.get("customer_name") or payload.get("name") or "").strip()
+    phone = (payload.get("phone") or "").strip()
+    if not customer_name or not phone:
+        raise CheckoutValidationError("Customer name and phone are required.")
+
+    requested_payment_method = (payment_method or payload.get("payment_method") or "online").strip().lower()
+    if requested_payment_method not in {"online", "cash_on_delivery"}:
+        raise CheckoutValidationError("Choose online payment or payment on delivery.")
+
+    items = payload.get("items") or []
+    if not items:
+        raise CheckoutValidationError("At least one order item is required.")
+
+    delivery_method = payload.get("delivery_method") or payload.get("delivery") or "delivery"
+    if delivery_method not in {"delivery", "pickup"}:
+        raise CheckoutValidationError("Choose home delivery or pickup.")
+    delivery_zone = find_delivery_zone(payload)
+    delivery_fee = Decimal("0") if delivery_method == "pickup" else Decimal(str(delivery_zone.fee if delivery_zone else 0))
+    delivery_address = (payload.get("delivery_address") or "").strip()
+    delivery_city = (payload.get("delivery_city") or "").strip()
+    delivery_region = (payload.get("delivery_region") or "").strip() or None
+    custom_delivery_area = bool(payload.get("custom_delivery_area"))
+    location_parts = [
+        delivery_city if custom_delivery_area else delivery_zone.name if delivery_zone else "",
+        delivery_address,
+        delivery_region,
+    ]
+    location = (payload.get("location") or "").strip() or ", ".join(filter(None, location_parts)) or None
+    if delivery_method == "delivery" and not delivery_zone and not (custom_delivery_area and delivery_city):
+        raise CheckoutValidationError("Choose a delivery area.")
+    if delivery_method == "delivery" and custom_delivery_area and delivery_region not in GHANA_REGIONS:
+        raise CheckoutValidationError("Select a valid Ghana region for the custom delivery area.")
+
+    order_items = []
+    for item in items:
+        try:
+            product_id = int(item.get("product_id"))
+            quantity = max(int(item.get("quantity") or 1), 1)
+        except (TypeError, ValueError) as exc:
+            raise CheckoutValidationError("Every checkout item must match a published product.") from exc
+        product = db.session.get(Product, product_id)
+        if not product or not product.is_active:
+            raise CheckoutValidationError("One of the selected products is no longer available.", 409)
+        if (product.stock_status or "").lower() != "in_stock":
+            raise CheckoutValidationError(f"{product.name} is currently out of stock.", 409)
+        if product.quantity_available is not None and quantity > product.quantity_available:
+            raise CheckoutValidationError(
+                f"Only {product.quantity_available} cop{'y' if product.quantity_available == 1 else 'ies'} of {product.name} are available.",
+                409,
+            )
+        order_items.append({
+            "product_id": product.id,
+            "name": product.name,
+            "unit_price": Decimal(str(product.price or 0)),
+            "quantity": quantity,
+            "bulk_discount_percent": Decimal(str(product.category.bulk_discount_percent or 0)) if product.category else Decimal("0"),
+            "bulk_min_qty": int(product.category.bulk_min_qty or 10) if product.category else 10,
+        })
+
+    pricing_preview = calculate_order_pricing(order_items, delivery_fee=delivery_fee, promo=None)
+    promo_code_value = (payload.get("promo_code") or "").strip().upper() or None
+    promo_row = None
+    if promo_code_value:
+        promo_row, error, status = validate_promo_code_record(
+            promo_code_value,
+            pricing_preview["goods_total_amount"] + pricing_preview["delivery_fee_amount"],
+        )
+        if error:
+            raise CheckoutValidationError(error, status)
+    pricing = calculate_order_pricing(order_items, delivery_fee=delivery_fee, promo=promo_row)
+
+    return {
+        "user_id": current_user.id if current_user.is_authenticated else None,
+        "customer_name": customer_name,
+        "email": email,
+        "phone": phone,
+        "delivery_method": delivery_method,
+        "delivery_zone_id": delivery_zone.id if delivery_zone else None,
+        "delivery_zone_name": delivery_zone.name if delivery_zone else ("Other" if custom_delivery_area else None),
+        "delivery_fee": delivery_fee,
+        "delivery_address": delivery_address,
+        "delivery_city": delivery_city,
+        "delivery_region": delivery_region,
+        "location": location,
+        "notes": (payload.get("notes") or "").strip() or None,
+        "payment_method": requested_payment_method,
+        "order_items": order_items,
+        "pricing": pricing,
+        "analytics_session_key": (request.cookies.get("rmx_analytics_session") or "").strip() or None,
+        "analytics_visitor_key": (request.cookies.get("rmx_analytics_visitor") or "").strip() or None,
+    }
+
+
+def _checkout_snapshot(checkout):
+    return {
+        key: checkout.get(key)
+        for key in (
+            "user_id",
+            "customer_name",
+            "email",
+            "phone",
+            "delivery_method",
+            "delivery_zone_id",
+            "delivery_zone_name",
+            "delivery_address",
+            "delivery_city",
+            "delivery_region",
+            "location",
+            "notes",
+            "payment_method",
+            "analytics_session_key",
+            "analytics_visitor_key",
+        )
+    } | {
+        "delivery_fee": str(checkout["delivery_fee"]),
+        "order_items": [
+            {
+                **item,
+                "unit_price": str(item["unit_price"]),
+                "bulk_discount_percent": str(item["bulk_discount_percent"]),
+            }
+            for item in checkout["order_items"]
+        ],
+        "pricing": {
+            key: str(value) if isinstance(value, Decimal) else value
+            for key, value in checkout["pricing"].items()
+        },
+    }
+
+
+def _checkout_from_snapshot(snapshot):
+    checkout = dict(snapshot or {})
+    checkout["delivery_fee"] = Decimal(str(checkout.get("delivery_fee") or 0))
+    checkout["order_items"] = [
+        {
+            **item,
+            "unit_price": Decimal(str(item.get("unit_price") or 0)),
+            "bulk_discount_percent": Decimal(str(item.get("bulk_discount_percent") or 0)),
+            "bulk_min_qty": int(item.get("bulk_min_qty") or 10),
+            "quantity": max(int(item.get("quantity") or 1), 1),
+        }
+        for item in checkout.get("order_items") or []
+    ]
+    checkout["pricing"] = {
+        key: Decimal(str(value or 0)) if key.endswith("_amount") else value
+        for key, value in (checkout.get("pricing") or {}).items()
+    }
+    return checkout
+
+
+def _create_order_from_checkout(
+    checkout,
+    *,
+    status,
+    payment_status,
+    payment_provider,
+    payment_reference=None,
+    payment_access_code=None,
+    payment_authorization_url=None,
+    paid_at=None,
+):
+    pricing = checkout["pricing"]
+    order = Order(
+        order_reference=new_order_reference(),
+        payment_reference=payment_reference,
+        user_id=checkout.get("user_id"),
+        customer_name=checkout["customer_name"],
+        email=checkout["email"],
+        phone=checkout["phone"],
+        delivery_method=checkout["delivery_method"],
+        delivery_zone_id=checkout.get("delivery_zone_id"),
+        delivery_zone_name=checkout.get("delivery_zone_name"),
+        delivery_fee=checkout["delivery_fee"],
+        location=checkout.get("location"),
+        delivery_region=checkout.get("delivery_region"),
+        notes=checkout.get("notes"),
+        status=status,
+        payment_status=payment_status,
+        payment_method=checkout["payment_method"],
+        payment_provider=payment_provider,
+        payment_access_code=payment_access_code,
+        payment_authorization_url=payment_authorization_url,
+        subtotal_amount=pricing["subtotal_amount"],
+        bulk_discount_amount=pricing["bulk_discount_amount"],
+        promo_code=pricing.get("promo_code"),
+        promo_applies_to=pricing.get("promo_applies_to"),
+        promo_discount_amount=pricing["promo_discount_amount"],
+        total_amount=pricing["total_amount"],
+        paid_at=paid_at,
+        analytics_session_key=checkout.get("analytics_session_key"),
+        analytics_visitor_key=checkout.get("analytics_visitor_key"),
+    )
+    db.session.add(order)
+    db.session.flush()
+    for item in checkout["order_items"]:
+        db.session.add(OrderItem(
+            order_id=order.id,
+            product_id=item["product_id"],
+            product_name=item["name"],
+            unit_price=item["unit_price"],
+            quantity=item["quantity"],
+        ))
+    if checkout.get("user_id") and checkout["delivery_method"] == "delivery":
+        upsert_checkout_detail(checkout["user_id"], {
+            "customer_name": order.customer_name,
+            "email": order.email,
+            "phone": order.phone,
+            "delivery_zone_id": order.delivery_zone_id,
+            "delivery_zone_name": order.delivery_zone_name,
+            "delivery_address": checkout.get("delivery_address"),
+            "delivery_city": checkout.get("delivery_city") or order.delivery_zone_name or "",
+            "delivery_region": order.delivery_region,
+        })
+    return order
+
+
+def _placed_orders(query):
+    return query.filter(
+        or_(
+            Order.payment_method.is_(None),
+            Order.payment_method != "online",
+            Order.payment_status == "paid",
+        )
+    )
 
 
 @bookshop_bp.get("/products/categories")
@@ -312,7 +559,7 @@ def track_orders():
     if not query:
         return jsonify(error="Enter your order reference or checkout email."), 400
 
-    orders_query = Order.query
+    orders_query = _placed_orders(Order.query)
     if re.fullmatch(r"RMX-[A-Za-z0-9-]+", query):
         orders_query = orders_query.filter(Order.order_reference.ilike(query.upper()))
     elif "@" in query:
@@ -346,7 +593,7 @@ def my_orders():
     status_filter = (request.args.get("status") or "").strip()
 
     # Match by user_id where set (logged-in checkout) OR by email (guest checkout)
-    query = Order.query.filter(
+    query = _placed_orders(Order.query).filter(
         or_(Order.email == current_user.email, Order.user_id == current_user.id)
     )
     if q:
@@ -485,6 +732,16 @@ def _send_order_placed_notifications(order):
     ))
 
 
+def _send_order_placed_notifications_safely(order):
+    try:
+        _send_order_placed_notifications(order)
+    except Exception:
+        current_app.logger.exception(
+            "Order %s was placed, but one or more notifications could not be delivered.",
+            order.order_reference,
+        )
+
+
 def _validate_paystack_confirmation(order, data):
     if (data.get("status") or "").lower() != "success":
         return False, "Paystack has not confirmed a successful payment."
@@ -526,7 +783,7 @@ def _confirm_paystack_order(order, data, source):
         "source": source,
     }, actor_email=order.email)
     db.session.commit()
-    _send_order_placed_notifications(order)
+    _send_order_placed_notifications_safely(order)
     return True
 
 
@@ -536,112 +793,22 @@ def create_order():
     payload = request.get_json(silent=True) or {}
     require_turnstile(payload)
     try:
-        email = clean_email(payload.get("email"))
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
+        checkout = _prepare_checkout(payload)
+    except CheckoutValidationError as exc:
+        return jsonify(error=str(exc)), exc.status
+    if checkout["payment_method"] != "cash_on_delivery":
+        return jsonify(error="Online payment must be confirmed through Paystack before an order is placed."), 400
 
-    items = payload.get("items") or []
-    if not items:
-        return jsonify(error="At least one order item is required."), 400
-
-    delivery_method = payload.get("delivery_method") or payload.get("delivery") or "delivery"
-    if delivery_method not in {"delivery", "pickup"}:
-        return jsonify(error="Choose home delivery or pickup."), 400
-    payment_method = (payload.get("payment_method") or "online").strip().lower()
-    if payment_method not in {"online", "cash_on_delivery"}:
-        return jsonify(error="Choose online payment or payment on delivery."), 400
-    delivery_zone = find_delivery_zone(payload)
-    delivery_fee = Decimal("0") if delivery_method == "pickup" else Decimal(str(delivery_zone.fee if delivery_zone else 0))
-    delivery_address = (payload.get("delivery_address") or "").strip()
-    delivery_city = (payload.get("delivery_city") or "").strip()
-    delivery_region = (payload.get("delivery_region") or "").strip() or None
-    custom_delivery_area = bool(payload.get("custom_delivery_area"))
-    location_parts = [
-        delivery_city if custom_delivery_area else delivery_zone.name if delivery_zone else "",
-        delivery_address,
-        delivery_region,
-    ]
-    location = (payload.get("location") or "").strip() or ", ".join(filter(None, location_parts)) or None
-    if delivery_method == "delivery" and not delivery_zone and not (custom_delivery_area and delivery_city):
-        return jsonify(error="Choose a delivery area."), 400
-    if delivery_method == "delivery" and custom_delivery_area and delivery_region not in GHANA_REGIONS:
-        return jsonify(error="Select a valid Ghana region for the custom delivery area."), 400
-
-    order_items = []
-    for item in items:
-        product = db.session.get(Product, item.get("product_id")) if item.get("product_id") else None
-        quantity = max(int(item.get("quantity") or 1), 1)
-        name = product.name if product else (item.get("product_name") or "Requested item")
-        unit_price = Decimal(str(product.price if product else item.get("unit_price") or 0))
-        order_items.append({
-            "product_id": product.id if product else None,
-            "name": name,
-            "unit_price": unit_price,
-            "quantity": quantity,
-            "bulk_discount_percent": Decimal(str(product.category.bulk_discount_percent or 0)) if product and product.category else Decimal("0"),
-            "bulk_min_qty": int(product.category.bulk_min_qty or 10) if product and product.category else 10,
-        })
-
-    pricing_preview = calculate_order_pricing(order_items, delivery_fee=delivery_fee, promo=None)
-    promo_code_value = (payload.get("promo_code") or "").strip().upper() or None
-    promo_row = None
-    if promo_code_value:
-        promo_row, error, status = validate_promo_code_record(
-            promo_code_value,
-            pricing_preview["goods_total_amount"] + pricing_preview["delivery_fee_amount"],
-        )
-        if error:
-            return jsonify(error=error), status
-    pricing = calculate_order_pricing(order_items, delivery_fee=delivery_fee, promo=promo_row)
-
-    order = Order(
-        order_reference=new_order_reference(),
-        user_id=current_user.id if current_user.is_authenticated else None,
-        customer_name=(payload.get("customer_name") or payload.get("name") or "").strip(),
-        email=email,
-        phone=(payload.get("phone") or "").strip(),
-        delivery_method=delivery_method,
-        delivery_zone_id=delivery_zone.id if delivery_zone else None,
-        delivery_zone_name=delivery_zone.name if delivery_zone else ("Other" if custom_delivery_area else None),
-        delivery_fee=delivery_fee,
-        location=location,
-        delivery_region=delivery_region,
-        notes=(payload.get("notes") or "").strip() or None,
-        status="new" if payment_method == "cash_on_delivery" else "awaiting_payment",
-        payment_status="unpaid" if payment_method == "cash_on_delivery" else "pending",
-        payment_method=payment_method,
-        payment_provider="cash_on_delivery" if payment_method == "cash_on_delivery" else None,
-        bulk_discount_amount=pricing["bulk_discount_amount"],
-        promo_code=pricing["promo_code"],
-        promo_applies_to=pricing["promo_applies_to"],
-        promo_discount_amount=pricing["promo_discount_amount"],
-        analytics_session_key=(request.cookies.get("rmx_analytics_session") or "").strip() or None,
-        analytics_visitor_key=(request.cookies.get("rmx_analytics_visitor") or "").strip() or None,
+    order = _create_order_from_checkout(
+        checkout,
+        status="new",
+        payment_status="unpaid",
+        payment_provider="cash_on_delivery",
     )
-    if not order.customer_name or not order.phone:
-        return jsonify(error="Customer name and phone are required."), 400
-
-    db.session.add(order)
-    db.session.flush()
-    for item in order_items:
-        db.session.add(OrderItem(order_id=order.id, product_id=item["product_id"], product_name=item["name"], unit_price=item["unit_price"], quantity=item["quantity"]))
-    if current_user.is_authenticated and delivery_method == "delivery":
-        upsert_checkout_detail(current_user.id, {
-            "customer_name": order.customer_name,
-            "email": order.email,
-            "phone": order.phone,
-            "delivery_zone_id": order.delivery_zone_id,
-            "delivery_zone_name": order.delivery_zone_name,
-            "delivery_address": delivery_address,
-            "delivery_city": delivery_city or (delivery_zone.name if delivery_zone else ""),
-            "delivery_region": delivery_region,
-        })
-    order.subtotal_amount = pricing["subtotal_amount"]
-    order.total_amount = pricing["total_amount"]
-    audit_action = "order_placed" if payment_method == "cash_on_delivery" else "order_payment_started"
-    audit(audit_action, "order", order.id, {
+    pricing = checkout["pricing"]
+    audit("order_placed", "order", order.id, {
         "order_reference": order.order_reference,
-        "customer_email": email,
+        "customer_email": order.email,
         "total": float(pricing["total_amount"]),
         "subtotal": float(pricing["subtotal_amount"]),
         "bulk_discount": float(pricing["bulk_discount_amount"]),
@@ -650,13 +817,152 @@ def create_order():
         "delivery_method": order.delivery_method,
         "payment_method": order.payment_method,
         "delivery_region": order.delivery_region,
-        "items": len(order_items),
+        "items": len(checkout["order_items"]),
     })
     db.session.commit()
-
-    if order.payment_method == "cash_on_delivery":
-        _send_order_placed_notifications(order)
+    _send_order_placed_notifications_safely(order)
     return jsonify(order=order_json(order)), 201
+
+
+def _payment_intent_json(intent):
+    return {
+        "reference": intent.reference,
+        "status": intent.status,
+        "amount": float(intent.amount or 0),
+        "currency": intent.currency,
+        "order_reference": intent.order.order_reference if intent.order else None,
+    }
+
+
+def _validate_paystack_intent_confirmation(intent, data):
+    if (data.get("status") or "").lower() != "success":
+        return False, "Paystack has not confirmed a successful payment."
+    reference = str(data.get("reference") or "").strip()
+    if not reference or reference != intent.reference:
+        return False, "The Paystack reference does not match this payment."
+    try:
+        paid_amount = int(data.get("amount"))
+    except (TypeError, ValueError):
+        return False, "Paystack did not return a valid payment amount."
+    expected_amount = int(Decimal(str(intent.amount or 0)) * 100)
+    if paid_amount != expected_amount:
+        return False, "The confirmed Paystack amount does not match the checkout total."
+    currency = str(data.get("currency") or "").strip().upper()
+    if currency and currency != str(intent.currency or "GHS").upper():
+        return False, "The confirmed Paystack currency does not match the checkout currency."
+    metadata = data.get("metadata") or {}
+    metadata_intent_id = metadata.get("payment_intent_id")
+    if metadata_intent_id not in {None, "", intent.id, str(intent.id)}:
+        return False, "The Paystack transaction metadata does not match this checkout."
+    return True, ""
+
+
+def _confirm_paystack_intent(intent, data, source):
+    if intent.order_id:
+        return intent.order, False
+    valid, error = _validate_paystack_intent_confirmation(intent, data)
+    if not valid:
+        raise ValueError(error)
+
+    paid_at = datetime.now(timezone.utc)
+    checkout = _checkout_from_snapshot(intent.checkout_data)
+    checkout["payment_method"] = "online"
+    order = _create_order_from_checkout(
+        checkout,
+        status="confirmed",
+        payment_status="paid",
+        payment_provider="paystack",
+        payment_reference=intent.reference,
+        payment_access_code=intent.access_code,
+        payment_authorization_url=intent.authorization_url,
+        paid_at=paid_at,
+    )
+    intent.order_id = order.id
+    intent.status = "converted"
+    intent.paid_at = paid_at
+    audit("paystack_payment_confirmed", "order", order.id, {
+        "order_reference": order.order_reference,
+        "payment_intent_id": intent.id,
+        "reference": intent.reference,
+        "amount": float(intent.amount or 0),
+        "source": source,
+    }, actor_email=intent.email)
+    db.session.commit()
+    _send_order_placed_notifications_safely(order)
+    return order, True
+
+
+@bookshop_bp.post("/orders/paystack/initialize")
+@limiter.limit("8/hour")
+def initialize_paystack_checkout():
+    payload = request.get_json(silent=True) or {}
+    require_turnstile(payload)
+    secret_key = current_app.config.get("PAYSTACK_SECRET_KEY")
+    if not secret_key:
+        return jsonify(error="Paystack is not configured for this environment."), 503
+    try:
+        checkout = _prepare_checkout(payload, payment_method="online")
+    except CheckoutValidationError as exc:
+        return jsonify(error=str(exc)), exc.status
+    if checkout["pricing"]["total_amount"] <= 0:
+        return jsonify(error="Checkout total must be greater than zero before payment."), 400
+
+    intent = BookshopPaymentIntent(
+        reference=new_payment_reference(),
+        user_id=checkout.get("user_id"),
+        customer_name=checkout["customer_name"],
+        email=checkout["email"],
+        phone=checkout["phone"],
+        amount=checkout["pricing"]["total_amount"],
+        currency="GHS",
+        status="initialized",
+        provider="paystack",
+        checkout_data=_checkout_snapshot(checkout),
+    )
+    db.session.add(intent)
+    db.session.flush()
+    amount_pesewas = int(Decimal(str(intent.amount)) * 100)
+    callback_url = (
+        f"{current_app.config['BOOKSHOP_URL'].rstrip('/')}/"
+        f"?payment_intent={intent.reference}&status=paid"
+    )
+    try:
+        response = requests.post(
+            "https://api.paystack.co/transaction/initialize",
+            headers={"Authorization": f"Bearer {secret_key}", "Content-Type": "application/json"},
+            json={
+                "email": intent.email,
+                "amount": amount_pesewas,
+                "reference": intent.reference,
+                "callback_url": callback_url,
+                "metadata": {
+                    "payment_intent_id": intent.id,
+                    "delivery_fee": float(checkout["delivery_fee"] or 0),
+                },
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json().get("data") or {}
+    except (requests.RequestException, ValueError):
+        db.session.rollback()
+        current_app.logger.exception("Paystack transaction initialization failed for payment intent %s", intent.reference)
+        return jsonify(error="Payment initialization failed. Please try again or contact RealMindX Bookshop."), 502
+    if not data.get("authorization_url"):
+        db.session.rollback()
+        return jsonify(error="Paystack did not return a payment page. Please try again."), 502
+
+    intent.access_code = data.get("access_code")
+    intent.authorization_url = data.get("authorization_url")
+    audit("order_payment_started", "bookshop_payment_intent", intent.id, {
+        "reference": intent.reference,
+        "customer_email": intent.email,
+        "total": float(intent.amount),
+        "delivery_method": checkout["delivery_method"],
+        "items": len(checkout["order_items"]),
+    }, actor_email=intent.email)
+    db.session.commit()
+    return jsonify(payment_intent=_payment_intent_json(intent), payment=data), 201
 
 
 @bookshop_bp.post("/orders/<int:order_id>/paystack/initialize")
@@ -711,9 +1017,54 @@ def initialize_paystack_payment(order_id):
 @limiter.limit("15/hour")
 def verify_paystack_payment():
     payload = request.get_json(silent=True) or {}
+    payment_intent_reference = str(payload.get("payment_intent_reference") or "").strip().upper()
+    if payment_intent_reference:
+        intent = BookshopPaymentIntent.query.filter_by(reference=payment_intent_reference).first()
+        if not intent:
+            return jsonify(error="Payment attempt not found."), 404
+        if intent.order_id:
+            return jsonify(
+                order=order_json(intent.order),
+                payment_intent=_payment_intent_json(intent),
+                message="Payment is already confirmed.",
+            )
+        secret_key = current_app.config.get("PAYSTACK_SECRET_KEY")
+        if not secret_key:
+            return jsonify(error="Paystack is not configured for this environment."), 503
+        try:
+            response = requests.get(
+                f"https://api.paystack.co/transaction/verify/{intent.reference}",
+                headers={"Authorization": f"Bearer {secret_key}"},
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json().get("data") or {}
+        except (requests.RequestException, ValueError):
+            current_app.logger.exception("Paystack verification failed for payment intent %s", intent.reference)
+            return jsonify(error="Payment confirmation is temporarily unavailable. Please try again."), 502
+
+        db.session.rollback()
+        intent = (
+            BookshopPaymentIntent.query
+            .filter_by(reference=payment_intent_reference)
+            .with_for_update()
+            .first()
+        )
+        if not intent:
+            return jsonify(error="Payment attempt not found."), 404
+        try:
+            order, newly_confirmed = _confirm_paystack_intent(intent, data, "callback_verification")
+        except ValueError as exc:
+            return jsonify(error=str(exc), payment_intent=_payment_intent_json(intent)), 409
+        return jsonify(
+            order=order_json(order),
+            payment_intent=_payment_intent_json(intent),
+            message="Payment confirmed and order placed." if newly_confirmed else "Payment was already confirmed.",
+        )
+
     order_reference = str(payload.get("order_reference") or "").strip().upper()
     if not order_reference:
-        return jsonify(error="Order reference is required."), 400
+        return jsonify(error="Payment reference is required."), 400
 
     order = Order.query.filter_by(order_reference=order_reference).first()
     if not order:
@@ -766,6 +1117,24 @@ def paystack_webhook():
     data = event.get("data") or {}
     reference = data.get("reference")
     if event.get("event") == "charge.success" and reference:
+        intent = (
+            BookshopPaymentIntent.query
+            .filter_by(reference=reference)
+            .with_for_update()
+            .first()
+        )
+        if intent:
+            try:
+                _confirm_paystack_intent(intent, data, "webhook")
+            except ValueError as exc:
+                audit("paystack_payment_rejected", "bookshop_payment_intent", intent.id, {
+                    "reference": reference,
+                    "reason": str(exc),
+                }, actor_email=intent.email)
+                db.session.commit()
+                return jsonify(error=str(exc)), 400
+            return jsonify(message="Webhook processed.")
+
         order = Order.query.filter_by(payment_reference=reference).first()
         if order:
             try:

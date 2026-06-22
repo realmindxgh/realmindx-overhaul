@@ -8,6 +8,7 @@ const asTitle = (value, fallback) => clean(value) || fallback;
 export const normalizeBookshopSearchText = (value = '') => String(value || '')
   .normalize('NFKD')
   .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\b(?:[a-zA-Z]\.){2,}[a-zA-Z]?\.?/g, match => match.replace(/\./g, ''))
   .replace(/&/g, ' and ')
   .replace(/[^a-zA-Z0-9]+/g, ' ')
   .replace(/\s+/g, ' ')
@@ -99,10 +100,17 @@ const findAliasGroup = (taxonomy, value = '', explicitId = '') => {
 };
 const canonicalFromAliasGroup = (taxonomy, value) => findAliasGroup(taxonomy, value)?.canonical || '';
 const displayLabelFor = (taxonomy, label, id = '') => findAliasGroup(taxonomy, label, id)?.displayName || label;
+const LEVEL_SPECIFIC_SEARCH_TERM = /\b(?:jhs|shs|jss|sss|junior high|senior high|lower secondary|upper secondary|basic\s*[1-9]|primary\s*[1-6]|p[1-6]|kg\s*[12]?|kindergarten|bece|wassce)\b/i;
+const CURRICULUM_SPECIFIC_SEARCH_TERM = /\b(?:ges|nacca|waec|cambridge|igcse|british curriculum|english national curriculum|uk curriculum|tvet|ctvet|ghana curriculum|basic school|ghana education service|standards based curriculum|common core programme|ccp)\b/i;
 const filterBookSearchAliasTerms = (taxonomy, normalizedValue, values = []) => values.filter((value) => {
   const text = normalizeBookshopSearchText(value);
+  const categoryPastPaperTerm = taxonomy === 'category'
+    && /\bpast\b/.test(normalizedValue)
+    && /\b(bece|wassce)\b/.test(text);
+  if (taxonomy !== 'level' && LEVEL_SPECIFIC_SEARCH_TERM.test(text) && !categoryPastPaperTerm) return false;
+  if (taxonomy !== 'curriculum' && CURRICULUM_SPECIFIC_SEARCH_TERM.test(text)) return false;
   if (!/\b(bece|wassce)\b/.test(text)) return true;
-  return taxonomy === 'level' || (taxonomy === 'category' && /\bpast\b/.test(normalizedValue));
+  return taxonomy === 'level' || categoryPastPaperTerm;
 });
 
 const SUBJECT_LOOKUP = canonicalBySlug([ALL_SUBJECTS, ...TEACHING_SUBJECTS, SUBJECT_OTHER]);
@@ -434,17 +442,108 @@ export const bookshopSearchTextForBook = (book = {}) => uniqueClean([
   book.tags || [],
 ]).map(normalizeBookshopSearchText).join(' ');
 
+const directBookSearchTextForBook = (book = {}) => uniqueClean([
+  book.title,
+  book.name,
+  book.short,
+  book.desc,
+  book.full,
+  book.catName,
+  book.category,
+  book.author,
+  book.publisher,
+  book.isbn,
+  book.product_type,
+  book.delivery_note,
+  book.subject,
+  book.levelName,
+  book.grade,
+  book.level,
+  book.curriculumName,
+  book.curriculum,
+  book.tags || [],
+]).map(normalizeBookshopSearchText).join(' ');
+
+const taxonomyValueForBook = (book, taxonomy) => {
+  switch (taxonomy) {
+    case 'category':
+      return book.catName || book.category || book.cat;
+    case 'subject':
+      return book.subject;
+    case 'level':
+      return book.levelName || book.grade || book.level;
+    case 'curriculum':
+      return book.curriculumName || book.curriculum;
+    case 'publisher':
+      return book.publisher;
+    default:
+      return '';
+  }
+};
+
+const exactAliasGroupsForQuery = (normalizedQuery) => {
+  const matches = [];
+  Object.entries(SEARCH_ALIAS_GROUPS).forEach(([taxonomy, entries]) => {
+    entries.forEach((entry) => {
+      const normalizedValue = normalizeBookshopSearchText(
+        normalizeBookshopTaxonomyValue(taxonomy, entry.canonical) || entry.canonical,
+      );
+      const exactCandidate = aliasGroupValues(entry).find(
+        candidate => normalizeBookshopSearchText(candidate) === normalizedQuery,
+      );
+      if (!exactCandidate) return;
+      if (!filterBookSearchAliasTerms(taxonomy, normalizedValue, [exactCandidate]).length) return;
+      matches.push({ taxonomy, entry });
+    });
+  });
+  return matches;
+};
+
+const matchesExactAliasGroup = (book, match) => {
+  const bookGroup = findAliasGroup(match.taxonomy, taxonomyValueForBook(book, match.taxonomy));
+  return Boolean(bookGroup && bookGroup.id === match.entry.id);
+};
+
+const gradeSearchTarget = (normalizedQuery) => {
+  let match = normalizedQuery.match(/\b(?:basic|grade)\s*([1-9])\b/);
+  if (match) return `basic ${match[1]}`;
+  match = normalizedQuery.match(/\bprimary\s*([1-6])\b/);
+  if (match) return `basic ${match[1]}`;
+  match = normalizedQuery.match(/\bp\s*([1-6])\b/);
+  if (match) return `basic ${match[1]}`;
+  match = normalizedQuery.match(/\bjhs\s*([1-3])\b/);
+  if (match) return `basic ${Number(match[1]) + 6}`;
+  match = normalizedQuery.match(/\bshs\s*([1-3])\b/);
+  if (match) return `shs ${match[1]}`;
+  match = normalizedQuery.match(/\bkg\s*([12])\b/);
+  if (match) return `kg ${match[1]}`;
+  return '';
+};
+
 const GENERIC_SEARCH_TOKENS = new Set(['book', 'books', 'textbook', 'textbooks', 'ghana', 'school', 'schools']);
 
 export const bookMatchesBookshopSearch = (book, query) => {
   const normalizedQuery = normalizeBookshopSearchText(query);
   if (!normalizedQuery) return true;
+
+  const gradeTarget = gradeSearchTarget(normalizedQuery);
+  if (gradeTarget) return directBookSearchTextForBook(book).includes(gradeTarget);
+
+  const exactAliasGroups = exactAliasGroupsForQuery(normalizedQuery);
+  if (exactAliasGroups.length > 0) {
+    return exactAliasGroups.some(match => matchesExactAliasGroup(book, match));
+  }
+
   const haystack = bookshopSearchTextForBook(book);
-  if (haystack.includes(normalizedQuery)) return true;
+  const haystackTokens = new Set(haystack.split(' ').filter(Boolean));
   const tokens = normalizedQuery
     .split(' ')
-    .filter((token) => token.length > 1 && !GENERIC_SEARCH_TOKENS.has(token));
-  return tokens.length > 0 && tokens.every((token) => haystack.includes(token));
+    .filter((token) => (token.length > 1 || /^\d+$/.test(token)) && !GENERIC_SEARCH_TOKENS.has(token));
+  const matchesToken = token => (
+    haystackTokens.has(token)
+    || (token.length >= 3 && [...haystackTokens].some(candidate => candidate.startsWith(token)))
+  );
+  return tokens.length > 0 && tokens.every(matchesToken);
 };
 
 const buildDynamicTaxonomy = (books, taxonomy, getValue, options = {}) => {

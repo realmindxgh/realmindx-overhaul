@@ -18,6 +18,7 @@ const Icon = ({ name, size = 24, stroke = 1.8, className = '' }) => {
     minus:    <path d="M5 12h14"/>,
     check:    <path d="M5 12l4 4L19 7" strokeWidth="2.4"/>,
     close:    <path d="M6 6l12 12M18 6L6 18"/>,
+    share:    <><circle cx="18" cy="5" r="2.4"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="19" r="2.4"/><path d="M8.2 10.9l7.6-4.5M8.2 13.1l7.6 4.5"/></>,
     menu:     <path d="M4 7h16M4 12h16M4 17h16"/>,
     star:     <path d="M12 2.5l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 18.6 6.1 21.3l1.2-6.6L2.5 9.5l6.6-.9L12 2.5z" fill="currentColor" stroke="none"/>,
     truck:    <><path d="M3 6h11v9H3zM14 9h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></>,
@@ -49,6 +50,7 @@ const Icon = ({ name, size = 24, stroke = 1.8, className = '' }) => {
     refresh:  <><path d="M4 12a8 8 0 0 1 14-5l2 2M20 12a8 8 0 0 1-14 5l-2-2"/><path d="M18 4v5h-5M6 20v-5h5"/></>,
     box:      <><path d="M3 8l9-5 9 5v8l-9 5-9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></>,
     spark:    <path d="M12 2l2.4 6.5L21 9l-5 4.2L17.5 20 12 16.5 6.5 20 8 13.2 3 9l6.6-.5z"/>,
+    tag:      <><path d="M20 13l-7 7-9-9V4h7l9 9z"/><circle cx="8.5" cy="8.5" r="1.5"/></>,
   };
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none"

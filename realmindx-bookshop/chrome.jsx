@@ -451,9 +451,13 @@ const SearchSuggestionList = ({ suggestions, query, onSelect, onSubmit, classNam
         onMouseDown={event => event.preventDefault()}
         onClick={event => onSelect(event, book)}
       >
-        <Icon name="book" size={13} className="bs-ci" style={{ color: 'var(--bs-navy)', opacity: 0.45, flexShrink: 0 }} />
-        <span className="bs-sug-title">{book.title}</span>
-        <span className="bs-sug-cat">{[book.subject, book.levelName || book.grade || book.level, book.catName].filter(Boolean).slice(0, 2).join(' · ') || book.catName}</span>
+        <span className="bs-search-sug-cover" aria-hidden="true">
+          <CoverPlaceholder title={book.title} image={book.image} small />
+        </span>
+        <span className="bs-search-sug-copy">
+          <span className="bs-sug-title">{book.title}</span>
+          <span className="bs-sug-cat">{cedis(book.price)}</span>
+        </span>
       </a>
     ))}
     <button
@@ -487,7 +491,10 @@ const Navbar = ({ route, navigate }) => {
 
   React.useEffect(() => {
     const onDoc = (e) => {
-      if (catsRef.current && !catsRef.current.contains(e.target)) setCatsOpen(false);
+      if (catsRef.current && !catsRef.current.contains(e.target)) {
+        setCatsOpen(false);
+        setSearchSurface('');
+      }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -509,6 +516,7 @@ const Navbar = ({ route, navigate }) => {
     setMenuOpen(false);
     setCatsOpen(false);
     setOpenBrowseGroup('');
+    setSearchSurface('');
     navigate(r);
   };
 
@@ -601,7 +609,9 @@ const Navbar = ({ route, navigate }) => {
                   setMenuOpen(false);
                   setCatsOpen(open => {
                     if (open) setOpenBrowseGroup('');
-                    return !open;
+                    const next = !open;
+                    setSearchSurface(next ? 'menu' : '');
+                    return next;
                   });
                 }}
                 aria-expanded={catsOpen}
@@ -695,7 +705,7 @@ const Navbar = ({ route, navigate }) => {
               {count > 0 && <span className="bs-cart-badge">{count}</span>}
             </button>
 
-            {/* Hamburger — toggles open/close, animates to X when open */}
+            {/* Hamburger — toggles the mobile menu. */}
             <button
               className={`bs-hamburger${menuOpen ? ' open' : ''}`}
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}

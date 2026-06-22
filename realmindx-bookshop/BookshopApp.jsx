@@ -150,7 +150,7 @@ const pathForRoute = (route, params = {}) => prefixedPath(bookshopPathForRoute(r
 // Paystack confirmation page: shown when user returns from Paystack payment
 const isPaidOrder = (order) => String(order?.payment_status || '').toLowerCase() === 'paid';
 
-const PaystackReturnPage = ({ orderRef, navigate, clearCart }) => {
+const PaystackReturnPage = ({ paymentRef, legacy = false, navigate, clearCart }) => {
   const [state, setState] = React.useState(() => ({
     status: isApiMode() ? 'checking' : 'paid',
     order: null,
@@ -186,26 +186,28 @@ const PaystackReturnPage = ({ orderRef, navigate, clearCart }) => {
     const checkPayment = async (attempt = 0) => {
       try {
         try {
-          const verified = await api.verifyPaystackPayment(orderRef);
+          const verified = await api.verifyPaystackPayment(paymentRef, { legacy });
           if (isPaidOrder(verified?.order)) {
             finish(verified.order);
             return;
           }
         } catch {
-          // The webhook may still be processing. Fall back to the stored status
-          // and retry briefly without clearing the customer's cart.
+          // The webhook may still be processing. Retry briefly without
+          // clearing the customer's cart or presenting an unpaid order.
         }
-        const data = await api.trackOrders(orderRef);
-        const order = (data.items || []).find(item => item.order_reference === orderRef) || data.items?.[0] || null;
-        if (isPaidOrder(order)) {
-          finish(order);
-          return;
+        if (legacy) {
+          const data = await api.trackOrders(paymentRef);
+          const order = (data.items || []).find(item => item.order_reference === paymentRef) || data.items?.[0] || null;
+          if (isPaidOrder(order)) {
+            finish(order);
+            return;
+          }
         }
         if (attempt < 4) {
           timer = window.setTimeout(() => checkPayment(attempt + 1), 1500);
           return;
         }
-        if (!cancelled) setState({ status: 'pending', order, error: '' });
+        if (!cancelled) setState({ status: 'pending', order: null, error: '' });
       } catch (err) {
         if (attempt < 2) {
           timer = window.setTimeout(() => checkPayment(attempt + 1), 1500);
@@ -220,7 +222,7 @@ const PaystackReturnPage = ({ orderRef, navigate, clearCart }) => {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [orderRef]);
+  }, [legacy, paymentRef]);
 
   if (state.status === 'checking') {
     return (
@@ -239,9 +241,9 @@ const PaystackReturnPage = ({ orderRef, navigate, clearCart }) => {
         <div className="bs-confirm" style={{ padding:'60px 24px' }}>
           <div className="bs-empty-icon"><Icon name="clock" size={40} /></div>
           <h1 className="bs-h2">Payment is still confirming</h1>
-          <p className="bs-muted">Order <strong>{orderRef}</strong> has not been marked paid yet. Your cart has not been cleared.</p>
+          <p className="bs-muted">Payment <strong>{paymentRef}</strong> has not been confirmed. No order has been placed, and your cart has not been cleared.</p>
           <div className="bs-confirm-actions" style={{ marginTop:28 }}>
-            <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('track')}>Track Your Order</button>
+            <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('checkout')}>Return to Checkout</button>
             <button className="bs-btn bs-btn-outline-navy bs-btn-lg" onClick={() => window.location.reload()}>Check Again</button>
           </div>
         </div>
@@ -257,7 +259,7 @@ const PaystackReturnPage = ({ orderRef, navigate, clearCart }) => {
           <h1 className="bs-h2">Could not confirm payment</h1>
           <p className="bs-muted">{state.error} Your cart has not been cleared.</p>
           <div className="bs-confirm-actions" style={{ marginTop:28 }}>
-            <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('track')}>Track Your Order</button>
+            <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('checkout')}>Return to Checkout</button>
             <button className="bs-btn bs-btn-outline-navy bs-btn-lg" onClick={() => window.location.reload()}>Try Again</button>
           </div>
         </div>
@@ -267,6 +269,7 @@ const PaystackReturnPage = ({ orderRef, navigate, clearCart }) => {
 
   const orderItems = state.order?.items || [];
   const paidTotal = Number(state.order?.total_amount || 0);
+  const orderRef = state.order?.order_reference || '';
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-confirm" style={{ padding:'60px 24px' }}>
@@ -310,13 +313,17 @@ const App = () => {
   const [route, setRoute] = React.useState(initialRoute.route);
   const [params, setParams] = React.useState(initialRoute.params);
 
-  // Handle Paystack return: ?order=REF&status=paid in the URL
+  // Handle the new payment-intent callback and legacy order callbacks that
+  // may still return from Paystack after deployment.
   const [paystackReturn, setPaystackReturn] = React.useState(() => {
     if (typeof window === 'undefined') return null;
     const sp = new URLSearchParams(window.location.search);
+    const paymentIntent = sp.get('payment_intent');
     const order = sp.get('order');
     const status = sp.get('status');
-    return (order && status === 'paid') ? order : null;
+    if (status !== 'paid') return null;
+    if (paymentIntent) return { reference: paymentIntent, legacy: false };
+    return order ? { reference: order, legacy: true } : null;
   });
 
   const navigate = (r, p = {}) => {
@@ -495,6 +502,11 @@ const App = () => {
             structuredData.review = approvedReviews;
           }
         }
+      } else if (catalogLoading) {
+        // Preserve the server-rendered product metadata while the catalogue is
+        // still loading. A temporary "Product Not Found" title is misleading
+        // and can flash in the browser before the real product resolves.
+        return;
       } else {
         currentMeta = {
           title: 'Product Not Found | RealMindX Bookshop',
@@ -595,7 +607,8 @@ const App = () => {
         <Navbar route="home" navigate={(r) => { setPaystackReturn(null); navigate(r); }} />
         <main className={mainClassName}>
           <PaystackReturnPage
-            orderRef={paystackReturn}
+            paymentRef={paystackReturn.reference}
+            legacy={paystackReturn.legacy}
             navigate={(r) => { setPaystackReturn(null); navigate(r); }}
             clearCart={clearCart || (() => {})}
           />

@@ -581,6 +581,8 @@ export const submitOrder = async ({
   payment_method = 'online',
   promo_code = null,
   location,
+  delivery_address = '',
+  delivery_city = '',
   items = [],
   notes,
   turnstileToken,
@@ -604,6 +606,8 @@ export const submitOrder = async ({
       payment_method,
       promo_code,
       location,
+      delivery_address,
+      delivery_city,
       notes,
       items: cleanItems,
     };

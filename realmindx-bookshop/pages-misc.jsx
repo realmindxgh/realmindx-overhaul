@@ -663,7 +663,7 @@ const OrderDetailModal = ({ order, onClose }) => {
             <p className="bs-eyebrow" style={{ color: 'var(--bs-gold-dark)', marginBottom: 4 }}>Order Details</p>
             <h2 className="bs-h3" style={{ margin: 0 }}>{order.order_reference}</h2>
           </div>
-          <button className="bs-modal-close" onClick={onClose} aria-label="Close"><Icon name="x" size={20} /></button>
+          <button className="bs-modal-close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
         </div>
 
         <div className="bs-modal-body">
@@ -1251,7 +1251,7 @@ const ExperimentalAccountPage = ({ navigate }) => {
                 await signOut();
                 navigate('home');
               }}>
-                <Icon name="x" size={16} /> Sign Out
+                <Icon name="logout" size={16} /> Sign Out
               </button>
             </nav>
             <div className="bs-account-v2-help">

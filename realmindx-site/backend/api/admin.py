@@ -77,6 +77,16 @@ def slugify(value):
     return slug or "item"
 
 
+def placed_order_query():
+    return Order.query.filter(
+        or_(
+            Order.payment_method.is_(None),
+            Order.payment_method != "online",
+            Order.payment_status == "paid",
+        )
+    )
+
+
 def log_action(action, entity_type=None, entity_id=None, metadata=None):
     """Backward-compat wrapper — delegates to the shared audit() helper."""
     from ..audit import audit as _audit
@@ -769,13 +779,13 @@ def dispatch_job_alerts(job):
 @admin_or_staff_required
 def dashboard():
     recent_jobs = Job.query.order_by(Job.created_at.desc()).limit(5).all() if _can_view_dashboard_metric("jobs.view") else []
-    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(5).all() if _can_view_dashboard_metric("orders.view") else []
+    recent_orders = placed_order_query().order_by(Order.created_at.desc()).limit(5).all() if _can_view_dashboard_metric("orders.view") else []
     return jsonify(
         summary={
             "total_users": db.session.scalar(db.select(func.count(User.id))) if _can_view_dashboard_metric("teachers.view") else None,
             "total_job_applications": db.session.scalar(db.select(func.count(JobApplication.id))) if _can_view_dashboard_metric("applications.view") else None,
             "pending_applications": JobApplication.query.filter_by(status="pending").count() if _can_view_dashboard_metric("applications.view") else None,
-            "new_orders": Order.query.filter_by(status="new").count() if _can_view_dashboard_metric("orders.view") else None,
+            "new_orders": placed_order_query().filter(Order.status == "new").count() if _can_view_dashboard_metric("orders.view") else None,
             "new_contact_messages": ContactMessage.query.filter_by(status="new").count() if _can_view_dashboard_metric("messages.view") else None,
             "total_products": Product.query.count() if _can_view_dashboard_metric("products.view") else None,
             "newsletter_subscribers": NewsletterSubscriber.query.filter_by(is_active=True).count() if _can_view_dashboard_metric("newsletters.view") else None,
@@ -2257,7 +2267,7 @@ def delete_delivery_zone(zone_id):
 @login_required
 @permission_required("orders.view")
 def orders():
-    rows = Order.query.order_by(Order.created_at.desc()).limit(200).all()
+    rows = placed_order_query().order_by(Order.created_at.desc()).limit(200).all()
     return jsonify(items=[order_json(order) for order in rows])
 
 
@@ -2266,7 +2276,7 @@ def orders():
 @permission_required("orders.export")
 def export_orders():
     export_format = (request.args.get("format") or "csv").lower()
-    rows = Order.query.order_by(Order.created_at.desc()).all()
+    rows = placed_order_query().order_by(Order.created_at.desc()).all()
     headers = [
         "id",
         "order_reference",

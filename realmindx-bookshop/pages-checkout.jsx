@@ -15,8 +15,6 @@ import {
 } from './checkoutStorage.js';
 import { normalizeOrderStatus } from '../src/lib/orderStatus.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
-const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
-const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 const PHONE_RE = /^[0-9+\s]{9,}$/;
 const IS_DEVELOPMENT = import.meta.env.DEV;
@@ -395,7 +393,7 @@ const CheckoutPage = ({ navigate }) => {
   }, [cartLoading, count]);
 
   React.useEffect(() => {
-    if (cartLoading || step < 1) return;
+    if (cartLoading || step !== 1) return;
     if (!cartSignature || count === 0) {
       clearCheckoutDraft();
       setStep(0);
@@ -453,66 +451,52 @@ const CheckoutPage = ({ navigate }) => {
       quantity: b.qty,
       unit_price: b.price,
     }));
+    const checkoutPayload = {
+      customer_name: form.name,
+      email: form.email,
+      phone: form.phone,
+      delivery_method: method,
+      location: method === 'delivery'
+        ? [customDeliveryArea ? form.city : selectedZone?.name, form.address, form.region].filter(Boolean).join(', ')
+        : 'Dome Pillar 2, Accra',
+      delivery_address: method === 'delivery' ? form.address : '',
+      delivery_city: method === 'delivery' ? (customDeliveryArea ? form.city : selectedZone?.name || form.city) : '',
+      delivery_zone_id: selectedZone?.id || null,
+      delivery_region: method === 'delivery' ? form.region : '',
+      custom_delivery_area: customDeliveryArea,
+      payment_method: paymentMethod,
+      promo_code: appliedPromo?.code || null,
+      items: orderItems,
+    };
     try {
-      const order = await submitOrder({
-        customer_name: form.name,
-        email: form.email,
-        phone: form.phone,
-        delivery_method: method,
-        location: method === 'delivery'
-          ? [customDeliveryArea ? form.city : selectedZone?.name, form.address, form.region].filter(Boolean).join(', ')
-          : 'Dome Pillar 2, Accra',
-        delivery_address: method === 'delivery' ? form.address : '',
-        delivery_city: method === 'delivery' ? (customDeliveryArea ? form.city : selectedZone?.name || form.city) : '',
-        delivery_zone_id: selectedZone?.id || null,
-        delivery_region: method === 'delivery' ? form.region : '',
-        custom_delivery_area: customDeliveryArea,
-        payment_method: paymentMethod,
-        promo_code: appliedPromo?.code || null,
-        items: orderItems,
-        // Signal that this is a payment-pending order (not yet confirmed)
-        turnstileToken,
-      });
+      if (paymentMethod === 'online' && isApiMode()) {
+        const payData = await api.initPaystackCheckout({
+          ...checkoutPayload,
+          ...(turnstileToken ? { turnstile_token: turnstileToken } : {}),
+        });
+        const intentRef = payData?.payment_intent?.reference;
+        const authUrl = payData?.payment?.authorization_url;
+        if (!intentRef || !authUrl) throw new Error('Paystack did not return a valid payment page.');
+        writeCheckoutDraft({
+          step: 1,
+          form: cleanCheckoutForm(form),
+          method,
+          paymentMethod,
+          selectedZoneId,
+          zoneSearch,
+          cartSignature,
+          pendingPaymentIntent: intentRef,
+        });
+        window.location.href = authUrl;
+        return;
+      }
 
+      const order = await submitOrder({ ...checkoutPayload, turnstileToken });
       const ref = order?.order_reference || ('RMX-' + Math.floor(100000 + Math.random() * 900000));
       setOrderRef(ref);
 
-      // In API mode: initialise Paystack and redirect to their hosted page.
-      // The Paystack webhook marks the order paid; only THEN is it confirmed.
-      // We do NOT advance to the confirmation step here - the user must
-      // return from Paystack via the callback URL to see it.
-      if (paymentMethod === 'online' && isApiMode() && order?.id) {
-        try {
-          const callbackUrl = `${window.location.origin}${PREFIX}/?order=${encodeURIComponent(ref)}&status=paid`;
-          const payData = await api.initPaystackPayment(order.id, callbackUrl);
-          const authUrl = payData?.payment?.authorization_url;
-          if (authUrl) {
-            writeCheckoutDraft({
-              step: 1,
-              form: cleanCheckoutForm(form),
-              method,
-              paymentMethod,
-              selectedZoneId,
-              zoneSearch,
-              cartSignature,
-              pendingOrderId: order.id,
-              pendingOrderRef: ref,
-            });
-            window.location.href = authUrl;
-            return; // user is redirected to Paystack — don't advance step
-          }
-        } catch (payErr) {
-          // Paystack unavailable in dev — treat as a manual/walk-in order
-          console.warn('[Checkout] Paystack init failed (dev mode?):', payErr.message);
-          // Don't advance to confirmation — just show an error to the user
-          setOrderError('Payment service unavailable. Please complete payment at the shop or contact us on WhatsApp.');
-          setPlacing(false);
-          return;
-        }
-      }
-
-      // Payment-on-delivery orders are registered immediately. Online payment
-      // only reaches this point in local mode where Paystack is unavailable.
+      // Payment-on-delivery orders are placed immediately. Local-only mode
+      // keeps its simulated online checkout for interface testing.
       const success = buildCheckoutSuccess({
         orderRef: ref,
         form,
@@ -785,11 +769,11 @@ const CheckoutPage = ({ navigate }) => {
                   </div>
                 )}
                 <div className="bs-field" style={{ marginTop:customDeliveryArea ? 0 : 18 }}>
-                  <label>Landmark or delivery directions <span className="bs-optional-label">(optional)</span></label>
+                  <label>Landmark or delivery directions</label>
                   <textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." />
                   <p className="bs-field-help">We will contact you to confirm the precise landmark and delivery directions.</p>
                 </div>
-                {!customDeliveryArea && <div className="bs-field"><label>Region <span className="bs-optional-label">(auto-filled)</span></label><select value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div>}
+                {!customDeliveryArea && <div className="bs-field"><label>Region</label><select value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div>}
               </>}
 
               {savedDetailsError && <p className="bs-saved-checkout-error">{savedDetailsError}</p>}
@@ -828,13 +812,27 @@ const CheckoutPage = ({ navigate }) => {
               {/* Promo code */}
               <div className="bs-promo-entry">
                 <div className="bs-promo-entry-heading">
-                  <span className="bs-promo-entry-icon"><Icon name="spark" size={17} /></span>
-                  <div><strong>Have a promo code?</strong><span>Apply it before confirming your order.</span></div>
+                  <span className="bs-promo-entry-icon"><Icon name="tag" size={18} /></span>
+                  <div>
+                    <span className="bs-promo-entry-kicker">Discount code</span>
+                    <strong>Have a promo code?</strong>
+                  </div>
                 </div>
+                <p className="bs-promo-entry-copy">Enter your code to update the order total before confirmation.</p>
                 <div className="bs-promo-row">
-                  <input placeholder="Enter promo code" value={promoInput} onChange={e => setPromoInput(e.target.value.toUpperCase())} />
-                  <button className="bs-btn bs-btn-gold" disabled={checkingPromo} onClick={applyPromo}>
-                  {checkingPromo ? '…' : 'Apply'}
+                  <span className="bs-promo-input-icon" aria-hidden="true"><Icon name="tag" size={16} /></span>
+                  <input
+                    aria-label="Promo code"
+                    placeholder="Enter promo code"
+                    value={promoInput}
+                    onChange={e => setPromoInput(e.target.value.toUpperCase())}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' && promoInput.trim() && !checkingPromo) applyPromo();
+                    }}
+                  />
+                  <button type="button" className="bs-btn bs-btn-gold" disabled={checkingPromo || !promoInput.trim()} onClick={applyPromo}>
+                    <span>{checkingPromo ? 'Applying' : 'Apply code'}</span>
+                    {!checkingPromo && <Icon name="arrow" size={15} />}
                   </button>
                 </div>
               </div>

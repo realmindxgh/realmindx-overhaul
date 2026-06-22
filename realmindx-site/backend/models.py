@@ -287,6 +287,28 @@ class Order(TimestampMixin, db.Model):
     delivery_zone = db.relationship("DeliveryZone")
 
 
+class BookshopPaymentIntent(TimestampMixin, db.Model):
+    __tablename__ = "bookshop_payment_intents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    reference = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), unique=True, nullable=True, index=True)
+    customer_name = db.Column(db.String(160), nullable=False)
+    email = db.Column(db.String(255), nullable=False, index=True)
+    phone = db.Column(db.String(40), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    currency = db.Column(db.String(8), default="GHS", nullable=False)
+    status = db.Column(db.String(30), default="initialized", nullable=False, index=True)
+    provider = db.Column(db.String(40), default="paystack", nullable=False)
+    access_code = db.Column(db.String(120), nullable=True)
+    authorization_url = db.Column(db.String(500), nullable=True)
+    checkout_data = db.Column(db.JSON, default=dict, nullable=False)
+    paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    order = db.relationship("Order", foreign_keys=[order_id])
+
+
 class DeliveryZone(TimestampMixin, db.Model):
     __tablename__ = "delivery_zones"
 

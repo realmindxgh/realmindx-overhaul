@@ -662,13 +662,18 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   const [browseQuery, setBrowseQuery] = React.useState('');
   const sentinelRef = React.useRef(null);
   const loadingRef = React.useRef(false);
+  const previousCeilingRef = React.useRef(rangeCeiling);
 
   React.useEffect(() => {
-    setFilters((prev) => ({
-      ...prev,
-      min: Math.min(prev.min, Math.max(0, rangeCeiling - 2)),
-      max: Math.max(Math.min(prev.max, rangeCeiling), Math.min(prev.min + 2, rangeCeiling)),
-    }));
+    const previousCeiling = previousCeilingRef.current;
+    setFilters((prev) => {
+      const nextMin = Math.min(prev.min, Math.max(0, rangeCeiling - 2));
+      const nextMax = prev.max >= previousCeiling
+        ? rangeCeiling
+        : Math.max(Math.min(prev.max, rangeCeiling), Math.min(nextMin + 2, rangeCeiling));
+      return { ...prev, min: nextMin, max: nextMax };
+    });
+    previousCeilingRef.current = rangeCeiling;
   }, [rangeCeiling]);
 
   React.useEffect(() => {
@@ -1115,7 +1120,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
           onClick={() => setDrawer(false)}
           aria-label="Close filters"
         >
-          <Icon name="x" size={17} />
+          <Icon name="close" size={17} />
         </button>
         <FilterPanel
           filters={filters}

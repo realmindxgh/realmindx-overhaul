@@ -110,8 +110,12 @@ export const api = {
   validatePromoCode: (code, orderTotal) => apiFetch('/promo-codes/validate', { method: 'POST', body: { code, order_total: orderTotal } }),
   bulkPriceAdjust: (type, value, direction) => apiFetch('/admin/products/bulk-price-adjust', { method: 'POST', body: { type, value, direction } }),
   bulkDeliveryAdjust: (type, value, direction) => apiFetch('/admin/delivery-zones/bulk-adjust', { method: 'POST', body: { type, value, direction } }),
+  initPaystackCheckout: (payload) => apiFetch('/orders/paystack/initialize', { method: 'POST', body: payload }),
   initPaystackPayment: (orderId, callbackUrl) => apiFetch(`/orders/${orderId}/paystack/initialize`, { method: 'POST', body: { callback_url: callbackUrl } }),
-  verifyPaystackPayment: (orderReference) => apiFetch('/orders/paystack/verify', { method: 'POST', body: { order_reference: orderReference } }),
+  verifyPaystackPayment: (reference, { legacy = false } = {}) => apiFetch('/orders/paystack/verify', {
+    method: 'POST',
+    body: legacy ? { order_reference: reference } : { payment_intent_reference: reference },
+  }),
   createProductReview: (productId, payload) => apiFetch(`/products/${productId}/reviews`, { method: 'POST', body: payload }),
   fetchProductReviews: (productId) => apiFetch(`/products/${productId}/reviews`),
   fetchProductReviewEligibility: (productId) => apiFetch(`/products/${productId}/review-eligibility`),

@@ -9,10 +9,25 @@ from .models import Product, ProductCategory
 
 
 GENERIC_SEARCH_TOKENS = {"book", "books", "textbook", "textbooks", "ghana", "school", "schools"}
+LEVEL_SPECIFIC_SEARCH_TERM = re.compile(
+    r"\b(?:jhs|shs|jss|sss|junior high|senior high|lower secondary|upper secondary|"
+    r"basic\s*[1-9]|primary\s*[1-6]|p[1-6]|kg\s*[12]?|kindergarten|bece|wassce)\b"
+)
+CURRICULUM_SPECIFIC_SEARCH_TERM = re.compile(
+    r"\b(?:ges|nacca|waec|cambridge|igcse|british curriculum|english national curriculum|"
+    r"uk curriculum|tvet|ctvet|ghana curriculum|basic school|ghana education service|"
+    r"standards based curriculum|common core programme|ccp)\b"
+)
+PUNCTUATED_ACRONYMS = {"kg", "rme", "shs", "jhs", "ict"}
 
 
 def normalize_search_text(value):
     text = str(value or "").strip().lower()
+    text = re.sub(
+        r"\b(?:[a-z]\.){2,}[a-z]?\.?",
+        lambda match: match.group(0).replace(".", ""),
+        text,
+    )
     text = text.replace("&", " and ")
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
@@ -65,6 +80,45 @@ def _find_alias_group(taxonomy, value):
             if query_key == normalize_search_text(candidate) or query_slug == _slug(candidate):
                 return entry
     return None
+
+
+def _search_term_variants(value):
+    text = str(value or "").strip()
+    normalized = normalize_search_text(text)
+    variants = [text]
+    if normalized in PUNCTUATED_ACRONYMS:
+        dotted = ".".join(normalized.upper())
+        variants.extend([dotted, f"{dotted}."])
+    return list(dict.fromkeys(item for item in variants if item))
+
+
+def _exact_alias_matches(value):
+    query_key = normalize_search_text(value)
+    matches = []
+    if not query_key:
+        return matches
+    for taxonomy, entries in _alias_groups().items():
+        for entry in entries:
+            candidate = next(
+                (item for item in _entry_values(entry) if normalize_search_text(item) == query_key),
+                None,
+            )
+            if not candidate:
+                continue
+            canonical = normalize_search_text(entry.get("canonical"))
+            category_past_term = (
+                taxonomy == "category"
+                and "past" in canonical.split()
+                and re.search(r"\b(bece|wassce)\b", query_key)
+            )
+            if taxonomy != "level" and LEVEL_SPECIFIC_SEARCH_TERM.search(query_key) and not category_past_term:
+                continue
+            if taxonomy != "curriculum" and CURRICULUM_SPECIFIC_SEARCH_TERM.search(query_key):
+                continue
+            if re.search(r"\b(bece|wassce)\b", query_key) and taxonomy != "level" and not category_past_term:
+                continue
+            matches.append((taxonomy, entry))
+    return matches
 
 
 def taxonomy_filter_terms(taxonomy, value):
@@ -127,15 +181,67 @@ def product_search_filter(value):
     def clause_for_terms(terms):
         clauses = []
         for term in terms:
-            like = f"%{term}%"
-            clauses.extend(field.ilike(like) for field in fields)
+            for variant in _search_term_variants(term):
+                like = f"%{variant}%"
+                clauses.extend(field.ilike(like) for field in fields)
+        return or_(*clauses) if clauses else None
+
+    def exact_alias_clause(matches):
+        clauses = []
+        field_map = {
+            "subject": [Product.subject],
+            "level": [Product.level],
+            "curriculum": [Product.curriculum],
+            "publisher": [Product.publisher],
+            "category": [ProductCategory.name, ProductCategory.slug],
+        }
+        for taxonomy, entry in matches:
+            taxonomy_fields = field_map.get(taxonomy, [])
+            terms = _entry_values(entry)
+            for term in terms:
+                for variant in _search_term_variants(term):
+                    like = f"%{variant}%"
+                    clauses.extend(field.ilike(like) for field in taxonomy_fields)
         return or_(*clauses) if clauses else None
 
     normalized = normalize_search_text(value)
+    grade_match = re.search(r"\b(?:basic|grade)\s*([1-9])\b", normalized)
+    if not grade_match:
+        grade_match = re.search(r"\bprimary\s*([1-6])\b", normalized)
+    if not grade_match:
+        grade_match = re.search(r"\bp\s*([1-6])\b", normalized)
+    grade_term = f"basic {grade_match.group(1)}" if grade_match else ""
+    jhs_match = re.search(r"\bjhs\s*([1-3])\b", normalized)
+    if jhs_match:
+        grade_term = f"basic {int(jhs_match.group(1)) + 6}"
+    shs_match = re.search(r"\bshs\s*([1-3])\b", normalized)
+    if shs_match:
+        grade_term = f"shs {shs_match.group(1)}"
+    kg_match = re.search(r"\bkg\s*([12])\b", normalized)
+    if kg_match:
+        grade_term = f"kg {kg_match.group(1)}"
+    if grade_term:
+        grade_terms = [grade_term]
+        if grade_term.startswith("kg "):
+            number = grade_term.split()[-1]
+            grade_terms.extend([f"k.g. {number}", f"k.g {number}"])
+        clauses = []
+        for term in grade_terms:
+            like = f"%{term}%"
+            clauses.extend([
+                Product.name.ilike(like),
+                cast(Product.tags, String).ilike(like),
+            ])
+        return or_(*clauses)
+
+    alias_clause = exact_alias_clause(_exact_alias_matches(value))
+    if alias_clause is not None:
+        return alias_clause
+
     meaningful_tokens = [
         token
         for token in normalized.split()
-        if token not in GENERIC_SEARCH_TOKENS and len(token) > 1
+        if token not in GENERIC_SEARCH_TOKENS and (len(token) > 1 or token.isdigit())
     ]
     if len(meaningful_tokens) > 1:
         token_clauses = [

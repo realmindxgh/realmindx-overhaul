@@ -22,8 +22,8 @@ from .models import DeliveryZone, News, Product, ProductCategory, ProductReview
 from .og_images import book_og_public_url
 
 
-SITE_DEFAULT_IMAGE = f"{MAIN_SITE_BASE_URL}/static/assets/social/realmindx-education-og-1200x630.png"
-BOOKSHOP_DEFAULT_IMAGE = f"{BOOKSHOP_SITE_BASE_URL}/static/assets/social/realmindx-bookshop-og-1200x630.png"
+SITE_DEFAULT_IMAGE = f"{MAIN_SITE_BASE_URL}/static/assets/social/realmindx-education-og-1200x630.png?v=20260622"
+BOOKSHOP_DEFAULT_IMAGE = f"{BOOKSHOP_SITE_BASE_URL}/static/assets/social/realmindx-bookshop-og-1200x630.png?v=20260622"
 EDUCATION_FAVICON = f"{MAIN_SITE_BASE_URL}/favicon.png"
 EDUCATION_APPLE_TOUCH_ICON = f"{MAIN_SITE_BASE_URL}/apple-touch-icon.png"
 BOOKSHOP_FAVICON = f"{BOOKSHOP_SITE_BASE_URL}/static/assets/favicons/bookshop-favicon.ico"

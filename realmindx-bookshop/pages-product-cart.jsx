@@ -9,6 +9,7 @@ import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute, productHref, productMatchesSegment, productPathSegment } from './urls.js';
+import { BOOKSHOP_BASE_URL } from '../src/lib/seoRoutes.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
@@ -272,14 +273,44 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
   ));
   const hasReviews = Number(book.reviews || 0) > 0 && Number(book.rating || 0) > 0;
   const fmtReviewDate = iso => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  const shareProduct = async () => {
+    const url = `${BOOKSHOP_BASE_URL}${productHref(book)}`;
+    const shareData = {
+      title: `${book.title} | RealMindX Bookshop`,
+      text: `${book.title} — ${cedis(book.price)} at RealMindX Bookshop`,
+      url,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      globalToast.success('Product link copied');
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      try {
+        await navigator.clipboard.writeText(url);
+        globalToast.success('Product link copied');
+      } catch {
+        globalToast.error('Could not share this product. Please copy the page address.');
+      }
+    }
+  };
 
   return (
     <div className="bs-container bs-fade-page">
-      <div className="bs-breadcrumb">
-        <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span>
-        <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop</a><span className="bs-sep">/</span>
-        <span>{book.catName}</span><span className="bs-sep">/</span>
-        <span className="bs-cur">{book.title}</span>
+      <div className="bs-pdp-topbar">
+        <div className="bs-breadcrumb">
+          <a href={hrefForRoute('home')} onClick={(e)=>{e.preventDefault();navigate('home');}}>Home</a><span className="bs-sep">/</span>
+          <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop</a><span className="bs-sep">/</span>
+          <span>{book.catName}</span><span className="bs-sep">/</span>
+          <span className="bs-cur">{book.title}</span>
+        </div>
+        <button type="button" className="bs-pdp-share" onClick={shareProduct} aria-label={`Share ${book.title}`}>
+          <Icon name="share" size={18} />
+          <span>Share</span>
+        </button>
       </div>
 
       <div className="bs-pdp">
@@ -542,8 +573,9 @@ const CartPage = ({ navigate }) => {
       <div className="bs-cart-page-head">
         <div className="bs-cart-title-block">
           <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:32, margin:'0 0 8px' }}>Your Cart</h1>
-          <p className="bs-muted" style={{ margin:0 }}>
-            {count} item{count>1?'s':''} in cart. {selectedCount} selected for checkout.
+          <p className="bs-muted bs-cart-count-copy" style={{ margin:0 }}>
+            <span>{count} item{count>1?'s':''} in cart.</span>
+            <span>{selectedCount} selected for checkout.</span>
           </p>
         </div>
         <button type="button" className="bs-cart-clear-btn" onClick={clear}>
