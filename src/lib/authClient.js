@@ -155,9 +155,15 @@ export const resendVerificationOtp = async (email) => {
   return { message: 'A fresh local demo verification code has been sent.' };
 };
 
-export const requestPasswordReset = async (email) => {
-  if (isApiMode()) return api.requestPasswordReset({ email });
+export const requestPasswordReset = async (email, { surface = 'main' } = {}) => {
+  if (isApiMode()) return api.requestPasswordReset({ email, surface });
   return { message: 'If an account exists for that email, you will receive a reset link shortly.' };
+};
+
+export const confirmPasswordReset = async ({ token, password }) => {
+  if (isApiMode()) return api.confirmPasswordReset({ token, password });
+  if (!token) throw new Error('This password reset link is invalid or incomplete.');
+  return { message: 'Password updated for the local preview.' };
 };
 
 export const signOut = async () => {

@@ -4,11 +4,21 @@ import { useCart } from './chrome.jsx';
 import { submitMessage } from '../src/lib/managedContent.js';
 import { usePublicSettings, useSiteCopyState } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
-import { completeTwoFactorLogin, resendVerificationOtp, signIn, signOut, signUp, syncSessionFromApi, verifyEmailOtp } from '../src/lib/authClient.js';
+import {
+  completeTwoFactorLogin,
+  confirmPasswordReset,
+  requestPasswordReset,
+  resendVerificationOtp,
+  signIn,
+  signOut,
+  signUp,
+  syncSessionFromApi,
+  verifyEmailOtp,
+} from '../src/lib/authClient.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { consumeBookshopAuthReturn } from './authReturn.js';
-import { api, isApiMode } from '../src/lib/apiClient.js';
+import { API_BASE, api, isApiMode } from '../src/lib/apiClient.js';
 import { normalizeOrderStatus, orderStatusLabel } from '../src/lib/orderStatus.js';
 import VerifiedContactField from '../src/lib/VerifiedContactField.jsx';
 import { bookshopPathForRoute } from './urls.js';
@@ -17,6 +27,21 @@ const bookshopHeroImage = '/bookshop-og.png';
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
+
+const GoogleLogo = () => (
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+    <path d="M5.84 14.09A6.9 6.9 0 0 1 5.49 12c0-.73.13-1.43.35-2.09V7.07H2.18A11.9 11.9 0 0 0 1 12c0 1.78.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+  </svg>
+);
+
+const FacebookLogo = () => (
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="#1877F2" aria-hidden="true">
+    <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+  </svg>
+);
 
 const AuthPage = ({ navigate, mode = 'login' }) => {
   const isLogin = mode === 'login';
@@ -36,6 +61,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
   const [otp, setOtp] = React.useState('');
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [forgotMode, setForgotMode] = React.useState(false);
+  const [resetRequested, setResetRequested] = React.useState(false);
   const termsRef = React.useRef(null);
   const fullNameRef = React.useRef(null);
   const passwordRef = React.useRef(null);
@@ -73,6 +100,50 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     });
   };
 
+  React.useEffect(() => {
+    const oauthError = new URLSearchParams(window.location.search).get('error');
+    if (oauthError === 'terms_required') {
+      setErr('Please accept the Bookshop Terms of Service and Bookshop Privacy Policy before creating a new social account.');
+    } else if (oauthError === 'provider_unavailable') {
+      setErr('That social sign-in provider is temporarily unavailable. Please use email and password.');
+    } else if (oauthError?.endsWith('_failed')) {
+      setErr('Social sign-in could not be completed. Please try again or use email and password.');
+    }
+  }, []);
+
+  const startSocialAuth = provider => {
+    setError('');
+    if (!isLogin && !form.acceptedTerms) {
+      showTermsProblem();
+      return;
+    }
+    const query = new URLSearchParams({
+      surface: 'bookshop',
+      intent: isLogin ? 'login' : 'signup',
+      next: '/account',
+    });
+    if (!isLogin) query.set('accepted_terms', '1');
+    window.location.href = `${API_BASE || '/api'}/auth/${provider}?${query.toString()}`;
+  };
+
+  const requestReset = async event => {
+    event.preventDefault();
+    setError('');
+    if (!form.email.trim()) {
+      setErr('Enter the email address connected to your RealMindX account.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await requestPasswordReset(form.email, { surface: 'bookshop' });
+      setResetRequested(true);
+    } catch (err) {
+      setErr(err?.message || 'Could not send a reset link.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setError('');
@@ -81,7 +152,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       if (isLogin) {
         await signIn({ email: form.email, password: form.password, role: 'user', remember: form.remember });
         globalToast.success('Signed in to the bookshop.');
-        navigate(consumeBookshopAuthReturn('home'));
+        navigate(consumeBookshopAuthReturn('account'));
         return;
       }
       if (!form.acceptedTerms) {
@@ -191,7 +262,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       setPendingTwoFactorEmail('');
       setOtp('');
       globalToast.success('Signed in securely to the bookshop.');
-      navigate(consumeBookshopAuthReturn('home'));
+      navigate(consumeBookshopAuthReturn('account'));
     } catch (err) {
       setErr(err?.message || 'Could not verify that security code.', otpRef);
     } finally {
@@ -232,13 +303,15 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
 
       <div className="bs-auth-form-wrap">
         <div className="bs-auth-form">
-          <h2 className="bs-h2">{pendingTwoFactorEmail ? 'Security Check' : pendingVerificationEmail ? 'Verify Your Email' : isLogin ? 'Sign In' : 'Create Account'}</h2>
+          <h2 className="bs-h2">{pendingTwoFactorEmail ? 'Security Check' : pendingVerificationEmail ? 'Verify Your Email' : forgotMode ? 'Reset Password' : isLogin ? 'Sign In' : 'Create Account'}</h2>
           <p className="bs-sub">
             {pendingTwoFactorEmail
               ? `Enter the 6 digit security code sent to ${pendingTwoFactorEmail}.`
               : pendingVerificationEmail
               ? `Enter the 6 digit code sent to ${pendingVerificationEmail}.`
-              : isLogin ? 'Enter your details to continue.' : 'It only takes a minute.'}
+              : forgotMode
+                ? 'Enter your account email and we will send you a secure reset link.'
+                : isLogin ? 'Enter your details to continue.' : 'It only takes a minute.'}
           </p>
           {pendingTwoFactorEmail ? (
             <form onSubmit={verifyTwoFactor}>
@@ -283,6 +356,31 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
                 Did not receive it? <button type="button" className="bs-link-button" onClick={resendOtp} disabled={loading}>Send a fresh code</button>
               </div>
             </form>
+          ) : forgotMode ? (
+            resetRequested ? (
+              <div className="bs-auth-reset-success" role="status">
+                <span><Icon name="mail" size={24} /></span>
+                <h3>Check your email</h3>
+                <p>If an account exists for <strong>{form.email}</strong>, a reset link has been sent. The link expires in one hour.</p>
+                <button type="button" className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" onClick={() => { setForgotMode(false); setResetRequested(false); }}>
+                  Back to Sign In
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={requestReset} noValidate>
+                <div className="bs-field">
+                  <label>Email</label>
+                  <input type="email" placeholder="you@email.com" value={form.email} onChange={set('email')} autoComplete="email" required />
+                </div>
+                {error && <p className="bs-auth-error" role="alert">{error}</p>}
+                <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
+                  {loading ? 'Sending...' : 'Send Reset Link'}
+                </button>
+                <div className="bs-auth-alt">
+                  <button type="button" className="bs-link-button bs-link-gold" onClick={() => setForgotMode(false)}>Back to Sign In</button>
+                </div>
+              </form>
+            )
           ) : (
             <form onSubmit={submit} noValidate>
 
@@ -320,7 +418,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
                 <span className="bs-cbox"><Icon name="check" size={12} /></span>
                 Remember me
               </label>
-              <a href={hrefForRoute('login')} className="bs-link-gold" onClick={(event) => { event.preventDefault(); globalToast.info('Reset link sent.'); }}>
+              <a href={hrefForRoute('login')} className="bs-link-gold" onClick={(event) => { event.preventDefault(); setError(''); setResetRequested(false); setForgotMode(true); }}>
                 Forgot password?
               </a>
             </div>
@@ -346,7 +444,88 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
               <>Already have an account? <a href={hrefForRoute('login')} className="bs-link-gold" onClick={(event) => { event.preventDefault(); navigate('login'); }}>Sign In</a></>
             )}
           </div>
+          <div className="bs-auth-divider"><span>{isLogin ? 'or sign in with' : 'or sign up with'}</span></div>
+          <div className="bs-auth-social-grid">
+            <button type="button" className="bs-auth-social-btn" onClick={() => startSocialAuth('google')}>
+              <GoogleLogo /> <span>Google</span>
+            </button>
+            <button type="button" className="bs-auth-social-btn" onClick={() => startSocialAuth('facebook')}>
+              <FacebookLogo /> <span>Facebook</span>
+            </button>
+          </div>
         </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const BookshopResetPasswordPage = ({ navigate }) => {
+  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const [password, setPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [success, setSuccess] = React.useState(false);
+
+  const submit = async event => {
+    event.preventDefault();
+    setError('');
+    if (!token) {
+      setError('This password reset link is invalid or incomplete.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await confirmPasswordReset({ token, password });
+      setSuccess(true);
+      globalToast.success('Your password has been updated.');
+    } catch (err) {
+      setError(err?.message || 'Could not reset your password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bs-auth bs-fade-page">
+      <div className="bs-auth-brand">
+        <span className="bs-eyebrow">RealMindX Bookshop</span>
+        <div className="bs-auth-illo"><img src={bookshopHeroImage} alt="RealMindX Bookshop" /></div>
+        <h1 className="bs-h1">Secure your account.</h1>
+        <p>Your new password will work for both RealMindX Education and the RealMindX Bookshop.</p>
+      </div>
+      <div className="bs-auth-form-wrap">
+        <div className="bs-auth-form">
+          <h2 className="bs-h2">{success ? 'Password Updated' : 'Create a New Password'}</h2>
+          <p className="bs-sub">{success ? 'You can now sign in with your new password.' : 'Use at least 8 characters and choose a password you do not use elsewhere.'}</p>
+          {success ? (
+            <button type="button" className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" onClick={() => navigate('login')}>Continue to Sign In</button>
+          ) : (
+            <form onSubmit={submit} noValidate>
+              <div className="bs-field">
+                <label>New Password</label>
+                <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" placeholder="Minimum 8 characters" required />
+              </div>
+              <div className="bs-field">
+                <label>Confirm New Password</label>
+                <input type="password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" placeholder="Repeat your new password" required />
+              </div>
+              {error && <p className="bs-auth-error" role="alert">{error}</p>}
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
+                {loading ? 'Updating...' : 'Update Password'}
+              </button>
+              <div className="bs-auth-alt"><button type="button" className="bs-link-button bs-link-gold" onClick={() => navigate('login')}>Back to Sign In</button></div>
+            </form>
           )}
         </div>
       </div>
@@ -1666,20 +1845,42 @@ const AccountPage = ({ navigate }) => {
       is_default: Boolean(detail.is_default),
     });
   };
+  const beginDetailCreate = () => {
+    setEditingDetail({ id: null, isNew: true, can_delete: true });
+    setDetailError('');
+    setDetailForm({
+      label: '',
+      customer_name: [session?.firstName, session?.lastName].filter(Boolean).join(' '),
+      email: session?.email || '',
+      phone: session?.phone || '',
+      delivery_zone_id: null,
+      delivery_zone_name: '',
+      address: '',
+      city: '',
+      region: '',
+      is_default: checkoutDetails.every(detail => detail.source !== 'saved'),
+    });
+  };
   const saveDetail = async event => {
     event.preventDefault();
     if (!editingDetail?.can_delete) return;
     setDetailSaving(true);
     setDetailError('');
     try {
-      const result = await api.updateCheckoutDetails(editingDetail.id, detailForm);
-      setCheckoutDetails(prev => prev.map(item => (
-        String(item.id) === String(editingDetail.id) ? result.detail : item
-      )));
+      const result = editingDetail.isNew
+        ? await api.saveCheckoutDetails(detailForm)
+        : await api.updateCheckoutDetails(editingDetail.id, detailForm);
+      setCheckoutDetails(prev => (
+        editingDetail.isNew
+          ? [result.detail, ...prev]
+          : prev.map(item => (
+            String(item.id) === String(editingDetail.id) ? result.detail : item
+          ))
+      ));
       setEditingDetail(null);
-      globalToast.success('Checkout details updated.');
+      globalToast.success(editingDetail.isNew ? 'Checkout details saved.' : 'Checkout details updated.');
     } catch (error) {
-      setDetailError(error.message || 'Could not update those checkout details.');
+      setDetailError(error.message || 'Could not save those checkout details.');
     } finally {
       setDetailSaving(false);
     }
@@ -1758,7 +1959,7 @@ const AccountPage = ({ navigate }) => {
               <section id="saved-checkout-details" className="bs-account-ref-panel bs-account-ref-saved">
                 <div className="bs-account-ref-panel-title">
                   <h2>Saved Checkout Details</h2>
-                  <button type="button" onClick={() => navigate('checkout')}><Icon name="plus" size={15} /> Add new details</button>
+                  <button type="button" onClick={beginDetailCreate}><Icon name="plus" size={15} /> Add new details</button>
                 </div>
                 {loading ? (
                   <div className="bs-skeleton bs-account-ref-skeleton" />
@@ -1931,9 +2132,9 @@ const AccountPage = ({ navigate }) => {
 
       {editingDetail && (
         <div className="bs-modal-scrim" onClick={event => { if (event.target === event.currentTarget) setEditingDetail(null); }}>
-          <form className="bs-modal-box bs-account-detail-edit-modal" onSubmit={saveDetail} role="dialog" aria-modal="true" aria-label="Edit saved checkout details">
+          <form className="bs-modal-box bs-account-detail-edit-modal" onSubmit={saveDetail} role="dialog" aria-modal="true" aria-label={editingDetail.isNew ? 'Add saved checkout details' : 'Edit saved checkout details'}>
             <div className="bs-modal-head">
-              <div><span className="bs-account-ref-modal-kicker">Saved details</span><h2>Edit checkout details</h2></div>
+              <div><span className="bs-account-ref-modal-kicker">Saved details</span><h2>{editingDetail.isNew ? 'Add checkout details' : 'Edit checkout details'}</h2></div>
               <button className="bs-modal-close" type="button" onClick={() => setEditingDetail(null)} aria-label="Close"><Icon name="close" size={19} /></button>
             </div>
             <div className="bs-modal-body">
@@ -1955,7 +2156,7 @@ const AccountPage = ({ navigate }) => {
             </div>
             <div className="bs-modal-foot">
               <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingDetail(null)}>Cancel</button>
-              <button className="bs-btn bs-btn-navy" type="submit" disabled={detailSaving}>{detailSaving ? 'Saving...' : 'Save changes'}</button>
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={detailSaving}>{detailSaving ? 'Saving...' : editingDetail.isNew ? 'Save details' : 'Save changes'}</button>
             </div>
           </form>
         </div>
@@ -2490,4 +2691,4 @@ const OrderReviewPage = ({ navigate }) => {
   );
 };
 
-export { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage, OrderReviewPage };
+export { AuthPage, BookshopResetPasswordPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrdersPage, OrderReviewPage };

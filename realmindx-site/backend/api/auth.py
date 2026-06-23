@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 import math
 import re
 import secrets
@@ -460,8 +461,17 @@ def request_password_reset():
         return jsonify(message="If the email exists, reset instructions have been sent.")
     user = User.query.filter_by(email=email).first()
     if user:
-        token = make_token({"user_id": user.id}, "password-reset")
-        reset_url = f"{current_app.config['BASE_URL'].rstrip('/')}/reset-password?token={token}"
+        password_fingerprint = sha256((user.password_hash or "").encode("utf-8")).hexdigest()
+        token = make_token(
+            {"user_id": user.id, "password_fingerprint": password_fingerprint},
+            "password-reset",
+        )
+        reset_base_url = (
+            current_app.config.get("BOOKSHOP_URL")
+            if str(payload.get("surface") or "").strip().lower() == "bookshop"
+            else current_app.config.get("BASE_URL")
+        )
+        reset_url = f"{reset_base_url.rstrip('/')}/reset-password?token={token}"
         first_name = user.first_name or "there"
         send_email(OutboundEmail(
             to=user.email,
@@ -500,6 +510,9 @@ def confirm_password_reset():
     user = db.session.get(User, data["user_id"])
     if not user:
         return jsonify(error="Account not found."), 404
+    expected_fingerprint = sha256((user.password_hash or "").encode("utf-8")).hexdigest()
+    if data.get("password_fingerprint") != expected_fingerprint:
+        return jsonify(error="This password reset link has already been used or is no longer valid."), 400
     user.set_password(password)
     user.must_change_password = False
     audit("password_reset_confirmed", "user", user.id, {"email": user.email})

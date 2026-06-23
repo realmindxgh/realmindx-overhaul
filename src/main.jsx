@@ -14,7 +14,7 @@ import ContactPage from '../realmindx-site/pages/ContactPage.jsx';
 import JobsPage from '../realmindx-site/pages/JobsPage.jsx';
 import UserPortalPage from '../realmindx-site/pages/UserPortalPage.jsx';
 import AdminPortalPage from '../realmindx-site/pages/AdminPortalPage.jsx';
-import { AdminLoginPage, StaffLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
+import { AdminLoginPage, PasswordResetPage, StaffLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
 import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
 import { usePublicGalleryState, usePublicNewsState, usePublicServices, usePublicServicesState, useSiteCopy, renderTextWithLinks } from './lib/siteContent.js';
@@ -1048,6 +1048,7 @@ const AppRoutes = () => {
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/login" element={<UserLoginPage />} />
         <Route path="/register" element={<RegisterRoute />} />
+        <Route path="/reset-password" element={<PasswordResetPage />} />
         <Route path="/signup" element={<Navigate to="/register" replace />} />
         {/* Legacy /user/* URLs that Google may still index — redirect client-side */}
         <Route path="/user/signup" element={<Navigate to="/register" replace />} />

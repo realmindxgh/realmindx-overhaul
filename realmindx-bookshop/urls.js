@@ -77,6 +77,8 @@ export const bookshopPathForRoute = (route, params = {}) => {
       return '/login';
     case 'signup':
       return '/signup';
+    case 'reset-password':
+      return '/reset-password';
     case 'contact':
       return '/contact';
     case 'about':

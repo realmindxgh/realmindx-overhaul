@@ -350,4 +350,5 @@ export const api = {
   requestTwoFactorChange: (payload) => apiFetch('/auth/two-factor/request', { method: 'POST', body: payload }),
   confirmTwoFactorChange: (payload) => apiFetch('/auth/two-factor/confirm', { method: 'POST', body: payload }),
   requestPasswordReset: (payload) => apiFetch('/auth/password-reset/request', { method: 'POST', body: payload }),
+  confirmPasswordReset: (payload) => apiFetch('/auth/password-reset/confirm', { method: 'POST', body: payload }),
 };

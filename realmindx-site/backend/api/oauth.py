@@ -19,6 +19,7 @@ Environment variables required per provider (add to realmindx-site/.env):
 import os
 import secrets
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, current_app, redirect, request, session, url_for
@@ -33,6 +34,8 @@ oauth = OAuth()
 SAFE_NEXT_PREFIXES = (
     "/portal",
     "/bookshop",
+    "/account",
+    "/orders",
     "/cart",
     "/checkout",
     "/login",
@@ -46,8 +49,18 @@ def _base_url():
     return (os.getenv("BASE_URL") or "http://localhost:5173").rstrip("/")
 
 
+def _frontend_base(surface=None):
+    if surface == "bookshop":
+        return current_app.config.get("BOOKSHOP_URL", f"{_base_url()}/bookshop").rstrip("/")
+    return current_app.config.get("BASE_URL", _base_url()).rstrip("/")
+
+
 def _callback_url(provider):
-    return f"{_base_url()}/api/auth/{provider}/callback"
+    surface = request.args.get("surface") or session.get("oauth_surface")
+    callback_base = _frontend_base(surface)
+    parsed = urlsplit(callback_base)
+    callback_origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else callback_base
+    return f"{callback_origin.rstrip('/')}/api/auth/{provider}/callback"
 
 
 def _safe_next(default="/portal"):
@@ -65,6 +78,10 @@ def _safe_next(default="/portal"):
 def _remember_next(default="/portal"):
     next_path = _safe_next(default)
     session["oauth_next"] = next_path
+    surface = str(request.args.get("surface") or "").strip().lower()
+    session["oauth_surface"] = "bookshop" if surface == "bookshop" else "main"
+    session["oauth_intent"] = str(request.args.get("intent") or "login").strip().lower()
+    session["oauth_terms_accepted"] = request.args.get("accepted_terms") == "1"
     return next_path
 
 
@@ -112,12 +129,15 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
     ).first()
 
     if identity:
-        return identity.user
+        return identity.user, False
 
     # Check if email already exists (merge providers on same email)
     user = User.query.filter_by(email=email.lower()).first() if email else None
 
+    created = False
     if not user:
+        if not session.get("oauth_terms_accepted"):
+            return None, False
         role = Role.query.filter_by(name="user").first()
         if not role:
             role = Role(name="user", description="Public account")
@@ -133,6 +153,7 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
         db.session.add(user)
         db.session.flush()
         db.session.add(UserProfile(user_id=user.id))
+        created = True
 
     # Create the AuthIdentity link
     db.session.add(AuthIdentity(
@@ -142,19 +163,44 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
         email=email,
     ))
     db.session.commit()
-    return user
+    return user, created
 
 
 def _login_and_redirect(user, frontend_path=None):
+    surface = session.pop("oauth_surface", "main")
+    session.pop("oauth_intent", None)
+    session.pop("oauth_terms_accepted", None)
     login_user(user, remember=True)
     user.last_login_at = datetime.now(timezone.utc)
     db.session.commit()
-    return redirect(f"{_base_url()}{frontend_path or _safe_next('/portal')}")
+    default_path = "/account" if surface == "bookshop" else "/portal"
+    return redirect(f"{_frontend_base(surface)}{frontend_path or _safe_next(default_path)}")
+
+
+def _social_user_or_terms_error(user):
+    if user:
+        return None
+    surface = session.pop("oauth_surface", "main")
+    session.pop("oauth_intent", None)
+    session.pop("oauth_terms_accepted", None)
+    session.pop("oauth_next", None)
+    signup_path = "/signup" if surface == "bookshop" else "/register"
+    return redirect(f"{_frontend_base(surface)}{signup_path}?error=terms_required")
+
+
+def _oauth_failure(provider):
+    surface = session.pop("oauth_surface", "main")
+    session.pop("oauth_intent", None)
+    session.pop("oauth_terms_accepted", None)
+    session.pop("oauth_next", None)
+    return redirect(f"{_frontend_base(surface)}/login?error={provider}_failed")
 
 
 def _provider_not_configured(provider):
+    surface = "bookshop" if request.args.get("surface") == "bookshop" else "main"
+    login_path = "/login"
     return redirect(
-        f"{_base_url()}/login?error=provider_unavailable&provider={provider}"
+        f"{_frontend_base(surface)}{login_path}?error=provider_unavailable&provider={provider}"
     )
 
 
@@ -189,17 +235,20 @@ def apple_callback():
         info = token.get("userinfo") or {}
         # Apple only sends the name on the FIRST login; store it on first use
         id_token = token.get("id_token_claims", {})
-        user = _get_or_create_user(
+        user, _created = _get_or_create_user(
             provider="apple",
             provider_user_id=id_token.get("sub", ""),
             email=id_token.get("email", ""),
             first_name=info.get("name", {}).get("firstName", "") if isinstance(info.get("name"), dict) else "",
             last_name=info.get("name", {}).get("lastName", "") if isinstance(info.get("name"), dict) else "",
         )
+        terms_error = _social_user_or_terms_error(user)
+        if terms_error:
+            return terms_error
         return _login_and_redirect(user)
     except Exception as exc:
         current_app.logger.warning("Apple OAuth callback failed: %s", exc)
-        return redirect(f"{_base_url()}/login?error=apple_failed")
+        return _oauth_failure("apple")
 
 
 # â”€â”€ Google â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -217,18 +266,21 @@ def google_callback():
     try:
         token = oauth.google.authorize_access_token()
         info = token.get("userinfo") or oauth.google.userinfo()
-        user = _get_or_create_user(
+        user, _created = _get_or_create_user(
             provider="google",
             provider_user_id=info["sub"],
             email=info.get("email", ""),
             first_name=info.get("given_name", ""),
             last_name=info.get("family_name", ""),
         )
+        terms_error = _social_user_or_terms_error(user)
+        if terms_error:
+            return terms_error
         return _login_and_redirect(user)
     except Exception:
         db.session.rollback()
         current_app.logger.exception("Google OAuth callback failed")
-        return redirect(f"{_base_url()}/login?error=google_failed")
+        return _oauth_failure("google")
 
 
 # â”€â”€ Microsoft â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -246,18 +298,21 @@ def microsoft_callback():
     try:
         token = oauth.microsoft.authorize_access_token()
         info = token.get("userinfo") or {}
-        user = _get_or_create_user(
+        user, _created = _get_or_create_user(
             provider="microsoft",
             provider_user_id=info.get("sub") or info.get("oid", ""),
             email=info.get("email") or info.get("preferred_username", ""),
             first_name=info.get("given_name", ""),
             last_name=info.get("family_name", ""),
         )
+        terms_error = _social_user_or_terms_error(user)
+        if terms_error:
+            return terms_error
         return _login_and_redirect(user)
     except Exception:
         db.session.rollback()
         current_app.logger.exception("Microsoft OAuth callback failed")
-        return redirect(f"{_base_url()}/login?error=microsoft_failed")
+        return _oauth_failure("microsoft")
 
 
 # â”€â”€ Facebook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -276,15 +331,18 @@ def facebook_callback():
         oauth.facebook.authorize_access_token()
         resp = oauth.facebook.get("me?fields=id,name,email,first_name,last_name")
         info = resp.json()
-        user = _get_or_create_user(
+        user, _created = _get_or_create_user(
             provider="facebook",
             provider_user_id=info["id"],
             email=info.get("email", ""),
             first_name=info.get("first_name", ""),
             last_name=info.get("last_name", ""),
         )
+        terms_error = _social_user_or_terms_error(user)
+        if terms_error:
+            return terms_error
         return _login_and_redirect(user)
     except Exception:
         db.session.rollback()
         current_app.logger.exception("Facebook OAuth callback failed")
-        return redirect(f"{_base_url()}/login?error=facebook_failed")
+        return _oauth_failure("facebook")

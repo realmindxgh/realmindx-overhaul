@@ -2,7 +2,14 @@ import React, { useState } from 'react';
 import { Icon } from '../assets/components.jsx';
 import { Nav, Footer } from '../components/NavFooter';
 import logoWhite from '../assets/logo-white.png';
-import { resendVerificationOtp, signIn, signUp, requestPasswordReset, verifyEmailOtp } from '../../src/lib/authClient.js';
+import {
+  confirmPasswordReset,
+  resendVerificationOtp,
+  requestPasswordReset,
+  signIn,
+  signUp,
+  verifyEmailOtp,
+} from '../../src/lib/authClient.js';
 import { dashboardPathForRole, loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import { TurnstileField } from '../../src/lib/TurnstileField.jsx';
 import toast from '../../src/lib/toast.js';
@@ -227,6 +234,17 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
 
   // Scroll to top whenever the form state changes (login/register/otp/forgot)
   React.useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [mode, pendingVerificationEmail]);
+  React.useEffect(() => {
+    const oauthError = new URLSearchParams(window.location.search).get('error');
+    if (oauthError === 'terms_required') {
+      setMode('register');
+      setError('Please accept the Terms of Service and Privacy Policy before creating a new social account.');
+    } else if (oauthError === 'provider_unavailable') {
+      setError('That social sign-in provider is temporarily unavailable. Please use email and password.');
+    } else if (oauthError?.endsWith('_failed')) {
+      setError('Social sign-in could not be completed. Please try again or use email and password.');
+    }
+  }, []);
 
   const showFieldProblem = (field, message) => {
     const refs = {
@@ -348,7 +366,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
       showFieldProblem('terms', 'Please agree to the Terms of Service and Privacy Policy before signing up.');
       return;
     }
-    window.location.href = `/api/auth/${provider}?intent=signup&next=/portal`;
+    window.location.href = `/api/auth/${provider}?intent=signup&accepted_terms=1&next=/portal`;
   };
 
   const handleForgot = async (e) => {
@@ -357,7 +375,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
     if (!email) { setError('Please enter your email address.'); return; }
     setLoading(true);
     try {
-      await requestPasswordReset(email);
+      await requestPasswordReset(email, { surface: 'main' });
       setSuccess('If an account exists for that email, you will receive a reset link shortly.');
     } catch (err) {
       setError(err?.message || 'Could not process the request. Please try again.');
@@ -679,4 +697,115 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
   );
 };
 
-export default { AdminLoginPage, UserLoginPage };
+export const PasswordResetPage = () => {
+  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const [password, setPassword] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError('');
+    if (!token) {
+      setError('This password reset link is invalid or incomplete.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPass) {
+      setError('Passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await confirmPasswordReset({ token, password });
+      setSuccess(result?.message || 'Password updated. You can now sign in.');
+      setPassword('');
+      setConfirmPass('');
+      toast.success('Your password has been updated.');
+    } catch (requestError) {
+      setError(requestError?.message || 'Could not reset your password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Nav activePage="jobs" solid />
+      <div className="auth-page auth-page-shell">
+        <div className="auth-layout">
+          <div className="auth-panel-brand">
+            <div className="auth-brand-content">
+              <h1 className="auth-brand-quote">
+                Secure Your<br />RealMindX<br /><span>Account.</span>
+              </h1>
+              <p className="auth-brand-sub">
+                Choose a new password for the account you use across RealMindX Education and the RealMindX Bookshop.
+              </p>
+            </div>
+          </div>
+          <div className="auth-panel-form">
+            <div className="auth-form-header">
+              <h2>Create a New Password</h2>
+              <p>Use at least 8 characters and choose a password you do not use elsewhere.</p>
+            </div>
+            {success ? (
+              <div className="auth-success-panel" role="status">
+                <p>{success}</p>
+                <a className="btn btn-primary btn-lg" href="/login" style={{ width: '100%', justifyContent: 'center' }}>
+                  Continue to Sign In
+                </a>
+              </div>
+            ) : (
+              <form onSubmit={submit} noValidate>
+                <div className="form-group">
+                  <label className="form-label">New Password</label>
+                  <div className="password-field">
+                    <input
+                      className="form-input"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={event => setPassword(event.target.value)}
+                      autoComplete="new-password"
+                      placeholder="Minimum 8 characters"
+                      required
+                    />
+                    <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                      <Icon name={showPassword ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Confirm New Password</label>
+                  <input
+                    className="form-input"
+                    type={showPassword ? 'text' : 'password'}
+                    value={confirmPass}
+                    onChange={event => setConfirmPass(event.target.value)}
+                    autoComplete="new-password"
+                    placeholder="Repeat your new password"
+                    required
+                  />
+                </div>
+                {error && <p className="form-error form-error-inline" role="alert">{error}</p>}
+                <button type="submit" className="btn btn-primary btn-lg" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
+                  {loading ? 'Updating password...' : 'Update Password'}
+                </button>
+                <p className="auth-switch-copy"><a href="/login">Back to Sign In</a></p>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+      <Footer />
+    </>
+  );
+};
+
+export default { AdminLoginPage, PasswordResetPage, UserLoginPage };

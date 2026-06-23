@@ -3,7 +3,7 @@ import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, ScrollToTopFab, Bot
 import { HomePage, ShopPage } from './pages-shop.jsx';
 import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage } from './pages-checkout.jsx';
-import { AuthPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
+import { AuthPage, BookshopResetPasswordPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
 import { CatalogProvider, useCatalog } from './catalog.jsx';
 import { Icon, LoadingState, cedis } from './shared.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
@@ -28,7 +28,7 @@ const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.s
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 
 const prefixedPath = (path) => `${PREFIX}${path}`;
-const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'track', 'login', 'signup', 'account', 'orders', 'review']);
+const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'track', 'login', 'signup', 'reset-password', 'account', 'orders', 'review']);
 const canonicalUrlForRoute = (route, params = {}) => `${canonicalBookshopBase}${bookshopPathForRoute(route, params)}`;
 const browseParam = (taxonomy, value = '') => ({ taxonomy, value });
 const BOOKSHOP_SHIPPING_DETAILS = {
@@ -135,6 +135,7 @@ const routeFromPath = () => {
   if (p === '/track' || p === '/track-order' || p === '/track-your-order') return { route: 'track', params: {} };
   if (p === '/login')    return { route: 'login',    params: {} };
   if (p === '/signup')   return { route: 'signup',   params: {} };
+  if (p === '/reset-password') return { route: 'reset-password', params: {} };
   if (p === '/contact')  return { route: 'contact',  params: {} };
   if (p === '/about')    return { route: 'about',    params: {} };
   if (p === '/privacy')  return { route: 'privacy',  params: {} };
@@ -436,6 +437,7 @@ const App = () => {
       track:    { title: 'Track Your Order | RealMindX Bookshop', desc: 'Track your RealMindX Bookshop order by reference number or email address.' },
       login:    { title: 'Sign In | RealMindX Bookshop', desc: 'Sign in to your RealMindX account to track orders, save favourites, and check out faster.' },
       signup:   { title: 'Create Account | RealMindX Bookshop', desc: 'Join the RealMindX Bookshop to track orders, save books, and enjoy a faster checkout experience.' },
+      'reset-password': { title: 'Reset Password | RealMindX Bookshop', desc: 'Create a new password for your RealMindX account.' },
       contact:  { title: 'Contact the Bookshop | RealMindX', desc: 'Contact RealMindX Bookshop at Dome Pillar 2, Accra. Call +233 55 803 9190 or send a message.' },
       about:    { title: 'About the Bookshop | RealMindX', desc: 'Learn about the RealMindX Bookshop, Ghana\'s educational books and stationery shop.' },
       privacy:  { title: 'Privacy Policy | RealMindX Bookshop', desc: 'How the RealMindX Bookshop collects, uses, and protects your personal information.' },
@@ -587,6 +589,7 @@ const App = () => {
     case 'track':    page = <TrackPage navigate={navigate} />; break;
     case 'login':    page = <AuthPage navigate={navigate} mode="login" key="login" />; break;
     case 'signup':   page = <AuthPage navigate={navigate} mode="signup" key="signup" />; break;
+    case 'reset-password': page = <BookshopResetPasswordPage navigate={navigate} />; break;
     case 'contact':  page = <ContactPage navigate={navigate} />; break;
     case 'about':    page = <InfoPage navigate={navigate} />; break;
     case 'privacy':  page = <BookshopLegalPage type="privacy" />; break;
@@ -596,7 +599,7 @@ const App = () => {
     case 'review':   page = <OrderReviewPage navigate={navigate} />; break;
     default:         page = <HomePage navigate={navigate} />;
   }
-  const mainClassName = `bs-page${route === 'login' || route === 'signup' ? ' bs-page-auth' : ''}`;
+  const mainClassName = `bs-page${route === 'login' || route === 'signup' || route === 'reset-password' ? ' bs-page-auth' : ''}`;
 
   const { clear: clearCart } = React.useContext(CartCtx) || {};
 

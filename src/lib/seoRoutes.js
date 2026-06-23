@@ -4,7 +4,7 @@ export const SITE_DEFAULT_IMAGE = `${SITE_BASE_URL}/static/assets/social/realmin
 export const BOOKSHOP_DEFAULT_IMAGE = `${BOOKSHOP_BASE_URL}/static/assets/social/realmindx-bookshop-og-1200x630.png?v=20260622`;
 export const BOOKSHOP_FAVICON = '/static/assets/favicons/bookshop-favicon-32.png?v=20260621';
 export const BOOKSHOP_APPLE_TOUCH_ICON = '/static/assets/favicons/bookshop-apple-touch-icon.png?v=20260621';
-const BOOK_OG_TEMPLATE_VERSION = '2026-06-22-1';
+const BOOK_OG_TEMPLATE_VERSION = '2026-06-23-1';
 
 export const bookOpenGraphImage = (product) => {
   const id = String(product?.id || '').trim();

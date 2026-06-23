@@ -12,7 +12,7 @@ except ImportError:
 
 
 OG_SIZE = (1200, 630)
-OG_TEMPLATE_VERSION = "2026-06-22-1"
+OG_TEMPLATE_VERSION = "2026-06-23-1"
 NAVY = "#062B69"
 NAVY_DARK = "#031C48"
 GOLD = "#F9A900"
@@ -92,9 +92,9 @@ def _wrap_text(draw, text, font, max_width, max_lines=3):
         current = words.pop(0)
         if len(lines) == max_lines - 1:
             remainder = " ".join([current, *words])
-            while remainder and draw.textbbox((0, 0), f"{remainder}…", font=font)[2] > max_width:
+            while remainder and draw.textbbox((0, 0), f"{remainder}...", font=font)[2] > max_width:
                 remainder = remainder[:-1].rstrip()
-            lines.append(f"{remainder}…" if words else remainder)
+            lines.append(f"{remainder}..." if words else remainder)
             return lines
     lines.append(current)
     return lines[:max_lines]
@@ -129,7 +129,7 @@ def book_og_public_url(product, base_url="https://bookshop.realmindxgh.com"):
 
 
 def resolve_bookshop_branding_path(config):
-    relative = Path("static/assets/branding/bookshop-og-mark.png")
+    relative = Path("static/assets/branding/bookshop-circular-mark.png")
     candidates = [
         Path(config.get("FRONTEND_DIST_DIR", "")) / relative,
         Path(__file__).resolve().parents[2] / "public" / relative,
@@ -174,85 +174,83 @@ def _rounded_shadow(canvas, box, radius, fill, *, shadow=(0, 0, 0, 72), blur=24,
 @lru_cache(maxsize=256)
 def _render_book_og_cached(title, price, cover_path, cover_stamp, branding_path, branding_stamp):
     del cover_stamp, branding_stamp
-    canvas = _vertical_gradient(OG_SIZE, OG_BG_TOP, OG_BG_BOTTOM).convert("RGBA")
+    canvas = Image.new("RGBA", OG_SIZE, (252, 253, 255, 255))
     draw = ImageDraw.Draw(canvas)
 
-    draw.rectangle((0, 0, OG_SIZE[0], 12), fill=GOLD)
-    draw.ellipse((875, -290, 1430, 265), outline=(255, 255, 255, 24), width=3)
-    draw.ellipse((925, -220, 1370, 225), outline=(249, 169, 0, 52), width=2)
-    draw.polygon(((1040, 630), (1200, 470), (1200, 630)), fill=(249, 169, 0, 36))
-
+    draw.rectangle((0, 0, OG_SIZE[0], 92), fill=NAVY)
+    draw.rectangle((0, 618, OG_SIZE[0], 630), fill=GOLD)
     brand = _open_image(branding_path)
-    _rounded_shadow(
-        canvas,
-        (62, 48, 150, 136),
-        22,
-        (255, 255, 255, 255),
-        shadow=(0, 0, 0, 42),
-        blur=16,
-        offset=(0, 8),
-    )
     if brand is not None:
-        fitted_brand = _fit_image(brand, (74, 74), padding=3, background=(255, 255, 255, 0))
-        canvas.alpha_composite(fitted_brand, (69, 55))
+        fitted_brand = _fit_image(brand, (76, 76), background=(255, 255, 255, 0))
+        canvas.alpha_composite(fitted_brand, (32, 8))
 
-    brand_font = _font(23, bold=True)
-    brand_sub_font = _font(15, bold=True)
-    label_font = _font(18, bold=True)
-    title_size = 58 if len(title or "") <= 40 else 50 if len(title or "") <= 68 else 44
+    brand_font = _font(28, bold=True)
+    label_font = _font(20, bold=True)
+    title_size = 56 if len(title or "") <= 38 else 49 if len(title or "") <= 66 else 42
     title_font = _font(title_size, bold=True)
-    price_label_font = _font(17, bold=True)
-    price_font = _font(38, bold=True)
-    body_font = _font(19)
-    url_font = _font(19, bold=True)
+    price_font = _font(34, bold=True)
+    body_font = _font(20)
+    url_font = _font(18, bold=True)
 
-    draw.text((170, 64), "REALMINDX", font=brand_font, fill="white")
-    draw.text((170, 96), "BOOKSHOP", font=brand_sub_font, fill=GOLD)
-    draw.rounded_rectangle((62, 174, 250, 210), radius=18, fill=GOLD)
-    draw.text((82, 181), "FEATURED TITLE", font=label_font, fill=NAVY_DARK)
+    draw.text((126, 28), "RealMindX Bookshop", font=brand_font, fill="white")
+    draw.rounded_rectangle((74, 145, 258, 190), radius=14, fill=GOLD)
+    draw.text((95, 155), "Now in Store", font=label_font, fill=NAVY)
 
-    title_lines = _wrap_text(draw, title, title_font, 650, max_lines=3)
-    title_y = 232
-    line_height = title_size + 10
+    title_lines = _wrap_text(draw, title, title_font, 655, max_lines=3)
+    title_y = 218
+    line_height = title_size + 8
     for line in title_lines:
-        draw.text((62, title_y), line, font=title_font, fill="white")
+        draw.text((74, title_y), line, font=title_font, fill=NAVY)
         title_y += line_height
 
-    price_y = max(445, title_y + 18)
-    draw.text((62, price_y), "PRICE", font=price_label_font, fill=(193, 209, 235))
-    price_text = f"GH₵ {float(price or 0):,.2f}"
+    accent_y = min(title_y + 6, 414)
+    draw.rounded_rectangle((74, accent_y, 164, accent_y + 4), radius=2, fill=GOLD)
+    tagline_y = accent_y + 28
+    draw.text((74, tagline_y), "Quality books for serious learning.", font=body_font, fill=TEXT_MUTED)
+
+    price_y = min(max(tagline_y + 52, 452), 484)
+    price_text = f"GHS {float(price or 0):,.2f}"
     price_bbox = draw.textbbox((0, 0), price_text, font=price_font)
     price_width = price_bbox[2] - price_bbox[0]
-    draw.rounded_rectangle((62, price_y + 28, 98 + price_width, price_y + 82), radius=14, fill=GOLD)
-    draw.text((80, price_y + 34), price_text, font=price_font, fill=NAVY_DARK)
-
-    draw.text(
-        (62, 578),
-        "Educational books • Fast delivery across Ghana",
-        font=body_font,
-        fill=(220, 230, 245),
+    pill_right = 172 + price_width
+    draw.rounded_rectangle((74, price_y, pill_right, price_y + 64), radius=32, fill=NAVY)
+    draw.ellipse((86, price_y + 10, 130, price_y + 54), fill=GOLD)
+    draw.polygon(
+        (
+            (98, price_y + 31),
+            (111, price_y + 18),
+            (124, price_y + 18),
+            (124, price_y + 31),
+            (111, price_y + 44),
+        ),
+        fill="white",
     )
+    draw.ellipse((116, price_y + 22, 121, price_y + 27), fill=GOLD)
+    draw.text((144, price_y + 13), price_text, font=price_font, fill="white")
 
     _rounded_shadow(
         canvas,
-        (792, 56, 1140, 574),
-        30,
+        (790, 116, 1138, 578),
+        24,
         (255, 255, 255, 255),
-        shadow=(0, 0, 0, 100),
-        blur=28,
-        offset=(0, 18),
+        shadow=(27, 54, 91, 48),
+        blur=24,
+        offset=(0, 12),
     )
-    draw.rounded_rectangle((812, 76, 1120, 554), radius=22, outline=CARD_BORDER, width=2)
+    draw.rounded_rectangle((808, 134, 1120, 560), radius=18, outline=(230, 235, 243), width=2)
     cover = _open_image(cover_path)
     if cover is None:
         cover = brand
     if cover is not None:
-        fitted_cover = _fit_image(cover, (280, 444), padding=4, background=(255, 255, 255, 255))
-        canvas.alpha_composite(fitted_cover, (826, 93))
+        fitted_cover = _fit_image(cover, (282, 396), padding=4, background=(255, 255, 255, 255))
+        canvas.alpha_composite(fitted_cover, (823, 149))
 
-    footer_url = "bookshop.realmindxgh.com"
-    footer_width = draw.textbbox((0, 0), footer_url, font=url_font)[2]
-    draw.text((1140 - footer_width, 592), footer_url, font=url_font, fill="white")
+    globe_x, globe_y = 76, 570
+    draw.ellipse((globe_x, globe_y, globe_x + 27, globe_y + 27), outline=NAVY, width=2)
+    draw.arc((globe_x + 7, globe_y, globe_x + 20, globe_y + 27), 90, 270, fill=NAVY, width=2)
+    draw.arc((globe_x + 7, globe_y, globe_x + 20, globe_y + 27), 270, 90, fill=NAVY, width=2)
+    draw.line((globe_x + 2, globe_y + 13, globe_x + 25, globe_y + 13), fill=NAVY, width=2)
+    draw.text((116, 572), "bookshop.realmindxgh.com", font=url_font, fill=NAVY)
 
     output = BytesIO()
     canvas.convert("RGB").save(output, format="PNG", optimize=True)
