@@ -1790,7 +1790,32 @@
 .bs-lightbox { position: fixed; inset: 0; background: rgba(13,27,46,.92); z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 40px; opacity: 0; pointer-events: none; transition: opacity .25s; }
 .bs-lightbox.open { opacity: 1; pointer-events: auto; }
 .bs-lightbox-img { max-width: 480px; width: 100%; aspect-ratio: 4/5; border-radius: var(--bs-radius-md); overflow: hidden; }
-.bs-lightbox-close { position: absolute; top: 24px; right: 24px; width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,.12); color: #fff; display: flex; align-items: center; justify-content: center; }
+.bs .bs-lightbox-close {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
+  z-index: 2;
+  width: 48px;
+  height: 48px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--bs-navy) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,.38);
+  transition: transform .16s, background .16s, color .16s;
+}
+.bs .bs-lightbox-close:hover {
+  transform: scale(1.06);
+  background: var(--bs-gold-live);
+  color: var(--bs-navy) !important;
+}
+.bs .bs-lightbox-close:focus-visible {
+  outline: 3px solid var(--bs-gold-live);
+  outline-offset: 3px;
+}
 .bs-reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s, transform .6s; }
 .bs-reveal.in { opacity: 1; transform: translateY(0); }
 .bs-reveal.d1 { transition-delay: .08s; } .bs-reveal.d2 { transition-delay: .16s; }
