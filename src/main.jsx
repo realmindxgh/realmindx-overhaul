@@ -685,6 +685,7 @@ const PAGE_META = {
   '/privacy': { title: 'Privacy Policy | RealMindX Education',   desc: 'How RealMindX Education Limited collects, uses, and protects your personal information.' },
   '/login':   { title: 'Sign In | RealMindX Education', desc: 'Sign in to your RealMindX teacher portal to apply for jobs, manage applications, and track your career.' },
   '/register':{ title: 'Create a Teacher Account | RealMindX', desc: 'Join thousands of teachers on the RealMindX platform. Create your profile, upload your CV, and apply for teaching positions across Ghana.' },
+  '/reset-password': { title: 'Reset Password | RealMindX Education', desc: 'Create a new password for your RealMindX account.' },
 };
 
 const shouldNoIndexPath = (path) => (
@@ -692,6 +693,7 @@ const shouldNoIndexPath = (path) => (
   || path === '/login'
   || path === '/register'
   || path === '/signup'
+  || path === '/reset-password'
   || path.startsWith('/portal')
   || path.startsWith('/admin')
 );
