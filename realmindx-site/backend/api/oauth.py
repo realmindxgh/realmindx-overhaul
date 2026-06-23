@@ -16,7 +16,6 @@ Environment variables required per provider (add to realmindx-site/.env):
   FACEBOOK_APP_ID, FACEBOOK_APP_SECRET
 """
 
-import os
 import secrets
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
@@ -46,7 +45,7 @@ SAFE_NEXT_PREFIXES = (
 
 def _base_url():
     """The public-facing origin - Vite in dev, real domain in prod."""
-    return (os.getenv("BASE_URL") or "http://localhost:5173").rstrip("/")
+    return current_app.config.get("BASE_URL", "http://localhost:5173").rstrip("/")
 
 
 def _frontend_base(surface=None):
@@ -56,11 +55,21 @@ def _frontend_base(surface=None):
 
 
 def _callback_url(provider):
-    surface = request.args.get("surface") or session.get("oauth_surface")
-    callback_base = _frontend_base(surface)
-    parsed = urlsplit(callback_base)
-    callback_origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else callback_base
-    return f"{callback_origin.rstrip('/')}/api/auth/{provider}/callback"
+    return f"{_base_url()}/api/auth/{provider}/callback"
+
+
+def _primary_auth_handoff():
+    """Run provider authorization on the main origin where callbacks are registered."""
+    if request.args.get("surface") != "bookshop" or request.args.get("_primary_oauth") == "1":
+        return None
+    primary_host = urlsplit(_base_url()).hostname
+    bookshop_host = urlsplit(_frontend_base("bookshop")).hostname
+    if not primary_host or not bookshop_host or primary_host == bookshop_host:
+        return None
+    query = request.query_string.decode("utf-8", errors="ignore")
+    query = f"{query}&_primary_oauth=1" if query else "_primary_oauth=1"
+    target = f"{_base_url()}{request.path}"
+    return redirect(f"{target}?{query}")
 
 
 def _safe_next(default="/portal"):
@@ -210,6 +219,9 @@ def _provider_not_configured(provider):
 
 @oauth_bp.get("/auth/apple")
 def apple_login():
+    handoff = _primary_auth_handoff()
+    if handoff:
+        return handoff
     if not current_app.config.get("APPLE_CLIENT_ID"):
         return _provider_not_configured("apple")
     import secrets
@@ -255,6 +267,9 @@ def apple_callback():
 
 @oauth_bp.get("/auth/google")
 def google_login():
+    handoff = _primary_auth_handoff()
+    if handoff:
+        return handoff
     if not current_app.config.get("GOOGLE_CLIENT_ID"):
         return _provider_not_configured("google")
     _remember_next("/portal")
@@ -287,6 +302,9 @@ def google_callback():
 
 @oauth_bp.get("/auth/microsoft")
 def microsoft_login():
+    handoff = _primary_auth_handoff()
+    if handoff:
+        return handoff
     if not current_app.config.get("MICROSOFT_CLIENT_ID"):
         return _provider_not_configured("microsoft")
     _remember_next("/portal")
@@ -319,6 +337,9 @@ def microsoft_callback():
 
 @oauth_bp.get("/auth/facebook")
 def facebook_login():
+    handoff = _primary_auth_handoff()
+    if handoff:
+        return handoff
     if not current_app.config.get("FACEBOOK_APP_ID"):
         return _provider_not_configured("facebook")
     _remember_next("/portal")
