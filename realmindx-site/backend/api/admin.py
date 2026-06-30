@@ -29,6 +29,7 @@ from ..default_content import (
     DEFAULT_TESTIMONIALS,
 )
 from ..email_service import (
+    EmailAttachment,
     OutboundEmail,
     app_email_shell,
     bookshop_email_shell,
@@ -115,6 +116,7 @@ def _run_in_background(task_name, func, *args):
 
 def _order_contact_snapshot(order):
     return SimpleNamespace(
+        invoice_id=order.invoice_id,
         order_reference=order.order_reference,
         customer_name=order.customer_name,
         email=order.email,
@@ -124,7 +126,14 @@ def _order_contact_snapshot(order):
         location=order.location,
         payment_method=order.payment_method,
         payment_status=order.payment_status,
+        status=order.status,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
         subtotal_amount=order.subtotal_amount,
+        bulk_discount_amount=order.bulk_discount_amount,
+        promo_code=order.promo_code,
+        promo_applies_to=order.promo_applies_to,
+        promo_discount_amount=order.promo_discount_amount,
         delivery_fee=order.delivery_fee,
         total_amount=order.total_amount,
         notes=order.notes,
@@ -2735,6 +2744,20 @@ def _send_order_status_email(order, status, cancel_reason=""):
         return  # no email for other status changes (archived, etc.)
 
     try:
+        attachments = []
+        if status == "complete":
+            try:
+                from ..invoices import build_receipt_pdf
+
+                receipt_stream = build_receipt_pdf(order)
+                attachments.append(EmailAttachment(
+                    filename=f"{ref}-receipt.pdf",
+                    content=receipt_stream.getvalue(),
+                    content_type="application/pdf",
+                ))
+            except Exception:
+                current_app.logger.exception("Could not build receipt PDF for order %s.", ref)
+
         send_email(OutboundEmail(
             to=order.email,
             from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
@@ -2747,6 +2770,7 @@ def _send_order_status_email(order, status, cancel_reason=""):
                 eyebrow="RealMindX Bookshop",
                 preheader=info["subject"],
             ),
+            attachments=attachments,
         ))
     except Exception as exc:
         current_app.logger.warning("Order status email failed: %s", exc)

@@ -7,7 +7,6 @@ from xml.sax.saxutils import escape as xml_escape
 
 from flask import current_app
 
-from .extensions import db
 from .models import CartInvoice, Order
 from .order_status import normalize_order_status
 
@@ -55,16 +54,36 @@ def assign_cart_invoice_id(cart_invoice):
     raise RuntimeError("Could not generate a unique invoice ID.")
 
 
-def invoice_json(order):
+def _iso(value):
+    return value.isoformat() if value else None
+
+
+def _line_total(item):
+    return money(item.unit_price) * int(item.quantity or 1)
+
+
+def invoice_json(order, document_type="invoice"):
+    is_receipt = document_type == "receipt"
+    document_id = order.order_reference if is_receipt else order.invoice_id
+    pdf_url = f"/api/invoices/{quote(document_id or '')}/pdf"
+    if is_receipt:
+        pdf_url = f"{pdf_url}?document=receipt"
+
     subtotal = money(order.subtotal_amount)
-    bulk_discount = money(order.bulk_discount_amount)
-    promo_discount = money(order.promo_discount_amount)
+    bulk_discount = money(getattr(order, "bulk_discount_amount", 0))
+    promo_discount = money(getattr(order, "promo_discount_amount", 0))
     delivery_fee = money(order.delivery_fee)
     total = money(order.total_amount)
+    issued_at = order.updated_at if is_receipt else order.created_at
     return {
         "invoice_id": order.invoice_id,
+        "document_id": document_id,
+        "document_type": document_type,
+        "invoice_type": "order",
         "order_reference": order.order_reference,
-        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "created_at": _iso(order.created_at),
+        "updated_at": _iso(order.updated_at),
+        "issued_at": _iso(issued_at),
         "status": normalize_order_status(order.status),
         "payment_status": order.payment_status,
         "payment_method": order.payment_method,
@@ -81,14 +100,14 @@ def invoice_json(order):
         "promo_discount_amount": float(promo_discount),
         "delivery_fee": float(delivery_fee),
         "total_amount": float(total),
-        "pdf_url": f"/api/invoices/{order.invoice_id}/pdf" if order.invoice_id else None,
+        "pdf_url": pdf_url if document_id else None,
         "items": [
             {
                 "product_id": item.product_id,
                 "product_name": item.product_name,
                 "unit_price": float(money(item.unit_price)),
                 "quantity": item.quantity,
-                "line_total": float(money(item.unit_price) * int(item.quantity or 1)),
+                "line_total": float(_line_total(item)),
             }
             for item in order.items
         ],
@@ -103,9 +122,13 @@ def cart_invoice_json(cart_invoice):
     total = money(cart_invoice.total_amount)
     return {
         "invoice_id": cart_invoice.invoice_id,
+        "document_id": cart_invoice.invoice_id,
+        "document_type": "invoice",
         "invoice_type": "cart",
         "order_reference": None,
-        "created_at": cart_invoice.created_at.isoformat() if cart_invoice.created_at else None,
+        "created_at": _iso(cart_invoice.created_at),
+        "updated_at": _iso(getattr(cart_invoice, "updated_at", None)),
+        "issued_at": _iso(cart_invoice.created_at),
         "status": cart_invoice.status or "generated",
         "payment_status": "not_applicable",
         "payment_method": "not_applicable",
@@ -122,14 +145,14 @@ def cart_invoice_json(cart_invoice):
         "promo_discount_amount": float(promo_discount),
         "delivery_fee": float(delivery_fee),
         "total_amount": float(total),
-        "pdf_url": f"/api/invoices/{cart_invoice.invoice_id}/pdf",
+        "pdf_url": f"/api/invoices/{quote(cart_invoice.invoice_id or '')}/pdf",
         "items": [
             {
                 "product_id": item.product_id,
                 "product_name": item.product_name,
                 "unit_price": float(money(item.unit_price)),
                 "quantity": item.quantity,
-                "line_total": float(money(item.unit_price) * int(item.quantity or 1)),
+                "line_total": float(_line_total(item)),
             }
             for item in cart_invoice.items
         ],
@@ -145,25 +168,101 @@ def _logo_path():
     return next((path for path in candidates if path.exists()), None)
 
 
-def _order_date(order):
-    if not order.created_at:
+def _font_dir():
+    return Path(__file__).resolve().parent / "assets" / "fonts"
+
+
+def _register_pdf_fonts():
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    registered = set(pdfmetrics.getRegisteredFontNames())
+    if {"RMXHeading", "RMXHeadingBold", "RMXBody", "RMXBodyBold"}.issubset(registered):
+        return {
+            "heading": "RMXHeading",
+            "heading_bold": "RMXHeadingBold",
+            "body": "RMXBody",
+            "body_bold": "RMXBodyBold",
+        }
+
+    font_dir = _font_dir()
+    fonts = {
+        "RMXHeading": font_dir / "Montserrat-Regular.ttf",
+        "RMXHeadingBold": font_dir / "Montserrat-Bold.ttf",
+        "RMXBody": font_dir / "Arimo-Regular.ttf",
+        "RMXBodyBold": font_dir / "Arimo-Bold.ttf",
+    }
+    try:
+        for name, path in fonts.items():
+            pdfmetrics.registerFont(TTFont(name, str(path)))
+        pdfmetrics.registerFontFamily(
+            "RMXHeading",
+            normal="RMXHeading",
+            bold="RMXHeadingBold",
+            italic="RMXHeading",
+            boldItalic="RMXHeadingBold",
+        )
+        pdfmetrics.registerFontFamily(
+            "RMXBody",
+            normal="RMXBody",
+            bold="RMXBodyBold",
+            italic="RMXBody",
+            boldItalic="RMXBodyBold",
+        )
+        return {
+            "heading": "RMXHeading",
+            "heading_bold": "RMXHeadingBold",
+            "body": "RMXBody",
+            "body_bold": "RMXBodyBold",
+        }
+    except Exception:
+        current_app.logger.warning("PDF brand fonts could not be loaded.", exc_info=True)
+        return {
+            "heading": "Helvetica",
+            "heading_bold": "Helvetica-Bold",
+            "body": "Helvetica",
+            "body_bold": "Helvetica-Bold",
+        }
+
+
+def _date_time_label(value):
+    if not value:
         return ""
-    return order.created_at.strftime("%d %b %Y")
+    return value.strftime("%d %b %Y, %H:%M")
 
 
-def _invoice_verify_url(invoice_id):
+def _invoice_verify_url(lookup_id):
     bookshop_url = (current_app.config.get("BOOKSHOP_URL") or "").rstrip("/")
     if not bookshop_url:
         base_url = (current_app.config.get("BASE_URL") or "http://127.0.0.1:5173").rstrip("/")
         bookshop_url = f"{base_url}/bookshop"
-    return f"{bookshop_url}/invoice?invoice_id={quote(invoice_id or '')}"
+    return f"{bookshop_url}/invoice?invoice_id={quote(lookup_id or '')}"
+
+
+def _safe_text(value):
+    return xml_escape(str(value or ""))
 
 
 def _safe_link(url):
     return xml_escape(url or "", {'"': "&quot;"})
 
 
-def build_invoice_pdf(order):
+def _payment_label(value):
+    label = (value or "not provided").replace("_", " ").strip()
+    return label.title() if label else "Not Provided"
+
+
+def _status_label(value):
+    return normalize_order_status(value).replace("_", " ").title()
+
+
+def _delivery_label(record):
+    if getattr(record, "delivery_method", "") == "pickup":
+        return "Pickup at Dome Pillar 2"
+    return getattr(record, "location", "") or getattr(record, "delivery_zone_name", "") or "Delivery details on file"
+
+
+def _build_bookshop_pdf(payload):
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_RIGHT
     from reportlab.lib.pagesizes import A4
@@ -171,7 +270,7 @@ def build_invoice_pdf(order):
     from reportlab.lib.units import mm
     from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    assign_invoice_id(order)
+    fonts = _register_pdf_fonts()
     stream = BytesIO()
     doc = SimpleDocTemplate(
         stream,
@@ -180,178 +279,177 @@ def build_invoice_pdf(order):
         rightMargin=18 * mm,
         topMargin=16 * mm,
         bottomMargin=18 * mm,
-        title=f"Invoice {order.invoice_id}",
+        title=f"{payload['title']} {payload['document_id']}",
         author="RealMindX Bookshop",
     )
 
     styles = getSampleStyleSheet()
     navy = colors.HexColor("#143670")
     gold = colors.HexColor("#ffcc01")
-    muted = colors.HexColor("#334155")
+    gold_dark = colors.HexColor("#9b6a00")
+    muted = colors.HexColor("#465a75")
     body = colors.HexColor("#071a33")
     border = colors.HexColor("#c9d6e8")
-    light = colors.HexColor("#f7faff")
+    light = colors.HexColor("#f6f9fe")
     verify_bg = colors.HexColor("#fff8d4")
 
     title_style = ParagraphStyle(
-        "InvoiceTitle",
+        "RMXDocumentTitle",
         parent=styles["Title"],
         textColor=navy,
-        fontName="Helvetica-Bold",
-        fontSize=23,
+        fontName=fonts["heading_bold"],
+        fontSize=24,
         leading=28,
         alignment=TA_RIGHT,
+        spaceAfter=5,
+    )
+    eyebrow_style = ParagraphStyle(
+        "RMXEyebrow",
+        parent=styles["Normal"],
+        textColor=gold_dark,
+        fontName=fonts["heading_bold"],
+        fontSize=8.2,
+        leading=10,
+        uppercase=True,
         spaceAfter=4,
     )
-    label_style = ParagraphStyle(
-        "Label",
-        parent=styles["Normal"],
-        textColor=navy,
-        fontName="Helvetica-Bold",
-        fontSize=8.8,
-        leading=11,
-        uppercase=True,
-    )
-    table_header_style = ParagraphStyle(
-        "InvoiceTableHeader",
-        parent=label_style,
-        textColor=colors.white,
-        fontSize=8.5,
-        leading=10,
-    )
     normal_style = ParagraphStyle(
-        "NormalSmall",
+        "RMXBody",
         parent=styles["Normal"],
         textColor=body,
-        fontName="Helvetica",
-        fontSize=9.6,
-        leading=13,
+        fontName=fonts["body"],
+        fontSize=9.3,
+        leading=12.6,
+    )
+    strong_style = ParagraphStyle(
+        "RMXStrong",
+        parent=normal_style,
+        textColor=navy,
+        fontName=fonts["body_bold"],
+    )
+    mono_style = ParagraphStyle(
+        "RMXMono",
+        parent=normal_style,
+        textColor=navy,
+        fontName="Courier-Bold",
+        fontSize=8.8,
+        leading=11.5,
+    )
+    header_style = ParagraphStyle(
+        "RMXTableHeader",
+        parent=normal_style,
+        textColor=colors.white,
+        fontName=fonts["heading_bold"],
+        fontSize=8,
+        leading=10,
     )
     total_style = ParagraphStyle(
-        "Total",
-        parent=styles["Normal"],
+        "RMXTotal",
+        parent=normal_style,
         textColor=navy,
-        fontName="Helvetica-Bold",
-        fontSize=11.5,
-        leading=14.5,
+        fontName=fonts["heading_bold"],
+        fontSize=12,
+        leading=14,
+        alignment=TA_RIGHT,
+    )
+    amount_style = ParagraphStyle(
+        "RMXAmount",
+        parent=normal_style,
+        textColor=navy,
+        fontName=fonts["body_bold"],
         alignment=TA_RIGHT,
     )
     verify_style = ParagraphStyle(
-        "InvoiceVerify",
+        "RMXVerify",
         parent=normal_style,
-        textColor=body,
-        fontSize=9.2,
-        leading=13,
+        fontSize=8.5,
+        leading=11.4,
         splitLongWords=True,
     )
 
     logo = _logo_path()
-    logo_cell = Paragraph("<b>RealMindX Bookshop</b>", normal_style)
+    logo_cell = Paragraph("<b>RealMindX Bookshop</b>", strong_style)
     if logo:
-        logo_cell = Image(str(logo), width=68 * mm, height=25 * mm, kind="proportional")
+        logo_cell = Image(str(logo), width=70 * mm, height=25 * mm, kind="proportional")
 
-    header = Table(
-        [
-            [
-                logo_cell,
-                [
-                    Paragraph("INVOICE", title_style),
-                    Paragraph(f"<b>{order.invoice_id}</b>", normal_style),
-                    Paragraph(f"Order: {order.order_reference}", normal_style),
-                    Paragraph(f"Date: {_order_date(order)}", normal_style),
-                ],
-            ]
-        ],
-        colWidths=[92 * mm, 67 * mm],
-    )
+    header_meta = [
+        Paragraph(_safe_text(payload["title"].upper()), title_style),
+        Paragraph(_safe_text(payload["document_id"]), mono_style),
+    ]
+    if payload.get("order_reference") and payload.get("order_reference") != payload.get("document_id"):
+        header_meta.append(Paragraph(f"Order: {_safe_text(payload['order_reference'])}", normal_style))
+    header_meta.append(Paragraph(f"{_safe_text(payload['issued_label'])}: {_safe_text(payload['issued_at'])}", normal_style))
+
+    header = Table([[logo_cell, header_meta]], colWidths=[82 * mm, 77 * mm])
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 11),
     ]))
 
-    billing = Table(
-        [
-            [
-                [
-                    Paragraph("Billed To", label_style),
-                    Paragraph(order.customer_name or "", normal_style),
-                    Paragraph(order.email or "", normal_style),
-                    Paragraph(order.phone or "", normal_style),
-                ],
-                [
-                    Paragraph("Fulfilment", label_style),
-                    Paragraph("Pickup" if order.delivery_method == "pickup" else "Delivery", normal_style),
-                    Paragraph(order.location or order.delivery_zone_name or "Details on file", normal_style),
-                ],
-                [
-                    Paragraph("Payment", label_style),
-                    Paragraph((order.payment_status or "unpaid").title(), normal_style),
-                    Paragraph((order.payment_method or "online").replace("_", " ").title(), normal_style),
-                ],
-            ]
-        ],
-        colWidths=[62 * mm, 62 * mm, 35 * mm],
-    )
-    billing.setStyle(TableStyle([
+    card_cells = []
+    for card in payload["cards"]:
+        label, lines = card
+        card_cells.append([
+            Paragraph(_safe_text(label), eyebrow_style),
+            *[Paragraph(_safe_text(line), normal_style) for line in lines if line],
+        ])
+    card_table = Table([card_cells], colWidths=[53 * mm, 53 * mm, 53 * mm])
+    card_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), light),
         ("BOX", (0, 0), (-1, -1), 0.8, border),
         ("INNERGRID", (0, 0), (-1, -1), 0.4, border),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("PADDING", (0, 0), (-1, -1), 10),
+        ("PADDING", (0, 0), (-1, -1), 9),
     ]))
 
     rows = [[
-        Paragraph("Item", table_header_style),
-        Paragraph("Qty", table_header_style),
-        Paragraph("Unit", table_header_style),
-        Paragraph("Line Total", table_header_style),
+        Paragraph("Item", header_style),
+        Paragraph("Qty", header_style),
+        Paragraph("Unit", header_style),
+        Paragraph("Line Total", header_style),
     ]]
-    for item in order.items:
-        line_total = money(item.unit_price) * int(item.quantity or 1)
+    for item in payload["items"]:
         rows.append([
-            Paragraph(item.product_name or "Bookshop item", normal_style),
-            Paragraph(str(item.quantity or 1), normal_style),
-            Paragraph(money_label(item.unit_price), normal_style),
-            Paragraph(money_label(line_total), normal_style),
+            Paragraph(_safe_text(item["name"]), normal_style),
+            Paragraph(str(item["quantity"]), normal_style),
+            Paragraph(money_label(item["unit_price"]), amount_style),
+            Paragraph(money_label(money(item["unit_price"]) * int(item["quantity"] or 1)), amount_style),
         ])
-    items_table = Table(rows, colWidths=[82 * mm, 18 * mm, 29 * mm, 30 * mm], repeatRows=1)
+
+    items_table = Table(rows, colWidths=[82 * mm, 17 * mm, 29 * mm, 31 * mm], repeatRows=1)
     items_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), navy),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("BOX", (0, 0), (-1, -1), 0.7, border),
         ("INNERGRID", (0, 0), (-1, -1), 0.35, border),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 8),
-    ]))
-
-    summary_rows = [
-        ["Subtotal", money_label(order.subtotal_amount)],
-    ]
-    if money(order.bulk_discount_amount) > 0:
-        summary_rows.append(["Bulk purchase discount", f"-{money_label(order.bulk_discount_amount)}"])
-    if money(order.promo_discount_amount) > 0:
-        promo_label = f"Promo discount ({order.promo_code})" if order.promo_code else "Promo discount"
-        summary_rows.append([promo_label, f"-{money_label(order.promo_discount_amount)}"])
-    summary_rows.append(["Delivery fee", money_label(order.delivery_fee)])
-    summary_rows.append(["Total", money_label(order.total_amount)])
-
-    summary = Table(summary_rows, colWidths=[64 * mm, 34 * mm], hAlign="RIGHT")
-    summary.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("TEXTCOLOR", (0, 0), (-1, -2), muted),
-        ("TEXTCOLOR", (0, -1), (-1, -1), navy),
-        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, -1), (-1, -1), 12),
-        ("LINEABOVE", (0, -1), (-1, -1), 1.2, gold),
         ("PADDING", (0, 0), (-1, -1), 7),
     ]))
 
-    verify_url = _invoice_verify_url(order.invoice_id)
+    summary_rows = []
+    for index, row in enumerate(payload["totals"]):
+        label, value, is_total = row
+        value_style = total_style if is_total else amount_style
+        summary_rows.append([
+            Paragraph(_safe_text(label), strong_style if is_total else normal_style),
+            Paragraph(_safe_text(value), value_style),
+        ])
+    summary = Table(summary_rows, colWidths=[68 * mm, 41 * mm], hAlign="RIGHT")
+    summary_styles = [
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("PADDING", (0, 0), (-1, -1), 6),
+    ]
+    total_index = len(summary_rows) - 1
+    if total_index >= 0:
+        summary_styles.append(("LINEABOVE", (0, total_index), (-1, total_index), 1.2, gold))
+    summary.setStyle(TableStyle(summary_styles))
+
+    verify_url = _invoice_verify_url(payload["verify_lookup_id"])
     verify_box = Table(
         [[Paragraph(
-            f'<b>Verify this invoice:</b> <link href="{_safe_link(verify_url)}"><font color="#143670">{_safe_link(verify_url)}</font></link>',
+            f'<b>{_safe_text(payload["verify_label"])}:</b> '
+            f'<link href="{_safe_link(verify_url)}"><font color="#143670">{_safe_link(verify_url)}</font></link>',
             verify_style,
         )]],
         colWidths=[159 * mm],
@@ -359,25 +457,25 @@ def build_invoice_pdf(order):
     verify_box.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), verify_bg),
         ("BOX", (0, 0), (-1, -1), 0.8, gold),
-        ("PADDING", (0, 0), (-1, -1), 9),
+        ("PADDING", (0, 0), (-1, -1), 8),
     ]))
 
     footer = Paragraph(
-        "Thank you for shopping with RealMindX Bookshop. Use the verification link above or search the invoice ID on the public invoice lookup page.",
-        ParagraphStyle("Footer", parent=normal_style, textColor=muted, fontSize=8.8, leading=12),
+        _safe_text(payload["footer"]),
+        ParagraphStyle("RMXFooter", parent=normal_style, textColor=muted, fontSize=8.1, leading=11),
     )
 
     story = [
         header,
-        Spacer(1, 8),
-        billing,
-        Spacer(1, 18),
+        Spacer(1, 7 * mm),
+        card_table,
+        Spacer(1, 9 * mm),
         items_table,
-        Spacer(1, 14),
+        Spacer(1, 7 * mm),
         summary,
-        Spacer(1, 18),
+        Spacer(1, 7 * mm),
         verify_box,
-        Spacer(1, 18),
+        Spacer(1, 6 * mm),
         footer,
     ]
     doc.build(story)
@@ -385,221 +483,91 @@ def build_invoice_pdf(order):
     return stream
 
 
+def _order_items(order):
+    return [
+        {
+            "name": item.product_name or "Bookshop item",
+            "quantity": int(item.quantity or 1),
+            "unit_price": money(item.unit_price),
+        }
+        for item in order.items
+    ]
+
+
+def _order_totals(order, include_delivery=True, cart_invoice=False):
+    rows = [["Subtotal", money_label(order.subtotal_amount), False]]
+    if money(getattr(order, "bulk_discount_amount", 0)) > 0:
+        rows.append(["Bulk purchase discount", f"-{money_label(order.bulk_discount_amount)}", False])
+    if money(getattr(order, "promo_discount_amount", 0)) > 0:
+        label = f"Promo discount ({order.promo_code})" if getattr(order, "promo_code", None) else "Promo discount"
+        rows.append([label, f"-{money_label(order.promo_discount_amount)}", False])
+    if cart_invoice:
+        rows.append(["Delivery", "Calculated at checkout", False])
+        rows.append(["Total before delivery", money_label(order.total_amount), True])
+        return rows
+    if include_delivery:
+        rows.append(["Delivery", money_label(order.delivery_fee), False])
+    rows.append(["Total", money_label(order.total_amount), True])
+    return rows
+
+
+def build_invoice_pdf(order):
+    assign_invoice_id(order)
+    return _build_bookshop_pdf({
+        "title": "Invoice",
+        "document_id": order.invoice_id,
+        "order_reference": order.order_reference,
+        "issued_label": "Generated",
+        "issued_at": _date_time_label(order.created_at),
+        "verify_label": "Verify this invoice",
+        "verify_lookup_id": order.invoice_id,
+        "cards": [
+            ("Billed To", [order.customer_name or "Customer", order.email or "", order.phone or ""]),
+            ("Fulfilment", ["Pickup" if order.delivery_method == "pickup" else "Delivery", _delivery_label(order)]),
+            ("Payment", [_payment_label(order.payment_status), _payment_label(order.payment_method)]),
+        ],
+        "items": _order_items(order),
+        "totals": _order_totals(order),
+        "footer": "Thank you for shopping with RealMindX Bookshop. Search the invoice ID on the public receipt/invoice lookup page to verify this document.",
+    })
+
+
+def build_receipt_pdf(order):
+    return _build_bookshop_pdf({
+        "title": "Order Receipt",
+        "document_id": order.order_reference,
+        "order_reference": order.order_reference,
+        "issued_label": "Issued",
+        "issued_at": _date_time_label(order.updated_at or order.created_at),
+        "verify_label": "Verify this receipt",
+        "verify_lookup_id": order.order_reference,
+        "cards": [
+            ("Customer", [order.customer_name or "Customer", order.email or "", order.phone or ""]),
+            ("Order", [_status_label(order.status), f"Placed: {_date_time_label(order.created_at)}"]),
+            ("Payment", [_payment_label(order.payment_status), _payment_label(order.payment_method)]),
+        ],
+        "items": _order_items(order),
+        "totals": _order_totals(order),
+        "footer": "This receipt confirms the order record shown above. Search the receipt/order reference on the public receipt/invoice lookup page to verify it.",
+    })
+
+
 def build_cart_invoice_pdf(cart_invoice):
-    from reportlab.lib import colors
-    from reportlab.lib.enums import TA_RIGHT
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import mm
-    from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-
     assign_cart_invoice_id(cart_invoice)
-    stream = BytesIO()
-    doc = SimpleDocTemplate(
-        stream,
-        pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=16 * mm,
-        bottomMargin=18 * mm,
-        title=f"Invoice {cart_invoice.invoice_id}",
-        author="RealMindX Bookshop",
-    )
-
-    styles = getSampleStyleSheet()
-    navy = colors.HexColor("#143670")
-    gold = colors.HexColor("#ffcc01")
-    muted = colors.HexColor("#334155")
-    body = colors.HexColor("#071a33")
-    border = colors.HexColor("#c9d6e8")
-    light = colors.HexColor("#f7faff")
-    verify_bg = colors.HexColor("#fff8d4")
-
-    title_style = ParagraphStyle(
-        "CartInvoiceTitle",
-        parent=styles["Title"],
-        textColor=navy,
-        fontName="Helvetica-Bold",
-        fontSize=22,
-        leading=27,
-        alignment=TA_RIGHT,
-        spaceAfter=4,
-    )
-    label_style = ParagraphStyle(
-        "CartInvoiceLabel",
-        parent=styles["Normal"],
-        textColor=navy,
-        fontName="Helvetica-Bold",
-        fontSize=8.8,
-        leading=11,
-    )
-    table_header_style = ParagraphStyle(
-        "CartInvoiceTableHeader",
-        parent=label_style,
-        textColor=colors.white,
-        fontSize=8.5,
-        leading=10,
-    )
-    normal_style = ParagraphStyle(
-        "CartInvoiceNormalSmall",
-        parent=styles["Normal"],
-        textColor=body,
-        fontName="Helvetica",
-        fontSize=9.6,
-        leading=13,
-    )
-    total_style = ParagraphStyle(
-        "CartInvoiceTotal",
-        parent=styles["Normal"],
-        textColor=navy,
-        fontName="Helvetica-Bold",
-        fontSize=11.5,
-        leading=14.5,
-        alignment=TA_RIGHT,
-    )
-    verify_style = ParagraphStyle(
-        "CartInvoiceVerify",
-        parent=normal_style,
-        textColor=body,
-        fontSize=9.2,
-        leading=13,
-        splitLongWords=True,
-    )
-
-    logo = _logo_path()
-    logo_cell = Paragraph("<b>RealMindX Bookshop</b>", normal_style)
-    if logo:
-        logo_cell = Image(str(logo), width=68 * mm, height=25 * mm, kind="proportional")
-
-    created_date = cart_invoice.created_at.strftime("%d %b %Y") if cart_invoice.created_at else ""
-    header = Table(
-        [
-            [
-                logo_cell,
-                [
-                    Paragraph("CART INVOICE", title_style),
-                    Paragraph(f"<b>{cart_invoice.invoice_id}</b>", normal_style),
-                    Paragraph(f"Date: {created_date}", normal_style),
-                ],
-            ]
+    return _build_bookshop_pdf({
+        "title": "Cart Invoice",
+        "document_id": cart_invoice.invoice_id,
+        "order_reference": None,
+        "issued_label": "Generated",
+        "issued_at": _date_time_label(cart_invoice.created_at),
+        "verify_label": "Verify this invoice",
+        "verify_lookup_id": cart_invoice.invoice_id,
+        "cards": [
+            ("Generated From Cart", ["Selected RealMindX Bookshop cart items"]),
+            ("Delivery", ["Calculated at checkout"]),
+            ("Payment", ["Not paid yet"]),
         ],
-        colWidths=[92 * mm, 67 * mm],
-    )
-    header.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-    ]))
-
-    summary = Table(
-        [
-            [
-                [
-                    Paragraph("Generated From Cart", label_style),
-                    Paragraph("Selected RealMindX Bookshop cart items", normal_style),
-                ],
-                [
-                    Paragraph("Delivery", label_style),
-                    Paragraph("Calculated at checkout", normal_style),
-                ],
-                [
-                    Paragraph("Payment", label_style),
-                    Paragraph("Not paid yet", normal_style),
-                ],
-            ]
-        ],
-        colWidths=[62 * mm, 62 * mm, 35 * mm],
-    )
-    summary.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), light),
-        ("BOX", (0, 0), (-1, -1), 0.8, border),
-        ("INNERGRID", (0, 0), (-1, -1), 0.4, border),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("PADDING", (0, 0), (-1, -1), 10),
-    ]))
-
-    rows = [[
-        Paragraph("Item", table_header_style),
-        Paragraph("Qty", table_header_style),
-        Paragraph("Unit", table_header_style),
-        Paragraph("Line Total", table_header_style),
-    ]]
-    for item in cart_invoice.items:
-        rows.append([
-            Paragraph(item.product_name, normal_style),
-            Paragraph(str(item.quantity), normal_style),
-            Paragraph(money_label(item.unit_price), normal_style),
-            Paragraph(money_label(money(item.unit_price) * int(item.quantity or 1)), normal_style),
-        ])
-
-    items_table = Table(rows, colWidths=[82 * mm, 18 * mm, 28 * mm, 31 * mm], repeatRows=1)
-    items_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), navy),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("GRID", (0, 0), (-1, -1), 0.4, border),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 8),
-    ]))
-
-    totals = [
-        ["Subtotal", money_label(cart_invoice.subtotal_amount)],
-    ]
-    if money(cart_invoice.bulk_discount_amount) > 0:
-        totals.append(["Bulk Purchase Discount", f"-{money_label(cart_invoice.bulk_discount_amount)}"])
-    if money(cart_invoice.promo_discount_amount) > 0:
-        totals.append(["Promo Discount", f"-{money_label(cart_invoice.promo_discount_amount)}"])
-    totals.extend([
-        ["Delivery", "Calculated at checkout"],
-        ["Total Before Delivery", money_label(cart_invoice.total_amount)],
-    ])
-    totals_table = Table(
-        [[Paragraph(label, normal_style), Paragraph(value, total_style)] for label, value in totals],
-        colWidths=[92 * mm, 67 * mm],
-        hAlign="RIGHT",
-    )
-    totals_table.setStyle(TableStyle([
-        ("LINEABOVE", (0, -1), (-1, -1), 1.2, gold),
-        ("PADDING", (0, 0), (-1, -1), 7),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-    ]))
-
-    verify_url = _invoice_verify_url(cart_invoice.invoice_id)
-    verify_box = Table(
-        [[Paragraph(
-            f'<b>Verify this invoice:</b> <link href="{_safe_link(verify_url)}"><font color="#143670">{_safe_link(verify_url)}</font></link>',
-            verify_style,
-        )]],
-        colWidths=[159 * mm],
-    )
-    verify_box.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), verify_bg),
-        ("BOX", (0, 0), (-1, -1), 0.8, gold),
-        ("PADDING", (0, 0), (-1, -1), 9),
-    ]))
-
-    note_style = ParagraphStyle(
-        "CartInvoiceNote",
-        parent=normal_style,
-        textColor=muted,
-        fontSize=8.8,
-        leading=12,
-    )
-
-    story = [
-        header,
-        Spacer(1, 8 * mm),
-        summary,
-        Spacer(1, 9 * mm),
-        items_table,
-        Spacer(1, 7 * mm),
-        totals_table,
-        Spacer(1, 7 * mm),
-        verify_box,
-        Spacer(1, 7 * mm),
-        Paragraph("This cart invoice reflects selected cart items only. Delivery, payment, and stock are confirmed at checkout.", note_style),
-    ]
-
-    doc.build(story)
-    stream.seek(0)
-    return stream
+        "items": _order_items(cart_invoice),
+        "totals": _order_totals(cart_invoice, cart_invoice=True),
+        "footer": "This cart invoice reflects selected cart items only. Delivery, payment, and stock are confirmed at checkout.",
+    })

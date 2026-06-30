@@ -89,9 +89,13 @@ export const api = {
   trackOrders: (query) => apiFetch(`/orders/track?q=${encodeURIComponent(query)}`),
   lookupInvoice: (invoiceId) => apiFetch(`/invoices/${encodeURIComponent(invoiceId)}`),
   createCartInvoice: (payload) => apiFetch('/cart-invoices', { method: 'POST', body: payload }),
-  invoicePdfUrl: (invoiceId, { download = false } = {}) => (
-    url(`/invoices/${encodeURIComponent(invoiceId)}/pdf${download ? '?download=1' : ''}`)
-  ),
+  invoicePdfUrl: (invoiceId, { download = false, document = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (download) params.set('download', '1');
+    if (document) params.set('document', document);
+    const qs = params.toString();
+    return url(`/invoices/${encodeURIComponent(invoiceId)}/pdf${qs ? `?${qs}` : ''}`);
+  },
   fetchMyOrders: (qs = '') => apiFetch(`/orders/mine${qs ? '?' + qs : ''}`),
   sendContact: (payload) => apiFetch('/contact', { method: 'POST', body: payload }),
   subscribeNewsletter: (payload) => apiFetch('/newsletter', { method: 'POST', body: payload }),

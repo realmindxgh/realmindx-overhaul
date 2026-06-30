@@ -1088,7 +1088,7 @@ const InvoicePage = ({ navigate }) => {
     setSearched(false);
     setInvoice(null);
     if (!invoiceId) {
-      setError('Enter your invoice ID.');
+      setError('Enter your receipt or invoice ID.');
       if (focusOnError) inputRef.current?.focus();
       return;
     }
@@ -1102,7 +1102,7 @@ const InvoicePage = ({ navigate }) => {
       setInvoice(data.invoice || null);
       setSearched(true);
     } catch (err) {
-      setError(err?.message || 'No matching invoice was found.');
+      setError(err?.message || 'No matching receipt or invoice was found.');
       if (focusOnError) inputRef.current?.focus();
     } finally {
       setLoading(false);
@@ -1120,19 +1120,24 @@ const InvoicePage = ({ navigate }) => {
     await lookupInvoice(query);
   };
 
-  const pdfUrl = invoice?.invoice_id ? api.invoicePdfUrl(invoice.invoice_id) : '';
-  const downloadUrl = invoice?.invoice_id ? api.invoicePdfUrl(invoice.invoice_id, { download: true }) : '';
+  const isReceipt = invoice?.document_type === 'receipt';
+  const documentId = invoice?.document_id || invoice?.invoice_id || invoice?.order_reference || '';
+  const pdfLookupId = isReceipt ? (invoice?.order_reference || documentId) : documentId;
+  const pdfOptions = isReceipt ? { document: 'receipt' } : {};
+  const pdfUrl = pdfLookupId ? api.invoicePdfUrl(pdfLookupId, pdfOptions) : '';
+  const downloadUrl = pdfLookupId ? api.invoicePdfUrl(pdfLookupId, { ...pdfOptions, download: true }) : '';
+  const documentLabel = isReceipt ? 'Receipt' : 'Invoice';
 
   return (
     <div className="bs-container bs-fade-page">
       <div className="bs-track-search bs-invoice-search">
         <div className="bs-text-center">
-          <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Invoice Lookup</span>
-          <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Find an invoice</h1>
-          <p className="bs-muted" style={{ marginTop:10 }}>Enter the exact invoice ID from your RealMindX Bookshop receipt.</p>
+          <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Receipt/Invoice Lookup</span>
+          <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Find a receipt or invoice</h1>
+          <p className="bs-muted" style={{ marginTop:10 }}>Enter the exact receipt/order reference or invoice ID from your RealMindX Bookshop document.</p>
         </div>
         <form className="bs-track-input-row" onSubmit={submit}>
-          <input ref={inputRef} placeholder="e.g. RMX-INV-9F2A7C4B11" value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
+          <input ref={inputRef} placeholder="e.g. RMX-INV-9F2A7C4B11 or RMX-ORDER-..." value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
           <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading}>
             {loading ? 'Searching...' : 'Search'}
           </button>
@@ -1142,8 +1147,8 @@ const InvoicePage = ({ navigate }) => {
         {searched && !invoice && !error && (
           <div className="bs-empty-state" style={{ marginTop:28, padding:'34px 22px' }}>
             <div className="bs-empty-icon"><Icon name="search" size={30} /></div>
-            <h2 className="bs-h3">No matching invoice found.</h2>
-            <p>Check the invoice ID and try again.</p>
+            <h2 className="bs-h3">No matching receipt or invoice found.</h2>
+            <p>Check the ID and try again.</p>
           </div>
         )}
 
@@ -1152,18 +1157,19 @@ const InvoicePage = ({ navigate }) => {
             <div className="bs-summary-card bs-track-card" style={{ position:'static' }}>
               <div style={{ display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:10, marginBottom:8 }}>
                 <div>
-                  <div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Invoice</div>
-                  <div style={{ fontFamily:'JetBrains Mono', fontSize:16, color:'var(--bs-navy)', marginTop:4 }}>{invoice.invoice_id}</div>
+                  <div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>{documentLabel}</div>
+                  <div style={{ fontFamily:'JetBrains Mono', fontSize:16, color:'var(--bs-navy)', marginTop:4 }}>{documentId}</div>
                 </div>
                 <div style={{ textAlign:'right' }}>
-                  <div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Order</div>
-                  <div style={{ marginTop:4, fontFamily:'JetBrains Mono', fontSize:14 }}>{invoice.order_reference}</div>
+                  <div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>{invoice.order_reference ? 'Order' : 'Source'}</div>
+                  <div style={{ marginTop:4, fontFamily:'JetBrains Mono', fontSize:14 }}>{invoice.order_reference || 'Cart invoice'}</div>
                 </div>
               </div>
               <div className="bs-divider" />
               <div className="bs-invoice-meta-grid">
                 <div><span>Customer</span><strong>{invoice.customer_name}</strong></div>
-                <div><span>Date</span><strong>{formatOrderDate(invoice.created_at)}</strong></div>
+                <div><span>{isReceipt ? 'Receipt issued' : 'Generated'}</span><strong>{formatOrderDate(invoice.issued_at || invoice.created_at)}</strong></div>
+                <div><span>{isReceipt ? 'Order placed' : 'Created'}</span><strong>{formatOrderDate(invoice.created_at)}</strong></div>
                 <div><span>Status</span><strong>{normalizeOrderStatus(invoice.status).replace('_', ' ')}</strong></div>
                 <div><span>Total</span><strong>{cedis(invoice.total_amount || 0)}</strong></div>
               </div>
@@ -1194,7 +1200,11 @@ const InvoicePage = ({ navigate }) => {
 
             {pdfUrl && (
               <div className="bs-invoice-viewer-wrap">
-                <iframe className="bs-invoice-viewer" src={pdfUrl} title={`Invoice ${invoice.invoice_id}`} />
+                <div className="bs-invoice-viewer-head">
+                  <span>{documentLabel} PDF Preview</span>
+                  <a href={downloadUrl}>Download</a>
+                </div>
+                <iframe className="bs-invoice-viewer" src={pdfUrl} title={`${documentLabel} ${documentId}`} />
               </div>
             )}
           </div>

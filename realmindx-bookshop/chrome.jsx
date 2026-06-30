@@ -482,6 +482,7 @@ const Navbar = ({ route, navigate }) => {
   const [openBrowseGroup, setOpenBrowseGroup] = React.useState('');
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [moreOpen, setMoreOpen] = React.useState(false);
+  const [moreMenuStyle, setMoreMenuStyle] = React.useState({});
   const [q, setQ] = React.useState('');
   const [searchSurface, setSearchSurface] = React.useState('');
   const catsRef = React.useRef(null);
@@ -491,6 +492,23 @@ const Navbar = ({ route, navigate }) => {
   // the same query text is submitted twice in a row (e.g. search "pencils",
   // clear it in-page, search "pencils" again — params.q alone wouldn't change).
   const searchSeq = React.useRef(0);
+
+  const positionMoreMenu = React.useCallback((button) => {
+    if (typeof window === 'undefined' || window.matchMedia('(max-width: 768px)').matches) {
+      setMoreMenuStyle({});
+      return;
+    }
+    const width = 340;
+    const margin = 12;
+    const rect = button.getBoundingClientRect();
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    const centeredLeft = rect.left + (rect.width / 2) - (width / 2);
+    const left = Math.min(Math.max(margin, centeredLeft), maxLeft);
+    setMoreMenuStyle({
+      left: `${Math.round(left)}px`,
+      top: `${Math.round(rect.bottom + 4)}px`,
+    });
+  }, []);
 
   React.useEffect(() => {
     const onDoc = (e) => {
@@ -517,6 +535,23 @@ const Navbar = ({ route, navigate }) => {
     const frame = window.requestAnimationFrame(() => catsSearchRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [catsOpen]);
+
+  React.useEffect(() => {
+    if (!moreOpen) {
+      setMoreMenuStyle({});
+      return undefined;
+    }
+    const button = moreRef.current?.querySelector('.bs-more-btn');
+    if (!button) return undefined;
+    positionMoreMenu(button);
+    const reposition = () => positionMoreMenu(button);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [moreOpen, positionMoreMenu]);
 
   const go = (r, e) => {
     if (e) e.preventDefault();
@@ -577,7 +612,7 @@ const Navbar = ({ route, navigate }) => {
     { title: 'Item Type', allLabel: 'Item Types', taxonomy: 'category', icon: 'box', items: taxonomies.categories || [] },
   ];
   const utilityLinks = [
-    { route: 'invoice', label: 'Invoice Lookup', icon: 'files', description: 'View and download PDF invoices' },
+    { route: 'invoice', label: 'Receipt/Invoice Lookup', icon: 'files', description: 'Find receipts and PDF invoices' },
     { route: 'documents', label: 'Education Documents', icon: 'book', description: 'Browse useful education files' },
   ];
 
@@ -726,17 +761,18 @@ const Navbar = ({ route, navigate }) => {
                 aria-haspopup="menu"
                 aria-expanded={moreOpen}
                 title="More"
-                onClick={() => {
+                onClick={(event) => {
                   setMenuOpen(false);
                   setCatsOpen(false);
                   setOpenBrowseGroup('');
                   setSearchSurface('');
+                  if (!moreOpen) positionMoreMenu(event.currentTarget);
                   setMoreOpen(open => !open);
                 }}
               >
                 <Icon name="plus" size={21} />
               </button>
-              <div className={`bs-more-menu${moreOpen ? ' open' : ''}`} role="menu">
+              <div className={`bs-more-menu${moreOpen ? ' open' : ''}`} role="menu" style={moreMenuStyle}>
                 {utilityLinks.map(link => (
                   <a
                     key={link.route}
@@ -776,7 +812,7 @@ const Navbar = ({ route, navigate }) => {
       {/* Note: no redundant close button here — the hamburger in the navbar already animates to X */}
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
         <nav className="bs-mm-links">
-          {[['home','Home'],['shop','Shop'],['track','Track Order'],['invoice','Invoice Lookup'],['documents','Education Documents'],['contact','Contact'],['about','About']].map(([r,l]) => (
+          {[['home','Home'],['shop','Shop'],['track','Track Order'],['invoice','Receipt/Invoice Lookup'],['documents','Education Documents'],['contact','Contact'],['about','About']].map(([r,l]) => (
             <a key={r} href={hrefForRoute(r)} className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
               {l}
             </a>
@@ -816,7 +852,7 @@ const Footer = ({ navigate }) => {
               <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
               <a href={hrefForBrowse('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { taxonomy: 'curriculum' });}}>All Curricula</a>
               <a href={hrefForRoute('track')} onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
-              <a href={hrefForRoute('invoice')} onClick={(e)=>{e.preventDefault();navigate('invoice');}}>Find an Invoice</a>
+              <a href={hrefForRoute('invoice')} onClick={(e)=>{e.preventDefault();navigate('invoice');}}>Receipt/Invoice Lookup</a>
               <a href={hrefForRoute('documents')} onClick={(e)=>{e.preventDefault();navigate('documents');}}>Education Documents</a>
               <a href={hrefForRoute('about')} onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
               <a href={hrefForRoute('contact')} onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>

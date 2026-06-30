@@ -1,3 +1,4 @@
+import base64
 import smtplib
 from dataclasses import dataclass
 from decimal import Decimal
@@ -10,6 +11,13 @@ from flask import current_app
 
 
 @dataclass
+class EmailAttachment:
+    filename: str
+    content: bytes
+    content_type: str = "application/octet-stream"
+
+
+@dataclass
 class OutboundEmail:
     to: str
     subject: str
@@ -17,6 +25,7 @@ class OutboundEmail:
     text: str = ""
     from_email: str | None = None
     reply_to: str | None = None
+    attachments: list[EmailAttachment] | None = None
 
 
 def absolute_app_url(path_or_url):
@@ -573,20 +582,30 @@ def send_email(message: OutboundEmail):
     from_email = message.from_email or current_app.config["DEFAULT_FROM_EMAIL"]
     reply_to = message.reply_to or current_app.config["DEFAULT_REPLY_TO_EMAIL"]
     resend_key = current_app.config.get("RESEND_API_KEY")
+    attachments = message.attachments or []
 
     if resend_key:
         try:
+            payload = {
+                "from": from_email,
+                "to": [message.to],
+                "subject": message.subject,
+                "html": message.html,
+                "text": message.text or message.subject,
+                "reply_to": reply_to,
+            }
+            if attachments:
+                payload["attachments"] = [
+                    {
+                        "filename": attachment.filename,
+                        "content": base64.b64encode(attachment.content).decode("ascii"),
+                    }
+                    for attachment in attachments
+                ]
             response = requests.post(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-                json={
-                    "from": from_email,
-                    "to": [message.to],
-                    "subject": message.subject,
-                    "html": message.html,
-                    "text": message.text or message.subject,
-                    "reply_to": reply_to,
-                },
+                json=payload,
                 timeout=15,
             )
             response.raise_for_status()
@@ -606,6 +625,14 @@ def send_email(message: OutboundEmail):
         smtp_message["Reply-To"] = reply_to
         smtp_message.set_content(message.text or message.subject)
         smtp_message.add_alternative(message.html, subtype="html")
+        for attachment in attachments:
+            maintype, _, subtype = (attachment.content_type or "application/octet-stream").partition("/")
+            smtp_message.add_attachment(
+                attachment.content,
+                maintype=maintype or "application",
+                subtype=subtype or "octet-stream",
+                filename=attachment.filename,
+            )
 
         with smtplib.SMTP(mail_server, current_app.config["MAIL_PORT"], timeout=15) as smtp:
             if current_app.config.get("MAIL_USE_TLS"):

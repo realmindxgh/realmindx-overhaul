@@ -33,6 +33,7 @@ from ..invoices import (
     assign_invoice_id,
     build_cart_invoice_pdf,
     build_invoice_pdf,
+    build_receipt_pdf,
     cart_invoice_json,
     invoice_json,
 )
@@ -665,23 +666,26 @@ def create_cart_invoice():
 @bookshop_bp.get("/invoices/<string:invoice_id>")
 @limiter.limit("20/minute")
 def lookup_invoice(invoice_id):
-    invoice_id = (invoice_id or "").strip().upper()
-    if not invoice_id:
-        response = jsonify(error="Enter a valid invoice ID.")
+    lookup_id = (invoice_id or "").strip().upper()
+    if not lookup_id:
+        response = jsonify(error="Enter a valid receipt or invoice ID.")
         response.status_code = 400
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
-    order = _placed_orders(Order.query).filter(Order.invoice_id == invoice_id).first()
+    order = _placed_orders(Order.query).filter(
+        or_(Order.invoice_id == lookup_id, Order.order_reference == lookup_id)
+    ).first()
     if order:
-        response = jsonify(invoice=invoice_json(order))
+        document_type = "receipt" if (order.order_reference or "").upper() == lookup_id else "invoice"
+        response = jsonify(invoice=invoice_json(order, document_type=document_type))
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
         response.headers["Cache-Control"] = "private, no-store"
         return response
 
-    cart_invoice = CartInvoice.query.filter_by(invoice_id=invoice_id).first()
+    cart_invoice = CartInvoice.query.filter_by(invoice_id=lookup_id).first()
     if not cart_invoice:
-        response = jsonify(error="No matching invoice was found.")
+        response = jsonify(error="No matching receipt or invoice was found.")
         response.status_code = 404
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
@@ -695,26 +699,38 @@ def lookup_invoice(invoice_id):
 @bookshop_bp.get("/invoices/<string:invoice_id>/pdf")
 @limiter.limit("30/minute")
 def invoice_pdf(invoice_id):
-    invoice_id = (invoice_id or "").strip().upper()
-    order = _placed_orders(Order.query).filter(Order.invoice_id == invoice_id).first()
+    lookup_id = (invoice_id or "").strip().upper()
+    order = _placed_orders(Order.query).filter(
+        or_(Order.invoice_id == lookup_id, Order.order_reference == lookup_id)
+    ).first()
     cart_invoice = None
     if not order:
-        cart_invoice = CartInvoice.query.filter_by(invoice_id=invoice_id).first()
+        cart_invoice = CartInvoice.query.filter_by(invoice_id=lookup_id).first()
     if not order and not cart_invoice:
-        response = jsonify(error="No matching invoice was found.")
+        response = jsonify(error="No matching receipt or invoice was found.")
         response.status_code = 404
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
-    stream = build_invoice_pdf(order) if order else build_cart_invoice_pdf(cart_invoice)
+    receipt_requested = request.args.get("document") == "receipt"
+    is_receipt = bool(order and (receipt_requested or (order.order_reference or "").upper() == lookup_id))
+    if order and is_receipt:
+        stream = build_receipt_pdf(order)
+    else:
+        stream = build_invoice_pdf(order) if order else build_cart_invoice_pdf(cart_invoice)
     if order and db.session.is_modified(order):
         db.session.commit()
     download = request.args.get("download") in {"1", "true", "yes"}
+    download_name = (
+        f"{order.order_reference}-receipt.pdf"
+        if is_receipt
+        else f"{(order.invoice_id if order else cart_invoice.invoice_id)}.pdf"
+    )
     response = send_file(
         stream,
         mimetype="application/pdf",
         as_attachment=download,
-        download_name=f"{(order.invoice_id if order else cart_invoice.invoice_id)}.pdf",
+        download_name=download_name,
     )
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
     response.headers["Cache-Control"] = "private, no-store"

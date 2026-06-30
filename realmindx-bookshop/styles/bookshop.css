@@ -194,10 +194,11 @@
 .bs-more-nav { position: relative; }
 .bs-more-btn.open { background: var(--bs-off-white); }
 .bs-more-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  width: 280px;
+  position: fixed;
+  top: calc(var(--bs-nav-h) + 4px);
+  left: calc(100vw - 352px);
+  right: auto;
+  width: 340px;
   padding: 8px;
   background: #fff;
   border: 1px solid var(--bs-border);
@@ -366,9 +367,12 @@
   .bs-more-menu {
     position: fixed;
     top: calc(var(--bs-nav-h) - 2px);
+    left: auto;
     right: 12px;
     width: min(300px, calc(100vw - 24px));
+    transform: translateY(-6px);
   }
+  .bs-more-menu.open { transform: translateY(0); }
   .bs-icon-btn,
   .bs-hamburger {
     width: 36px;
@@ -2026,11 +2030,21 @@
 @media (max-width: 768px) { .bs-track-pill { display: none; } }
 
 /* ============================================================ INVOICE LOOKUP ============================================================ */
+.bs-invoice-search {
+  max-width: min(1180px, 100%);
+}
+.bs-invoice-search > .bs-text-center,
+.bs-invoice-search > .bs-track-input-row,
+.bs-invoice-search > .bs-track-error {
+  max-width: 760px;
+  margin-left: auto;
+  margin-right: auto;
+}
 .bs-invoice-result {
   margin-top: 32px;
   display: grid;
-  grid-template-columns: minmax(280px, 430px) minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: minmax(390px, 470px) minmax(520px, 1fr);
+  gap: 26px;
   align-items: start;
 }
 .bs-invoice-meta-grid {
@@ -2054,23 +2068,48 @@
   text-transform: capitalize;
 }
 .bs-invoice-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 18px;
+}
+.bs-invoice-actions .bs-btn {
+  width: 100%;
+  justify-content: center;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 .bs-invoice-viewer-wrap {
   background: #fff;
   border: 1px solid var(--bs-border);
   border-radius: var(--bs-radius);
-  min-height: 720px;
+  min-height: 760px;
   overflow: hidden;
   box-shadow: var(--bs-shadow);
+}
+.bs-invoice-viewer-head {
+  height: 48px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--bs-border);
+  background: #f7f9fc;
+  color: var(--bs-navy);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+}
+.bs-invoice-viewer-head a {
+  color: var(--bs-gold-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .bs-invoice-viewer {
   width: 100%;
   height: min(78vh, 820px);
-  min-height: 720px;
+  min-height: 712px;
   border: 0;
   display: block;
   background: #f5f8fc;
@@ -2082,7 +2121,9 @@
 }
 @media (max-width: 620px) {
   .bs-invoice-meta-grid { grid-template-columns: 1fr; }
-  .bs-invoice-actions .bs-btn { width: 100%; justify-content: center; }
+  .bs-invoice-actions { grid-template-columns: 1fr; }
+  .bs-invoice-search > .bs-track-input-row { flex-direction: column; }
+  .bs-invoice-search > .bs-track-input-row .bs-btn { width: 100%; }
   .bs-invoice-viewer-wrap,
   .bs-invoice-viewer { min-height: 480px; }
 }
