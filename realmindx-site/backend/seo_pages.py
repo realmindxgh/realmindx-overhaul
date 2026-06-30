@@ -396,6 +396,21 @@ BOOKSHOP_LANDING_PROFILES = {
         "description": "Terms governing use of the RealMindX Bookshop and purchases made through the platform.",
         "intro": "Read the terms that apply when using the RealMindX Bookshop or placing an order.",
     },
+    "track": {
+        "title": "Track Your Order | RealMindX Bookshop",
+        "description": "Track a RealMindX Bookshop order by order reference or checkout email address.",
+        "intro": "Track the status of a RealMindX Bookshop order using the order reference or checkout email address.",
+    },
+    "invoice": {
+        "title": "Invoice Lookup | RealMindX Bookshop",
+        "description": "Look up a RealMindX Bookshop invoice by invoice ID and view the branded PDF invoice online.",
+        "intro": "Look up a RealMindX Bookshop invoice by exact invoice ID, view the PDF online, and download a copy.",
+    },
+    "documents": {
+        "title": "Education Documents | RealMindX Bookshop",
+        "description": "Browse useful education documents, guides, templates and learning resources from RealMindX Bookshop.",
+        "intro": "Browse practical education documents, school templates, teacher guides and learning resources from RealMindX Bookshop.",
+    },
 }
 
 
@@ -650,7 +665,7 @@ def bookshop_public_page(path=""):
         profile = BOOKSHOP_LANDING_PROFILES[route_key]
     elif clean_path == "products":
         profile = BOOKSHOP_LANDING_PROFILES["products"]
-    elif clean_path in {"about", "contact", "privacy", "terms"}:
+    elif clean_path in {"about", "contact", "privacy", "terms", "track", "invoice", "documents"}:
         profile = BOOKSHOP_LANDING_PROFILES[clean_path]
     elif clean_path.startswith("products/"):
         slug = clean_path.split("/", 1)[1]

@@ -6,7 +6,7 @@ import re
 from uuid import uuid4
 
 from email_validator import EmailNotValidError, validate_email
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
 from markupsafe import escape
 import requests
@@ -28,8 +28,18 @@ from ..order_pricing import calculate_order_pricing, validate_promo_code_record
 from ..order_status import ORDER_STATUS_ALIASES, normalize_order_status
 from ..sms_service import send_sms
 from ..extensions import csrf, db, limiter
+from ..invoices import (
+    assign_cart_invoice_id,
+    assign_invoice_id,
+    build_cart_invoice_pdf,
+    build_invoice_pdf,
+    cart_invoice_json,
+    invoice_json,
+)
 from ..models import (
     BookshopPaymentIntent,
+    CartInvoice,
+    CartInvoiceItem,
     DeliveryZone,
     Order,
     OrderItem,
@@ -37,6 +47,7 @@ from ..models import (
     Product,
     ProductCategory,
     ProductReview,
+    PromoCode,
 )
 from ..security import require_turnstile
 from ..serializers import category_json, delivery_zone_json, order_json, order_review_json, product_json, product_review_json
@@ -220,6 +231,7 @@ def _checkout_snapshot(checkout):
                 **item,
                 "unit_price": str(item["unit_price"]),
                 "bulk_discount_percent": str(item["bulk_discount_percent"]),
+                "bulk_min_qty": int(item.get("bulk_min_qty") or 10),
             }
             for item in checkout["order_items"]
         ],
@@ -292,6 +304,7 @@ def _create_order_from_checkout(
         analytics_session_key=checkout.get("analytics_session_key"),
         analytics_visitor_key=checkout.get("analytics_visitor_key"),
     )
+    assign_invoice_id(order)
     db.session.add(order)
     db.session.flush()
     for item in checkout["order_items"]:
@@ -302,6 +315,10 @@ def _create_order_from_checkout(
             unit_price=item["unit_price"],
             quantity=item["quantity"],
         ))
+    if order.promo_code:
+        promo = PromoCode.query.filter_by(code=order.promo_code).first()
+        if promo:
+            promo.uses_count = int(promo.uses_count or 0) + 1
     if checkout.get("user_id") and checkout["delivery_method"] == "delivery":
         upsert_checkout_detail(checkout["user_id"], {
             "customer_name": order.customer_name,
@@ -575,6 +592,135 @@ def track_orders():
     return jsonify(items=[order_tracking_json(order) for order in orders])
 
 
+def _prepare_cart_invoice_items(payload_items):
+    if not payload_items:
+        raise CheckoutValidationError("Select at least one cart item to generate an invoice.")
+
+    prepared = []
+    for raw in payload_items:
+        try:
+            product_id = int(raw.get("product_id") or raw.get("id"))
+            quantity = max(int(raw.get("quantity") or raw.get("qty") or 1), 1)
+        except (TypeError, ValueError) as exc:
+            raise CheckoutValidationError("Every invoice item must include a valid product and quantity.") from exc
+
+        product = db.session.get(Product, product_id)
+        if not product or not product.is_active:
+            raise CheckoutValidationError("One of the selected products is no longer available.", 409)
+        if product.stock_status == "out_of_stock":
+            raise CheckoutValidationError(f"{product.name} is out of stock and cannot be added to an invoice.", 409)
+
+        category = product.category
+        prepared.append({
+            "product_id": product.id,
+            "name": product.name,
+            "unit_price": Decimal(str(product.price or 0)),
+            "quantity": quantity,
+            "bulk_discount_percent": Decimal(str(getattr(category, "bulk_discount_percent", 0) or 0)),
+            "bulk_min_qty": int(getattr(category, "bulk_min_qty", 10) or 10),
+        })
+    return prepared
+
+
+@bookshop_bp.post("/cart-invoices")
+@limiter.limit("20/hour")
+def create_cart_invoice():
+    payload = request.get_json(silent=True) or {}
+    try:
+        items = _prepare_cart_invoice_items(payload.get("items") or [])
+    except CheckoutValidationError as exc:
+        return jsonify(error=str(exc)), exc.status
+
+    pricing = calculate_order_pricing(items, delivery_fee=0, promo=None)
+    invoice = CartInvoice(
+        subtotal_amount=pricing["subtotal_amount"],
+        bulk_discount_amount=pricing["bulk_discount_amount"],
+        promo_code=pricing.get("promo_code"),
+        promo_applies_to=pricing.get("promo_applies_to"),
+        promo_discount_amount=pricing["promo_discount_amount"],
+        delivery_fee=Decimal("0.00"),
+        total_amount=pricing["total_amount"],
+        status="generated",
+    )
+    assign_cart_invoice_id(invoice)
+    db.session.add(invoice)
+    db.session.flush()
+
+    for item in items:
+        db.session.add(CartInvoiceItem(
+            cart_invoice_id=invoice.id,
+            product_id=item["product_id"],
+            product_name=item["name"],
+            unit_price=item["unit_price"],
+            quantity=item["quantity"],
+        ))
+
+    db.session.commit()
+    response = jsonify(invoice=cart_invoice_json(invoice))
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    response.headers["Cache-Control"] = "private, no-store"
+    return response, 201
+
+
+@bookshop_bp.get("/invoices/<string:invoice_id>")
+@limiter.limit("20/minute")
+def lookup_invoice(invoice_id):
+    invoice_id = (invoice_id or "").strip().upper()
+    if not invoice_id:
+        response = jsonify(error="Enter a valid invoice ID.")
+        response.status_code = 400
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
+
+    order = _placed_orders(Order.query).filter(Order.invoice_id == invoice_id).first()
+    if order:
+        response = jsonify(invoice=invoice_json(order))
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+
+    cart_invoice = CartInvoice.query.filter_by(invoice_id=invoice_id).first()
+    if not cart_invoice:
+        response = jsonify(error="No matching invoice was found.")
+        response.status_code = 404
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
+
+    response = jsonify(invoice=cart_invoice_json(cart_invoice))
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@bookshop_bp.get("/invoices/<string:invoice_id>/pdf")
+@limiter.limit("30/minute")
+def invoice_pdf(invoice_id):
+    invoice_id = (invoice_id or "").strip().upper()
+    order = _placed_orders(Order.query).filter(Order.invoice_id == invoice_id).first()
+    cart_invoice = None
+    if not order:
+        cart_invoice = CartInvoice.query.filter_by(invoice_id=invoice_id).first()
+    if not order and not cart_invoice:
+        response = jsonify(error="No matching invoice was found.")
+        response.status_code = 404
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
+
+    stream = build_invoice_pdf(order) if order else build_cart_invoice_pdf(cart_invoice)
+    if order and db.session.is_modified(order):
+        db.session.commit()
+    download = request.args.get("download") in {"1", "true", "yes"}
+    response = send_file(
+        stream,
+        mimetype="application/pdf",
+        as_attachment=download,
+        download_name=f"{(order.invoice_id if order else cart_invoice.invoice_id)}.pdf",
+    )
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @bookshop_bp.get("/orders/mine")
 @login_required
 @limiter.limit("60/minute")
@@ -665,6 +811,7 @@ def _send_order_placed_notifications(order):
     customer_order_meta_html = f"""
     <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
       <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
+      <p style="margin:0 0 6px;"><strong>Invoice ID:</strong> {escape(order.invoice_id or "")}</p>
       <p style="margin:0 0 6px;"><strong>Fulfilment:</strong> {escape(delivery_info)}</p>
       <p style="margin:0 0 6px;"><strong>Payment:</strong> {escape(payment_info)}</p>
       <p style="margin:0;"><strong>Contact number:</strong> {escape(order.phone or "not provided")}</p>
@@ -673,6 +820,7 @@ def _send_order_placed_notifications(order):
     staff_order_meta_html = f"""
     <div style="background:#f5f8fc;border:1px solid #dce5f0;border-radius:12px;padding:16px 20px;margin:18px 0;">
       <p style="margin:0 0 6px;"><strong>Reference:</strong> {escape(order.order_reference)}</p>
+      <p style="margin:0 0 6px;"><strong>Invoice ID:</strong> {escape(order.invoice_id or "")}</p>
       <p style="margin:0 0 6px;"><strong>Customer:</strong> {escape(order.customer_name)}</p>
       <p style="margin:0 0 6px;"><strong>Email:</strong>
         <a href="mailto:{escape(order.email)}" style="color:#143670;text-decoration:none;">{escape(order.email)}</a>

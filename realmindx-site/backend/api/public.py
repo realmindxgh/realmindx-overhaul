@@ -258,6 +258,9 @@ def build_bookshop_sitemap_xml():
         sitemap_row(f"{base_url}/levels", changefreq="weekly", priority=0.7),
         sitemap_row(f"{base_url}/curriculum", changefreq="weekly", priority=0.7),
         sitemap_row(f"{base_url}/publishers", changefreq="weekly", priority=0.6),
+        sitemap_row(f"{base_url}/track", changefreq="monthly", priority=0.5),
+        sitemap_row(f"{base_url}/invoice", changefreq="monthly", priority=0.5),
+        sitemap_row(f"{base_url}/documents", changefreq="weekly", priority=0.6),
         sitemap_row(f"{base_url}/about", changefreq="monthly", priority=0.6),
         sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.6),
         sitemap_row(f"{base_url}/privacy", changefreq="yearly", priority=0.3),
@@ -348,9 +351,6 @@ def host_robots_response(host=None):
             "Disallow: /cart",
             "Disallow: /checkout",
             "Disallow: /wishlist",
-            "Disallow: /track",
-            "Disallow: /track-order",
-            "Disallow: /track-your-order",
             "Disallow: /login",
             "Disallow: /signup",
             "Disallow: /account",
@@ -775,7 +775,18 @@ def gallery():
 @public_bp.get("/resources")
 def resources():
     rows = Resource.query.filter_by(is_published=True).order_by(Resource.created_at.desc()).limit(40).all()
-    return jsonify(items=[{"id": row.id, "title": row.title, "description": row.description, "external_url": row.external_url} for row in rows])
+    items = []
+    for row in rows:
+        file_url = upload_public_url(row.resource_file) if row.resource_file and row.resource_file.visibility == "public" else None
+        items.append({
+            "id": row.id,
+            "title": row.title,
+            "description": row.description,
+            "external_url": row.external_url,
+            "file_url": file_url,
+            "url": row.external_url or file_url,
+        })
+    return jsonify(items=items)
 
 
 @public_bp.get("/seo/main-sitemap.xml")

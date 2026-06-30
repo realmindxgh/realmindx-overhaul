@@ -129,6 +129,13 @@ class UserProfile(TimestampMixin, db.Model):
     next_of_kin_email = db.Column(db.String(255), nullable=True)
     years_of_experience = db.Column(db.Integer, nullable=True)
     date_of_birth = db.Column(db.Date, nullable=True)
+    payout_method = db.Column(db.String(40), nullable=True)
+    payout_momo_network = db.Column(db.String(80), nullable=True)
+    payout_momo_number = db.Column(db.String(40), nullable=True)
+    payout_bank_name = db.Column(db.String(160), nullable=True)
+    payout_bank_account_name = db.Column(db.String(160), nullable=True)
+    payout_bank_account_number = db.Column(db.String(80), nullable=True)
+    payout_notes = db.Column(db.Text, nullable=True)
 
     user = db.relationship("User", back_populates="profile")
 
@@ -185,6 +192,27 @@ class JobApplication(TimestampMixin, db.Model):
 
     user = db.relationship("User", backref="job_applications")
     job = db.relationship("Job", backref="applications")
+
+
+class TeacherPlacement(TimestampMixin, db.Model):
+    __tablename__ = "teacher_placements"
+    __table_args__ = (UniqueConstraint("application_id", name="uq_teacher_placement_application"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    application_id = db.Column(db.Integer, db.ForeignKey("job_applications.id"), nullable=False, index=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("jobs.id"), nullable=True, index=True)
+    school_name = db.Column(db.String(180), nullable=False)
+    job_title = db.Column(db.String(180), nullable=True)
+    status = db.Column(db.String(40), default="accepted", nullable=False, index=True)
+    accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    started_at = db.Column(db.Date, nullable=True)
+    ended_at = db.Column(db.Date, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    user = db.relationship("User", backref=db.backref("teacher_placements", cascade="all, delete-orphan"))
+    application = db.relationship("JobApplication", backref=db.backref("placement", uselist=False, cascade="all, delete-orphan"))
+    job = db.relationship("Job")
 
 
 class JobAlertPreference(TimestampMixin, db.Model):
@@ -256,6 +284,7 @@ class Order(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     order_reference = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    invoice_id = db.Column(db.String(40), unique=True, nullable=True, index=True)
     payment_reference = db.Column(db.String(80), unique=True, nullable=True, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     customer_name = db.Column(db.String(160), nullable=False)
@@ -362,6 +391,35 @@ class OrderItem(TimestampMixin, db.Model):
     quantity = db.Column(db.Integer, nullable=False)
 
     order = db.relationship("Order", backref=db.backref("items", cascade="all, delete-orphan"))
+    product = db.relationship("Product")
+
+
+class CartInvoice(TimestampMixin, db.Model):
+    __tablename__ = "cart_invoices"
+
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    subtotal_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    bulk_discount_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    promo_code = db.Column(db.String(40), nullable=True)
+    promo_applies_to = db.Column(db.String(20), nullable=True)
+    promo_discount_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    delivery_fee = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    total_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    status = db.Column(db.String(30), default="generated", nullable=False, index=True)
+
+
+class CartInvoiceItem(TimestampMixin, db.Model):
+    __tablename__ = "cart_invoice_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cart_invoice_id = db.Column(db.Integer, db.ForeignKey("cart_invoices.id"), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=True, index=True)
+    product_name = db.Column(db.String(180), nullable=False)
+    unit_price = db.Column(db.Numeric(12, 2), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+
+    cart_invoice = db.relationship("CartInvoice", backref=db.backref("items", cascade="all, delete-orphan"))
     product = db.relationship("Product")
 
 
@@ -511,6 +569,7 @@ class Resource(TimestampMixin, db.Model):
     resource_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
     external_url = db.Column(db.String(500), nullable=True)
     is_published = db.Column(db.Boolean, default=False, nullable=False)
+    resource_file = db.relationship("UploadedFile", foreign_keys=[resource_file_id])
 
 
 class PromoCode(TimestampMixin, db.Model):
@@ -529,6 +588,34 @@ class PromoCode(TimestampMixin, db.Model):
     valid_from = db.Column(db.Date, nullable=True)
     valid_until = db.Column(db.Date, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    affiliate_name = db.Column(db.String(160), nullable=True)
+    affiliate_email = db.Column(db.String(255), nullable=True)
+    affiliate_phone = db.Column(db.String(40), nullable=True)
+    affiliate_commission_percent = db.Column(db.Numeric(5, 2), default=0, nullable=False)
+    affiliate_notify_on_use = db.Column(db.Boolean, default=True, nullable=False)
+
+
+class PromoCodeUsage(TimestampMixin, db.Model):
+    """Commission ledger entry created when an affiliate promo order completes."""
+    __tablename__ = "promo_code_usages"
+    __table_args__ = (UniqueConstraint("order_id", "promo_code_id", name="uq_promo_usage_order_code"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    promo_code_id = db.Column(db.Integer, db.ForeignKey("promo_codes.id"), nullable=False, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False, index=True)
+    code = db.Column(db.String(40), nullable=False, index=True)
+    affiliate_name = db.Column(db.String(160), nullable=True)
+    affiliate_email = db.Column(db.String(255), nullable=True, index=True)
+    commission_percent = db.Column(db.Numeric(5, 2), default=0, nullable=False)
+    merchandise_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    commission_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    status = db.Column(db.String(30), default="earned", nullable=False, index=True)
+    completed_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    notified_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    statement_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    promo_code = db.relationship("PromoCode", backref=db.backref("usages", cascade="all, delete-orphan"))
+    order = db.relationship("Order", backref=db.backref("promo_usage", uselist=False, cascade="all, delete-orphan"))
 
 
 class ContactMessage(TimestampMixin, db.Model):

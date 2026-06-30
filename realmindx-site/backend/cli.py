@@ -1,9 +1,11 @@
 import click
+from datetime import date
 from flask import current_app
 
 from .delivery_locations import format_location_aliases, normalize_location_key, split_location_aliases
 from .extensions import db
 from .models import DeliveryZone, Permission, Role, User, UserProfile
+from .promo_affiliates import send_monthly_promo_statements
 
 # Baseline Greater Accra towns. Expanded delivery belts below add aliases,
 # metadata, and suggested fees for the checkout search experience.
@@ -299,6 +301,7 @@ DEFAULT_PERMISSIONS = [
             "staff": ["view", "create", "edit", "delete"],
             "teachers": ["view", "edit", "export"],
             "auditLogs": ["view"],
+            "uploads": ["create"],
         }.items()
         for action in actions
     ],
@@ -369,6 +372,26 @@ def register_cli(app):
 
         db.session.commit()
         click.echo(f"{action} admin account: {email.lower()}")
+
+    @app.cli.command("send-promo-statements")
+    @click.option("--month", default=None, help="Statement month in YYYY-MM format. Defaults to the previous calendar month.")
+    def send_promo_statements_command(month):
+        today = date.today()
+        if month:
+            try:
+                year, month_number = [int(part) for part in month.split("-", 1)]
+            except (TypeError, ValueError):
+                raise click.ClickException("Use --month in YYYY-MM format.")
+        else:
+            if today.month == 1:
+                year, month_number = today.year - 1, 12
+            else:
+                year, month_number = today.year, today.month - 1
+        result = send_monthly_promo_statements(year, month_number)
+        click.echo(
+            f"Sent {result['affiliate_count']} affiliate statement(s) "
+            f"covering {result['usage_count']} completed promo sale(s)."
+        )
 
     @app.cli.command("seed-delivery-zones")
     @click.option(

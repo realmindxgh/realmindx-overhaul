@@ -575,6 +575,185 @@
   color: var(--analytics-text);
 }
 
+.analytics-trend-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.analytics-low-data-note {
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid rgba(181, 123, 0, 0.2);
+  border-radius: 14px;
+  background: #fff8da;
+  color: #6d4a00;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.analytics-trend-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.analytics-trend-card {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--analytics-border);
+  border-radius: 16px;
+  background: var(--analytics-muted-surface);
+}
+
+.analytics-trend-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.analytics-trend-card-head span {
+  color: var(--analytics-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.analytics-trend-card-head strong {
+  color: var(--analytics-text);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.analytics-trend-card small,
+.analytics-spark-empty {
+  color: var(--analytics-muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.analytics-spark-bars {
+  height: 54px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(4px, 1fr);
+  align-items: end;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.analytics-spark-bars span {
+  display: block;
+  min-height: 4px;
+  border-radius: 999px 999px 3px 3px;
+  background: #dce6f4;
+}
+
+.analytics-spark-bars span.active {
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,.08);
+}
+
+.analytics-distribution-list,
+.analytics-split-card {
+  display: grid;
+  gap: 14px;
+}
+
+.analytics-distribution-row {
+  display: grid;
+  gap: 7px;
+}
+
+.analytics-distribution-head,
+.analytics-split-legend div,
+.analytics-split-total {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.analytics-distribution-head span,
+.analytics-split-legend span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--analytics-text);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.analytics-distribution-head i,
+.analytics-split-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 10px;
+}
+
+.analytics-distribution-head strong,
+.analytics-split-total strong,
+.analytics-split-legend strong {
+  color: var(--analytics-text);
+  font-family: 'Montserrat', sans-serif;
+}
+
+.analytics-distribution-row small,
+.analytics-split-legend small,
+.analytics-split-total span {
+  color: var(--analytics-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.analytics-distribution-track,
+.analytics-split-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e6eef8;
+}
+
+.analytics-distribution-track span,
+.analytics-split-track span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.analytics-split-total {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.analytics-split-track {
+  display: flex;
+  height: 16px;
+}
+
+.analytics-split-track span {
+  border-radius: 0;
+}
+
+.analytics-split-track span:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
+.analytics-split-track span:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+.analytics-split-legend {
+  display: grid;
+  gap: 10px;
+}
+
 .analytics-donut-card {
   display: grid;
   gap: 16px;
@@ -942,6 +1121,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .analytics-trend-card-grid {
+    grid-template-columns: 1fr;
+  }
+
   .analytics-toolbar-metrics {
     grid-template-columns: 1fr;
   }
@@ -1051,6 +1234,16 @@
   .analytics-stat-card {
     min-height: 112px;
     padding: 16px;
+  }
+
+  .analytics-distribution-head,
+  .analytics-split-legend div {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .analytics-split-legend small {
+    grid-column: 1 / -1;
+    margin-left: 18px;
   }
 
   .analytics-row-actions {

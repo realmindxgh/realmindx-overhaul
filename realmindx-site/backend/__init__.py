@@ -94,6 +94,19 @@ def create_app(config_object=Config):
     def bookshop_products_page(tail):
         return bookshop_public_page(f"products/{tail}".rstrip("/"))
 
+    @app.get("/track", strict_slashes=False)
+    @app.get("/invoice", strict_slashes=False)
+    @app.get("/invoices", strict_slashes=False)
+    @app.get("/documents", strict_slashes=False)
+    @app.get("/education-documents", strict_slashes=False)
+    def bookshop_utility_page():
+        path = request.path.strip("/")
+        if path == "invoices":
+            return redirect("/invoice", code=301)
+        if path == "education-documents":
+            return redirect("/documents", code=301)
+        return bookshop_public_page(path)
+
     @app.get("/subjects", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/subjects/<path:tail>", strict_slashes=False)
     def bookshop_subjects_page(tail):

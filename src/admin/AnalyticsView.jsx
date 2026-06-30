@@ -148,6 +148,14 @@ const collapseRows = (rows = [], valueField = 'count', labelField = 'label', lim
 };
 
 const sumRows = (rows = [], valueField = 'count') => rows.reduce((sum, row) => sum + Number(row?.[valueField] || 0), 0);
+const sumSeries = (series = []) => series.reduce((sum, item) => sum + Number(item?.value || 0), 0);
+const activeSeriesPoints = (series = []) => series.filter(item => Number(item?.value || 0) > 0).length;
+const ratioPercent = (value, total) => {
+  const denominator = Number(total || 0);
+  if (!denominator) return 0;
+  return (Number(value || 0) / denominator) * 100;
+};
+const formatRatio = (value, total) => formatPercent(ratioPercent(value, total));
 
 const StatusBadge = ({ children, tone = 'navy' }) => (
   <span className={`analytics-pill analytics-pill-${tone}`}>{children}</span>
@@ -257,6 +265,127 @@ const MultiLineChart = ({ groups = [] }) => {
       <div className="analytics-legend-row">
         {availableGroups.map(group => (
           <span key={group.label}><i style={{ background: group.color }} />{group.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const SparkBars = ({ data = [], color = chartColors.navy }) => {
+  const bars = Array.isArray(data) ? data.slice(-14) : [];
+  const max = Math.max(...bars.map(item => Number(item.value || 0)), 0);
+  if (!bars.length) return <div className="analytics-spark-empty">No daily trend yet</div>;
+  return (
+    <div className="analytics-spark-bars" aria-hidden="true">
+      {bars.map((item, index) => {
+        const value = Number(item.value || 0);
+        const height = max ? Math.max(8, (value / max) * 100) : 4;
+        return (
+          <span
+            key={`${item.date || 'day'}-${index}`}
+            className={value ? 'active' : ''}
+            style={{ height: `${height}%`, background: value ? color : undefined }}
+            title={`${item.date || 'Date'}: ${formatNumber(value)}`}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
+const TrendSummary = ({ items = [], lowDataThreshold = 20 }) => {
+  const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
+  const activeDays = Math.max(...items.map(item => activeSeriesPoints(item.data || [])), 0);
+  const lowData = total > 0 && (total < lowDataThreshold || activeDays < 3);
+
+  return (
+    <div className="analytics-trend-summary">
+      {lowData ? (
+        <div className="analytics-low-data-note">
+          <Icon name="warning" size={16} />
+          <span>Low sample size: totals are useful, but trend lines would exaggerate the movement.</span>
+        </div>
+      ) : null}
+      <div className="analytics-trend-card-grid">
+        {items.map(item => (
+          <article className="analytics-trend-card" key={item.label}>
+            <div className="analytics-trend-card-head">
+              <span>{item.label}</span>
+              <strong>{item.formatter ? item.formatter(item.value) : formatNumber(item.value)}</strong>
+            </div>
+            {item.note ? <small>{item.note}</small> : null}
+            <SparkBars data={item.data || []} color={item.color || chartColors.navy} />
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const DistributionList = ({
+  rows = [],
+  valueField = 'count',
+  labelField = 'label',
+  formatter = formatNumber,
+  emptyLabel = 'No distribution yet.',
+}) => {
+  const data = collapseRows(rows, valueField, labelField, 6);
+  const total = sumRows(data, valueField);
+  if (!data.length || total === 0) return <div className="analytics-empty-block">{emptyLabel}</div>;
+
+  return (
+    <div className="analytics-distribution-list">
+      {data.map((row, index) => {
+        const value = Number(row[valueField] || 0);
+        const share = ratioPercent(value, total);
+        return (
+          <div className="analytics-distribution-row" key={`${row[labelField]}-${index}`}>
+            <div className="analytics-distribution-head">
+              <span><i style={{ background: donutPalette[index % donutPalette.length] }} />{row[labelField]}</span>
+              <strong>{formatter(value)}</strong>
+            </div>
+            <div className="analytics-distribution-track">
+              <span style={{ width: `${share}%`, background: donutPalette[index % donutPalette.length] }} />
+            </div>
+            <small>{formatPercent(share)} of total</small>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const SplitBar = ({ rows = [], centerLabel = 'Total', formatter = formatNumber }) => {
+  const data = rows
+    .map(row => ({ ...row, count: Number(row.count || 0) }))
+    .filter(row => row.count > 0);
+  const total = sumRows(data);
+  if (!data.length || total === 0) return <EmptyChart label="No split yet" />;
+
+  return (
+    <div className="analytics-split-card">
+      <div className="analytics-split-total">
+        <span>{centerLabel}</span>
+        <strong>{formatter(total)}</strong>
+      </div>
+      <div className="analytics-split-track" aria-hidden="true">
+        {data.map((row, index) => (
+          <span
+            key={`${row.label}-${index}`}
+            style={{
+              width: `${ratioPercent(row.count, total)}%`,
+              background: row.color || donutPalette[index % donutPalette.length],
+            }}
+          />
+        ))}
+      </div>
+      <div className="analytics-split-legend">
+        {data.map((row, index) => (
+          <div key={`${row.label}-${index}`}>
+            <span><i style={{ background: row.color || donutPalette[index % donutPalette.length] }} />{row.label}</span>
+            <strong>{formatter(row.count)}</strong>
+            <small>{formatRatio(row.count, total)}</small>
+          </div>
         ))}
       </div>
     </div>
@@ -730,17 +859,21 @@ const AnalyticsView = ({ session }) => {
     .slice(0, 8)
     .map(item => ({ label: item.term, count: item.no_results }));
 
+  const totalVisits = Number(overview.summary?.total_visits || 0);
+  const totalSearches = Number(search.summary?.total_searches || 0);
+  const totalOrders = Number(bookshopSummary.total_orders || 0);
+
   const journeyStages = [
-    { label: 'Visits', value: overview.summary?.total_visits || 0, color: chartColors.navy },
-    { label: 'Searches', value: search.summary?.total_searches || 0, color: chartColors.gold },
-    { label: 'Product views', value: productTotals.views, color: chartColors.info },
-    { label: 'Orders', value: bookshopSummary.total_orders || 0, color: chartColors.success },
+    { label: 'Visits', value: totalVisits, color: chartColors.navy, note: 'All tracked sessions in this range' },
+    { label: 'Searches', value: totalSearches, color: chartColors.gold, note: `${formatRatio(totalSearches, totalVisits)} of visits` },
+    { label: 'Product views', value: productTotals.views, color: chartColors.info, note: `${formatRatio(productTotals.views, totalVisits)} of visits` },
+    { label: 'Orders', value: totalOrders, color: chartColors.success, note: `${formatRatio(totalOrders, totalVisits)} visit-to-order rate` },
   ];
 
   const productJourneyStages = [
-    { label: 'Product views', value: productTotals.views, color: chartColors.navy },
-    { label: 'Add to cart', value: productTotals.adds, color: chartColors.gold },
-    { label: 'Units sold', value: productTotals.sales, color: chartColors.success },
+    { label: 'Product views', value: productTotals.views, color: chartColors.navy, note: 'Product detail views' },
+    { label: 'Add to cart', value: productTotals.adds, color: chartColors.gold, note: `${formatRatio(productTotals.adds, productTotals.views)} of product views` },
+    { label: 'Units sold', value: productTotals.sales, color: chartColors.success, note: `${formatRatio(productTotals.sales, productTotals.adds)} of cart adds` },
   ];
 
   return (
@@ -813,16 +946,37 @@ const AnalyticsView = ({ session }) => {
           <div className="analytics-two-grid">
             <section className="analytics-panel">
               <SectionHeader
-                eyebrow="Traffic trend"
-                title="Visits, unique visitors, and page views over time"
-                body="The core website traffic pattern over the selected date range."
+                eyebrow="Traffic snapshot"
+                title="Traffic at a glance"
+                body="Totals plus compact daily bars. This stays readable even when traffic is still sparse."
                 actions={canExport ? <ExportButton href={api.adminAnalyticsExportUrl('top-pages', rangeParams)} label="Export top pages" /> : null}
               />
-              <MultiLineChart groups={[
-                { label: 'Page views', color: chartColors.navy, data: overview.timeline?.page_views || [] },
-                { label: 'Visits', color: chartColors.gold, data: overview.timeline?.visits || [] },
-                { label: 'Unique visitors', color: chartColors.success, data: overview.timeline?.unique_visitors || [] },
-              ]} />
+              <TrendSummary
+                lowDataThreshold={50}
+                items={[
+                  {
+                    label: 'Page views',
+                    value: overview.summary?.page_views || sumSeries(overview.timeline?.page_views || []),
+                    note: 'All tracked route views',
+                    color: chartColors.navy,
+                    data: overview.timeline?.page_views || [],
+                  },
+                  {
+                    label: 'Visits',
+                    value: totalVisits || sumSeries(overview.timeline?.visits || []),
+                    note: 'Visitor sessions',
+                    color: chartColors.gold,
+                    data: overview.timeline?.visits || [],
+                  },
+                  {
+                    label: 'Unique visitors',
+                    value: overview.summary?.unique_visitors || sumSeries(overview.timeline?.unique_visitors || []),
+                    note: 'Anonymous visitor IDs',
+                    color: chartColors.success,
+                    data: overview.timeline?.unique_visitors || [],
+                  },
+                ]}
+              />
             </section>
 
             <section className="analytics-panel">
@@ -838,15 +992,15 @@ const AnalyticsView = ({ session }) => {
           <div className="analytics-three-grid">
             <article className="analytics-panel">
               <SectionHeader title="Traffic sources" body="How visitors are arriving." />
-              <DonutChart rows={overview.traffic_sources || []} centerLabel="Sessions" />
+              <DistributionList rows={overview.traffic_sources || []} emptyLabel="No traffic sources yet." />
             </article>
             <article className="analytics-panel">
               <SectionHeader title="Device breakdown" body="Desktop versus mobile traffic balance." />
-              <DonutChart rows={overview.device_breakdown || []} centerLabel="Devices" />
+              <DistributionList rows={overview.device_breakdown || []} emptyLabel="No device data yet." />
             </article>
             <article className="analytics-panel">
               <SectionHeader title="Browser breakdown" body="Browser mix for compatibility monitoring." />
-              <DonutChart rows={overview.browser_breakdown || []} centerLabel="Browsers" />
+              <DistributionList rows={overview.browser_breakdown || []} emptyLabel="No browser data yet." />
             </article>
           </div>
 
@@ -997,11 +1151,11 @@ const AnalyticsView = ({ session }) => {
             </article>
             <article className="analytics-panel">
               <SectionHeader title="Product status mix" />
-              <DonutChart rows={productStatusRows} centerLabel="Products" />
+              <DistributionList rows={productStatusRows} emptyLabel="No product status data yet." />
             </article>
             <article className="analytics-panel">
               <SectionHeader title="Performance labels" />
-              <DonutChart rows={performanceRows} centerLabel="Labels" />
+              <DistributionList rows={performanceRows} emptyLabel="No performance labels yet." />
             </article>
           </div>
 
@@ -1085,24 +1239,54 @@ const AnalyticsView = ({ session }) => {
           <div className="analytics-two-grid">
             <article className="analytics-panel">
               <SectionHeader
-                eyebrow="Search trend"
-                title="Demand, result quality, and click-through"
-                body="Searches, successful result sets, no-result gaps, and clicks from search results."
+                eyebrow="Search snapshot"
+                title="Search demand and response"
+                body="Compact totals and daily bars for searches, result quality, and click-through."
               />
-              <MultiLineChart groups={[
-                { label: 'Searches', color: chartColors.navy, data: search.timeline?.searches || [] },
-                { label: 'With results', color: chartColors.success, data: search.timeline?.with_results || [] },
-                { label: 'No results', color: chartColors.gold, data: search.timeline?.no_results || [] },
-                { label: 'Clicks', color: chartColors.info, data: search.timeline?.clicks || [] },
-              ]} />
+              <TrendSummary
+                lowDataThreshold={30}
+                items={[
+                  {
+                    label: 'Searches',
+                    value: search.summary?.total_searches || sumSeries(search.timeline?.searches || []),
+                    note: 'All search attempts',
+                    color: chartColors.navy,
+                    data: search.timeline?.searches || [],
+                  },
+                  {
+                    label: 'With results',
+                    value: search.summary?.searches_with_results || sumSeries(search.timeline?.with_results || []),
+                    note: 'Searches that returned inventory',
+                    color: chartColors.success,
+                    data: search.timeline?.with_results || [],
+                  },
+                  {
+                    label: 'No results',
+                    value: search.summary?.searches_without_results || sumSeries(search.timeline?.no_results || []),
+                    note: 'Inventory or naming gaps',
+                    color: chartColors.gold,
+                    data: search.timeline?.no_results || [],
+                  },
+                  {
+                    label: 'Clicks',
+                    value: sumSeries(search.timeline?.clicks || []),
+                    note: 'Product clicks from search',
+                    color: chartColors.info,
+                    data: search.timeline?.clicks || [],
+                  },
+                ]}
+              />
             </article>
 
             <article className="analytics-panel">
               <SectionHeader title="Search quality split" body="A direct view of how often the search experience is meeting intent." />
-              <DonutChart rows={[
-                { label: 'With results', count: search.summary?.searches_with_results || 0 },
-                { label: 'No results', count: search.summary?.searches_without_results || 0 },
-              ]} centerLabel="Searches" />
+              <SplitBar
+                centerLabel="Searches"
+                rows={[
+                  { label: 'With results', count: search.summary?.searches_with_results || 0, color: chartColors.navy },
+                  { label: 'No results', count: search.summary?.searches_without_results || 0, color: chartColors.gold },
+                ]}
+              />
             </article>
           </div>
 

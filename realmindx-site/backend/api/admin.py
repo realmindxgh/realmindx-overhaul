@@ -54,16 +54,23 @@ from ..models import (
     OrderItem,
     OrderReview,
     Permission,
+    PromoCode,
     Product,
     ProductCategory,
     ProductReview,
     Resource,
     Role,
     GalleryItem,
+    TeacherPlacement,
     User,
     UserProfile,
     SiteSetting,
     UploadedFile,
+)
+from ..promo_affiliates import (
+    record_completed_order_promo_usage,
+    send_promo_usage_notification,
+    usage_snapshot,
 )
 from ..security import admin_or_staff_required, admin_required, permission_required
 from ..serializers import delivery_zone_json, job_json, order_json, order_review_json, product_json, user_json
@@ -318,6 +325,24 @@ def _decimalish(value, default=0):
     try:
         return float(raw)
     except ValueError:
+        return default
+
+
+def _dateish(value):
+    if value in {None, ""}:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip()[:10])
+    except ValueError as exc:
+        raise ValueError("Use a valid YYYY-MM-DD date.") from exc
+
+
+def _intish(value, default=0):
+    try:
+        return int(float(str(value if value is not None else "").strip()))
+    except (TypeError, ValueError):
         return default
 
 
@@ -1057,10 +1082,39 @@ def update_application_status(application_id):
     status = (request.get_json(silent=True) or {}).get("status")
     if status not in {"pending", "reviewed", "shortlisted", "accepted", "rejected"}:
         return jsonify(error="Invalid status."), 400
+    old_status = application.status
     application.status = status
-    log_action("update_application_status", "job_application", application.id, {"status": status})
+    placement = None
+    if status == "accepted":
+        placement = _ensure_teacher_placement(application)
+    log_action("update_application_status", "job_application", application.id, {"status": status, "prev": old_status})
     db.session.commit()
-    return jsonify(id=application.id, status=application.status)
+    return jsonify(
+        id=application.id,
+        status=application.status,
+        placement_id=placement.id if placement else None,
+    )
+
+
+def _ensure_teacher_placement(application):
+    existing = TeacherPlacement.query.filter_by(application_id=application.id).first()
+    if existing:
+        existing.status = "accepted"
+        existing.accepted_at = existing.accepted_at or datetime.now(timezone.utc)
+        return existing
+    job = application.job
+    placement = TeacherPlacement(
+        user_id=application.user_id,
+        application_id=application.id,
+        job_id=application.job_id,
+        school_name=(job.organisation or job.location or "School placement") if job else "School placement",
+        job_title=job.title if job else None,
+        status="accepted",
+        accepted_at=datetime.now(timezone.utc),
+    )
+    db.session.add(placement)
+    db.session.flush()
+    return placement
 
 
 @admin_bp.post("/change-password")
@@ -1098,20 +1152,63 @@ def users():
     return jsonify(items=[user_json(user) for user in rows])
 
 
+PAYOUT_FIELDS = [
+    "payout_method",
+    "payout_momo_network",
+    "payout_momo_number",
+    "payout_bank_name",
+    "payout_bank_account_name",
+    "payout_bank_account_number",
+    "payout_notes",
+]
+
+
+def _payout_payload(profile):
+    if not profile:
+        return {field: None for field in PAYOUT_FIELDS}
+    return {field: getattr(profile, field, None) for field in PAYOUT_FIELDS}
+
+
+def _apply_payout_payload(profile, payload):
+    source = payload.get("payout") if isinstance(payload.get("payout"), dict) else payload
+    changed = False
+    for field in PAYOUT_FIELDS:
+        if field not in source:
+            continue
+        value = source.get(field)
+        if isinstance(value, str):
+            value = value.strip() or None
+        setattr(profile, field, value)
+        changed = True
+    return changed
+
+
 @admin_bp.patch("/users/<int:user_id>")
 @login_required
 @permission_required("teachers.edit")
 def update_user(user_id):
-    """Toggle a regular-user account active / inactive."""
+    """Update a regular-user account and admin-managed teacher payout details."""
     user = db.get_or_404(User, user_id)
     # Safety: only allow toggling regular users, not admins / staff.
     if user.role and user.role.name in ("admin", "staff"):
         return jsonify(error="Cannot modify admin or staff accounts via this endpoint."), 403
     payload = request.get_json(silent=True) or {}
+    changed = False
     if "status" in payload:
         user.is_active = payload["status"] == "active"
-        db.session.commit()
+        changed = True
         log_action("toggle_user_active", "user", user.id, {"status": payload["status"]})
+    payout_source = payload.get("payout") if isinstance(payload.get("payout"), dict) else payload
+    if any(field in payout_source for field in PAYOUT_FIELDS):
+        profile = user.profile
+        if not profile:
+            profile = UserProfile(user_id=user.id)
+            db.session.add(profile)
+            db.session.flush()
+        changed = _apply_payout_payload(profile, payload) or changed
+        log_action("update_teacher_payout", "user", user.id)
+    if changed:
+        db.session.commit()
     return jsonify(user_json(user))
 
 
@@ -1155,13 +1252,37 @@ def get_user(user_id):
             "years_of_experience": profile.years_of_experience,
             "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
             "age": age,
+            "payout": _payout_payload(profile),
         }
+    else:
+        data["profile"] = None
+    placements = (
+        TeacherPlacement.query
+        .filter_by(user_id=user.id)
+        .order_by(TeacherPlacement.accepted_at.desc(), TeacherPlacement.created_at.desc())
+        .all()
+    )
+    data["placements"] = [
+        {
+            "id": placement.id,
+            "application_id": placement.application_id,
+            "job_id": placement.job_id,
+            "school_name": placement.school_name,
+            "job_title": placement.job_title,
+            "status": placement.status,
+            "accepted_at": placement.accepted_at.isoformat() if placement.accepted_at else None,
+            "started_at": placement.started_at.isoformat() if placement.started_at else None,
+            "ended_at": placement.ended_at.isoformat() if placement.ended_at else None,
+            "notes": placement.notes,
+        }
+        for placement in placements
+    ]
     return jsonify(data)
 
 
 @admin_bp.post("/uploads")
 @login_required
-@admin_or_staff_required
+@permission_required("uploads.create")
 def upload_admin_file():
     file = request.files.get("file")
     category = request.form.get("category") or "images"
@@ -2115,21 +2236,39 @@ def categories():
                             "bulk_min_qty": int(row.bulk_min_qty or 10)} for row in rows])
 
 
+def _category_bulk_payload(payload, category=None):
+    current_discount = float(getattr(category, "bulk_discount_percent", 0) or 0) if category else 0
+    current_min_qty = int(getattr(category, "bulk_min_qty", 10) or 10) if category else 10
+    discount = _decimalish(payload.get("bulk_discount_percent"), current_discount)
+    min_qty = _intish(payload.get("bulk_min_qty"), current_min_qty)
+    if discount < 0 or discount > 100:
+        raise ValueError("Bulk discount percent must be between 0 and 100.")
+    if min_qty < 1:
+        raise ValueError("Bulk minimum quantity must be at least 1.")
+    return discount, min_qty
+
+
 @admin_bp.post("/categories")
 @login_required
 @permission_required("categories.create")
 def create_category():
     payload = request.get_json(silent=True) or {}
-    name = payload.get("name") or payload.get("label")
+    name = (payload.get("name") or payload.get("label") or "").strip()
+    if not name:
+        return jsonify(error="Category name is required."), 400
+    try:
+        bulk_discount_percent, bulk_min_qty = _category_bulk_payload(payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     category = ProductCategory(
         name=name,
         slug=payload.get("slug") or slugify(name),
         description=payload.get("description"),
-        sort_order=payload.get("sort_order") or 0,
-        is_active=bool(payload.get("is_active", True)),
+        sort_order=_intish(payload.get("sort_order"), 0),
+        is_active=_boolish(payload.get("is_active", True)),
+        bulk_discount_percent=bulk_discount_percent,
+        bulk_min_qty=bulk_min_qty,
     )
-    if not category.name:
-        return jsonify(error="Category name is required."), 400
     db.session.add(category)
     db.session.flush()
     log_action("create_category", "product_category", category.id)
@@ -2143,9 +2282,16 @@ def create_category():
 def update_category(category_id):
     category = db.get_or_404(ProductCategory, category_id)
     payload = request.get_json(silent=True) or {}
-    for field in ["name", "slug", "description", "sort_order", "is_active"]:
+    for field in ["name", "slug", "description", "is_active"]:
         if field in payload:
             setattr(category, field, payload[field])
+    if "sort_order" in payload:
+        category.sort_order = _intish(payload.get("sort_order"), category.sort_order or 0)
+    if "bulk_discount_percent" in payload or "bulk_min_qty" in payload:
+        try:
+            category.bulk_discount_percent, category.bulk_min_qty = _category_bulk_payload(payload, category)
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
     log_action("update_category", "product_category", category.id)
     db.session.commit()
     return jsonify(id=category.id, name=category.name, slug=category.slug)
@@ -2408,6 +2554,11 @@ def update_order_status(order_id):
     order.status = status
     if cancel_reason:
         order.notes = cancel_reason
+    promo_snapshot = None
+    if status == "complete" and old_status != "complete":
+        usage, created = record_completed_order_promo_usage(order)
+        if created and usage and usage.affiliate_email and getattr(usage.promo_code, "affiliate_notify_on_use", True):
+            promo_snapshot = usage_snapshot(usage)
     log_action("update_order_status", "order", order.id, {"status": status, "prev": old_status})
     db.session.commit()
 
@@ -2417,6 +2568,8 @@ def update_order_status(order_id):
             _run_in_background("Order status email", _send_order_status_email, snapshot, status, cancel_reason)
         if snapshot.phone:
             _run_in_background("Order status SMS", _send_order_status_sms, snapshot, status, cancel_reason)
+    if promo_snapshot:
+        _run_in_background("Promo commission email", send_promo_usage_notification, promo_snapshot)
 
     return jsonify(order=order_json(order))
 
@@ -3432,34 +3585,73 @@ def delete_flyer(flyer_id):
 @login_required
 @permission_required("priceAdjustment.view")
 def list_promo_codes():
-    from ..models import PromoCode
     rows = PromoCode.query.order_by(PromoCode.created_at.desc()).all()
     return jsonify(items=[_promo_json(r) for r in rows])
+
+
+def _apply_promo_payload(row, payload):
+    discount_type = (payload.get("discount_type", row.discount_type or "percentage") or "percentage").strip().lower()
+    applies_to = (payload.get("applies_to", row.applies_to or "products") or "products").strip().lower()
+    if discount_type not in {"percentage", "fixed"}:
+        raise ValueError("Discount type must be percentage or fixed.")
+    if applies_to not in {"products", "delivery", "all"}:
+        raise ValueError("Promo codes can apply to products, delivery, or all.")
+
+    discount_value = _decimalish(payload.get("discount_value"), float(row.discount_value or 0))
+    min_order_amount = _decimalish(payload.get("min_order_amount"), float(row.min_order_amount or 0))
+    commission_percent = _decimalish(
+        payload.get("affiliate_commission_percent"),
+        float(getattr(row, "affiliate_commission_percent", 0) or 0),
+    )
+    if discount_value < 0:
+        raise ValueError("Discount value cannot be negative.")
+    if discount_type == "percentage" and discount_value > 100:
+        raise ValueError("Percentage discount cannot exceed 100%.")
+    if min_order_amount < 0:
+        raise ValueError("Minimum order amount cannot be negative.")
+    if commission_percent < 0 or commission_percent > 100:
+        raise ValueError("Affiliate commission percent must be between 0 and 100.")
+
+    max_uses_value = payload.get("max_uses", row.max_uses)
+    max_uses = None if max_uses_value in {None, ""} else max(1, _intish(max_uses_value, 0))
+    row.description = (payload.get("description", row.description) or "").strip() or None
+    row.discount_type = discount_type
+    row.discount_value = discount_value
+    row.applies_to = applies_to
+    row.min_order_amount = min_order_amount
+    row.max_uses = max_uses
+    if "valid_from" in payload:
+        row.valid_from = _dateish(payload.get("valid_from"))
+    if "valid_until" in payload:
+        row.valid_until = _dateish(payload.get("valid_until"))
+    if row.valid_from and row.valid_until and row.valid_from > row.valid_until:
+        raise ValueError("Valid From cannot be later than Valid Until.")
+    if "is_active" in payload:
+        row.is_active = _boolish(payload.get("is_active"))
+
+    row.affiliate_name = (payload.get("affiliate_name", row.affiliate_name) or "").strip() or None
+    row.affiliate_email = (payload.get("affiliate_email", row.affiliate_email) or "").strip().lower() or None
+    row.affiliate_phone = (payload.get("affiliate_phone", row.affiliate_phone) or "").strip() or None
+    row.affiliate_commission_percent = commission_percent
+    if "affiliate_notify_on_use" in payload:
+        row.affiliate_notify_on_use = _boolish(payload.get("affiliate_notify_on_use"))
 
 
 @admin_bp.post("/promo-codes")
 @login_required
 @permission_required("priceAdjustment.edit")
 def create_promo_code():
-    from ..models import PromoCode
     payload = request.get_json(silent=True) or {}
     code = (payload.get("code") or "").strip().upper()
     if not code:
         return jsonify(error="Code is required."), 400
     if PromoCode.query.filter_by(code=code).first():
         return jsonify(error="A promo code with that name already exists."), 409
-    row = PromoCode(
-        code=code,
-        description=(payload.get("description") or "").strip() or None,
-        discount_type=payload.get("discount_type") or "percentage",
-        discount_value=payload.get("discount_value") or 0,
-        applies_to=payload.get("applies_to") or "products",
-        min_order_amount=payload.get("min_order_amount") or 0,
-        max_uses=payload.get("max_uses") or None,
-        valid_from=payload.get("valid_from") or None,
-        valid_until=payload.get("valid_until") or None,
-        is_active=bool(payload.get("is_active", True)),
-    )
+    row = PromoCode(code=code, is_active=True)
+    try:
+        _apply_promo_payload(row, payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     db.session.add(row)
     db.session.flush()
     log_action("create_promo_code", "promo_code", row.id, {"code": row.code})
@@ -3471,13 +3663,12 @@ def create_promo_code():
 @login_required
 @permission_required("priceAdjustment.edit")
 def update_promo_code(promo_id):
-    from ..models import PromoCode
     row = db.get_or_404(PromoCode, promo_id)
     payload = request.get_json(silent=True) or {}
-    for field in ["description", "discount_type", "discount_value", "applies_to",
-                  "min_order_amount", "max_uses", "valid_from", "valid_until", "is_active"]:
-        if field in payload:
-            setattr(row, field, payload[field])
+    try:
+        _apply_promo_payload(row, payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     log_action("update_promo_code", "promo_code", row.id, {"code": row.code})
     db.session.commit()
     return jsonify(promo_code=_promo_json(row))
@@ -3487,7 +3678,6 @@ def update_promo_code(promo_id):
 @login_required
 @permission_required("priceAdjustment.edit")
 def delete_promo_code(promo_id):
-    from ..models import PromoCode
     row = db.get_or_404(PromoCode, promo_id)
     log_action("delete_promo_code", "promo_code", row.id, {"code": row.code})
     db.session.delete(row)
@@ -3503,7 +3693,14 @@ def _promo_json(r):
         "max_uses": r.max_uses, "uses_count": r.uses_count,
         "valid_from": str(r.valid_from) if r.valid_from else None,
         "valid_until": str(r.valid_until) if r.valid_until else None,
-        "is_active": r.is_active, "created_at": r.created_at.isoformat(),
+        "is_active": r.is_active,
+        "affiliate_name": getattr(r, "affiliate_name", None),
+        "affiliate_email": getattr(r, "affiliate_email", None),
+        "affiliate_phone": getattr(r, "affiliate_phone", None),
+        "affiliate_commission_percent": float(getattr(r, "affiliate_commission_percent", 0) or 0),
+        "affiliate_notify_on_use": bool(getattr(r, "affiliate_notify_on_use", True)),
+        "completed_affiliate_uses": len(getattr(r, "usages", []) or []),
+        "created_at": r.created_at.isoformat(),
     }
 
 

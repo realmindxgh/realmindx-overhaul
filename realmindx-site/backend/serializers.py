@@ -158,6 +158,7 @@ def order_json(order):
     return {
         "id": order.id,
         "order_reference": order.order_reference,
+        "invoice_id": getattr(order, "invoice_id", None),
         "payment_reference": order.payment_reference,
         "customer_name": order.customer_name,
         "email": order.email,

@@ -87,6 +87,11 @@ export const api = {
   // public + bookshop
   createOrder: (payload) => apiFetch('/orders', { method: 'POST', body: payload }),
   trackOrders: (query) => apiFetch(`/orders/track?q=${encodeURIComponent(query)}`),
+  lookupInvoice: (invoiceId) => apiFetch(`/invoices/${encodeURIComponent(invoiceId)}`),
+  createCartInvoice: (payload) => apiFetch('/cart-invoices', { method: 'POST', body: payload }),
+  invoicePdfUrl: (invoiceId, { download = false } = {}) => (
+    url(`/invoices/${encodeURIComponent(invoiceId)}/pdf${download ? '?download=1' : ''}`)
+  ),
   fetchMyOrders: (qs = '') => apiFetch(`/orders/mine${qs ? '?' + qs : ''}`),
   sendContact: (payload) => apiFetch('/contact', { method: 'POST', body: payload }),
   subscribeNewsletter: (payload) => apiFetch('/newsletter', { method: 'POST', body: payload }),
@@ -228,6 +233,7 @@ export const api = {
   // admin - write (collection: 'jobs'|'products'|'categories'|'news'|'gallery'|'resources')
   adminCreate: (collection, payload) => apiFetch(`/admin/${collection}`, { method: 'POST', body: payload }),
   adminUpdate: (collection, id, payload) => apiFetch(`/admin/${collection}/${id}`, { method: 'PUT', body: payload }),
+  adminPatch: (collection, id, payload) => apiFetch(`/admin/${collection}/${id}`, { method: 'PATCH', body: payload }),
   adminDelete: (collection, id) => apiFetch(`/admin/${collection}/${id}`, { method: 'DELETE' }),
   adminReplyMessage: (id, message) => apiFetch(`/admin/messages/${id}/reply`, { method: 'POST', body: { message } }),
   adminSendNewsletter: (payload) => apiFetch('/admin/newsletters/send', { method: 'POST', body: payload }),

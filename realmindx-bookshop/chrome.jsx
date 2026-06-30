@@ -303,26 +303,27 @@ const CartProviderInner = ({ children, navigate }) => {
     ? catalogError
     : '';
 
-  // Bulk Purchase Discount — applies when qty >= 10 for items whose category
-  // has a bulk_discount_percent set (e.g. the "Bulk / Schools" category).
+  // Bulk Purchase Discount — applies at the category's configured threshold.
   // Only the qualifying items get the discount; others are full price.
   const bulkDiscounts = detailed
-    .filter(b => b.qty >= 10 && b.bulkDiscountPct > 0)
+    .filter(b => b.qty >= (Number(b.bulkMinQty) || 10) && b.bulkDiscountPct > 0)
     .map(b => ({
       id: b.id,
       title: b.title,
       qty: b.qty,
       pct: b.bulkDiscountPct,
+      minQty: Number(b.bulkMinQty) || 10,
       saving: b.price * b.qty * (b.bulkDiscountPct / 100),
     }));
   const bulkSaving = bulkDiscounts.reduce((s, d) => s + d.saving, 0);
   const selectedBulkDiscounts = selectedDetailed
-    .filter(b => b.qty >= 10 && b.bulkDiscountPct > 0)
+    .filter(b => b.qty >= (Number(b.bulkMinQty) || 10) && b.bulkDiscountPct > 0)
     .map(b => ({
       id: b.id,
       title: b.title,
       qty: b.qty,
       pct: b.bulkDiscountPct,
+      minQty: Number(b.bulkMinQty) || 10,
       saving: b.price * b.qty * (b.bulkDiscountPct / 100),
     }));
   const selectedBulkSaving = selectedBulkDiscounts.reduce((s, d) => s + d.saving, 0);
@@ -480,10 +481,12 @@ const Navbar = ({ route, navigate }) => {
   const [catsOpen, setCatsOpen] = React.useState(false);
   const [openBrowseGroup, setOpenBrowseGroup] = React.useState('');
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [moreOpen, setMoreOpen] = React.useState(false);
   const [q, setQ] = React.useState('');
   const [searchSurface, setSearchSurface] = React.useState('');
   const catsRef = React.useRef(null);
   const catsSearchRef = React.useRef(null);
+  const moreRef = React.useRef(null);
   // Bumped on every explicit search submission so ShopPage remounts even when
   // the same query text is submitted twice in a row (e.g. search "pencils",
   // clear it in-page, search "pencils" again — params.q alone wouldn't change).
@@ -494,6 +497,9 @@ const Navbar = ({ route, navigate }) => {
       if (catsRef.current && !catsRef.current.contains(e.target)) {
         setCatsOpen(false);
         setSearchSurface('');
+      }
+      if (moreRef.current && !moreRef.current.contains(e.target)) {
+        setMoreOpen(false);
       }
     };
     document.addEventListener('mousedown', onDoc);
@@ -507,6 +513,7 @@ const Navbar = ({ route, navigate }) => {
 
   React.useEffect(() => {
     if (!catsOpen) return undefined;
+    if (!window.matchMedia('(max-width: 768px)').matches) return undefined;
     const frame = window.requestAnimationFrame(() => catsSearchRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [catsOpen]);
@@ -516,6 +523,7 @@ const Navbar = ({ route, navigate }) => {
     setMenuOpen(false);
     setCatsOpen(false);
     setOpenBrowseGroup('');
+    setMoreOpen(false);
     setSearchSurface('');
     navigate(r);
   };
@@ -528,6 +536,7 @@ const Navbar = ({ route, navigate }) => {
     navigate('shop', t ? { q: t, sq: ++searchSeq.current } : {});
     setCatsOpen(false);
     setOpenBrowseGroup('');
+    setMoreOpen(false);
     setSearchSurface('');
   };
 
@@ -537,6 +546,7 @@ const Navbar = ({ route, navigate }) => {
     navigate('product', { id: book.id, slug: productPathSegment(book) });
     setCatsOpen(false);
     setOpenBrowseGroup('');
+    setMoreOpen(false);
     setSearchSurface('');
     setQ('');
   };
@@ -565,6 +575,10 @@ const Navbar = ({ route, navigate }) => {
     { title: 'Level', allLabel: 'Levels', taxonomy: 'level', icon: 'cap', items: taxonomies.levels || [] },
     { title: 'Curriculum', allLabel: 'Curricula', taxonomy: 'curriculum', icon: 'files', items: taxonomies.curricula || [] },
     { title: 'Item Type', allLabel: 'Item Types', taxonomy: 'category', icon: 'box', items: taxonomies.categories || [] },
+  ];
+  const utilityLinks = [
+    { route: 'invoice', label: 'Invoice Lookup', icon: 'files', description: 'View and download PDF invoices' },
+    { route: 'documents', label: 'Education Documents', icon: 'book', description: 'Browse useful education files' },
   ];
 
   const showNavSuggestions = suggestions.length > 0 && searchSurface === 'nav';
@@ -607,6 +621,7 @@ const Navbar = ({ route, navigate }) => {
                 className="bs-nav-cats-btn"
                 onClick={() => {
                   setMenuOpen(false);
+                  setMoreOpen(false);
                   setCatsOpen(open => {
                     if (open) setOpenBrowseGroup('');
                     const next = !open;
@@ -704,6 +719,41 @@ const Navbar = ({ route, navigate }) => {
               <Icon name="cart" size={21} />
               {count > 0 && <span className="bs-cart-badge">{count}</span>}
             </button>
+            <div className="bs-more-nav" ref={moreRef}>
+              <button
+                className={`bs-icon-btn bs-more-btn${moreOpen ? ' open' : ''}`}
+                aria-label="More bookshop options"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                title="More"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setCatsOpen(false);
+                  setOpenBrowseGroup('');
+                  setSearchSurface('');
+                  setMoreOpen(open => !open);
+                }}
+              >
+                <Icon name="plus" size={21} />
+              </button>
+              <div className={`bs-more-menu${moreOpen ? ' open' : ''}`} role="menu">
+                {utilityLinks.map(link => (
+                  <a
+                    key={link.route}
+                    className={`bs-more-item${route === link.route ? ' active' : ''}`}
+                    href={hrefForRoute(link.route)}
+                    onClick={(event) => go(link.route, event)}
+                    role="menuitem"
+                  >
+                    <Icon name={link.icon} size={18} className="bs-ci" />
+                    <span>
+                      <strong>{link.label}</strong>
+                      <small>{link.description}</small>
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
 
             {/* Hamburger — toggles the mobile menu. */}
             <button
@@ -712,6 +762,7 @@ const Navbar = ({ route, navigate }) => {
               onClick={() => {
                 setCatsOpen(false);
                 setOpenBrowseGroup('');
+                setMoreOpen(false);
                 setMenuOpen(o => !o);
               }}
             >
@@ -725,7 +776,7 @@ const Navbar = ({ route, navigate }) => {
       {/* Note: no redundant close button here — the hamburger in the navbar already animates to X */}
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
         <nav className="bs-mm-links">
-          {[['home','Home'],['shop','Shop'],['track','Track Order'],['contact','Contact'],['about','About']].map(([r,l]) => (
+          {[['home','Home'],['shop','Shop'],['track','Track Order'],['invoice','Invoice Lookup'],['documents','Education Documents'],['contact','Contact'],['about','About']].map(([r,l]) => (
             <a key={r} href={hrefForRoute(r)} className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
               {l}
             </a>
@@ -765,6 +816,8 @@ const Footer = ({ navigate }) => {
               <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
               <a href={hrefForBrowse('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { taxonomy: 'curriculum' });}}>All Curricula</a>
               <a href={hrefForRoute('track')} onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
+              <a href={hrefForRoute('invoice')} onClick={(e)=>{e.preventDefault();navigate('invoice');}}>Find an Invoice</a>
+              <a href={hrefForRoute('documents')} onClick={(e)=>{e.preventDefault();navigate('documents');}}>Education Documents</a>
               <a href={hrefForRoute('about')} onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
               <a href={hrefForRoute('contact')} onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>
             </div>
@@ -811,7 +864,7 @@ const Footer = ({ navigate }) => {
 };
 
 // ---------- Floating WhatsApp ----------
-const WHATSAPP_HIDDEN_ROUTES = new Set(['cart', 'checkout', 'track', 'login', 'signup', 'account', 'orders']);
+const WHATSAPP_HIDDEN_ROUTES = new Set(['cart', 'checkout', 'track', 'invoice', 'login', 'signup', 'account', 'orders']);
 
 const WhatsAppFab = ({ route }) => (
   WHATSAPP_HIDDEN_ROUTES.has(route) ? null :

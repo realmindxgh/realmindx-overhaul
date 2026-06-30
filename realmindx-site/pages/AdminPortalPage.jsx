@@ -87,7 +87,7 @@ const SERVICE_ICON_OPTIONS = [
 ];
 
 const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 'orders']);
-const PERMISSION_GROUPS = NAV
+const NAV_PERMISSION_GROUPS = NAV
   .filter(item => !['dashboard', 'admins', 'auditLogs', 'account'].includes(item.key))
   .map(item => {
     const actions = item.key === 'analytics'
@@ -103,6 +103,10 @@ const PERMISSION_GROUPS = NAV
           : ['view', 'create', 'edit', 'delete', ...(EXPORTABLE_PERMISSION_KEYS.has(item.key) ? ['export'] : [])];
     return { ...item, actions };
   });
+const EXTRA_PERMISSION_GROUPS = [
+  { key: 'uploads', label: 'File Uploads', group: 'System', icon: 'image', actions: ['create'] },
+];
+const PERMISSION_GROUPS = [...NAV_PERMISSION_GROUPS, ...EXTRA_PERMISSION_GROUPS];
 const PERMISSION_OPTIONS = PERMISSION_GROUPS.flatMap(group => group.actions.map(action => `${group.key}.${action}`));
 const LEGACY_PERMISSION_OPTIONS = [
   'manage_jobs',
@@ -229,7 +233,7 @@ const CONFIG = {
   },
   promoCodes: {
     title: 'Promo Codes',
-    description: 'Create and manage discount codes for products and/or delivery. Codes are validated in real-time at checkout.',
+    description: 'Create discount codes and optional affiliate commissions. Affiliate commission is earned only after an order is marked complete.',
     collection: 'promoCodes',
     permissionKey: 'priceAdjustment',
     createLabel: 'Add Promo Code',
@@ -244,9 +248,14 @@ const CONFIG = {
       field('valid_from', 'Valid From', 'date', { placeholder: 'No start restriction', help: 'Leave blank for this code to be valid immediately.', max: form => form.valid_until || undefined }),
       field('valid_until', 'Valid Until', 'date', { placeholder: 'No expiry', help: 'Leave blank for this code to never expire.', min: form => form.valid_from || undefined }),
       field('is_active', 'Active', 'checkbox'),
+      field('affiliate_name', 'Affiliate / Owner Name', 'text', { help: 'Person or organisation assigned to this promo code.' }),
+      field('affiliate_email', 'Affiliate Email', 'email', { help: 'Receives completed-sale notices and monthly statements.' }),
+      field('affiliate_phone', 'Affiliate Phone', 'text'),
+      field('affiliate_commission_percent', 'Commission %', 'number', { help: 'Percentage of completed merchandise sales, excluding delivery fees. Set 0 for no commission.' }),
+      field('affiliate_notify_on_use', 'Email on Completed Sale', 'checkbox', { defaultValue: true }),
     ],
-    columns: ['code', 'discount_type', 'discount_value', 'applies_to', 'is_active'],
-    columnLabels: { discount_type: 'Type', discount_value: 'Value', applies_to: 'Applies To' },
+    columns: ['code', 'discount_type', 'discount_value', 'applies_to', 'affiliate_name', 'affiliate_commission_percent', 'is_active'],
+    columnLabels: { discount_type: 'Type', discount_value: 'Value', applies_to: 'Applies To', affiliate_name: 'Affiliate', affiliate_commission_percent: 'Commission %' },
   },
   flyers: {
     title: 'Bookshop Flyers',
@@ -276,7 +285,7 @@ const CONFIG = {
   },
   categories: {
     title: 'Product Categories',
-    description: 'These appear in the bookshop category menu. Set a bulk discount to automatically reduce the price when a customer orders 10+ units of any product in that category.',
+    description: 'These appear in the bookshop category menu. Set a bulk discount to automatically reduce the price when a customer orders the configured quantity of any product in that category.',
     collection: 'categories',
     createLabel: 'Add Category',
     fields: [
@@ -285,7 +294,7 @@ const CONFIG = {
       field('description', 'Description', 'textarea'),
       field('sort_order', 'Sort Order', 'number'),
       field('is_active', 'Active / Visible', 'checkbox'),
-      field('bulk_discount_percent', 'Bulk Discount %', 'number', { help: 'Discount applied when a customer orders 10+ units of any product in this category. Set to 0 to disable. e.g. 10 = 10% off.' }),
+      field('bulk_discount_percent', 'Bulk Discount %', 'number', { help: 'Discount applied when a customer reaches the bulk minimum quantity for this category. Set to 0 to disable. e.g. 10 = 10% off.' }),
       field('bulk_min_qty', 'Bulk Min. Quantity', 'number', { help: 'Minimum quantity to trigger the bulk discount. Default is 10.' }),
     ],
     columns: ['name', 'slug', 'bulk_discount_percent', 'is_active'],
@@ -1263,7 +1272,8 @@ const ArticleSectionsField = ({ sections, onChange }) => {
 const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
   const [form, setForm] = React.useState(() =>
     config.fields.reduce((acc, itemField) => {
-      acc[itemField.name] = valueForInput(initialItem?.[itemField.name], itemField);
+      const rawValue = initialItem ? initialItem[itemField.name] : itemField.defaultValue;
+      acc[itemField.name] = valueForInput(rawValue, itemField);
       return acc;
     }, {}),
   );
@@ -2684,6 +2694,18 @@ const TeachersView = ({ session }) => {
   const [detail, setDetail] = React.useState(null); // full profile object for the modal
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [toggling, setToggling] = React.useState(null); // user id currently being toggled
+  const emptyPayoutForm = React.useMemo(() => ({
+    payout_method: '',
+    payout_momo_network: '',
+    payout_momo_number: '',
+    payout_bank_name: '',
+    payout_bank_account_name: '',
+    payout_bank_account_number: '',
+    payout_notes: '',
+  }), []);
+  const [payoutForm, setPayoutForm] = React.useState(emptyPayoutForm);
+  const [payoutSaving, setPayoutSaving] = React.useState(false);
+  const [payoutError, setPayoutError] = React.useState('');
   const canEditTeachers = hasSessionPermission(session, 'teachers.edit');
   const canExportTeachers = hasSessionPermission(session, 'teachers.export');
 
@@ -2696,6 +2718,15 @@ const TeachersView = ({ session }) => {
   }, []);
 
   React.useEffect(() => { reload(); }, [reload]);
+
+  React.useEffect(() => {
+    const payout = detail?.profile?.payout || {};
+    setPayoutForm({
+      ...emptyPayoutForm,
+      ...Object.fromEntries(Object.entries(payout).map(([key, value]) => [key, value || ''])),
+    });
+    setPayoutError('');
+  }, [detail?.id, detail?.profile?.payout, emptyPayoutForm]);
 
   // Only regular users (role === 'user') — admins/staff are filtered out server-side too,
   // but this guards against any future changes.
@@ -2718,16 +2749,35 @@ const TeachersView = ({ session }) => {
     setToggling(t.id);
     try {
       const newStatus = t.is_active ? 'inactive' : 'active';
-      await fetch(`/api/admin/users/${t.id}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      await api.adminPatch('users', t.id, { status: newStatus });
       setTeachers(prev => prev.map(u => u.id === t.id ? { ...u, is_active: !t.is_active } : u));
       if (detail && detail.id === t.id) setDetail(d => ({ ...d, is_active: !t.is_active }));
     } catch { /* noop */ }
     finally { setToggling(null); }
+  };
+
+  const updatePayoutField = (fieldName) => (event) => {
+    setPayoutForm(form => ({ ...form, [fieldName]: event.target.value }));
+  };
+
+  const savePayout = async () => {
+    if (!detail?.id) return;
+    setPayoutSaving(true);
+    setPayoutError('');
+    try {
+      await api.adminPatch('users', detail.id, { payout: payoutForm });
+      setDetail(prev => ({
+        ...prev,
+        profile: {
+          ...(prev?.profile || {}),
+          payout: { ...payoutForm },
+        },
+      }));
+    } catch (err) {
+      setPayoutError(err?.message || 'Could not save payout details.');
+    } finally {
+      setPayoutSaving(false);
+    }
   };
 
   return (
@@ -2912,6 +2962,91 @@ const TeachersView = ({ session }) => {
                     </>
                   )}
                   {!detail.profile && <p style={{ color:'var(--gray-600)', fontSize:'0.85rem' }}>No additional profile information submitted yet.</p>}
+
+                  <div style={{ marginTop:24, paddingTop:20, borderTop:'1px solid var(--border)' }}>
+                    <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Payout Details</h4>
+                    {canEditTeachers ? (
+                      <>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px 14px' }}>
+                          <div className="form-group" style={{ margin:0 }}>
+                            <label className="form-label">Method</label>
+                            <select className="form-select" value={payoutForm.payout_method} onChange={updatePayoutField('payout_method')}>
+                              <option value="">Not set</option>
+                              <option value="momo">Mobile Money</option>
+                              <option value="bank">Bank Account</option>
+                              <option value="cash">Cash / Manual</option>
+                            </select>
+                          </div>
+                          <div className="form-group" style={{ margin:0 }}>
+                            <label className="form-label">MoMo Network</label>
+                            <input className="form-input" value={payoutForm.payout_momo_network} onChange={updatePayoutField('payout_momo_network')} placeholder="MTN, Telecel, AT" />
+                          </div>
+                          <div className="form-group" style={{ margin:0 }}>
+                            <label className="form-label">MoMo Number</label>
+                            <input className="form-input" value={payoutForm.payout_momo_number} onChange={updatePayoutField('payout_momo_number')} placeholder="024..." />
+                          </div>
+                          <div className="form-group" style={{ margin:0 }}>
+                            <label className="form-label">Bank Name</label>
+                            <input className="form-input" value={payoutForm.payout_bank_name} onChange={updatePayoutField('payout_bank_name')} placeholder="Bank name" />
+                          </div>
+                          <div className="form-group" style={{ margin:0 }}>
+                            <label className="form-label">Account Name</label>
+                            <input className="form-input" value={payoutForm.payout_bank_account_name} onChange={updatePayoutField('payout_bank_account_name')} placeholder="Account holder" />
+                          </div>
+                          <div className="form-group" style={{ margin:0 }}>
+                            <label className="form-label">Account Number</label>
+                            <input className="form-input" value={payoutForm.payout_bank_account_number} onChange={updatePayoutField('payout_bank_account_number')} placeholder="Account number" />
+                          </div>
+                        </div>
+                        <div className="form-group" style={{ margin:'12px 0 0' }}>
+                          <label className="form-label">Payout Notes</label>
+                          <textarea className="form-textarea" rows={3} value={payoutForm.payout_notes} onChange={updatePayoutField('payout_notes')} placeholder="Manual payment notes, verification notes, or payout preferences." />
+                        </div>
+                        {payoutError && <p style={{ color:'var(--danger)', fontSize:'0.8rem', margin:'8px 0 0' }}>{payoutError}</p>}
+                        <button className="btn btn-outline-navy btn-sm" style={{ marginTop:12 }} type="button" disabled={payoutSaving} onClick={savePayout}>
+                          {payoutSaving ? 'Saving...' : 'Save Payout Details'}
+                        </button>
+                      </>
+                    ) : (
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px' }}>
+                        {[
+                          ['Method', detail.profile?.payout?.payout_method],
+                          ['MoMo Network', detail.profile?.payout?.payout_momo_network],
+                          ['MoMo Number', detail.profile?.payout?.payout_momo_number],
+                          ['Bank', detail.profile?.payout?.payout_bank_name],
+                          ['Account Name', detail.profile?.payout?.payout_bank_account_name],
+                          ['Account Number', detail.profile?.payout?.payout_bank_account_number],
+                        ].filter(([, v]) => v).map(([k, v]) => (
+                          <div key={k}>
+                            <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>
+                            <div style={{ fontSize:'0.875rem', color:'var(--navy)' }}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop:24, paddingTop:20, borderTop:'1px solid var(--border)' }}>
+                    <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>School Placements</h4>
+                    {(detail.placements || []).length === 0 ? (
+                      <p style={{ color:'var(--gray-600)', fontSize:'0.85rem', margin:0 }}>No school placements recorded yet.</p>
+                    ) : (
+                      <div style={{ display:'grid', gap:10 }}>
+                        {(detail.placements || []).map(placement => (
+                          <div key={placement.id} style={{ border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', background:'#f8fafc' }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+                              <strong style={{ color:'var(--navy)', fontSize:'0.9rem' }}>{placement.school_name}</strong>
+                              <span className="badge badge-success">{placement.status}</span>
+                            </div>
+                            <div style={{ color:'var(--gray-600)', fontSize:'0.8rem', marginTop:4 }}>{placement.job_title || 'Teaching placement'}</div>
+                            {placement.accepted_at && (
+                              <div style={{ color:'var(--gray-500)', fontSize:'0.74rem', marginTop:6 }}>Accepted {new Date(placement.accepted_at).toLocaleDateString()}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>

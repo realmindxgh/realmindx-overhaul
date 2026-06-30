@@ -509,6 +509,7 @@ const AuthReturnActions = ({ navigate, route = 'cart' }) => (
 const CartPage = ({ navigate }) => {
   const {
     detailed,
+    selectedDetailed,
     selectedSubtotal,
     selectedBulkDiscounts,
     selectedBulkSaving,
@@ -525,6 +526,7 @@ const CartPage = ({ navigate }) => {
   const wishlist = useWishlist();
   const { books } = useCatalog();
   const [pendingRemoval, setPendingRemoval] = React.useState(null);
+  const [generatingInvoice, setGeneratingInvoice] = React.useState(false);
   // Delivery is NOT estimated on the cart page — location has not been chosen yet.
   // The exact fee is calculated once the user selects a delivery zone at checkout.
   const cartTotal = selectedSubtotal - (selectedBulkSaving || 0);
@@ -535,6 +537,39 @@ const CartPage = ({ navigate }) => {
   const suggestions = books
     .filter(b => !cartIds.has(b.id) && cartCats.has(b.cat) && b.stock)
     .slice(0, 4);
+
+  const generateCartInvoice = async () => {
+    if (selectedCount === 0) {
+      globalToast.error('Select at least one cart item first.');
+      return;
+    }
+    if (!isApiMode()) {
+      globalToast.error('Invoice generation needs the live bookshop backend.');
+      return;
+    }
+    setGeneratingInvoice(true);
+    try {
+      const response = await api.createCartInvoice({
+        items: selectedDetailed.map(item => ({
+          product_id: item.id,
+          quantity: item.qty,
+        })),
+      });
+      const invoiceId = response?.invoice?.invoice_id;
+      if (!invoiceId) throw new Error('Invoice was created without an invoice ID.');
+      const link = document.createElement('a');
+      link.href = api.invoicePdfUrl(invoiceId, { download: true });
+      link.download = `${invoiceId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      globalToast.success(`Invoice ${invoiceId} generated.`);
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not generate invoice.');
+    } finally {
+      setGeneratingInvoice(false);
+    }
+  };
 
   if (cartLoading) return (
     <div className="bs-container bs-fade-page">
@@ -578,9 +613,19 @@ const CartPage = ({ navigate }) => {
             <span>{selectedCount} selected for checkout.</span>
           </p>
         </div>
-        <button type="button" className="bs-cart-clear-btn" onClick={clear}>
-          <Icon name="trash" size={14} /> Clear cart
-        </button>
+        <div className="bs-cart-head-actions">
+          <button type="button" className="bs-cart-clear-btn" onClick={clear}>
+            <Icon name="trash" size={14} /> Clear cart
+          </button>
+          <button
+            type="button"
+            className="bs-cart-invoice-btn"
+            disabled={selectedCount === 0 || generatingInvoice}
+            onClick={generateCartInvoice}
+          >
+            <Icon name="files" size={14} /> {generatingInvoice ? 'Generating...' : 'Generate Invoice'}
+          </button>
+        </div>
       </div>
 
       <div className="bs-cart-layout">
@@ -637,12 +682,12 @@ const CartPage = ({ navigate }) => {
           <h3 className="bs-h3">Order Summary</h3>
           <div className="bs-summary-row"><span>Selected items</span><span>{selectedCount}</span></div>
           <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(selectedSubtotal)}</span></div>
-          {/* Bulk Purchase Discount — automatic for 10+ of qualifying items */}
+          {/* Bulk Purchase Discount — automatic at each category's configured quantity */}
           {selectedBulkSaving > 0 && selectedBulkDiscounts.map(d => (
             <div key={d.id} className="bs-summary-row bs-discount" style={{ fontSize:13 }}>
               <span style={{ maxWidth:200, lineHeight:1.4 }}>
                 Bulk Purchase Discount for Retailers &amp; Schools<br/>
-                <span style={{ opacity:.7, fontSize:11 }}>{d.qty}&times; {d.title} @ {d.pct}% off</span>
+                <span style={{ opacity:.7, fontSize:11 }}>{d.qty}&times; {d.title} @ {d.pct}% off (min. {d.minQty})</span>
               </span>
               <span style={{ color:'var(--bs-success)', fontWeight:700 }}>-{cedis(d.saving)}</span>
             </div>

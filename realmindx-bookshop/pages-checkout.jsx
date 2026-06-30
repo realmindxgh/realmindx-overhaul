@@ -77,6 +77,7 @@ const buildCheckoutSuccess = ({
     count,
     total,
     paymentStatus: order?.payment_status || '',
+    invoiceId: order?.invoice_id || '',
   },
 });
 
@@ -605,6 +606,7 @@ const CheckoutPage = ({ navigate }) => {
   const confirmedItems = confirmedOrder?.items || detailed;
   const confirmedCount = confirmedOrder?.count ?? count;
   const confirmedTotal = confirmedOrder?.total ?? total;
+  const confirmedInvoiceId = confirmedOrder?.invoiceId || '';
 
   if (step === 2) return (
     <div className="bs-container bs-fade-page">
@@ -614,6 +616,7 @@ const CheckoutPage = ({ navigate }) => {
         <h1 className="bs-h2">{paymentMethod === 'cash_on_delivery' ? 'Order registered!' : 'Order placed successfully!'}</h1>
         <p className="bs-muted">Thank you, {form.name.split(' ')[0] || 'friend'}. A confirmation has been sent to {form.email || 'your email'}.</p>
         <div className="bs-order-num">Order No. {orderRef}</div>
+        {confirmedInvoiceId && <div className="bs-order-num">Invoice ID {confirmedInvoiceId}</div>}
         <div className="bs-confirm-summary">
           <div style={{ display:'flex', justifyContent:'space-between', marginBottom:14 }}>
             <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>What you ordered</span>
@@ -634,6 +637,11 @@ const CheckoutPage = ({ navigate }) => {
         </div>
         <div className="bs-confirm-actions">
           <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clearCheckoutSuccess(); clearCart(); navigate('track'); }}>Track Your Order</button>
+          {confirmedInvoiceId && (
+            <a className="bs-btn bs-btn-gold bs-btn-lg" href={api.invoicePdfUrl(confirmedInvoiceId, { download: true })}>
+              Download Invoice
+            </a>
+          )}
           <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => { clearCheckoutSuccess(); clearCart(); navigate('home'); }}>Continue Shopping</button>
         </div>
       </div>
@@ -1060,4 +1068,140 @@ const TrackPage = ({ navigate }) => {
   );
 };
 
-export { CheckoutPage, TrackPage, StepBar };
+const InvoicePage = ({ navigate }) => {
+  const initialInvoiceId = React.useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('invoice_id') || params.get('invoice') || params.get('id') || '').trim().toUpperCase();
+  }, []);
+  const [query, setQuery] = React.useState(initialInvoiceId);
+  const [invoice, setInvoice] = React.useState(null);
+  const [searched, setSearched] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const inputRef = React.useRef(null);
+
+  const lookupInvoice = React.useCallback(async (rawInvoiceId, { focusOnError = true } = {}) => {
+    const invoiceId = String(rawInvoiceId || '').trim().toUpperCase();
+    setQuery(invoiceId);
+    setError('');
+    setSearched(false);
+    setInvoice(null);
+    if (!invoiceId) {
+      setError('Enter your invoice ID.');
+      if (focusOnError) inputRef.current?.focus();
+      return;
+    }
+    if (!isApiMode()) {
+      setError('Live invoice lookup is available on the deployed bookshop.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await api.lookupInvoice(invoiceId);
+      setInvoice(data.invoice || null);
+      setSearched(true);
+    } catch (err) {
+      setError(err?.message || 'No matching invoice was found.');
+      if (focusOnError) inputRef.current?.focus();
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (initialInvoiceId) {
+      lookupInvoice(initialInvoiceId, { focusOnError: false });
+    }
+  }, [initialInvoiceId, lookupInvoice]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    await lookupInvoice(query);
+  };
+
+  const pdfUrl = invoice?.invoice_id ? api.invoicePdfUrl(invoice.invoice_id) : '';
+  const downloadUrl = invoice?.invoice_id ? api.invoicePdfUrl(invoice.invoice_id, { download: true }) : '';
+
+  return (
+    <div className="bs-container bs-fade-page">
+      <div className="bs-track-search bs-invoice-search">
+        <div className="bs-text-center">
+          <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Invoice Lookup</span>
+          <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Find an invoice</h1>
+          <p className="bs-muted" style={{ marginTop:10 }}>Enter the exact invoice ID from your RealMindX Bookshop receipt.</p>
+        </div>
+        <form className="bs-track-input-row" onSubmit={submit}>
+          <input ref={inputRef} placeholder="e.g. RMX-INV-9F2A7C4B11" value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
+          <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading}>
+            {loading ? 'Searching...' : 'Search'}
+          </button>
+        </form>
+        {error && <p className="bs-track-error">{error}</p>}
+
+        {searched && !invoice && !error && (
+          <div className="bs-empty-state" style={{ marginTop:28, padding:'34px 22px' }}>
+            <div className="bs-empty-icon"><Icon name="search" size={30} /></div>
+            <h2 className="bs-h3">No matching invoice found.</h2>
+            <p>Check the invoice ID and try again.</p>
+          </div>
+        )}
+
+        {invoice && (
+          <div className="bs-fade-page bs-invoice-result">
+            <div className="bs-summary-card bs-track-card" style={{ position:'static' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:10, marginBottom:8 }}>
+                <div>
+                  <div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Invoice</div>
+                  <div style={{ fontFamily:'JetBrains Mono', fontSize:16, color:'var(--bs-navy)', marginTop:4 }}>{invoice.invoice_id}</div>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <div className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Order</div>
+                  <div style={{ marginTop:4, fontFamily:'JetBrains Mono', fontSize:14 }}>{invoice.order_reference}</div>
+                </div>
+              </div>
+              <div className="bs-divider" />
+              <div className="bs-invoice-meta-grid">
+                <div><span>Customer</span><strong>{invoice.customer_name}</strong></div>
+                <div><span>Date</span><strong>{formatOrderDate(invoice.created_at)}</strong></div>
+                <div><span>Status</span><strong>{normalizeOrderStatus(invoice.status).replace('_', ' ')}</strong></div>
+                <div><span>Total</span><strong>{cedis(invoice.total_amount || 0)}</strong></div>
+              </div>
+              <div className="bs-divider" />
+              <div style={{ marginBottom:8 }}>
+                {(invoice.items || []).map((it,i) => (
+                  <div key={`${it.product_id || i}-${it.product_name}`} style={{ display:'flex', justifyContent:'space-between', gap:12, padding:'6px 0', fontSize:14 }}>
+                    <span>{it.quantity} x {it.product_name}</span>
+                    <span>{cedis(Number(it.unit_price || 0) * Number(it.quantity || 1))}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="bs-divider" />
+              <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(invoice.subtotal_amount || 0)}</span></div>
+              {(invoice.bulk_discount_amount || 0) > 0 && <div className="bs-summary-row bs-discount"><span>Bulk purchase discount</span><span>-{cedis(invoice.bulk_discount_amount)}</span></div>}
+              {(invoice.promo_discount_amount || 0) > 0 && <div className="bs-summary-row bs-discount"><span>Promo {invoice.promo_code || ''}</span><span>-{cedis(invoice.promo_discount_amount)}</span></div>}
+              <div className="bs-summary-row"><span>Delivery</span><span>{cedis(invoice.delivery_fee || 0)}</span></div>
+              <div className="bs-summary-row bs-total"><span>Total</span><span>{cedis(invoice.total_amount || 0)}</span></div>
+              <div className="bs-invoice-actions">
+                <a className="bs-btn bs-btn-gold bs-btn-lg" href={downloadUrl}>
+                  <Icon name="files" size={16} /> Download PDF
+                </a>
+                <button className="bs-btn bs-btn-navy bs-btn-lg" type="button" onClick={() => navigate('track')}>
+                  <Icon name="truck" size={16} /> Track Order
+                </button>
+              </div>
+            </div>
+
+            {pdfUrl && (
+              <div className="bs-invoice-viewer-wrap">
+                <iframe className="bs-invoice-viewer" src={pdfUrl} title={`Invoice ${invoice.invoice_id}`} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export { CheckoutPage, TrackPage, InvoicePage, StepBar };
