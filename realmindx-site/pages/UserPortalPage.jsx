@@ -23,6 +23,32 @@ import {
 // back out into individual badges for display.
 const splitMulti = (raw = '') => raw.split(',').map(s => s.trim()).filter(Boolean);
 
+const PasswordRevealInput = ({ value, onChange, autoComplete, placeholder, required }) => {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="password-field">
+      <input
+        type={visible ? 'text' : 'password'}
+        className="form-input"
+        autoComplete={autoComplete}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        required={required}
+        style={{ paddingRight: 44 }}
+      />
+      <button
+        type="button"
+        className="password-toggle"
+        onClick={() => setVisible(current => !current)}
+        aria-label={visible ? 'Hide password' : 'Show password'}
+      >
+        <Icon name={visible ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+      </button>
+    </div>
+  );
+};
+
 // CV Tutorial video card — YouTube URL is configurable via admin Site Settings (key: cv_tutorial_url)
 const CV_TUTORIAL_FALLBACK_URL = '';  // set a YouTube embed URL here once you have one, e.g. 'https://www.youtube.com/embed/XXXXXXXXXXX'
 
@@ -1526,9 +1552,9 @@ const SettingsView = ({ onNavigate }) => {
       <div className="profile-sections-grid">
         <form className="profile-section-card" onSubmit={submitPassword}>
           <h3>Change Password</h3>
-          <div className="form-group"><label className="form-label">Current Password</label><input type="password" className="form-input" autoComplete="current-password" value={passwords.current} onChange={event => setPasswords(prev => ({ ...prev, current: event.target.value }))} required /></div>
-          <div className="form-group"><label className="form-label">New Password</label><input type="password" className="form-input" autoComplete="new-password" placeholder="Minimum 8 characters" value={passwords.next} onChange={event => setPasswords(prev => ({ ...prev, next: event.target.value }))} required /></div>
-          <div className="form-group"><label className="form-label">Confirm New Password</label><input type="password" className="form-input" autoComplete="new-password" placeholder="Repeat new password" value={passwords.confirm} onChange={event => setPasswords(prev => ({ ...prev, confirm: event.target.value }))} required /></div>
+          <div className="form-group"><label className="form-label">Current Password</label><PasswordRevealInput autoComplete="current-password" value={passwords.current} onChange={event => setPasswords(prev => ({ ...prev, current: event.target.value }))} required /></div>
+          <div className="form-group"><label className="form-label">New Password</label><PasswordRevealInput autoComplete="new-password" placeholder="Minimum 8 characters" value={passwords.next} onChange={event => setPasswords(prev => ({ ...prev, next: event.target.value }))} required /></div>
+          <div className="form-group"><label className="form-label">Confirm New Password</label><PasswordRevealInput autoComplete="new-password" placeholder="Repeat new password" value={passwords.confirm} onChange={event => setPasswords(prev => ({ ...prev, confirm: event.target.value }))} required /></div>
           {error && <p className="form-error" role="alert">{error}</p>}
           {success && <p className="form-success" role="status">{success}</p>}
           <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>{saving ? 'Updating...' : 'Update Password'}</button>

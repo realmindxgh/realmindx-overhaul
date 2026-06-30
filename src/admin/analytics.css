@@ -521,16 +521,17 @@
   background: var(--analytics-muted-surface);
   border: 1px solid var(--analytics-border);
   border-radius: 18px;
-  padding: 14px 14px 10px;
+  padding: 14px 16px 12px;
 }
 
 .analytics-chart-wrap.compact .analytics-line-chart {
-  height: 170px;
+  min-height: 210px;
 }
 
 .analytics-line-chart {
   width: 100%;
-  height: 220px;
+  min-height: 270px;
+  overflow: visible;
 }
 
 .analytics-chart-axis {
@@ -540,8 +541,58 @@
 
 .analytics-chart-grid {
   stroke: var(--analytics-border);
-  stroke-width: 1;
-  stroke-dasharray: 2 3;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 7;
+}
+
+.analytics-chart-axis-label,
+.analytics-chart-date-label {
+  fill: var(--analytics-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.analytics-chart-point-label {
+  fill: var(--analytics-text);
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.analytics-chart-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.analytics-chart-badges span {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid var(--analytics-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--analytics-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.73rem;
+  font-weight: 800;
+}
+
+.analytics-chart-badges strong {
+  color: var(--analytics-text);
+}
+
+.analytics-chart-badges i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  display: inline-block;
 }
 
 .analytics-legend-row {
@@ -638,16 +689,17 @@
 }
 
 .analytics-spark-bars {
-  height: 54px;
+  height: 66px;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(4px, 1fr);
+  grid-auto-columns: minmax(10px, 1fr);
   align-items: end;
-  gap: 4px;
-  padding-top: 6px;
+  gap: 5px;
+  padding-top: 16px;
 }
 
 .analytics-spark-bars span {
+  position: relative;
   display: block;
   min-height: 4px;
   border-radius: 999px 999px 3px 3px;
@@ -656,6 +708,18 @@
 
 .analytics-spark-bars span.active {
   box-shadow: inset 0 -1px 0 rgba(0,0,0,.08);
+}
+
+.analytics-spark-bars span i {
+  position: absolute;
+  left: 50%;
+  top: -17px;
+  transform: translateX(-50%);
+  color: var(--analytics-text);
+  font-style: normal;
+  font-size: 0.58rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .analytics-distribution-list,

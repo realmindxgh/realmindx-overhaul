@@ -547,10 +547,16 @@ const CONFIG = {
       field('title', 'Title'),
       field('description', 'Description', 'textarea'),
       field('source', 'Source / Publisher', 'text', { help: 'Shown on the public education documents card.' }),
-      field('url', 'URL'),
+      field('resource_file_id', 'Document File', 'file', {
+        category: 'resources',
+        accept: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv',
+        help: 'Upload the actual education document. PDF is preferred; Word, PowerPoint, Excel, and CSV files are also accepted.',
+      }),
+      field('url', 'External URL', 'text', { help: 'Optional. Use this only when the document must live outside RealMindX; uploaded files take priority when no external URL is supplied.' }),
       field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
-    columns: ['title', 'source', 'description', 'url', 'status'],
+    columns: ['title', 'source', 'resource_file_name', 'url', 'status'],
+    columnLabels: { resource_file_name: 'File' },
   },
   messages: {
     title: 'Tickets',
@@ -813,6 +819,7 @@ const normalizeFormValue = (value, itemField) => {
   if (itemField.type === 'checkbox') return Boolean(value);
   if (itemField.type === 'tags') return String(value || '').split(',').map(tag => tag.trim()).filter(Boolean);
   if (itemField.type === 'image') return value ? Number(value) : null; // stored as file ID (number)
+  if (itemField.type === 'file') return value ? Number(value) : null; // stored as file ID (number)
   if (itemField.type === 'category-select' || itemField.type === 'delivery-zone-select') return value ? Number(value) : null;
   if (itemField.type === 'permission-list') return expandPermissionsForSave(value);
   if (itemField.type === 'article-sections') return Array.isArray(value) ? value : [];
@@ -824,6 +831,7 @@ const valueForInput = (value, itemField) => {
   if (itemField.type === 'textarea') return Array.isArray(value) ? value.join('\n') : value || '';
   if (itemField.type === 'checkbox') return Boolean(value);
   if (itemField.type === 'image') return value ?? ''; // stores file ID
+  if (itemField.type === 'file') return value ?? ''; // stores file ID
   if (itemField.type === 'category-select' || itemField.type === 'delivery-zone-select') return value ?? '';
   if (itemField.type === 'permission-list') return Array.isArray(value) ? value : [];
   if (itemField.type === 'article-sections') return Array.isArray(value) ? value : [];
@@ -973,14 +981,14 @@ const DashboardView = ({ content, setActive, session }) => {
   // In API mode use the live summary; in local mode derive from content arrays.
   const s = liveData?.summary || {};
   const stats = (isApiMode() ? [
-    { label: 'Total Users', value: s.total_users ?? 0, note: 'registered accounts', icon: 'users', target: 'teachers', permission: 'teachers.view' },
+    { label: 'Registered Teachers', value: s.total_users ?? 0, note: 'teacher accounts', icon: 'users', target: 'teachers', permission: 'teachers.view' },
     { label: 'Job Applications', value: s.total_job_applications ?? 0, note: `${s.pending_applications ?? 0} pending`, icon: 'clipboard', target: 'applications', permission: 'applications.view' },
     { label: 'New Orders', value: s.new_orders ?? 0, note: 'awaiting confirmation', icon: 'package', target: 'orders', permission: 'orders.view' },
     { label: 'New Tickets', value: s.new_contact_messages ?? 0, note: 'need attention', icon: 'message', target: 'messages', permission: 'messages.view' },
     { label: 'Products', value: s.total_products ?? 0, note: 'in the bookshop', icon: 'book', target: 'products', permission: 'products.view' },
     { label: 'Newsletter Subscribers', value: s.newsletter_subscribers ?? 0, note: 'active subscriptions', icon: 'mail', target: 'newsletters', permission: 'newsletters.view' },
   ] : [
-    { label: 'Total Users', value: 142, note: 'seeded demo users', icon: 'users', target: 'teachers', permission: 'teachers.view' },
+    { label: 'Registered Teachers', value: 142, note: 'seeded teacher accounts', icon: 'users', target: 'teachers', permission: 'teachers.view' },
     { label: 'Job Applications', value: 38, note: `${(content.jobs || []).length} active job records`, icon: 'clipboard', target: 'applications', permission: 'applications.view' },
     { label: 'New Orders', value: (content.orders || []).filter(o => o.status === 'new').length, note: 'from bookshop', icon: 'package', target: 'orders', permission: 'orders.view' },
     { label: 'New Tickets', value: (content.messages || []).filter(m => m.status === 'new').length, note: 'need attention', icon: 'message', target: 'messages', permission: 'messages.view' },
@@ -1160,6 +1168,90 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
   );
 };
 
+const FileUploadField = ({ currentFileId, currentUrl, currentName, onChange, accept, category = 'resources', visibility = 'public', help }) => {
+  const [uploading, setUploading] = React.useState(false);
+  const [fileName, setFileName] = React.useState(currentName || '');
+  const [fileUrl, setFileUrl] = React.useState(currentUrl || '');
+  const [error, setError] = React.useState('');
+  const [staged, setStaged] = React.useState(false);
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    setFileName(currentName || '');
+    setFileUrl(currentUrl || '');
+    setError('');
+    setStaged(false);
+  }, [currentFileId, currentName, currentUrl]);
+
+  const handleSelect = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = '';
+    setUploading(true);
+    setError('');
+    try {
+      const { api } = await import('../../src/lib/apiClient.js');
+      const uploaded = await api.uploadFile(file, category, { visibility });
+      setFileName(uploaded.original_filename || file.name);
+      setFileUrl(uploaded.url || '');
+      setStaged(true);
+      onChange(uploaded.id, uploaded.url, uploaded.original_filename || file.name);
+    } catch (err) {
+      setError(err.message || 'Upload failed');
+      setStaged(false);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="admin-file-upload">
+      <div className="admin-file-upload-row">
+        <span className="admin-file-upload-icon"><Icon name="file" size={18} stroke={2} /></span>
+        <div className="admin-file-upload-copy">
+          <strong>{fileName || (currentFileId ? 'Existing file on record' : 'No document uploaded yet')}</strong>
+          {fileUrl ? <a href={fileUrl} target="_blank" rel="noreferrer">Open uploaded file</a> : null}
+          {help ? <p>{help}</p> : null}
+        </div>
+        <button type="button" className="btn btn-outline-navy btn-sm" onClick={() => inputRef.current?.click()} disabled={uploading}>
+          {uploading ? 'Uploading...' : fileName || currentFileId ? 'Replace file' : 'Upload file'}
+        </button>
+      </div>
+      <input ref={inputRef} type="file" accept={accept} style={{ display: 'none' }} onChange={handleSelect} />
+      {staged && <p className="admin-image-help">File uploaded. Save changes to attach it to this resource.</p>}
+      {error && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: 4 }}>{error}</p>}
+    </div>
+  );
+};
+
+const PasswordRevealInput = ({ value, onChange, name, autoComplete, required, minLength, placeholder, className = 'form-input', style }) => {
+  const [visible, setVisible] = React.useState(false);
+  return (
+    <div className="password-field">
+      <input
+        className={className}
+        style={{ ...(style || {}), paddingRight: 44 }}
+        type={visible ? 'text' : 'password'}
+        name={name}
+        value={value}
+        onChange={onChange}
+        autoComplete={autoComplete}
+        required={required}
+        minLength={minLength}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        className="password-toggle"
+        onClick={() => setVisible(current => !current)}
+        aria-label={visible ? 'Hide password' : 'Show password'}
+      >
+        <Icon name={visible ? 'eyeOff' : 'eye'} size={18} />
+      </button>
+    </div>
+  );
+};
+
 const ArticleSectionsField = ({ sections, onChange }) => {
   const safeSections = Array.isArray(sections) ? sections : [];
   const updateSection = (index, patch) => {
@@ -1278,13 +1370,21 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
       return acc;
     }, {}),
   );
-  // Track image preview URLs separately (not sent in payload, only the file ID is)
-  const [imageUrls, setImageUrls] = React.useState(() => {
+  // Track upload preview URLs separately (not sent in payload, only the file ID is)
+  const [uploadMeta, setUploadMeta] = React.useState(() => {
     const urls = {};
     config.fields.forEach(f => {
-      if (f.type !== 'image') return;
-      const fieldUrl = initialItem?.[`${String(f.name).replace(/_file_id$/, '')}_url`] || initialItem?.image_url;
-      if (fieldUrl) urls[f.name] = fieldUrl;
+      if (f.type === 'image') {
+        const fieldUrl = initialItem?.[`${String(f.name).replace(/_file_id$/, '')}_url`] || initialItem?.image_url;
+        if (fieldUrl) urls[f.name] = { url: fieldUrl };
+      }
+      if (f.type === 'file') {
+        const baseName = String(f.name).replace(/_file_id$/, '');
+        urls[f.name] = {
+          url: initialItem?.[`${baseName}_url`] || initialItem?.file_url || '',
+          name: initialItem?.[`${baseName}_name`] || initialItem?.resource_file_name || '',
+        };
+      }
     });
     return urls;
   });
@@ -1354,19 +1454,32 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
       </h3>
       <div className="admin-form-grid">
         {config.fields.map(itemField => (
-          <div key={itemField.name} className="form-group" style={(itemField.type === 'textarea' || itemField.type === 'image' || itemField.type === 'permission-list' || itemField.type === 'article-sections') ? { gridColumn: '1 / -1' } : null}>
+          <div key={itemField.name} className="form-group" style={(itemField.type === 'textarea' || itemField.type === 'image' || itemField.type === 'file' || itemField.type === 'permission-list' || itemField.type === 'article-sections') ? { gridColumn: '1 / -1' } : null}>
             <label className="form-label">{itemField.label}</label>
             {itemField.type === 'image' ? (
               <ImageUploadField
                 fieldName={itemField.name}
                 currentFileId={form[itemField.name]}
-                currentUrl={imageUrls[itemField.name]}
+                currentUrl={uploadMeta[itemField.name]?.url}
                 aspectRatio={itemField.aspectRatio}
                 cropTitle={itemField.cropTitle}
                 guide={itemField.guide}
                 onChange={(fileId, fileUrl) => {
                   setForm(prev => ({ ...prev, [itemField.name]: fileId }));
-                  setImageUrls(prev => ({ ...prev, [itemField.name]: fileUrl }));
+                  setUploadMeta(prev => ({ ...prev, [itemField.name]: { url: fileUrl } }));
+                }}
+              />
+            ) : itemField.type === 'file' ? (
+              <FileUploadField
+                currentFileId={form[itemField.name]}
+                currentUrl={uploadMeta[itemField.name]?.url}
+                currentName={uploadMeta[itemField.name]?.name}
+                accept={itemField.accept}
+                category={itemField.category || 'resources'}
+                visibility={itemField.visibility || 'public'}
+                onChange={(fileId, fileUrl, fileName) => {
+                  setForm(prev => ({ ...prev, [itemField.name]: fileId }));
+                  setUploadMeta(prev => ({ ...prev, [itemField.name]: { url: fileUrl, name: fileName } }));
                 }}
               />
             ) : itemField.type === 'permission-list' ? (
@@ -1469,10 +1582,17 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
                 max={typeof itemField.max === 'function' ? itemField.max(form) : itemField.max}
                 ariaLabel={itemField.label}
               />
+            ) : itemField.type === 'password' ? (
+              <PasswordRevealInput
+                value={form[itemField.name]}
+                onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.value }))}
+                autoComplete="new-password"
+                placeholder={fieldPlaceholder(itemField, config)}
+              />
             ) : (
               <input
                 className="form-input"
-                type={itemField.type === 'number' ? 'number' : itemField.type === 'password' ? 'password' : itemField.type === 'email' ? 'email' : 'text'}
+                type={itemField.type === 'number' ? 'number' : itemField.type === 'email' ? 'email' : 'text'}
                 step={itemField.type === 'number' ? '0.01' : undefined}
                 placeholder={fieldPlaceholder(itemField, config)}
                 value={form[itemField.name]}
@@ -1771,6 +1891,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
 
 const NewsletterComposer = ({ onSent }) => {
   const [form, setForm] = React.useState({
+    brand: 'realmindx',
     subject: '',
     title: '',
     preheader: '',
@@ -1803,7 +1924,7 @@ const NewsletterComposer = ({ onSent }) => {
         image_file_id: form.image_file_id ? Number(form.image_file_id) : null,
       });
       setStatus(result.message || 'Newsletter sent.');
-      setForm({ subject: '', title: '', preheader: '', body: '', cta_label: '', cta_url: '', image_file_id: '' });
+      setForm({ brand: 'realmindx', subject: '', title: '', preheader: '', body: '', cta_label: '', cta_url: '', image_file_id: '' });
       setImageUrl('');
       onSent?.();
     } catch (err) {
@@ -1818,9 +1939,16 @@ const NewsletterComposer = ({ onSent }) => {
       <div>
         <p className="overline">Newsletter Campaign</p>
         <h3>Compose a branded RealMindX email</h3>
-        <p>Add an optional hero image, CTA, and message body. The email uses the same RealMindX branded template as system triggers.</p>
+        <p>Choose the RealMindX or Bookshop identity, add an optional hero image, CTA, and rich message body.</p>
       </div>
       <div className="admin-form-grid">
+        <label className="form-group">
+          <span className="form-label">Branding</span>
+          <select className="form-select" value={form.brand} onChange={set('brand')}>
+            <option value="realmindx">RealMindX Education</option>
+            <option value="bookshop">RealMindX Bookshop</option>
+          </select>
+        </label>
         <label className="form-group">
           <span className="form-label">Subject</span>
           <input className="form-input" value={form.subject} onChange={set('subject')} placeholder="June learning updates" />
@@ -1851,12 +1979,22 @@ const NewsletterComposer = ({ onSent }) => {
               setForm(prev => ({ ...prev, image_file_id: fileId }));
               setImageUrl(fileUrl);
             }}
+            aspectRatio={16/7}
+            cropTitle="Crop Newsletter Hero Image (16:7)"
+            guide={[
+              { icon: 'target', text: 'Ideal ratio: 16:7. This gives the email header a polished banner shape without becoming too tall.' },
+              { icon: 'camera', text: 'Recommended size: 1400 x 612 px or larger. Keep important faces, text, and logos away from the extreme edges.' },
+              { icon: 'check', text: 'Use a clear photo or campaign visual. Avoid small text inside the image because many email clients shrink banners.' },
+            ]}
           />
         </div>
-        <label className="form-group" style={{ gridColumn: '1 / -1' }}>
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
           <span className="form-label">Message Body</span>
-          <textarea className="form-textarea" rows={7} value={form.body} onChange={set('body')} placeholder="Write the newsletter body. Use blank lines for paragraphs." />
-        </label>
+          <textarea className="form-textarea" rows={7} value={form.body} onChange={set('body')} placeholder={"Write the newsletter body. Use blank lines for paragraphs.\n\nLink: [Read the update](https://realmindxgh.com/news)\nImage: ![left:Alt text](https://example.com/image.jpg)"} />
+          <p className="admin-image-help">
+            Add clickable text with <strong>[link text](https://...)</strong>. Add inline images with <strong>![left:Alt](https://...)</strong>, <strong>![right:Alt](https://...)</strong>, or <strong>![full:Alt](https://...)</strong>.
+          </p>
+        </div>
       </div>
       {status && <p style={{ color: status.includes('could not') || status.includes('Add ') ? 'var(--danger)' : 'var(--navy)', fontWeight: 700 }}>{status}</p>}
       <button className="btn btn-primary btn-sm" disabled={sending}>{sending ? 'Sending...' : 'Send Newsletter'}</button>
@@ -2569,15 +2707,86 @@ const ApplicationsView = ({ content, session }) => (
   />
 );
 
-const AlertsView = () => (
-  <div>
-    <h2 className="admin-page-title" style={{ marginBottom: 24 }}>Job Alerts</h2>
-    <EmptySection
-      title="No Job Alerts to Review Yet"
-      body="When users save alert preferences, they will appear here for monitoring. New job posts can then be matched against subject, location, level, and employment type."
-    />
-  </div>
-);
+const AlertsView = () => {
+  const [alerts, setAlerts] = React.useState([]);
+  const [loading, setLoading] = React.useState(isApiMode());
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (!isApiMode()) return;
+    let alive = true;
+    setLoading(true);
+    api.adminList('job-alerts')
+      .then(data => {
+        if (alive) {
+          setAlerts(data.items || []);
+          setError('');
+        }
+      })
+      .catch(err => {
+        if (alive) setError(err?.message || 'Could not load job alerts.');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => { alive = false; };
+  }, []);
+
+  const formatWhen = value => {
+    if (!value) return 'Not sent yet';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Not sent yet' : date.toLocaleString();
+  };
+
+  return (
+    <div>
+      <h2 className="admin-page-title" style={{ marginBottom: 24 }}>Job Alerts</h2>
+      {loading ? (
+        <div className="admin-table-card" style={{ padding: 28, color: 'var(--navy)', fontWeight: 800 }}>Loading saved job alerts...</div>
+      ) : error ? (
+        <p className="form-error">{error}</p>
+      ) : alerts.length === 0 ? (
+        <EmptySection
+          title="No Job Alerts to Review Yet"
+          body="When users save alert preferences, they will appear here for monitoring. New job posts can then be matched against subject, location, level, and employment type."
+        />
+      ) : (
+        <div className="admin-table-card">
+          <AdminTableScroll>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Teacher</th>
+                  <th>Email</th>
+                  <th>Subject</th>
+                  <th>Location</th>
+                  <th>Level</th>
+                  <th>Employment</th>
+                  <th>Email Alerts</th>
+                  <th>Last Sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map(alert => (
+                  <tr key={alert.id}>
+                    <td><strong>{alert.teacher_name || 'Teacher'}</strong>{alert.is_default ? <div className="td-muted">Default alert</div> : null}</td>
+                    <td>{alert.email}</td>
+                    <td>{alert.subject || 'Any subject'}</td>
+                    <td>{alert.location || 'Any location'}</td>
+                    <td>{alert.preferred_level || 'Any level'}</td>
+                    <td>{alert.employment_type || 'Any type'}</td>
+                    <td><span className={`badge ${alert.alert_by_email ? 'badge-success' : 'badge-navy'}`}>{alert.alert_by_email ? 'On' : 'Off'}</span></td>
+                    <td>{formatWhen(alert.last_sent_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </AdminTableScroll>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ─── Bulk adjuster widget ─────────────────────────────────────────────────────
 const BulkAdjuster = ({ title, description, onApply }) => {
@@ -3129,15 +3338,15 @@ const AccountView = ({ session, onPasswordChanged }) => {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
             Current Password
-            <input type="password" name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
             New Password
-            <input type="password" name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" required minLength={8} style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" required minLength={8} style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
             Confirm New Password
-            <input type="password" name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
           </label>
           {status?.error && <p style={{ color: '#c0392b', fontSize: '0.85rem', margin: 0 }}>{status.error}</p>}
           {status?.success && <p style={{ color: '#1a7f4a', fontSize: '0.85rem', margin: 0 }}>{status.success}</p>}
@@ -3206,15 +3415,15 @@ const ForcedPasswordChangeModal = ({ session, loginPath, onPasswordChanged }) =>
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
           <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
             Current Password
-            <input type="password" name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required className="form-input" />
+            <PasswordRevealInput name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required />
           </label>
           <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
             New Password
-            <input type="password" name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" minLength={8} required className="form-input" />
+            <PasswordRevealInput name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" minLength={8} required />
           </label>
           <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
             Confirm New Password
-            <input type="password" name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required className="form-input" />
+            <PasswordRevealInput name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required />
           </label>
           {status?.error ? <p style={{ margin: 0, color: '#b42318', fontSize: '0.84rem' }}>{status.error}</p> : null}
           {status?.success ? <p style={{ margin: 0, color: '#027a48', fontSize: '0.84rem' }}>{status.success}</p> : null}
@@ -3420,6 +3629,14 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
         .admin-image-guide { background: #f0f4fa; border-left: 3px solid var(--navy); border-radius: 0 8px 8px 0; padding: 12px 16px; margin-top: 12px; max-width: 680px; display: flex; flex-direction: column; gap: 8px; }
         .admin-ig-row { display: flex; align-items: flex-start; gap: 9px; font-size: 0.78rem; color: #1a2a40; line-height: 1.55; }
         .admin-ig-icon { flex-shrink: 0; color: var(--navy); margin-top: 1px; opacity: 0.75; }
+        .admin-file-upload { border: 1px solid var(--gray-200); border-radius: 10px; padding: 14px; background: #f8fafc; }
+        .admin-file-upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .admin-file-upload-icon { width: 42px; height: 42px; border-radius: 8px; background: #eaf1fb; color: var(--navy); display: grid; place-items: center; flex: 0 0 auto; }
+        .admin-file-upload-copy { flex: 1 1 280px; min-width: 0; display: grid; gap: 3px; }
+        .admin-file-upload-copy strong { color: var(--navy); font-size: 0.9rem; overflow-wrap: anywhere; }
+        .admin-file-upload-copy a { color: var(--navy); font-size: 0.78rem; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+        .admin-file-upload-copy p { color: var(--gray-600); font-size: 0.76rem; line-height: 1.45; margin: 0; }
+        .password-field .form-input { width: 100%; }
         .admin-stat { border: 0; text-align: left; cursor: pointer; }
         .admin-thumb { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--gray-200); display: block; }
         .td-muted { color: var(--gray-600); font-size: 0.78rem; font-weight: 700; }

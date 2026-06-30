@@ -5,6 +5,7 @@ import { submitOrder } from '../src/lib/managedContent.js';
 import { isApiMode, api } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
+import globalToast from '../src/lib/toast.js';
 import {
   clearCheckoutDraft,
   clearCheckoutSuccess,
@@ -1068,7 +1069,50 @@ const TrackPage = ({ navigate }) => {
   );
 };
 
+const InvoiceDocumentPreview = ({ invoice, documentLabel, documentId }) => {
+  if (!invoice) return null;
+  const isReceipt = invoice.document_type === 'receipt';
+  return (
+    <div className="bs-invoice-paper" aria-label={`${documentLabel} preview`}>
+      <div className="bs-invoice-paper-head">
+        <img src="/bookshop-logo.png" alt="RealMindX Bookshop" />
+        <div>
+          <h2>{isReceipt ? 'ORDER RECEIPT' : 'CART INVOICE'}</h2>
+          <strong>{documentId}</strong>
+          <span>{isReceipt ? 'Issued' : 'Generated'}: {formatOrderDate(invoice.issued_at || invoice.created_at)}</span>
+        </div>
+      </div>
+      <div className="bs-invoice-paper-metadata">
+        <div><span>Customer</span><strong>{invoice.customer_name || 'Cart invoice'}</strong></div>
+        <div><span>Status</span><strong>{normalizeOrderStatus(invoice.status).replace('_', ' ')}</strong></div>
+        <div><span>Payment</span><strong>{String(invoice.payment_status || 'not paid').replace('_', ' ')}</strong></div>
+      </div>
+      <div className="bs-invoice-paper-table">
+        <div className="bs-invoice-paper-row head">
+          <span>Item</span><span>Qty</span><span>Unit</span><span>Total</span>
+        </div>
+        {(invoice.items || []).map((item, index) => (
+          <div className="bs-invoice-paper-row" key={`${item.product_id || index}-${item.product_name}`}>
+            <span>{item.product_name}</span>
+            <span>{item.quantity}</span>
+            <span>{cedis(item.unit_price || 0)}</span>
+            <span>{cedis(Number(item.unit_price || 0) * Number(item.quantity || 1))}</span>
+          </div>
+        ))}
+      </div>
+      <div className="bs-invoice-paper-total">
+        <div><span>Subtotal</span><strong>{cedis(invoice.subtotal_amount || 0)}</strong></div>
+        {(invoice.bulk_discount_amount || 0) > 0 && <div><span>Bulk purchase discount</span><strong>-{cedis(invoice.bulk_discount_amount)}</strong></div>}
+        {(invoice.promo_discount_amount || 0) > 0 && <div><span>Promo {invoice.promo_code || ''}</span><strong>-{cedis(invoice.promo_discount_amount)}</strong></div>}
+        <div><span>Delivery</span><strong>{isReceipt ? cedis(invoice.delivery_fee || 0) : 'Calculated at checkout'}</strong></div>
+        <div className="grand"><span>{isReceipt ? 'Total' : 'Total before delivery'}</span><strong>{cedis(invoice.total_amount || 0)}</strong></div>
+      </div>
+    </div>
+  );
+};
+
 const InvoicePage = ({ navigate }) => {
+  const cart = useCart();
   const initialInvoiceId = React.useMemo(() => {
     if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
@@ -1127,6 +1171,20 @@ const InvoicePage = ({ navigate }) => {
   const pdfUrl = pdfLookupId ? api.invoicePdfUrl(pdfLookupId, pdfOptions) : '';
   const downloadUrl = pdfLookupId ? api.invoicePdfUrl(pdfLookupId, { ...pdfOptions, download: true }) : '';
   const documentLabel = isReceipt ? 'Receipt' : 'Invoice';
+  const actionableItems = React.useMemo(
+    () => (invoice?.items || []).filter(item => item.product_id),
+    [invoice],
+  );
+  const addInvoiceItemsToCart = React.useCallback((goToCheckout = false) => {
+    if (!actionableItems.length) {
+      globalToast.info('This document does not include products that can be added back to the cart.');
+      return;
+    }
+    actionableItems.forEach(item => {
+      cart.add(item.product_id, Math.max(1, Number(item.quantity || 1)));
+    });
+    if (goToCheckout) navigate('checkout');
+  }, [actionableItems, cart, navigate]);
 
   return (
     <div className="bs-container bs-fade-page">
@@ -1188,12 +1246,20 @@ const InvoicePage = ({ navigate }) => {
               {(invoice.promo_discount_amount || 0) > 0 && <div className="bs-summary-row bs-discount"><span>Promo {invoice.promo_code || ''}</span><span>-{cedis(invoice.promo_discount_amount)}</span></div>}
               <div className="bs-summary-row"><span>Delivery</span><span>{cedis(invoice.delivery_fee || 0)}</span></div>
               <div className="bs-summary-row bs-total"><span>Total</span><span>{cedis(invoice.total_amount || 0)}</span></div>
-              <div className="bs-invoice-actions">
+              <div className="bs-invoice-download-action">
                 <a className="bs-btn bs-btn-gold bs-btn-lg" href={downloadUrl}>
                   <Icon name="files" size={16} /> Download PDF
                 </a>
-                <button className="bs-btn bs-btn-navy bs-btn-lg" type="button" onClick={() => navigate('track')}>
-                  <Icon name="truck" size={16} /> Track Order
+              </div>
+              <div className="bs-invoice-actions">
+                <button className="bs-btn bs-btn-gold bs-btn-lg" type="button" onClick={() => addInvoiceItemsToCart(true)} disabled={!actionableItems.length}>
+                  Buy Now
+                </button>
+                <button className="bs-btn bs-btn-outline-navy bs-btn-lg" type="button" onClick={() => addInvoiceItemsToCart(false)} disabled={!actionableItems.length}>
+                  Add to Cart
+                </button>
+                <button className="bs-btn bs-btn-navy bs-btn-lg" type="button" onClick={() => navigate('home')}>
+                  Bookshop Home
                 </button>
               </div>
             </div>
@@ -1204,7 +1270,7 @@ const InvoicePage = ({ navigate }) => {
                   <span>{documentLabel} PDF Preview</span>
                   <a href={downloadUrl}>Download</a>
                 </div>
-                <iframe className="bs-invoice-viewer" src={pdfUrl} title={`${documentLabel} ${documentId}`} />
+                <InvoiceDocumentPreview invoice={invoice} documentLabel={documentLabel} documentId={documentId} />
               </div>
             )}
           </div>

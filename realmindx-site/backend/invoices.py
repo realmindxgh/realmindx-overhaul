@@ -335,6 +335,17 @@ def _build_bookshop_pdf(payload):
         fontSize=8.8,
         leading=11.5,
     )
+    header_meta_style = ParagraphStyle(
+        "RMXHeaderMeta",
+        parent=normal_style,
+        textColor=body,
+        alignment=TA_RIGHT,
+    )
+    header_mono_style = ParagraphStyle(
+        "RMXHeaderMono",
+        parent=mono_style,
+        alignment=TA_RIGHT,
+    )
     header_style = ParagraphStyle(
         "RMXTableHeader",
         parent=normal_style,
@@ -374,13 +385,13 @@ def _build_bookshop_pdf(payload):
 
     header_meta = [
         Paragraph(_safe_text(payload["title"].upper()), title_style),
-        Paragraph(_safe_text(payload["document_id"]), mono_style),
+        Paragraph(_safe_text(payload["document_id"]), header_mono_style),
     ]
     if payload.get("order_reference") and payload.get("order_reference") != payload.get("document_id"):
-        header_meta.append(Paragraph(f"Order: {_safe_text(payload['order_reference'])}", normal_style))
-    header_meta.append(Paragraph(f"{_safe_text(payload['issued_label'])}: {_safe_text(payload['issued_at'])}", normal_style))
+        header_meta.append(Paragraph(f"Order: {_safe_text(payload['order_reference'])}", header_meta_style))
+    header_meta.append(Paragraph(f"{_safe_text(payload['issued_label'])}: {_safe_text(payload['issued_at'])}", header_meta_style))
 
-    header = Table([[logo_cell, header_meta]], colWidths=[82 * mm, 77 * mm])
+    header = Table([[logo_cell, header_meta]], colWidths=[82 * mm, 77 * mm], hAlign="CENTER")
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (1, 0), (1, 0), "RIGHT"),
@@ -394,7 +405,9 @@ def _build_bookshop_pdf(payload):
             Paragraph(_safe_text(label), eyebrow_style),
             *[Paragraph(_safe_text(line), normal_style) for line in lines if line],
         ])
-    card_table = Table([card_cells], colWidths=[53 * mm, 53 * mm, 53 * mm])
+    card_count = max(len(card_cells), 1)
+    card_width = 159 * mm / card_count
+    card_table = Table([card_cells], colWidths=[card_width] * card_count, hAlign="CENTER")
     card_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), light),
         ("BOX", (0, 0), (-1, -1), 0.8, border),
@@ -417,7 +430,7 @@ def _build_bookshop_pdf(payload):
             Paragraph(money_label(money(item["unit_price"]) * int(item["quantity"] or 1)), amount_style),
         ])
 
-    items_table = Table(rows, colWidths=[82 * mm, 17 * mm, 29 * mm, 31 * mm], repeatRows=1)
+    items_table = Table(rows, colWidths=[82 * mm, 17 * mm, 29 * mm, 31 * mm], repeatRows=1, hAlign="CENTER")
     items_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), navy),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -453,6 +466,7 @@ def _build_bookshop_pdf(payload):
             verify_style,
         )]],
         colWidths=[159 * mm],
+        hAlign="CENTER",
     )
     verify_box.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), verify_bg),
@@ -460,10 +474,20 @@ def _build_bookshop_pdf(payload):
         ("PADDING", (0, 0), (-1, -1), 8),
     ]))
 
-    footer = Paragraph(
-        _safe_text(payload["footer"]),
-        ParagraphStyle("RMXFooter", parent=normal_style, textColor=muted, fontSize=8.1, leading=11),
+    footer = Table(
+        [[Paragraph(
+            _safe_text(payload["footer"]),
+            ParagraphStyle("RMXFooter", parent=normal_style, textColor=muted, fontSize=8.1, leading=11),
+        )]],
+        colWidths=[159 * mm],
+        hAlign="CENTER",
     )
+    footer.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
 
     story = [
         header,
@@ -563,7 +587,6 @@ def build_cart_invoice_pdf(cart_invoice):
         "verify_label": "Verify this invoice",
         "verify_lookup_id": cart_invoice.invoice_id,
         "cards": [
-            ("Generated From Cart", ["Selected RealMindX Bookshop cart items"]),
             ("Delivery", ["Calculated at checkout"]),
             ("Payment", ["Not paid yet"]),
         ],

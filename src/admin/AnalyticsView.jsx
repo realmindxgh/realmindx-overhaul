@@ -203,31 +203,67 @@ const EmptyChart = ({ label = 'No data yet' }) => (
   </div>
 );
 
+const shortChartValue = (value) => {
+  const number = Number(value || 0);
+  if (Math.abs(number) >= 1000000) return `${(number / 1000000).toFixed(1)}M`;
+  if (Math.abs(number) >= 1000) return `${(number / 1000).toFixed(1)}k`;
+  return formatNumber(number);
+};
+
 const LineChart = ({ series = [], color = chartColors.navy, compact = false, formatter = formatNumber }) => {
   const data = Array.isArray(series) ? series : [];
   const values = data.map(item => Number(item.value || 0));
   const max = Math.max(...values, 0);
-  const points = data.map((item, index) => {
-    const x = data.length === 1 ? 50 : (index / Math.max(data.length - 1, 1)) * 100;
-    const y = max === 0 ? 76 : 76 - ((Number(item.value || 0) / max) * 64);
-    return `${x},${y}`;
-  }).join(' ');
-  const areaPoints = `0,76 ${points} 100,76`;
+  const width = 640;
+  const height = compact ? 210 : 260;
+  const margin = { top: 34, right: 38, bottom: 38, left: 48 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const plot = data.map((item, index) => {
+    const x = margin.left + (data.length === 1 ? innerWidth / 2 : (index / Math.max(data.length - 1, 1)) * innerWidth);
+    const y = margin.top + (max === 0 ? innerHeight : innerHeight - ((Number(item.value || 0) / max) * innerHeight));
+    return { ...item, x, y, value: Number(item.value || 0) };
+  });
+  const linePath = plot.map((item, index) => `${index ? 'L' : 'M'}${item.x},${item.y}`).join(' ');
+  const areaPath = plot.length
+    ? `M${margin.left},${margin.top + innerHeight} ${linePath} L${margin.left + innerWidth},${margin.top + innerHeight} Z`
+    : '';
+  const peakIndex = values.indexOf(max);
+  const labels = new Set([peakIndex, data.length - 1, 0].filter(index => index >= 0));
 
   if (!data.length) return <EmptyChart />;
 
   return (
     <div className={`analytics-chart-wrap${compact ? ' compact' : ''}`}>
-      <svg viewBox="0 0 100 82" preserveAspectRatio="none" className="analytics-line-chart" aria-hidden="true">
-        <line x1="0" y1="76" x2="100" y2="76" className="analytics-chart-axis" />
-        <line x1="0" y1="12" x2="100" y2="12" className="analytics-chart-grid" />
-        <polygon points={areaPoints} fill={color} opacity="0.12" />
-        <polyline points={points} fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-        {data.map((item, index) => {
-          const x = data.length === 1 ? 50 : (index / Math.max(data.length - 1, 1)) * 100;
-          const y = max === 0 ? 76 : 76 - ((Number(item.value || 0) / max) * 64);
-          return <circle key={`${item.date}-${index}`} cx={x} cy={y} r="1.8" fill={color} />;
+      <div className="analytics-chart-badges">
+        <span>Peak <strong>{formatter(max)}</strong></span>
+        <span>Latest <strong>{formatter(data[data.length - 1]?.value || 0)}</strong></span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="analytics-line-chart" aria-hidden="true">
+        {[0, 0.5, 1].map(tick => {
+          const y = margin.top + innerHeight - (tick * innerHeight);
+          return (
+            <g key={tick}>
+              <line x1={margin.left} y1={y} x2={margin.left + innerWidth} y2={y} className="analytics-chart-grid" />
+              <text x={margin.left - 10} y={y + 4} className="analytics-chart-axis-label" textAnchor="end">{shortChartValue(max * tick)}</text>
+            </g>
+          );
         })}
+        <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} className="analytics-chart-axis" />
+        <path d={areaPath} fill={color} opacity="0.12" />
+        <path d={linePath} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+        {plot.map((item, index) => (
+          <g key={`${item.date}-${index}`}>
+            <circle cx={item.x} cy={item.y} r="6" fill="#fff" stroke={color} strokeWidth="4" />
+            {labels.has(index) || item.value > 0 ? (
+              <text x={item.x} y={Math.max(16, item.y - 13)} className="analytics-chart-point-label" textAnchor="middle">
+                {shortChartValue(item.value)}
+              </text>
+            ) : null}
+          </g>
+        ))}
+        <text x={margin.left} y={height - 10} className="analytics-chart-date-label" textAnchor="start">{data[0]?.date || ''}</text>
+        <text x={margin.left + innerWidth} y={height - 10} className="analytics-chart-date-label" textAnchor="end">{data[data.length - 1]?.date || ''}</text>
       </svg>
       <div className="analytics-chart-footer">
         <span>{data[0]?.date || ''}</span>
@@ -247,20 +283,56 @@ const MultiLineChart = ({ groups = [] }) => {
     ...availableGroups.flatMap(group => (group.data || []).map(item => Number(item.value || 0))),
     0,
   );
+  const width = 640;
+  const height = 270;
+  const margin = { top: 38, right: 36, bottom: 38, left: 48 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
 
   return (
     <div className="analytics-multi-chart">
-      <svg viewBox="0 0 100 82" preserveAspectRatio="none" className="analytics-line-chart" aria-hidden="true">
-        <line x1="0" y1="76" x2="100" y2="76" className="analytics-chart-axis" />
-        <line x1="0" y1="12" x2="100" y2="12" className="analytics-chart-grid" />
+      <div className="analytics-chart-badges">
+        {availableGroups.map(group => (
+          <span key={group.label}><i style={{ background: group.color }} />{group.label} <strong>{formatNumber((group.data || []).reduce((sum, item) => sum + Number(item.value || 0), 0))}</strong></span>
+        ))}
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="analytics-line-chart" aria-hidden="true">
+        {[0, 0.5, 1].map(tick => {
+          const y = margin.top + innerHeight - (tick * innerHeight);
+          return (
+            <g key={tick}>
+              <line x1={margin.left} y1={y} x2={margin.left + innerWidth} y2={y} className="analytics-chart-grid" />
+              <text x={margin.left - 10} y={y + 4} className="analytics-chart-axis-label" textAnchor="end">{shortChartValue(max * tick)}</text>
+            </g>
+          );
+        })}
+        <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} className="analytics-chart-axis" />
         {availableGroups.map((group) => {
           const points = (group.data || []).map((item, index) => {
-            const x = dates.length === 1 ? 50 : (index / Math.max(dates.length - 1, 1)) * 100;
-            const y = max === 0 ? 76 : 76 - ((Number(item.value || 0) / max) * 64);
-            return `${x},${y}`;
-          }).join(' ');
-          return <polyline key={group.label} points={points} fill="none" stroke={group.color} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />;
+            const x = margin.left + (dates.length === 1 ? innerWidth / 2 : (index / Math.max(dates.length - 1, 1)) * innerWidth);
+            const y = margin.top + (max === 0 ? innerHeight : innerHeight - ((Number(item.value || 0) / max) * innerHeight));
+            return { ...item, x, y, value: Number(item.value || 0) };
+          });
+          const path = points.map((item, index) => `${index ? 'L' : 'M'}${item.x},${item.y}`).join(' ');
+          const peak = Math.max(...points.map(item => item.value), 0);
+          return (
+            <g key={group.label}>
+              <path d={path} fill="none" stroke={group.color} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+              {points.map((item, index) => (
+                <g key={`${group.label}-${item.date}-${index}`}>
+                  <circle cx={item.x} cy={item.y} r={item.value ? 5 : 3.5} fill="#fff" stroke={group.color} strokeWidth="3" />
+                  {(item.value > 0 && (item.value === peak || index === points.length - 1)) ? (
+                    <text x={item.x} y={Math.max(16, item.y - 12)} className="analytics-chart-point-label" textAnchor="middle">
+                      {shortChartValue(item.value)}
+                    </text>
+                  ) : null}
+                </g>
+              ))}
+            </g>
+          );
         })}
+        <text x={margin.left} y={height - 10} className="analytics-chart-date-label" textAnchor="start">{dates[0] || ''}</text>
+        <text x={margin.left + innerWidth} y={height - 10} className="analytics-chart-date-label" textAnchor="end">{dates[dates.length - 1] || ''}</text>
       </svg>
       <div className="analytics-legend-row">
         {availableGroups.map(group => (
@@ -286,7 +358,9 @@ const SparkBars = ({ data = [], color = chartColors.navy }) => {
             className={value ? 'active' : ''}
             style={{ height: `${height}%`, background: value ? color : undefined }}
             title={`${item.date || 'Date'}: ${formatNumber(value)}`}
-          />
+          >
+            {value ? <i>{shortChartValue(value)}</i> : null}
+          </span>
         );
       })}
     </div>

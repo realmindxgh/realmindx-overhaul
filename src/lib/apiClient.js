@@ -175,13 +175,13 @@ export const api = {
   applyForJob: (jobId, payload = {}) => apiFetch(`/jobs/${jobId}/apply`, { method: 'POST', body: payload }),
 
   // admin - file upload (multipart, no JSON content-type)
-  uploadFile: async (file, category = 'images') => {
+  uploadFile: async (file, category = 'images', options = {}) => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const csrf = await getCsrf({ force: attempt > 0 });
       const fd = new FormData();
       fd.append('file', file);
       fd.append('category', category);
-      fd.append('visibility', 'public');
+      fd.append('visibility', options.visibility || 'public');
       const res = await fetch(url('/admin/uploads'), {
         method: 'POST',
         headers: { 'X-CSRFToken': csrf },

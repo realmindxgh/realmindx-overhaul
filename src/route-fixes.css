@@ -4726,6 +4726,23 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   position: relative !important;
   overflow: hidden !important;
   isolation: isolate !important;
+  border-bottom: 3px solid var(--yellow) !important;
+}
+
+body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .services-policy-hero)::before {
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px) !important;
+  background-size: 34px 34px !important;
+  background-position: center !important;
+  opacity: 0.9 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
 }
 
 body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .services-policy-hero)::after {
@@ -4736,24 +4753,24 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   height: 100% !important;
   background-image: url('/logo-white.png') !important;
   background-repeat: no-repeat !important;
-  background-position: right clamp(56px, 10vw, 210px) center !important;
-  background-size: min(44vw, 560px) auto !important;
-  opacity: 0.14 !important;
+  background-position: right clamp(18px, 3vw, 48px) center !important;
+  background-size: min(44vw, 620px) auto !important;
+  opacity: 0.13 !important;
   pointer-events: none !important;
-  z-index: 0 !important;
+  z-index: 1 !important;
   border: 0 !important;
   box-shadow: none !important;
 }
 
 body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .services-policy-hero) > .container {
   position: relative !important;
-  z-index: 1 !important;
+  z-index: 2 !important;
 }
 
 @media (max-width: 860px) {
   body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .services-policy-hero)::after {
-    background-position: right -110px center !important;
-    background-size: min(72vw, 420px) auto !important;
+    background-position: right -32px center !important;
+    background-size: min(70vw, 430px) auto !important;
     opacity: 0.08 !important;
   }
 }

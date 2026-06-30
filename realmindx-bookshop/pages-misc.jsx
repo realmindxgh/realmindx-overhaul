@@ -43,6 +43,44 @@ const FacebookLogo = () => (
   </svg>
 );
 
+const BookshopPasswordField = React.forwardRef(({
+  label,
+  value,
+  onChange,
+  autoComplete,
+  placeholder,
+  required,
+  minLength,
+}, ref) => {
+  const [visible, setVisible] = React.useState(false);
+  return (
+    <label className="bs-field">
+      <span>{label}</span>
+      <div className="bs-password-field">
+        <input
+          ref={ref}
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          required={required}
+          minLength={minLength}
+        />
+        <button
+          type="button"
+          className="bs-password-toggle"
+          onClick={() => setVisible(current => !current)}
+          aria-label={visible ? 'Hide password' : 'Show password'}
+        >
+          <Icon name={visible ? 'eyeOff' : 'eye'} size={18} />
+        </button>
+      </div>
+    </label>
+  );
+});
+BookshopPasswordField.displayName = 'BookshopPasswordField';
+
 const AuthPage = ({ navigate, mode = 'login' }) => {
   const isLogin = mode === 'login';
   const [turnstileKey, setTurnstileKey] = React.useState(0);
@@ -407,15 +445,23 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
               <input placeholder="+233 XX XXX XXXX" value={form.phone} onChange={set('phone')} autoComplete="tel" />
             </div>
           )}
-          <div className="bs-field">
-            <label>Password</label>
-            <input ref={passwordRef} type="password" placeholder="Minimum 8 characters" value={form.password} onChange={set('password')} autoComplete={isLogin ? 'current-password' : 'new-password'} />
-          </div>
+          <BookshopPasswordField
+            ref={passwordRef}
+            label="Password"
+            placeholder="Minimum 8 characters"
+            value={form.password}
+            onChange={set('password')}
+            autoComplete={isLogin ? 'current-password' : 'new-password'}
+          />
           {!isLogin && (
-            <div className="bs-field">
-              <label>Confirm Password</label>
-              <input ref={confirmRef} type="password" placeholder="Repeat password" value={form.confirmPassword} onChange={set('confirmPassword')} autoComplete="new-password" />
-            </div>
+            <BookshopPasswordField
+              ref={confirmRef}
+              label="Confirm Password"
+              placeholder="Repeat password"
+              value={form.confirmPassword}
+              onChange={set('confirmPassword')}
+              autoComplete="new-password"
+            />
           )}
 
           {isLogin ? (
@@ -521,14 +567,8 @@ const BookshopResetPasswordPage = ({ navigate }) => {
             <button type="button" className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" onClick={() => navigate('login')}>Continue to Sign In</button>
           ) : (
             <form onSubmit={submit} noValidate>
-              <div className="bs-field">
-                <label>New Password</label>
-                <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" placeholder="Minimum 8 characters" required />
-              </div>
-              <div className="bs-field">
-                <label>Confirm New Password</label>
-                <input type="password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" placeholder="Repeat your new password" required />
-              </div>
+              <BookshopPasswordField label="New Password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" placeholder="Minimum 8 characters" required />
+              <BookshopPasswordField label="Confirm New Password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" placeholder="Repeat your new password" required />
               {error && <p className="bs-auth-error" role="alert">{error}</p>}
               <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
                 {loading ? 'Updating...' : 'Update Password'}
@@ -2082,9 +2122,9 @@ const AccountPage = ({ navigate }) => {
             </div>
             <div className="bs-modal-body">
               <p className="bs-account-security-intro">This changes the password for your shared RealMindX account, including the Bookshop and any other RealMindX service you use.</p>
-              <label className="bs-field"><span>Current password</span><input type="password" autoComplete="current-password" value={passwordForm.current} onChange={event => setPasswordForm(prev => ({ ...prev, current: event.target.value }))} required /></label>
-              <label className="bs-field"><span>New password</span><input type="password" autoComplete="new-password" minLength={8} value={passwordForm.next} onChange={event => setPasswordForm(prev => ({ ...prev, next: event.target.value }))} required /></label>
-              <label className="bs-field"><span>Confirm new password</span><input type="password" autoComplete="new-password" minLength={8} value={passwordForm.confirm} onChange={event => setPasswordForm(prev => ({ ...prev, confirm: event.target.value }))} required /></label>
+              <BookshopPasswordField label="Current password" autoComplete="current-password" value={passwordForm.current} onChange={event => setPasswordForm(prev => ({ ...prev, current: event.target.value }))} required />
+              <BookshopPasswordField label="New password" autoComplete="new-password" minLength={8} value={passwordForm.next} onChange={event => setPasswordForm(prev => ({ ...prev, next: event.target.value }))} required />
+              <BookshopPasswordField label="Confirm new password" autoComplete="new-password" minLength={8} value={passwordForm.confirm} onChange={event => setPasswordForm(prev => ({ ...prev, confirm: event.target.value }))} required />
               {passwordError && <p className="verified-contact-feedback is-error">{passwordError}</p>}
             </div>
             <div className="bs-modal-foot">
@@ -2124,7 +2164,7 @@ const AccountPage = ({ navigate }) => {
               ) : (
                 <>
                   <p className="bs-account-security-intro">Confirm with your current password. We will then email a short-lived security code to <strong>{session.email}</strong>.</p>
-                  <label className="bs-field"><span>Current password</span><input type="password" autoComplete="current-password" value={twoFactorState.currentPassword} onChange={event => setTwoFactorState(prev => ({ ...prev, currentPassword: event.target.value }))} required /></label>
+                  <BookshopPasswordField label="Current password" autoComplete="current-password" value={twoFactorState.currentPassword} onChange={event => setTwoFactorState(prev => ({ ...prev, currentPassword: event.target.value }))} required />
                 </>
               )}
               {twoFactorState.error && <p className="verified-contact-feedback is-error">{twoFactorState.error}</p>}

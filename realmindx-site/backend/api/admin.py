@@ -266,6 +266,18 @@ def _upload_public_url(uploaded_file):
     return f"/uploads/{uploaded_file.visibility}/{uploaded_file.category}/{uploaded_file.stored_filename}"
 
 
+def _uploaded_file_payload(uploaded_file):
+    if not uploaded_file:
+        return None
+    return {
+        "id": uploaded_file.id,
+        "name": uploaded_file.original_filename,
+        "url": _upload_public_url(uploaded_file),
+        "category": uploaded_file.category,
+        "visibility": uploaded_file.visibility,
+    }
+
+
 def _enrich_service_media(items):
     file_ids = {
         int(item.get("image_file_id"))
@@ -804,6 +816,12 @@ def dispatch_job_alerts(job):
             )
         )
         preference.last_sent_at = datetime.now(timezone.utc)
+        log_action("job_alert_email_sent", "job_alert_preference", preference.id, {
+            "job_id": job.id,
+            "job_title": job.title,
+            "user_id": user.id,
+            "email": user.email,
+        })
         sent += 1
     return sent
 
@@ -814,9 +832,16 @@ def dispatch_job_alerts(job):
 def dashboard():
     recent_jobs = Job.query.order_by(Job.created_at.desc()).limit(5).all() if _can_view_dashboard_metric("jobs.view") else []
     recent_orders = placed_order_query().order_by(Order.created_at.desc()).limit(5).all() if _can_view_dashboard_metric("orders.view") else []
+    teacher_count = None
+    if _can_view_dashboard_metric("teachers.view"):
+        teacher_count = db.session.scalar(
+            db.select(func.count(User.id))
+            .join(Role, User.role_id == Role.id)
+            .where(Role.name.in_(("user", "teacher")))
+        )
     return jsonify(
         summary={
-            "total_users": db.session.scalar(db.select(func.count(User.id))) if _can_view_dashboard_metric("teachers.view") else None,
+            "total_users": teacher_count,
             "total_job_applications": db.session.scalar(db.select(func.count(JobApplication.id))) if _can_view_dashboard_metric("applications.view") else None,
             "pending_applications": JobApplication.query.filter_by(status="pending").count() if _can_view_dashboard_metric("applications.view") else None,
             "new_orders": placed_order_query().filter(Order.status == "new").count() if _can_view_dashboard_metric("orders.view") else None,
@@ -827,6 +852,41 @@ def dashboard():
         recent_jobs=[job_json(job) for job in recent_jobs],
         recent_orders=[order_json(order) for order in recent_orders],
     )
+
+
+def _job_alert_admin_json(preference, user):
+    return {
+        "id": preference.id,
+        "teacher_name": user.full_name if user else "",
+        "email": user.email if user else "",
+        "subject": preference.subject or "",
+        "location": preference.location or "",
+        "location_ids": preference.location_ids or "",
+        "preferred_level": preference.preferred_level or "",
+        "curriculum": preference.curriculum or "",
+        "employment_type": preference.employment_type or "",
+        "alert_by_email": preference.alert_by_email,
+        "frequency": preference.frequency,
+        "is_default": preference.is_default,
+        "last_sent_at": preference.last_sent_at.isoformat() if preference.last_sent_at else None,
+        "created_at": preference.created_at.isoformat() if preference.created_at else None,
+        "updated_at": preference.updated_at.isoformat() if preference.updated_at else None,
+        "status": "active" if preference.alert_by_email and user and user.is_active else "paused",
+    }
+
+
+@admin_bp.get("/job-alerts")
+@login_required
+@permission_required("alerts.view")
+def list_job_alert_preferences():
+    rows = (
+        db.session.query(JobAlertPreference, User)
+        .join(User, JobAlertPreference.user_id == User.id)
+        .order_by(JobAlertPreference.updated_at.desc(), JobAlertPreference.created_at.desc())
+        .limit(500)
+        .all()
+    )
+    return jsonify(items=[_job_alert_admin_json(preference, user) for preference, user in rows])
 
 
 def _csv_response(filename, rows, fieldnames):
@@ -2994,7 +3054,43 @@ def delete_gallery_item(item_id):
 @permission_required("resources.view")
 def list_resources():
     rows = Resource.query.order_by(Resource.created_at.desc()).limit(200).all()
-    return jsonify(items=[{"id": r.id, "title": r.title, "description": r.description, "source": r.source, "url": r.external_url, "is_published": r.is_published, "status": "published" if r.is_published else "draft", "created_at": r.created_at.isoformat()} for r in rows])
+    items = []
+    for r in rows:
+        file_payload = _uploaded_file_payload(r.resource_file)
+        file_url = file_payload["url"] if file_payload else None
+        items.append({
+            "id": r.id,
+            "title": r.title,
+            "description": r.description,
+            "source": r.source,
+            "external_url": r.external_url,
+            "url": r.external_url or file_url,
+            "file_url": file_url,
+            "resource_file_id": r.resource_file_id,
+            "resource_file_name": file_payload["name"] if file_payload else "",
+            "is_published": r.is_published,
+            "status": "published" if r.is_published else "draft",
+            "created_at": r.created_at.isoformat(),
+        })
+    return jsonify(items=items)
+
+
+def _resource_file_id_from_payload(payload):
+    if "resource_file_id" not in payload:
+        return None, False
+    raw = payload.get("resource_file_id")
+    if raw in (None, ""):
+        return None, True
+    try:
+        file_id = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Resource file is invalid.") from exc
+    uploaded = db.session.get(UploadedFile, file_id)
+    if not uploaded:
+        raise ValueError("Uploaded resource file was not found.")
+    if uploaded.category != "resources":
+        raise ValueError("Choose a file uploaded as a resource.")
+    return uploaded.id, True
 
 
 @admin_bp.post("/resources")
@@ -3002,11 +3098,16 @@ def list_resources():
 @permission_required("resources.create")
 def create_resource():
     payload = request.get_json(silent=True) or {}
+    try:
+        resource_file_id, has_resource_file = _resource_file_id_from_payload(payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     row = Resource(
         title=payload.get("title"),
         description=payload.get("description"),
         source=payload.get("source"),
         external_url=payload.get("external_url") or payload.get("url"),
+        resource_file_id=resource_file_id if has_resource_file else None,
         is_published=bool(payload.get("is_published", payload.get("status") == "published")),
     )
     if not row.title:
@@ -3024,11 +3125,17 @@ def create_resource():
 def update_resource(resource_id):
     row = db.get_or_404(Resource, resource_id)
     payload = request.get_json(silent=True) or {}
+    try:
+        resource_file_id, has_resource_file = _resource_file_id_from_payload(payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     for field in ["title", "description", "source", "external_url", "is_published"]:
         if field in payload:
             setattr(row, field, payload[field])
     if "url" in payload:
         row.external_url = payload["url"]
+    if has_resource_file:
+        row.resource_file_id = resource_file_id
     if "status" in payload:
         row.is_published = payload["status"] == "published"
     log_action("update_resource", "resource", row.id)
@@ -3146,6 +3253,79 @@ def list_newsletters():
     return jsonify(items=[{"id": r.id, "email": r.email, "source": r.source, "is_active": r.is_active, "status": "active" if r.is_active else "unsubscribed", "created_at": r.created_at.isoformat()} for r in rows])
 
 
+NEWSLETTER_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
+NEWSLETTER_IMAGE_RE = re.compile(r"^!\[(?:(left|right|full):)?([^\]]*)\]\(([^)\s]+)\)$", re.IGNORECASE)
+
+
+def _absolute_newsletter_url(raw_url):
+    value = (raw_url or "").strip()
+    if not value:
+        return ""
+    if value.startswith(("http://", "https://", "mailto:", "tel:")):
+        return value
+    base_url = current_app.config.get("BASE_URL", "https://realmindxgh.com").rstrip("/")
+    return f"{base_url}/{value.lstrip('/')}"
+
+
+def _render_newsletter_inline(text):
+    rendered = []
+    position = 0
+    for match in NEWSLETTER_LINK_RE.finditer(text or ""):
+        rendered.append(escape((text or "")[position:match.start()]).replace("\n", "<br>"))
+        label = escape(match.group(1).strip())
+        href = escape(_absolute_newsletter_url(match.group(2)), quote=True)
+        rendered.append(
+            f'<a class="newsletter-rich-link" href="{href}" '
+            'style="color:#143670!important;font-weight:800;text-decoration:underline;text-underline-offset:3px;">'
+            f"{label}</a>"
+        )
+        position = match.end()
+    rendered.append(escape((text or "")[position:]).replace("\n", "<br>"))
+    return "".join(rendered)
+
+
+def _render_newsletter_image(match):
+    align = (match.group(1) or "full").lower()
+    alt = escape((match.group(2) or "Newsletter image").strip(), quote=True)
+    src = escape(_absolute_newsletter_url(match.group(3)), quote=True)
+    if align in {"left", "right"}:
+        margin = "4px 18px 12px 0" if align == "left" else "4px 0 12px 18px"
+        return (
+            f'<img class="newsletter-rich-image newsletter-rich-image-{align}" src="{src}" alt="{alt}" '
+            f'align="{align}" width="240" '
+            f'style="display:block;max-width:46%;width:240px;height:auto;border-radius:12px;'
+            f'border:1px solid #dce5f0;float:{align};margin:{margin};" />'
+        )
+    return (
+        f'<img class="newsletter-rich-image" src="{src}" alt="{alt}" '
+        'style="display:block;width:100%;max-width:100%;height:auto;border-radius:14px;'
+        'border:1px solid #dce5f0;margin:18px 0;" />'
+    )
+
+
+def _render_newsletter_body(body):
+    blocks = []
+    for block in re.split(r"\n\s*\n", body or ""):
+        clean = block.strip()
+        if not clean:
+            continue
+        image_match = NEWSLETTER_IMAGE_RE.match(clean)
+        if image_match:
+            blocks.append(_render_newsletter_image(image_match))
+        else:
+            blocks.append(f'<p style="margin:0 0 18px;">{_render_newsletter_inline(clean)}</p>')
+    return (
+        '<style>'
+        '@media (prefers-color-scheme:dark){.newsletter-rich-link{color:#ffcc01!important;}}'
+        '@media only screen and (max-width:600px){.newsletter-rich-image-left,.newsletter-rich-image-right{'
+        'float:none!important;margin:16px 0!important;max-width:100%!important;width:100%!important;}}'
+        '</style>'
+        '<div class="newsletter-rich" style="background:#ffffff;color:#1a2a40;">'
+        + "".join(blocks)
+        + '<div style="clear:both;height:1px;line-height:1px;">&nbsp;</div></div>'
+    )
+
+
 @admin_bp.post("/newsletters/send")
 @login_required
 @permission_required("newsletters.create")
@@ -3157,17 +3337,22 @@ def send_newsletter_campaign():
     if not subject or not title or not body:
         return jsonify(error="Subject, title, and body are required."), 400
 
-    body_html = "".join(
-        f"<p>{escape(block).replace(chr(10), '<br>')}</p>"
-        for block in re.split(r"\n\s*\n", body)
-        if block.strip()
-    )
+    body_html = _render_newsletter_body(body)
     image_url = None
     image_file_id = payload.get("image_file_id")
     if image_file_id:
         image_file = db.session.get(UploadedFile, image_file_id)
         image_url = _upload_public_url(image_file) if image_file else None
 
+    brand = (payload.get("brand") or "realmindx").strip().lower()
+    is_bookshop = brand == "bookshop"
+    shell = bookshop_email_shell if is_bookshop else app_email_shell
+    eyebrow = "RealMindX Bookshop Updates" if is_bookshop else "RealMindX Updates"
+    from_email = (
+        current_app.config.get("BOOKSHOP_FROM_EMAIL")
+        if is_bookshop
+        else current_app.config.get("NEWSLETTER_FROM_EMAIL")
+    ) or current_app.config.get("NEWSLETTER_FROM_EMAIL")
     base_url = current_app.config.get("SITE_BASE_URL", "https://realmindxgh.com").rstrip("/")
     subscribers = NewsletterSubscriber.query.filter_by(is_active=True).order_by(NewsletterSubscriber.email.asc()).all()
     sent = 0
@@ -3179,13 +3364,13 @@ def send_newsletter_campaign():
             OutboundEmail(
                 to=subscriber.email,
                 subject=subject,
-                from_email=current_app.config.get("NEWSLETTER_FROM_EMAIL"),
-                html=app_email_shell(
+                from_email=from_email,
+                html=shell(
                     title,
                     body_html,
                     payload.get("cta_label") or None,
                     payload.get("cta_url") or None,
-                    eyebrow="RealMindX Updates",
+                    eyebrow=eyebrow,
                     preheader=payload.get("preheader") or payload.get("summary") or title,
                     hero_image_url=image_url,
                     footer_note=(
@@ -3197,7 +3382,7 @@ def send_newsletter_campaign():
         )
         sent += 1
 
-    log_action("send_newsletter_campaign", "newsletter", None, {"subject": subject, "sent": sent})
+    log_action("send_newsletter_campaign", "newsletter", None, {"subject": subject, "brand": brand, "sent": sent})
     db.session.commit()
     return jsonify(message=f"Newsletter sent to {sent} subscriber(s).", sent=sent)
 

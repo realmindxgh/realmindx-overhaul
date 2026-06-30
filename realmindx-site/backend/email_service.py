@@ -382,6 +382,7 @@ def bookshop_email_shell(
     *,
     eyebrow="RealMindX Bookshop",
     preheader="",
+    hero_image_url=None,
     footer_note=None,
 ):
     """
@@ -398,6 +399,17 @@ def bookshop_email_shell(
 
     if cta_url and not cta_url.startswith(("http://", "https://")):
         cta_url = f"{bookshop_url}/{cta_url.lstrip('/')}"
+
+    hero = ""
+    if hero_image_url:
+        abs_hero = absolute_app_url(hero_image_url)
+        hero = f"""
+        <tr>
+          <td style="padding:0;">
+            <img src="{escape(abs_hero, quote=True)}" alt="" width="640"
+                 style="display:block;width:100%;max-height:280px;object-fit:cover;" />
+          </td>
+        </tr>"""
 
     cta = ""
     if cta_label and cta_url:
@@ -485,6 +497,8 @@ def bookshop_email_shell(
               </h1>
             </td>
           </tr>
+
+          {hero}
 
           <!-- BODY -->
           <tr>

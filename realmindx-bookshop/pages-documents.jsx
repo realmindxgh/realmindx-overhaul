@@ -45,7 +45,7 @@ const classifyDocument = (item) => {
 };
 
 const documentUrl = (item) => {
-  const value = item.url || item.external_url || item.file_url || '';
+  const value = item.file_url || item.url || item.external_url || '';
   if (!value) return '';
   if (/^https?:\/\//i.test(value) || value.startsWith('/')) return value;
   return `/${value}`;

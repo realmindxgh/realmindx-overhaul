@@ -614,8 +614,13 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
 
                 <div className="form-group">
                   <label className="form-label">Confirm Password *</label>
-                  <input className="form-input" ref={confirmRef} aria-invalid={Boolean(fieldErrors.confirmPass)} type="password" placeholder="Repeat your password"
-                    value={confirmPass} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" />
+                  <div className="password-field">
+                    <input className="form-input" ref={confirmRef} aria-invalid={Boolean(fieldErrors.confirmPass)} type={showPass ? 'text' : 'password'} placeholder="Repeat your password"
+                      value={confirmPass} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" style={{ paddingRight: 44 }} />
+                    <button type="button" className="password-toggle" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Hide password' : 'Show password'}>
+                      <Icon name={showPass ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                    </button>
+                  </div>
                   {fieldErrors.confirmPass && <p className="form-error">{fieldErrors.confirmPass}</p>}
                 </div>
 
@@ -794,15 +799,21 @@ export const PasswordResetPage = () => {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Confirm New Password</label>
-                  <input
-                    className="form-input"
-                    type={showPassword ? 'text' : 'password'}
-                    value={confirmPass}
-                    onChange={event => setConfirmPass(event.target.value)}
-                    autoComplete="new-password"
-                    placeholder="Repeat your new password"
-                    required
-                  />
+                  <div className="password-field">
+                    <input
+                      className="form-input"
+                      type={showPassword ? 'text' : 'password'}
+                      value={confirmPass}
+                      onChange={event => setConfirmPass(event.target.value)}
+                      autoComplete="new-password"
+                      placeholder="Repeat your new password"
+                      required
+                      style={{ paddingRight: 44 }}
+                    />
+                    <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                      <Icon name={showPassword ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                    </button>
+                  </div>
                 </div>
                 {error && <p className="form-error form-error-inline" role="alert">{error}</p>}
                 <button type="submit" className="btn btn-primary btn-lg" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
