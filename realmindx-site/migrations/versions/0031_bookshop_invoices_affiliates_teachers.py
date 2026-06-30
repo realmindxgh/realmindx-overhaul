@@ -1,6 +1,6 @@
 """Add bookshop invoices, affiliate promo ledger, and teacher placement records.
 
-Revision ID: 0031_bookshop_invoices_affiliates_teachers
+Revision ID: 0031_invoice_affiliate_teachers
 Revises: 0030_bookshop_payment_intents
 Create Date: 2026-06-29
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = "0031_bookshop_invoices_affiliates_teachers"
+revision = "0031_invoice_affiliate_teachers"
 down_revision = "0030_bookshop_payment_intents"
 branch_labels = None
 depends_on = None

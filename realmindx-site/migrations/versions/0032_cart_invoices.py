@@ -1,7 +1,7 @@
 """Add cart-generated invoices.
 
 Revision ID: 0032_cart_invoices
-Revises: 0031_bookshop_invoices_affiliates_teachers
+Revises: 0031_invoice_affiliate_teachers
 Create Date: 2026-06-30
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 
 
 revision = "0032_cart_invoices"
-down_revision = "0031_bookshop_invoices_affiliates_teachers"
+down_revision = "0031_invoice_affiliate_teachers"
 branch_labels = None
 depends_on = None
 
