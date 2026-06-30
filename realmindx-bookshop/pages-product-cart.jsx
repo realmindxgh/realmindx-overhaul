@@ -16,6 +16,7 @@ const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.s
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 const hrefForRoute = (route, params = {}) => `${PREFIX}${bookshopPathForRoute(route, params)}`;
 const hrefForProduct = (book) => `${PREFIX}${productHref(book)}`;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const Accordion = ({ title, children, defaultOpen = false }) => {
   const [open, setOpen] = React.useState(defaultOpen);
@@ -527,6 +528,10 @@ const CartPage = ({ navigate }) => {
   const { books } = useCatalog();
   const [pendingRemoval, setPendingRemoval] = React.useState(null);
   const [generatingInvoice, setGeneratingInvoice] = React.useState(false);
+  const [invoiceModalOpen, setInvoiceModalOpen] = React.useState(false);
+  const [invoiceEmails, setInvoiceEmails] = React.useState('');
+  const [invoiceEmailError, setInvoiceEmailError] = React.useState('');
+  const [sentInvoice, setSentInvoice] = React.useState(null);
   // Delivery is NOT estimated on the cart page — location has not been chosen yet.
   // The exact fee is calculated once the user selects a delivery zone at checkout.
   const cartTotal = selectedSubtotal - (selectedBulkSaving || 0);
@@ -547,9 +552,32 @@ const CartPage = ({ navigate }) => {
       globalToast.error('Invoice generation needs the live bookshop backend.');
       return;
     }
+    setInvoiceModalOpen(true);
+    setInvoiceEmailError('');
+  };
+
+  const emailCartInvoice = async (event) => {
+    event.preventDefault();
+    setInvoiceEmailError('');
+    setSentInvoice(null);
+    const emails = invoiceEmails
+      .split(/[\s,;]+/)
+      .map(value => value.trim().toLowerCase())
+      .filter(Boolean);
+    const uniqueEmails = [...new Set(emails)];
+    if (!uniqueEmails.length) {
+      setInvoiceEmailError('Enter at least one email address.');
+      return;
+    }
+    const invalid = uniqueEmails.find(email => !EMAIL_RE.test(email));
+    if (invalid) {
+      setInvoiceEmailError(`Check this email address: ${invalid}`);
+      return;
+    }
     setGeneratingInvoice(true);
     try {
-      const response = await api.createCartInvoice({
+      const response = await api.emailCartInvoice({
+        emails: uniqueEmails,
         items: selectedDetailed.map(item => ({
           product_id: item.id,
           quantity: item.qty,
@@ -557,15 +585,11 @@ const CartPage = ({ navigate }) => {
       });
       const invoiceId = response?.invoice?.invoice_id;
       if (!invoiceId) throw new Error('Invoice was created without an invoice ID.');
-      const link = document.createElement('a');
-      link.href = api.invoicePdfUrl(invoiceId, { download: true });
-      link.download = `${invoiceId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      globalToast.success(`Invoice ${invoiceId} generated.`);
+      setSentInvoice({ invoiceId, recipients: uniqueEmails });
+      globalToast.success(`Invoice ${invoiceId} emailed.`);
     } catch (err) {
-      globalToast.error(err?.message || 'Could not generate invoice.');
+      setInvoiceEmailError(err?.message || 'Could not email invoice.');
+      globalToast.error(err?.message || 'Could not email invoice.');
     } finally {
       setGeneratingInvoice(false);
     }
@@ -685,10 +709,7 @@ const CartPage = ({ navigate }) => {
           {/* Bulk Purchase Discount — automatic at each category's configured quantity */}
           {selectedBulkSaving > 0 && selectedBulkDiscounts.map(d => (
             <div key={d.id} className="bs-summary-row bs-discount" style={{ fontSize:13 }}>
-              <span style={{ maxWidth:200, lineHeight:1.4 }}>
-                Bulk Purchase Discount for Retailers &amp; Schools<br/>
-                <span style={{ opacity:.7, fontSize:11 }}>{d.qty}&times; {d.title} @ {d.pct}% off (min. {d.minQty})</span>
-              </span>
+              <span style={{ maxWidth:220, lineHeight:1.4 }}>Bulk Purchase Discount ({d.pct}%)</span>
               <span style={{ color:'var(--bs-success)', fontWeight:700 }}>-{cedis(d.saving)}</span>
             </div>
           ))}
@@ -764,6 +785,63 @@ const CartPage = ({ navigate }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {invoiceModalOpen && (
+        <div className="bs-modal-scrim" role="presentation" onClick={() => !generatingInvoice && setInvoiceModalOpen(false)}>
+          <form
+            className="bs-modal-box bs-cart-invoice-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bs-cart-invoice-title"
+            onSubmit={emailCartInvoice}
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="bs-modal-head">
+              <div>
+                <span className="bs-eyebrow">Email invoice</span>
+                <h3 className="bs-h3" id="bs-cart-invoice-title">Send selected cart invoice</h3>
+              </div>
+              <button type="button" className="bs-modal-close" aria-label="Close invoice email modal" disabled={generatingInvoice} onClick={() => setInvoiceModalOpen(false)}>
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+            <div className="bs-modal-body">
+              {sentInvoice ? (
+                <div className="bs-invoice-sent-box">
+                  <strong>Invoice {sentInvoice.invoiceId} sent.</strong>
+                  <p>We emailed the PDF attachment to {sentInvoice.recipients.join(', ')}.</p>
+                </div>
+              ) : (
+                <>
+                  <p>Enter one or more email addresses. The invoice PDF will be sent as an attachment with RealMindX Bookshop branding.</p>
+                  <label className="bs-field" style={{ marginTop:14 }}>
+                    <span>Email address(es)</span>
+                    <textarea
+                      value={invoiceEmails}
+                      onChange={event => setInvoiceEmails(event.target.value)}
+                      rows={4}
+                      placeholder="customer@school.edu.gh, bursar@school.edu.gh"
+                      disabled={generatingInvoice}
+                    />
+                  </label>
+                  <p className="bs-muted" style={{ fontSize:12, marginTop:8 }}>Separate multiple emails with commas, spaces, or new lines.</p>
+                </>
+              )}
+              {invoiceEmailError && <p className="bs-track-error" style={{ marginTop:10 }}>{invoiceEmailError}</p>}
+            </div>
+            <div className="bs-modal-foot">
+              <button type="button" className="bs-btn bs-btn-outline-navy" disabled={generatingInvoice} onClick={() => setInvoiceModalOpen(false)}>
+                {sentInvoice ? 'Close' : 'Cancel'}
+              </button>
+              {!sentInvoice && (
+                <button type="submit" className="bs-btn bs-btn-gold" disabled={generatingInvoice}>
+                  <Icon name="mail" size={15} /> {generatingInvoice ? 'Sending...' : 'Send Invoice'}
+                </button>
+              )}
+            </div>
+          </form>
         </div>
       )}
     </div>

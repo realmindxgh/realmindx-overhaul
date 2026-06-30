@@ -1892,24 +1892,74 @@ const ProductImportPanel = ({ onImported, onClose }) => {
 const NewsletterComposer = ({ onSent }) => {
   const [form, setForm] = React.useState({
     brand: 'realmindx',
+    sender: 'news',
     subject: '',
     title: '',
     preheader: '',
-    body: '',
+    sections: [],
     cta_label: '',
     cta_url: '',
     image_file_id: '',
+    manual_recipients: '',
   });
+  const [audienceFilters, setAudienceFilters] = React.useState({ q: '', source: '', status: '' });
+  const [contacts, setContacts] = React.useState([]);
+  const [selectedContacts, setSelectedContacts] = React.useState(new Set());
+  const [loadingAudience, setLoadingAudience] = React.useState(false);
   const [imageUrl, setImageUrl] = React.useState('');
   const [status, setStatus] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const set = key => event => setForm(prev => ({ ...prev, [key]: event.target.value }));
+  const setFilter = key => event => setAudienceFilters(prev => ({ ...prev, [key]: event.target.value }));
+
+  const fetchAudience = React.useCallback(async () => {
+    if (!isApiMode()) return;
+    setLoadingAudience(true);
+    try {
+      const sp = new URLSearchParams();
+      Object.entries(audienceFilters).forEach(([key, value]) => {
+        if (value) sp.set(key, value);
+      });
+      const data = await api.adminListWithQuery('newsletters', sp.toString());
+      setContacts(data.items || []);
+    } catch (err) {
+      setStatus(err.message || 'Could not load contacts.');
+    } finally {
+      setLoadingAudience(false);
+    }
+  }, [audienceFilters]);
+
+  React.useEffect(() => {
+    fetchAudience();
+  }, [fetchAudience]);
+
+  const toggleContact = id => {
+    setSelectedContacts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectVisible = () => {
+    setSelectedContacts(prev => {
+      const next = new Set(prev);
+      contacts.forEach(contact => {
+        if (contact.communication_status !== 'unsubscribed' && contact.is_active !== false) next.add(contact.id);
+      });
+      return next;
+    });
+  };
 
   const submit = async event => {
     event.preventDefault();
     setStatus('');
-    if (!form.subject.trim() || !form.body.trim()) {
-      setStatus('Add a subject and message body before sending.');
+    const hasSectionContent = (form.sections || []).some(section => (
+      (section.heading || '').trim() || (section.body || '').trim() || section.image_file_id
+    ));
+    if (!form.subject.trim() || !hasSectionContent) {
+      setStatus('Add a subject and at least one newsletter section before sending.');
       return;
     }
     if (!isApiMode()) {
@@ -1921,11 +1971,18 @@ const NewsletterComposer = ({ onSent }) => {
       const result = await api.adminSendNewsletter({
         ...form,
         title: form.title || form.subject,
+        recipient_ids: Array.from(selectedContacts),
+        recipient_emails: form.manual_recipients,
         image_file_id: form.image_file_id ? Number(form.image_file_id) : null,
+        sections: (form.sections || []).map(section => ({
+          ...section,
+          image_file_id: section.image_file_id ? Number(section.image_file_id) : null,
+        })),
       });
       setStatus(result.message || 'Newsletter sent.');
-      setForm({ brand: 'realmindx', subject: '', title: '', preheader: '', body: '', cta_label: '', cta_url: '', image_file_id: '' });
+      setForm({ brand: 'realmindx', sender: 'news', subject: '', title: '', preheader: '', sections: [], cta_label: '', cta_url: '', image_file_id: '', manual_recipients: '' });
       setImageUrl('');
+      setSelectedContacts(new Set());
       onSent?.();
     } catch (err) {
       setStatus(err.message || 'Newsletter could not be sent.');
@@ -1939,7 +1996,7 @@ const NewsletterComposer = ({ onSent }) => {
       <div>
         <p className="overline">Newsletter Campaign</p>
         <h3>Compose a branded RealMindX email</h3>
-        <p>Choose the RealMindX or Bookshop identity, add an optional hero image, CTA, and rich message body.</p>
+        <p>Choose sender identity, build sections, then select the audience independently.</p>
       </div>
       <div className="admin-form-grid">
         <label className="form-group">
@@ -1947,6 +2004,15 @@ const NewsletterComposer = ({ onSent }) => {
           <select className="form-select" value={form.brand} onChange={set('brand')}>
             <option value="realmindx">RealMindX Education</option>
             <option value="bookshop">RealMindX Bookshop</option>
+          </select>
+        </label>
+        <label className="form-group">
+          <span className="form-label">Sender Identity</span>
+          <select className="form-select" value={form.sender} onChange={set('sender')}>
+            <option value="news">news@send.realmindxgh.com</option>
+            <option value="sales">sales@send.realmindxgh.com</option>
+            <option value="bookshop">Bookshop sender</option>
+            <option value="default">Default RealMindX sender</option>
           </select>
         </label>
         <label className="form-group">
@@ -1989,11 +2055,48 @@ const NewsletterComposer = ({ onSent }) => {
           />
         </div>
         <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-          <span className="form-label">Message Body</span>
-          <textarea className="form-textarea" rows={7} value={form.body} onChange={set('body')} placeholder={"Write the newsletter body. Use blank lines for paragraphs.\n\nLink: [Read the update](https://realmindxgh.com/news)\nImage: ![left:Alt text](https://example.com/image.jpg)"} />
-          <p className="admin-image-help">
-            Add clickable text with <strong>[link text](https://...)</strong>. Add inline images with <strong>![left:Alt](https://...)</strong>, <strong>![right:Alt](https://...)</strong>, or <strong>![full:Alt](https://...)</strong>.
-          </p>
+          <span className="form-label">Newsletter Sections</span>
+          <ArticleSectionsField
+            sections={form.sections}
+            onChange={sections => setForm(prev => ({ ...prev, sections }))}
+          />
+        </div>
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <span className="form-label">Audience</span>
+          <div className="newsletter-audience-panel">
+            <div className="newsletter-audience-filters">
+              <input className="form-input" value={audienceFilters.q} onChange={setFilter('q')} placeholder="Search emails" />
+              <input className="form-input" value={audienceFilters.source} onChange={setFilter('source')} placeholder="Source e.g. cart_invoice" />
+              <select className="form-select" value={audienceFilters.status} onChange={setFilter('status')}>
+                <option value="">Any status</option>
+                <option value="marketing_active">Marketing active</option>
+                <option value="transactional_only">Transactional only</option>
+                <option value="unsubscribed">Unsubscribed</option>
+              </select>
+              <button type="button" className="btn btn-outline-navy btn-sm" onClick={selectVisible}>Select visible</button>
+            </div>
+            <div className="newsletter-contact-list">
+              {loadingAudience ? <p>Loading contacts...</p> : contacts.slice(0, 80).map(contact => (
+                <label key={contact.id} className="newsletter-contact-row">
+                  <input
+                    type="checkbox"
+                    checked={selectedContacts.has(contact.id)}
+                    onChange={() => toggleContact(contact.id)}
+                    disabled={contact.communication_status === 'unsubscribed' || contact.is_active === false}
+                  />
+                  <span>
+                    <strong>{contact.email}</strong>
+                    <small>{(contact.sources || [contact.source]).join(', ')} · {contact.communication_status}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <label className="form-group" style={{ marginTop: 12 }}>
+              <span className="form-label">Manual recipients</span>
+              <textarea className="form-textarea" rows={3} value={form.manual_recipients} onChange={set('manual_recipients')} placeholder="Paste additional public school or institution emails, separated by commas or new lines." />
+            </label>
+            <p className="admin-image-help">{selectedContacts.size} saved contact(s) selected. Manual recipients will be added to contacts with campaign source metadata.</p>
+          </div>
         </div>
       </div>
       {status && <p style={{ color: status.includes('could not') || status.includes('Add ') ? 'var(--danger)' : 'var(--navy)', fontWeight: 700 }}>{status}</p>}

@@ -312,8 +312,10 @@ class Order(TimestampMixin, db.Model):
     paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
     analytics_session_key = db.Column(db.String(80), nullable=True, index=True)
     analytics_visitor_key = db.Column(db.String(80), nullable=True, index=True)
+    cart_invoice_id = db.Column(db.Integer, db.ForeignKey("cart_invoices.id"), nullable=True, index=True)
 
     delivery_zone = db.relationship("DeliveryZone")
+    cart_invoice = db.relationship("CartInvoice", foreign_keys=[cart_invoice_id])
 
 
 class BookshopPaymentIntent(TimestampMixin, db.Model):
@@ -407,6 +409,15 @@ class CartInvoice(TimestampMixin, db.Model):
     delivery_fee = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     total_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     status = db.Column(db.String(30), default="generated", nullable=False, index=True)
+    emailed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    viewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    converted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    converted_order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=True, index=True)
+    reminder_3d_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    reminder_10d_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    recipients = db.Column(db.JSON, default=list, nullable=False)
+
+    converted_order = db.relationship("Order", foreign_keys=[converted_order_id], post_update=True)
 
 
 class CartInvoiceItem(TimestampMixin, db.Model):
@@ -507,6 +518,14 @@ class NewsletterSubscriber(TimestampMixin, db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     confirmed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     unsubscribe_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
+    communication_status = db.Column(db.String(40), default="marketing_active", nullable=False, index=True)
+    sources = db.Column(db.JSON, default=list, nullable=False)
+    tags = db.Column(db.JSON, default=list, nullable=False)
+    last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_invoice_generated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_invoice_used_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_order_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
 
 
 class News(TimestampMixin, db.Model):

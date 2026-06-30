@@ -790,6 +790,17 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   );
   const filteredBrowseLinks = React.useMemo(() => {
     const query = browseQuery.trim().toLowerCase();
+    if (!query && initialBrowse.taxonomy === 'subject' && !hasScopedBrowse) {
+      const preferred = ['english', 'mathematics', 'maths', 'science'];
+      return preferred
+        .map((term) => browseLinks.find((item) => {
+          const label = String(item.label || '').toLowerCase();
+          return label === term || label === `${term} language` || (term === 'science' && label === 'integrated science');
+        }))
+        .filter(Boolean)
+        .filter((item, index, arr) => arr.findIndex(candidate => candidate.id === item.id) === index)
+        .slice(0, 3);
+    }
     if (!query) return browseLinks;
     return browseLinks.filter((item) => {
       const plainText = [
@@ -807,7 +818,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       };
       return plainText.includes(query) || bookMatchesBookshopSearch(pseudoBook, browseQuery);
     });
-  }, [browseLinks, browseQuery]);
+  }, [browseLinks, browseQuery, hasScopedBrowse, initialBrowse.taxonomy]);
   const isSubjectFinder = initialBrowse.taxonomy === 'subject' && !hasScopedBrowse;
   const selectedSubjectItems = React.useMemo(() => {
     const selected = new Set(filters.subjects || []);

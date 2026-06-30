@@ -20,6 +20,16 @@ const EMAIL_RE = /^\S+@\S+\.\S+$/;
 const PHONE_RE = /^[0-9+\s]{9,}$/;
 const IS_DEVELOPMENT = import.meta.env.DEV;
 
+const readInvoiceIdFromUrl = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    return (params.get('invoice_id') || params.get('invoice') || '').trim().toUpperCase();
+  } catch {
+    return '';
+  }
+};
+
 const cleanCheckoutForm = (value = {}) => ({
   name: String(value.name || ''),
   phone: String(value.phone || ''),
@@ -118,7 +128,7 @@ const StepBar = ({ step, canVisit = () => false, onStepChange = null }) => {
   );
 };
 
-const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, promoProductDiscount = 0, promoDeliveryDiscount = 0, promoOrderDiscount = 0, promoCode = '' }) => (
+const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, bulkDiscountPct = '', promoProductDiscount = 0, promoDeliveryDiscount = 0, promoOrderDiscount = 0, promoCode = '' }) => (
   <div className="bs-mini-summary desktop">
     <h3 className="bs-h3" style={{ fontSize:16, marginBottom:14 }}>Order Summary</h3>
     {detailed.map((b,i) => (
@@ -133,7 +143,7 @@ const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, prom
     ))}
     <div className="bs-divider" style={{ margin:'14px 0' }} />
     <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(subtotal)}</span></div>
-    {bulkSaving > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Bulk discount</span><span>-{cedis(bulkSaving)}</span></div>}
+    {bulkSaving > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Bulk Purchase Discount{bulkDiscountPct ? ` (${bulkDiscountPct}%)` : ''}</span><span>-{cedis(bulkSaving)}</span></div>}
     {promoProductDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Promo {promoCode} on products</span><span>-{cedis(promoProductDiscount)}</span></div>}
     <div className="bs-summary-row"><span>Delivery</span><span>{cedis(delivery)}</span></div>
     {promoDeliveryDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Delivery discount</span><span>-{cedis(promoDeliveryDiscount)}</span></div>}
@@ -149,12 +159,14 @@ const CheckoutPage = ({ navigate }) => {
     selectedCount: count,
     clear: clearCart,
     selectedBulkSaving: bulkSaving = 0,
+    selectedBulkDiscounts = [],
     loading: cartLoading,
     error: cartError,
   } = useCart();
   const session = getDemoSession();
   const initialDraft = React.useMemo(readCheckoutDraft, []);
   const initialSuccess = React.useMemo(readCheckoutSuccess, []);
+  const linkedCartInvoiceId = React.useMemo(() => readInvoiceIdFromUrl() || initialDraft?.cartInvoiceId || '', [initialDraft]);
   const restoredDraftSignatureRef = React.useRef(initialDraft?.cartSignature || '');
   const restoredSuccessRef = React.useRef(Boolean(initialSuccess));
   const [step, setStep] = React.useState(() => (
@@ -468,6 +480,7 @@ const CheckoutPage = ({ navigate }) => {
       custom_delivery_area: customDeliveryArea,
       payment_method: paymentMethod,
       promo_code: appliedPromo?.code || null,
+      cart_invoice_id: linkedCartInvoiceId || null,
       items: orderItems,
     };
     try {
@@ -488,6 +501,7 @@ const CheckoutPage = ({ navigate }) => {
           zoneSearch,
           cartSignature,
           pendingPaymentIntent: intentRef,
+          cartInvoiceId: linkedCartInvoiceId || '',
         });
         window.location.href = authUrl;
         return;
@@ -862,7 +876,7 @@ const CheckoutPage = ({ navigate }) => {
               {/* Order totals */}
               <div style={{ borderTop:'1px solid var(--bs-border)', paddingTop:14 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:15 }}><span>Subtotal</span><span>{cedis(subtotal)}</span></div>
-                {(bulkSaving || 0) > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Bulk Purchase Discount</span><span>-{cedis(bulkSaving)}</span></div>}
+                {(bulkSaving || 0) > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Bulk Purchase Discount{selectedBulkDiscounts[0]?.pct ? ` (${selectedBulkDiscounts[0].pct}%)` : ''}</span><span>-{cedis(bulkSaving)}</span></div>}
                 {promoProductDiscount > 0 && <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:13, color:'var(--bs-success)' }}><span>Promo ({appliedPromo.code}) on products</span><span>-{cedis(promoProductDiscount)}</span></div>}
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8, fontSize:15 }}>
                   <span>Delivery {selectedZone ? `(${selectedZone.name})` : ''}</span>
@@ -898,6 +912,7 @@ const CheckoutPage = ({ navigate }) => {
           delivery={delivery}
           subtotal={subtotal}
           bulkSaving={bulkSaving}
+          bulkDiscountPct={selectedBulkDiscounts[0]?.pct || ''}
           promoProductDiscount={promoProductDiscount}
           promoDeliveryDiscount={promoDeliveryDiscount}
           promoOrderDiscount={promoOrderDiscount}
@@ -1183,8 +1198,13 @@ const InvoicePage = ({ navigate }) => {
     actionableItems.forEach(item => {
       cart.add(item.product_id, Math.max(1, Number(item.quantity || 1)));
     });
-    if (goToCheckout) navigate('checkout');
-  }, [actionableItems, cart, navigate]);
+    if (goToCheckout) {
+      if (!isReceipt && documentId) {
+        writeCheckoutDraft({ cartInvoiceId: documentId });
+      }
+      navigate('checkout');
+    }
+  }, [actionableItems, cart, documentId, isReceipt, navigate]);
 
   return (
     <div className="bs-container bs-fade-page">

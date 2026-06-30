@@ -89,6 +89,7 @@ export const api = {
   trackOrders: (query) => apiFetch(`/orders/track?q=${encodeURIComponent(query)}`),
   lookupInvoice: (invoiceId) => apiFetch(`/invoices/${encodeURIComponent(invoiceId)}`),
   createCartInvoice: (payload) => apiFetch('/cart-invoices', { method: 'POST', body: payload }),
+  emailCartInvoice: (payload) => apiFetch('/cart-invoices/email', { method: 'POST', body: payload }),
   invoicePdfUrl: (invoiceId, { download = false, document = '' } = {}) => {
     const params = new URLSearchParams();
     if (download) params.set('download', '1');
@@ -234,6 +235,7 @@ export const api = {
   adminProductMissingImages: () => apiFetch('/admin/products/missing-images'),
   adminUnpublishProductsMissingImages: () => apiFetch('/admin/products/missing-images/unpublish', { method: 'POST' }),
   adminList: (collection) => apiFetch(`/admin/${collection}`),
+  adminListWithQuery: (collection, qs = '') => apiFetch(`/admin/${collection}${qs ? '?' + qs : ''}`),
   // admin - write (collection: 'jobs'|'products'|'categories'|'news'|'gallery'|'resources')
   adminCreate: (collection, payload) => apiFetch(`/admin/${collection}`, { method: 'POST', body: payload }),
   adminUpdate: (collection, id, payload) => apiFetch(`/admin/${collection}/${id}`, { method: 'PUT', body: payload }),

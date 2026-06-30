@@ -19,6 +19,7 @@ from ..default_content import (
 )
 from ..analytics import queue_analytics_event, queue_analytics_events
 from ..audit import audit
+from ..contacts import MARKETING_ACTIVE, UNSUBSCRIBED, upsert_contact
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
 from ..models import ContactMessage, Flyer, GalleryItem, News, NewsletterSubscriber, Product, ProductCategory, Resource, SiteSetting, UploadedFile
@@ -516,21 +517,14 @@ def newsletter():
         email = clean_email(payload.get("email"))
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
-    subscriber = NewsletterSubscriber.query.filter_by(email=email).first()
-    if subscriber:
-        if not subscriber.is_active:
-            subscriber.is_active = True
-        status = "already_subscribed"
-    else:
-        import secrets as _secrets
-        subscriber = NewsletterSubscriber(
-            email=email,
-            source=payload.get("source") or "site",
-            unsubscribe_token=_secrets.token_urlsafe(32),
-        )
-        db.session.add(subscriber)
-        status = "subscribed"
+    existing = NewsletterSubscriber.query.filter_by(email=email).first()
+    subscriber = upsert_contact(
+        email,
+        source=payload.get("source") or "newsletter_form",
+        communication_status=MARKETING_ACTIVE,
+    )
     subscriber.confirmed_at = subscriber.confirmed_at or datetime.now(timezone.utc)
+    status = "already_subscribed" if existing and existing.communication_status != UNSUBSCRIBED else "subscribed"
     audit("newsletter_subscription", "newsletter_subscriber", None, {
         "email": email, "status": status, "source": payload.get("source") or "site",
     }, actor_email=email)
@@ -565,6 +559,7 @@ def newsletter_unsubscribe():
         return jsonify(error="Invalid or expired unsubscribe link."), 404
     already_inactive = not subscriber.is_active
     subscriber.is_active = False
+    subscriber.communication_status = UNSUBSCRIBED
     audit("newsletter_unsubscribe", "newsletter_subscriber", subscriber.id, {"email": subscriber.email})
     db.session.commit()
     msg = "You have already been unsubscribed." if already_inactive else "You have been unsubscribed successfully."

@@ -393,6 +393,14 @@ def register_cli(app):
             f"covering {result['usage_count']} completed promo sale(s)."
         )
 
+    @app.cli.command("send-cart-invoice-reminders")
+    def send_cart_invoice_reminders_command():
+        """Send due 3-day and 10-day reminders for unconverted cart invoices."""
+        from .api.bookshop import send_due_cart_invoice_reminders
+
+        sent = send_due_cart_invoice_reminders()
+        click.echo(f"Sent {sent} cart invoice reminder email(s).")
+
     @app.cli.command("seed-delivery-zones")
     @click.option(
         "--region",

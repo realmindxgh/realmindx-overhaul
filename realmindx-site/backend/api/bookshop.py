@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import re
@@ -16,7 +16,9 @@ from ..analytics import queue_analytics_event
 from ..audit import audit
 from ..bookshop_search import product_search_filter, taxonomy_filter_terms
 from ..checkout_details import upsert_checkout_detail
+from ..contacts import TRANSACTIONAL_ONLY, upsert_contact
 from ..email_service import (
+    EmailAttachment,
     OutboundEmail,
     bookshop_email_shell,
     bookshop_order_summary_table,
@@ -182,6 +184,12 @@ def _prepare_checkout(payload, *, payment_method=None):
         if error:
             raise CheckoutValidationError(error, status)
     pricing = calculate_order_pricing(order_items, delivery_fee=delivery_fee, promo=promo_row)
+    cart_invoice = None
+    invoice_id = (payload.get("cart_invoice_id") or payload.get("invoice_id") or "").strip().upper()
+    if invoice_id:
+        cart_invoice = CartInvoice.query.filter_by(invoice_id=invoice_id).first()
+        if not cart_invoice:
+            raise CheckoutValidationError("The linked cart invoice could not be found.", 404)
 
     return {
         "user_id": current_user.id if current_user.is_authenticated else None,
@@ -200,6 +208,7 @@ def _prepare_checkout(payload, *, payment_method=None):
         "payment_method": requested_payment_method,
         "order_items": order_items,
         "pricing": pricing,
+        "cart_invoice_id": cart_invoice.id if cart_invoice else None,
         "analytics_session_key": (request.cookies.get("rmx_analytics_session") or "").strip() or None,
         "analytics_visitor_key": (request.cookies.get("rmx_analytics_visitor") or "").strip() or None,
     }
@@ -224,6 +233,7 @@ def _checkout_snapshot(checkout):
             "payment_method",
             "analytics_session_key",
             "analytics_visitor_key",
+            "cart_invoice_id",
         )
     } | {
         "delivery_fee": str(checkout["delivery_fee"]),
@@ -304,6 +314,7 @@ def _create_order_from_checkout(
         paid_at=paid_at,
         analytics_session_key=checkout.get("analytics_session_key"),
         analytics_visitor_key=checkout.get("analytics_visitor_key"),
+        cart_invoice_id=checkout.get("cart_invoice_id"),
     )
     assign_invoice_id(order)
     db.session.add(order)
@@ -331,6 +342,24 @@ def _create_order_from_checkout(
             "delivery_city": checkout.get("delivery_city") or order.delivery_zone_name or "",
             "delivery_region": order.delivery_region,
         })
+    if order.cart_invoice_id:
+        cart_invoice = db.session.get(CartInvoice, order.cart_invoice_id)
+        if cart_invoice and not cart_invoice.converted_at:
+            now = datetime.now(timezone.utc)
+            cart_invoice.status = "converted"
+            cart_invoice.converted_at = now
+            cart_invoice.converted_order_id = order.id
+            for contact_email in [order.email, *(cart_invoice.recipients or [])]:
+                try:
+                    upsert_contact(
+                        contact_email,
+                        source="cart_invoice",
+                        communication_status=TRANSACTIONAL_ONLY,
+                        last_invoice_used_at=now,
+                        last_order_at=now,
+                    )
+                except ValueError:
+                    continue
     return order
 
 
@@ -623,15 +652,29 @@ def _prepare_cart_invoice_items(payload_items):
     return prepared
 
 
-@bookshop_bp.post("/cart-invoices")
-@limiter.limit("20/hour")
-def create_cart_invoice():
-    payload = request.get_json(silent=True) or {}
-    try:
-        items = _prepare_cart_invoice_items(payload.get("items") or [])
-    except CheckoutValidationError as exc:
-        return jsonify(error=str(exc)), exc.status
+def _parse_invoice_recipients(value):
+    if isinstance(value, str):
+        candidates = re.split(r"[\s,;]+", value)
+    elif isinstance(value, list):
+        candidates = value
+    else:
+        candidates = []
+    recipients = []
+    for candidate in candidates:
+        text = str(candidate or "").strip()
+        if not text:
+            continue
+        email = clean_email(text)
+        if email not in recipients:
+            recipients.append(email)
+    if not recipients:
+        raise CheckoutValidationError("Enter at least one recipient email address.", 400)
+    if len(recipients) > 10:
+        raise CheckoutValidationError("Send one invoice to 10 email addresses or fewer.", 400)
+    return recipients
 
+
+def _create_cart_invoice_from_items(items):
     pricing = calculate_order_pricing(items, delivery_fee=0, promo=None)
     invoice = CartInvoice(
         subtotal_amount=pricing["subtotal_amount"],
@@ -655,9 +698,145 @@ def create_cart_invoice():
             unit_price=item["unit_price"],
             quantity=item["quantity"],
         ))
+    db.session.flush()
+    return invoice
 
+
+def _invoice_action_urls(invoice):
+    bookshop_url = current_app.config.get("BOOKSHOP_URL", "https://bookshop.realmindxgh.com").rstrip("/")
+    invoice_id = invoice.invoice_id
+    return (
+        f"{bookshop_url}/invoice?invoice_id={invoice_id}",
+        f"{bookshop_url}/checkout?invoice_id={invoice_id}",
+        f"{bookshop_url}/cart?invoice_id={invoice_id}",
+    )
+
+
+def _send_cart_invoice_email(invoice, recipient, *, reminder=False):
+    lookup_url, checkout_url, cart_url = _invoice_action_urls(invoice)
+    pdf_stream = build_cart_invoice_pdf(invoice)
+    title = f"{'Reminder: ' if reminder else ''}Your RealMindX Bookshop cart invoice"
+    body_html = f"""
+      <p style="margin:0 0 16px;">Hello,</p>
+      <p style="margin:0 0 16px;">
+        {"This is a friendly reminder that your RealMindX Bookshop cart invoice is still available." if reminder else "Your RealMindX Bookshop cart invoice is attached to this email."}
+      </p>
+      <div style="margin:18px 0;padding:16px;border:1px solid #dce5f0;border-radius:12px;background:#f7f9fc;">
+        <p style="margin:0 0 8px;color:#143670;font-weight:900;">Invoice ID: {escape(invoice.invoice_id)}</p>
+        <p style="margin:0;color:#1a2a40;">Total before delivery: <strong>GH&#8373;{float(invoice.total_amount or 0):,.2f}</strong></p>
+      </div>
+      {bookshop_order_summary_table(invoice)}
+      <p style="margin:18px 0 0;">
+        You can <a href="{escape(lookup_url, quote=True)}" style="color:#143670;font-weight:800;">view this invoice online</a>,
+        <a href="{escape(cart_url, quote=True)}" style="color:#143670;font-weight:800;">add the items back to cart</a>,
+        or continue to checkout when you are ready.
+      </p>
+      <p style="margin:18px 0 0;color:#53657d;font-size:13px;">
+        Please do not reply to this email. Use the contact channels in the footer for questions, stock checks, or delivery support.
+      </p>
+    """
+    send_email(OutboundEmail(
+        to=recipient,
+        subject=f"{'Reminder: ' if reminder else ''}RealMindX Bookshop invoice {invoice.invoice_id}",
+        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+        html=bookshop_email_shell(
+            title,
+            body_html,
+            "Review Invoice" if reminder else "Continue to Checkout",
+            lookup_url if reminder else checkout_url,
+            eyebrow="RealMindX Bookshop Reminder" if reminder else "RealMindX Bookshop Invoice",
+            preheader=f"Invoice {invoice.invoice_id} for GH₵{float(invoice.total_amount or 0):,.2f}.",
+            footer_note="This mailbox is not monitored. Please contact RealMindX through the phone, WhatsApp, email, or website links above.",
+        ),
+        attachments=[EmailAttachment(
+            filename=f"{invoice.invoice_id}.pdf",
+            content=pdf_stream.getvalue(),
+            content_type="application/pdf",
+        )],
+    ))
+
+
+def send_due_cart_invoice_reminders(now=None):
+    now = now or datetime.now(timezone.utc)
+    sent = 0
+    candidates = CartInvoice.query.filter(
+        CartInvoice.status.in_(["generated", "emailed"]),
+        CartInvoice.converted_at.is_(None),
+        CartInvoice.emailed_at.isnot(None),
+    ).all()
+    for invoice in candidates:
+        age = now - invoice.emailed_at
+        recipients = list(invoice.recipients or [])
+        if not recipients:
+            continue
+        should_send_3d = age >= timedelta(days=3) and not invoice.reminder_3d_sent_at
+        should_send_10d = age >= timedelta(days=10) and not invoice.reminder_10d_sent_at
+        if not should_send_3d and not should_send_10d:
+            continue
+        for recipient in recipients:
+            _send_cart_invoice_email(invoice, recipient, reminder=True)
+            sent += 1
+        if should_send_3d:
+            invoice.reminder_3d_sent_at = now
+        if should_send_10d:
+            invoice.reminder_10d_sent_at = now
+        audit("cart_invoice_reminder_sent", "cart_invoice", invoice.id, {
+            "invoice_id": invoice.invoice_id,
+            "recipients": len(recipients),
+            "stage": "10d" if should_send_10d else "3d",
+        })
+    db.session.commit()
+    return sent
+
+
+@bookshop_bp.post("/cart-invoices")
+@limiter.limit("20/hour")
+def create_cart_invoice():
+    payload = request.get_json(silent=True) or {}
+    try:
+        items = _prepare_cart_invoice_items(payload.get("items") or [])
+    except CheckoutValidationError as exc:
+        return jsonify(error=str(exc)), exc.status
+
+    invoice = _create_cart_invoice_from_items(items)
     db.session.commit()
     response = jsonify(invoice=cart_invoice_json(invoice))
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    response.headers["Cache-Control"] = "private, no-store"
+    return response, 201
+
+
+@bookshop_bp.post("/cart-invoices/email")
+@limiter.limit("20/hour")
+def email_cart_invoice():
+    payload = request.get_json(silent=True) or {}
+    try:
+        recipients = _parse_invoice_recipients(payload.get("emails") or payload.get("recipients") or payload.get("email"))
+        items = _prepare_cart_invoice_items(payload.get("items") or [])
+    except (CheckoutValidationError, ValueError) as exc:
+        return jsonify(error=str(exc)), getattr(exc, "status", 400)
+
+    invoice = _create_cart_invoice_from_items(items)
+    now = datetime.now(timezone.utc)
+    invoice.recipients = recipients
+    invoice.emailed_at = now
+    invoice.status = "emailed"
+    for recipient in recipients:
+        upsert_contact(
+            recipient,
+            source="cart_invoice",
+            communication_status=TRANSACTIONAL_ONLY,
+            tags=["bookshop", "invoice"],
+            last_invoice_generated_at=now,
+        )
+        _send_cart_invoice_email(invoice, recipient)
+    audit("cart_invoice_emailed", "cart_invoice", invoice.id, {
+        "invoice_id": invoice.invoice_id,
+        "recipients": len(recipients),
+        "total": float(invoice.total_amount or 0),
+    })
+    db.session.commit()
+    response = jsonify(invoice=cart_invoice_json(invoice), recipients=recipients, message="Invoice emailed successfully.")
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
     response.headers["Cache-Control"] = "private, no-store"
     return response, 201
@@ -690,6 +869,9 @@ def lookup_invoice(invoice_id):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
+    if not cart_invoice.viewed_at:
+        cart_invoice.viewed_at = datetime.now(timezone.utc)
+        db.session.commit()
     response = jsonify(invoice=cart_invoice_json(cart_invoice))
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
     response.headers["Cache-Control"] = "private, no-store"

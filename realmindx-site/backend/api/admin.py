@@ -19,6 +19,14 @@ from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
 from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
+from ..contacts import (
+    MARKETING_ACTIVE,
+    TRANSACTIONAL_ONLY,
+    UNSUBSCRIBED,
+    contact_json,
+    normalize_contact_email,
+    upsert_contact,
+)
 from ..default_content import (
     DEFAULT_DONATION_SLIDES,
     DEFAULT_HOME_HERO_SLIDES,
@@ -3249,8 +3257,58 @@ def delete_message(message_id):
 @login_required
 @permission_required("newsletters.view")
 def list_newsletters():
-    rows = NewsletterSubscriber.query.order_by(NewsletterSubscriber.created_at.desc()).limit(200).all()
-    return jsonify(items=[{"id": r.id, "email": r.email, "source": r.source, "is_active": r.is_active, "status": "active" if r.is_active else "unsubscribed", "created_at": r.created_at.isoformat()} for r in rows])
+    query = NewsletterSubscriber.query
+    q = (request.args.get("q") or "").strip().lower()
+    source = (request.args.get("source") or "").strip()
+    status = (request.args.get("status") or "").strip()
+    tag = (request.args.get("tag") or "").strip()
+    if q:
+        query = query.filter(NewsletterSubscriber.email.ilike(f"%{q}%"))
+    if source:
+        query = query.filter(or_(
+            NewsletterSubscriber.source == source,
+            NewsletterSubscriber.sources.contains([source]),
+        ))
+    if status:
+        if status == "active":
+            query = query.filter(NewsletterSubscriber.is_active.is_(True))
+        elif status == "unsubscribed":
+            query = query.filter(or_(
+                NewsletterSubscriber.is_active.is_(False),
+                NewsletterSubscriber.communication_status == UNSUBSCRIBED,
+            ))
+        else:
+            query = query.filter(NewsletterSubscriber.communication_status == status)
+    if tag:
+        query = query.filter(NewsletterSubscriber.tags.contains([tag]))
+    rows = query.order_by(NewsletterSubscriber.created_at.desc()).limit(500).all()
+    return jsonify(items=[contact_json(r) for r in rows])
+
+
+@admin_bp.post("/newsletters")
+@login_required
+@permission_required("newsletters.create")
+def create_newsletter_contact():
+    payload = request.get_json(silent=True) or {}
+    try:
+        email = normalize_contact_email(payload.get("email"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    source = (payload.get("source") or "manual_institution_import").strip()
+    status = (payload.get("communication_status") or payload.get("status") or MARKETING_ACTIVE).strip()
+    tags = payload.get("tags") or []
+    if isinstance(tags, str):
+        tags = [item.strip() for item in re.split(r"[,;]+", tags) if item.strip()]
+    row = upsert_contact(
+        email,
+        source=source,
+        communication_status=status,
+        tags=tags,
+        notes=(payload.get("notes") or "").strip() or None,
+    )
+    db.session.commit()
+    log_action("create_newsletter_contact", "newsletter_subscriber", row.id, {"email": row.email, "source": source})
+    return jsonify(item=contact_json(row)), 201
 
 
 NEWSLETTER_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
@@ -3326,6 +3384,74 @@ def _render_newsletter_body(body):
     )
 
 
+def _render_newsletter_sections(sections):
+    if not isinstance(sections, list) or not sections:
+        return ""
+    blocks = []
+    for index, section in enumerate(sections):
+        heading = escape((section.get("heading") or "").strip())
+        body = (section.get("body") or "").strip()
+        caption = escape((section.get("caption") or "").strip())
+        image_file_id = section.get("image_file_id")
+        image_url = ""
+        if image_file_id:
+            image_file = db.session.get(UploadedFile, image_file_id)
+            image_url = _upload_public_url(image_file) if image_file else ""
+        position = (section.get("image_position") or "auto").strip().lower()
+        if position == "auto":
+            position = "right" if index % 2 == 0 else "left"
+        if position not in {"left", "right", "full"}:
+            position = "right"
+
+        text_html = ""
+        if heading:
+            text_html += f'<h2 style="margin:0 0 10px;color:#143670;font-size:20px;line-height:1.25;">{heading}</h2>'
+        if body:
+            text_html += _render_newsletter_body(body)
+
+        image_html = ""
+        if image_url:
+            safe_url = escape(_absolute_newsletter_url(image_url), quote=True)
+            image_html = (
+                f'<img src="{safe_url}" alt="{caption or heading or "Campaign image"}" width="260" '
+                'style="display:block;width:100%;max-width:260px;height:auto;border-radius:12px;'
+                'border:1px solid #dce5f0;" />'
+            )
+            if caption:
+                image_html += f'<p style="margin:8px 0 0;color:#53657d;font-size:12px;line-height:1.4;">{caption}</p>'
+
+        if image_html and position != "full":
+            image_cell = f'<td class="newsletter-section-image" width="42%" style="width:42%;vertical-align:top;padding:0 0 16px;">{image_html}</td>'
+            text_cell = f'<td class="newsletter-section-text" style="vertical-align:top;padding:0 0 16px;">{text_html}</td>'
+            cells = image_cell + '<td width="18" style="width:18px;">&nbsp;</td>' + text_cell if position == "left" else text_cell + '<td width="18" style="width:18px;">&nbsp;</td>' + image_cell
+            blocks.append(f'<table class="newsletter-section-row" role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 22px;"><tr>{cells}</tr></table>')
+        else:
+            blocks.append(
+                '<div style="margin:0 0 24px;">'
+                + (f'<div style="margin:0 0 14px;">{image_html}</div>' if image_html else "")
+                + text_html
+                + '</div>'
+            )
+    return (
+        '<style>@media only screen and (max-width:600px){'
+        '.newsletter-section-row,.newsletter-section-row tbody,.newsletter-section-row tr,.newsletter-section-row td{display:block!important;width:100%!important;}'
+        '.newsletter-section-image{padding:0 0 14px!important}.newsletter-section-text{padding:0!important}'
+        '}</style>'
+        + "".join(blocks)
+    )
+
+
+def _campaign_from_email(sender):
+    sender = (sender or "news").strip().lower()
+    if sender == "sales":
+        return current_app.config.get("SALES_FROM_EMAIL") or "RealMindX Sales <sales@send.realmindxgh.com>"
+    if sender == "bookshop":
+        return current_app.config.get("BOOKSHOP_FROM_EMAIL")
+    if sender == "default":
+        return current_app.config.get("DEFAULT_FROM_EMAIL")
+    return current_app.config.get("NEWSLETTER_FROM_EMAIL")
+
+
 @admin_bp.post("/newsletters/send")
 @login_required
 @permission_required("newsletters.create")
@@ -3334,10 +3460,11 @@ def send_newsletter_campaign():
     subject = (payload.get("subject") or "").strip()
     title = (payload.get("title") or subject).strip()
     body = (payload.get("body") or "").strip()
-    if not subject or not title or not body:
-        return jsonify(error="Subject, title, and body are required."), 400
+    sections = payload.get("sections") or []
+    if not subject or not title or (not body and not sections):
+        return jsonify(error="Subject, title, and message content are required."), 400
 
-    body_html = _render_newsletter_body(body)
+    body_html = _render_newsletter_sections(sections) if sections else _render_newsletter_body(body)
     image_url = None
     image_file_id = payload.get("image_file_id")
     if image_file_id:
@@ -3347,16 +3474,49 @@ def send_newsletter_campaign():
     brand = (payload.get("brand") or "realmindx").strip().lower()
     is_bookshop = brand == "bookshop"
     shell = bookshop_email_shell if is_bookshop else app_email_shell
-    eyebrow = "RealMindX Bookshop Updates" if is_bookshop else "RealMindX Updates"
-    from_email = (
-        current_app.config.get("BOOKSHOP_FROM_EMAIL")
-        if is_bookshop
-        else current_app.config.get("NEWSLETTER_FROM_EMAIL")
-    ) or current_app.config.get("NEWSLETTER_FROM_EMAIL")
+    sender = (payload.get("sender") or payload.get("purpose") or ("bookshop" if is_bookshop else "news")).strip().lower()
+    eyebrow = {
+        "sales": "RealMindX Sales",
+        "bookshop": "RealMindX Bookshop Updates",
+        "news": "RealMindX Updates",
+    }.get(sender, "RealMindX Updates")
+    from_email = _campaign_from_email(sender)
     base_url = current_app.config.get("SITE_BASE_URL", "https://realmindxgh.com").rstrip("/")
-    subscribers = NewsletterSubscriber.query.filter_by(is_active=True).order_by(NewsletterSubscriber.email.asc()).all()
+    recipient_ids = payload.get("recipient_ids") or []
+    recipient_emails = payload.get("recipient_emails") or payload.get("recipients") or []
+    if isinstance(recipient_emails, str):
+        recipient_emails = [item.strip() for item in re.split(r"[\s,;]+", recipient_emails) if item.strip()]
+    subscribers = []
+    seen = set()
+    if recipient_ids:
+        subscribers.extend(NewsletterSubscriber.query.filter(NewsletterSubscriber.id.in_(recipient_ids)).all())
+    for raw_email in recipient_emails:
+        try:
+            email = normalize_contact_email(raw_email)
+        except ValueError:
+            continue
+        row = NewsletterSubscriber.query.filter_by(email=email).first()
+        if not row:
+            row = upsert_contact(
+                email,
+                source="manual_campaign_recipient",
+                communication_status=MARKETING_ACTIVE,
+                tags=["campaign"],
+            )
+        subscribers.append(row)
+    if not subscribers:
+        subscribers = NewsletterSubscriber.query.filter(
+            NewsletterSubscriber.is_active.is_(True),
+            NewsletterSubscriber.communication_status != UNSUBSCRIBED,
+        ).order_by(NewsletterSubscriber.email.asc()).all()
+
     sent = 0
     for subscriber in subscribers:
+        if subscriber.email in seen:
+            continue
+        seen.add(subscriber.email)
+        if subscriber.communication_status == UNSUBSCRIBED or not subscriber.is_active:
+            continue
         if not subscriber.unsubscribe_token:
             subscriber.unsubscribe_token = secrets.token_urlsafe(32)
         unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
@@ -3374,15 +3534,16 @@ def send_newsletter_campaign():
                     preheader=payload.get("preheader") or payload.get("summary") or title,
                     hero_image_url=image_url,
                     footer_note=(
-                        f'You are receiving this because you subscribed to RealMindX updates. '
-                        f'<a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe</a>'
+                        f'You are receiving this RealMindX email because your address is listed under '
+                        f'{escape(", ".join(subscriber.sources or [subscriber.source or "RealMindX contacts"]))}. '
+                        f'<a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe</a>.'
                     ),
                 ),
             )
         )
         sent += 1
 
-    log_action("send_newsletter_campaign", "newsletter", None, {"subject": subject, "brand": brand, "sent": sent})
+    log_action("send_newsletter_campaign", "newsletter", None, {"subject": subject, "brand": brand, "sender": sender, "sent": sent})
     db.session.commit()
     return jsonify(message=f"Newsletter sent to {sent} subscriber(s).", sent=sent)
 
@@ -3395,11 +3556,28 @@ def update_newsletter_subscriber(subscriber_id):
     payload = request.get_json(silent=True) or {}
     if "is_active" in payload:
         row.is_active = bool(payload["is_active"])
+        if not row.is_active:
+            row.communication_status = UNSUBSCRIBED
     if "status" in payload:
-        row.is_active = payload["status"] == "active"
+        row.communication_status = payload["status"]
+        row.is_active = payload["status"] != UNSUBSCRIBED
+    if "communication_status" in payload:
+        row.communication_status = payload["communication_status"]
+        row.is_active = payload["communication_status"] != UNSUBSCRIBED
+    if "source" in payload:
+        row.source = (payload.get("source") or row.source or "site").strip()
+    if "sources" in payload and isinstance(payload["sources"], list):
+        row.sources = [str(item).strip() for item in payload["sources"] if str(item).strip()]
+    if "tags" in payload:
+        tags = payload["tags"]
+        if isinstance(tags, str):
+            tags = [item.strip() for item in re.split(r"[,;]+", tags) if item.strip()]
+        row.tags = tags if isinstance(tags, list) else []
+    if "notes" in payload:
+        row.notes = (payload.get("notes") or "").strip() or None
     log_action("update_newsletter_subscriber", "newsletter_subscriber", row.id)
     db.session.commit()
-    return jsonify(id=row.id, email=row.email, is_active=row.is_active)
+    return jsonify(item=contact_json(row))
 
 
 @admin_bp.delete("/newsletters/<int:subscriber_id>")
