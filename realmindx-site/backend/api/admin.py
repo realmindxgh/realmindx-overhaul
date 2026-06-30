@@ -2970,7 +2970,7 @@ def delete_gallery_item(item_id):
 @permission_required("resources.view")
 def list_resources():
     rows = Resource.query.order_by(Resource.created_at.desc()).limit(200).all()
-    return jsonify(items=[{"id": r.id, "title": r.title, "description": r.description, "url": r.external_url, "is_published": r.is_published, "status": "published" if r.is_published else "draft", "created_at": r.created_at.isoformat()} for r in rows])
+    return jsonify(items=[{"id": r.id, "title": r.title, "description": r.description, "source": r.source, "url": r.external_url, "is_published": r.is_published, "status": "published" if r.is_published else "draft", "created_at": r.created_at.isoformat()} for r in rows])
 
 
 @admin_bp.post("/resources")
@@ -2981,6 +2981,7 @@ def create_resource():
     row = Resource(
         title=payload.get("title"),
         description=payload.get("description"),
+        source=payload.get("source"),
         external_url=payload.get("external_url") or payload.get("url"),
         is_published=bool(payload.get("is_published", payload.get("status") == "published")),
     )
@@ -2999,7 +3000,7 @@ def create_resource():
 def update_resource(resource_id):
     row = db.get_or_404(Resource, resource_id)
     payload = request.get_json(silent=True) or {}
-    for field in ["title", "description", "external_url", "is_published"]:
+    for field in ["title", "description", "source", "external_url", "is_published"]:
         if field in payload:
             setattr(row, field, payload[field])
     if "url" in payload:

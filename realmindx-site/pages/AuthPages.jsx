@@ -235,10 +235,19 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
   // Scroll to top whenever the form state changes (login/register/otp/forgot)
   React.useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [mode, pendingVerificationEmail]);
   React.useEffect(() => {
-    const oauthError = new URLSearchParams(window.location.search).get('error');
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('error');
+    const provider = params.get('provider');
+    const providerLabel = provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : 'social';
     if (oauthError === 'terms_required') {
       setMode('register');
       setError('Please accept the Terms of Service and Privacy Policy before creating a new social account.');
+      setFieldErrors({ terms: 'Please accept the Terms of Service and Privacy Policy before creating a new social account.' });
+      window.setTimeout(() => termsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 260);
+    } else if (oauthError === 'account_not_found_social') {
+      setMode('register');
+      setError(`No RealMindX account exists yet for that ${providerLabel} email. Create an account below, accept the terms, then continue with ${providerLabel}.`);
+      window.setTimeout(() => termsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 260);
     } else if (oauthError === 'provider_unavailable') {
       setError('That social sign-in provider is temporarily unavailable. Please use email and password.');
     } else if (oauthError?.endsWith('_failed')) {
@@ -476,10 +485,11 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                 <h2>Welcome Back</h2>
                 <p>Sign in to your teaching portal.</p>
               </div>
+              {error && <p className="form-error form-error-inline" role="alert">{error}</p>}
 
               {/* Social login */}
               <div className="social-login-grid">
-                <button className="social-login-btn google" type="button" onClick={() => { window.location.href = '/api/auth/google?next=/portal'; }}>
+                <button className="social-login-btn google" type="button" onClick={() => { window.location.href = '/api/auth/google?intent=login&next=/portal'; }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -489,7 +499,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   <span>Google</span>
                 </button>
 
-                <button className="social-login-btn facebook" type="button" onClick={() => { window.location.href = '/api/auth/facebook?next=/portal'; }}>
+                <button className="social-login-btn facebook" type="button" onClick={() => { window.location.href = '/api/auth/facebook?intent=login&next=/portal'; }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
                     <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
                   </svg>
@@ -559,6 +569,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                 <h2>Create Your Account</h2>
                 <p>Join thousands of teachers building their careers with RealMindX.</p>
               </div>
+              {error && <p className="form-error form-error-inline" role="alert">{error}</p>}
 
               <form onSubmit={handleRegister} noValidate>
                 <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

@@ -101,9 +101,16 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
   };
 
   React.useEffect(() => {
-    const oauthError = new URLSearchParams(window.location.search).get('error');
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('error');
+    const provider = params.get('provider');
+    const providerLabel = provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : 'social';
     if (oauthError === 'terms_required') {
       setErr('Please accept the Bookshop Terms of Service and Bookshop Privacy Policy before creating a new social account.');
+      window.setTimeout(() => termsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 260);
+    } else if (oauthError === 'account_not_found_social') {
+      setErr(`No RealMindX account exists yet for that ${providerLabel} email. Create an account below, accept the terms, then continue with ${providerLabel}.`);
+      window.setTimeout(() => termsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 260);
     } else if (oauthError === 'provider_unavailable') {
       setErr('That social sign-in provider is temporarily unavailable. Please use email and password.');
     } else if (oauthError?.endsWith('_failed')) {
@@ -432,6 +439,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
             <TurnstileField key={turnstileKey} className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
             </>
           )}
+
+          {error && <p className="bs-auth-error" role="alert">{error}</p>}
 
           <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
             {loading ? (isLogin ? 'Signing in...' : 'Creating account...') : isLogin ? 'Sign In' : 'Create Account'}

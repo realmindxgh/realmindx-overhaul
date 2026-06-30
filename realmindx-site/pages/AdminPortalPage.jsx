@@ -546,10 +546,11 @@ const CONFIG = {
     fields: [
       field('title', 'Title'),
       field('description', 'Description', 'textarea'),
+      field('source', 'Source / Publisher', 'text', { help: 'Shown on the public education documents card.' }),
       field('url', 'URL'),
       field('status', 'Status', 'select', { options: ['draft', 'published'] }),
     ],
-    columns: ['title', 'description', 'url', 'status'],
+    columns: ['title', 'source', 'description', 'url', 'status'],
   },
   messages: {
     title: 'Tickets',

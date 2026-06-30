@@ -21,7 +21,7 @@ const Icon = ({ name, size = 24, stroke = 1.8, className = '' }) => {
     share:    <><circle cx="18" cy="5" r="2.4"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="19" r="2.4"/><path d="M8.2 10.9l7.6-4.5M8.2 13.1l7.6 4.5"/></>,
     menu:     <path d="M4 7h16M4 12h16M4 17h16"/>,
     star:     <path d="M12 2.5l2.9 6.1 6.6.9-4.8 4.6 1.2 6.6L12 18.6 6.1 21.3l1.2-6.6L2.5 9.5l6.6-.9L12 2.5z" fill="currentColor" stroke="none"/>,
-    truck:    <><path d="M3 6h11v9H3zM14 9h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></>,
+    truck:    <><path d="M4 16h4.5l2.1-4H15l2.8 4H20"/><path d="M9 12h2.4l2.1-4H17l2 3"/><path d="M13.7 8l-1.2-2H10"/><path d="M16.8 8H20"/><circle cx="6.5" cy="17" r="2"/><circle cx="18" cy="17" r="2"/><path d="M8.5 17h7.5M11.4 12l-2.2 5M15 12l2.1 5"/></>,
     pin:      <><path d="M12 21s-7-7-7-12a7 7 0 0 1 14 0c0 5-7 12-7 12z"/><circle cx="12" cy="9" r="2.4"/></>,
     clock:    <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></>,
     mail:     <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></>,
@@ -120,8 +120,7 @@ const CoverPlaceholder = ({ title, idx = 0, small = false, image = null }) => {
   return (
     <div className="bs-ph-cover" style={{
       background:
-        `repeating-linear-gradient(135deg, rgba(20,54,112,.06) 0 2px, transparent 2px 14px),
-         linear-gradient(150deg, #eef1f7, #dfe6f2)`
+        '#eef1f7'
     }}>
       <span className="bs-ph-spine" style={{ background: tint }} />
       {small

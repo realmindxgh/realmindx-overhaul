@@ -4597,4 +4597,127 @@ html {
   }
 }
 
+/* Plain-colour surface pass. Preserve the main-site and bookshop homepage
+   hero overlays; flatten decorative gradients/patterns elsewhere. */
+.contact-hero,
+.route-page-hero,
+.page-hero,
+.services-policy-hero,
+.services-cta-banner,
+.contact-info-side,
+.auth-panel-brand,
+.schoolms-showcase,
+.portal-loading-screen {
+  background: var(--navy) !important;
+}
+
+.contact-hero::before,
+.contact-hero::after,
+.route-page-hero::before,
+.route-page-hero::after,
+.page-hero::before,
+.page-hero::after,
+.services-policy-hero::before,
+.services-policy-hero::after,
+.services-cta-banner::before,
+.contact-info-side::before,
+.auth-panel-brand::before,
+.schoolms-showcase::before,
+.welcome-card::before,
+.profile-header-card::before {
+  background: none !important;
+  background-image: none !important;
+}
+
+.donate-slide-caption,
+.donate-slide-overlay {
+  background: rgba(13, 36, 73, 0.86) !important;
+}
+
+.product-import-progress-track span {
+  background: var(--navy) !important;
+}
+
+.product-import-progress[data-stage='processing'] .product-import-progress-track span {
+  background: var(--yellow) !important;
+  animation: none !important;
+}
+
+.home-page :where(.quote-card, .testimonials, .gallery, .donate) {
+  background: var(--navy) !important;
+}
+
+.home-page :where(.quote-card::before, .testimonials::before, .gallery::before, .donate::before),
+.home-page .testimonials-glow {
+  display: none !important;
+  background: none !important;
+  background-image: none !important;
+}
+
+.home-page .gallery-img {
+  background: var(--navy-light) !important;
+}
+
+.home-page .gallery-img::after {
+  background: rgba(13, 36, 73, 0.7) !important;
+}
+
+.bs .bs-promo-band::before,
+.bs .bs-footer::before,
+.bs .bs-auth-form-wrap::before,
+.bs .bs-contact-info-card::before,
+.bs .bs-info-hero::before,
+.bs .bs-mobile-menu::before {
+  content: none !important;
+  background: none !important;
+  background-image: none !important;
+}
+
+.bs .bs-promo-entry,
+.bs .bs-profile-card-heading,
+.bs .bs-account-v2-card-head,
+.bs .bs-account-ref-promo,
+.bs .bs-account-ref-detail-row {
+  background: #ffffff !important;
+}
+
+.bs .bs-account-v2-page {
+  background: #f3f6fb !important;
+}
+
+.bs .bs-account-v2-hero-card,
+.bs .bs-account-hero-card,
+.bs .bs-account-ref-hero,
+.bs .bs-account-orders-hero {
+  background: #0b438f !important;
+}
+
+.bs .bs-account-v2-hero-card::before,
+.bs .bs-account-v2-hero-card::after {
+  display: none !important;
+}
+
+.bs .bs-account-v2-nav button.active,
+.bs .bs-imgph {
+  background: #eef3fb !important;
+}
+
+.bs .bs-imgph.bs-navy {
+  background: var(--bs-navy-light) !important;
+}
+
+.bs .bs-eor-divider {
+  background: var(--bs-border) !important;
+}
+
+.bs .bs-skeleton {
+  background: #e8ecf4 !important;
+  animation: none !important;
+}
+
+@media (max-width: 768px) {
+  .bs .bs-more-nav {
+    display: none !important;
+  }
+}
 

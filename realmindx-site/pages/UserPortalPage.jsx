@@ -49,7 +49,7 @@ const CvTutorialCard = () => {
     : embedUrl;
 
   return (
-    <div className="profile-section-card" style={{ gridColumn: '1 / -1', background: 'linear-gradient(135deg, var(--navy), var(--navy-light))', color: '#fff', position: 'relative' }}>
+    <div className="profile-section-card" style={{ gridColumn: '1 / -1', background: 'var(--navy)', color: '#fff', position: 'relative' }}>
       <button onClick={() => setDismissed(true)}
         style={{ position:'absolute', top:12, right:14, background:'none', border:'none', color:'rgba(255,255,255,0.6)', cursor:'pointer', display:'inline-flex', alignItems:'center', justifyContent:'center' }} aria-label="Dismiss">
         <Icon name="x" size={18} stroke={2.4} />

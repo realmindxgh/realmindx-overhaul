@@ -782,6 +782,7 @@ def resources():
             "id": row.id,
             "title": row.title,
             "description": row.description,
+            "source": row.source,
             "external_url": row.external_url,
             "file_url": file_url,
             "url": row.external_url or file_url,

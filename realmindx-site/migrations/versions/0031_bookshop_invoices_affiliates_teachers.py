@@ -125,11 +125,21 @@ def upgrade():
         sa.text(
             """
             INSERT INTO permissions (key, description, created_at, updated_at)
-            SELECT :key, :description, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-            WHERE NOT EXISTS (SELECT 1 FROM permissions WHERE key = :key)
+            SELECT CAST(:permission_key AS VARCHAR(80)),
+                   CAST(:permission_description AS VARCHAR(255)),
+                   CURRENT_TIMESTAMP,
+                   CURRENT_TIMESTAMP
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM permissions
+                WHERE key = CAST(:permission_key AS VARCHAR(80))
+            )
             """
         ),
-        {"key": "uploads.create", "description": "Upload media and document files"},
+        {
+            "permission_key": "uploads.create",
+            "permission_description": "Upload media and document files",
+        },
     )
     bind.execute(
         sa.text(

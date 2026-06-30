@@ -18,7 +18,7 @@ Environment variables required per provider (add to realmindx-site/.env):
 
 import secrets
 from datetime import datetime, timezone
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, current_app, redirect, request, session, url_for
@@ -145,6 +145,8 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
 
     created = False
     if not user:
+        if session.get("oauth_intent") != "signup":
+            return None, False
         if not session.get("oauth_terms_accepted"):
             return None, False
         role = Role.query.filter_by(name="user").first()
@@ -186,15 +188,17 @@ def _login_and_redirect(user, frontend_path=None):
     return redirect(f"{_frontend_base(surface)}{frontend_path or _safe_next(default_path)}")
 
 
-def _social_user_or_terms_error(user):
+def _social_user_or_terms_error(user, provider):
     if user:
         return None
     surface = session.pop("oauth_surface", "main")
-    session.pop("oauth_intent", None)
+    intent = session.pop("oauth_intent", None)
     session.pop("oauth_terms_accepted", None)
     session.pop("oauth_next", None)
     signup_path = "/signup" if surface == "bookshop" else "/register"
-    return redirect(f"{_frontend_base(surface)}{signup_path}?error=terms_required")
+    error = "terms_required" if intent == "signup" else "account_not_found_social"
+    query = urlencode({"error": error, "provider": provider})
+    return redirect(f"{_frontend_base(surface)}{signup_path}?{query}")
 
 
 def _oauth_failure(provider):
@@ -254,7 +258,7 @@ def apple_callback():
             first_name=info.get("name", {}).get("firstName", "") if isinstance(info.get("name"), dict) else "",
             last_name=info.get("name", {}).get("lastName", "") if isinstance(info.get("name"), dict) else "",
         )
-        terms_error = _social_user_or_terms_error(user)
+        terms_error = _social_user_or_terms_error(user, "apple")
         if terms_error:
             return terms_error
         return _login_and_redirect(user)
@@ -288,7 +292,7 @@ def google_callback():
             first_name=info.get("given_name", ""),
             last_name=info.get("family_name", ""),
         )
-        terms_error = _social_user_or_terms_error(user)
+        terms_error = _social_user_or_terms_error(user, "google")
         if terms_error:
             return terms_error
         return _login_and_redirect(user)
@@ -323,7 +327,7 @@ def microsoft_callback():
             first_name=info.get("given_name", ""),
             last_name=info.get("family_name", ""),
         )
-        terms_error = _social_user_or_terms_error(user)
+        terms_error = _social_user_or_terms_error(user, "microsoft")
         if terms_error:
             return terms_error
         return _login_and_redirect(user)
@@ -359,7 +363,7 @@ def facebook_callback():
             first_name=info.get("first_name", ""),
             last_name=info.get("last_name", ""),
         )
-        terms_error = _social_user_or_terms_error(user)
+        terms_error = _social_user_or_terms_error(user, "facebook")
         if terms_error:
             return terms_error
         return _login_and_redirect(user)

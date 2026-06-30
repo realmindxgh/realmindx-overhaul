@@ -566,6 +566,7 @@ class Resource(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(180), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    source = db.Column(db.String(160), nullable=True)
     resource_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
     external_url = db.Column(db.String(500), nullable=True)
     is_published = db.Column(db.Boolean, default=False, nullable=False)

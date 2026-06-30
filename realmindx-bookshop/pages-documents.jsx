@@ -7,18 +7,21 @@ const FALLBACK_DOCUMENTS = [
     id: 'teacher-recruitment-checklist',
     title: 'Teacher Recruitment Checklist',
     description: 'A starter checklist for schools preparing to hire and onboard teachers.',
+    source: 'RealMindX Education',
     url: 'https://realmindxgh.com/resources',
   },
   {
     id: 'school-improvement-planning',
     title: 'School Improvement Planning Notes',
     description: 'A simple planning outline for school leaders reviewing academic priorities.',
+    source: 'RealMindX Education',
     url: 'https://realmindxgh.com/resources',
   },
   {
     id: 'exam-prep-guide',
     title: 'Exam Preparation Guide',
     description: 'A quick reference for families and teachers preparing learners for major assessments.',
+    source: 'RealMindX Education',
     url: 'https://realmindxgh.com/resources',
   },
 ];
@@ -48,13 +51,27 @@ const documentUrl = (item) => {
   return `/${value}`;
 };
 
+const sourceFromUrl = (value) => {
+  if (!value) return '';
+  try {
+    const parsed = new URL(value, typeof window !== 'undefined' ? window.location.origin : 'https://realmindxgh.com');
+    if (!parsed.hostname) return '';
+    return parsed.hostname.replace(/^www\./i, '');
+  } catch {
+    return '';
+  }
+};
+
 const normalizeDocument = (item) => {
   const type = classifyDocument(item);
+  const url = documentUrl(item);
+  const source = item.source || item.publisher || item.organisation || item.organization || sourceFromUrl(url) || 'RealMindX Education';
   return {
     id: item.id || `${item.title}-${item.url || item.external_url || ''}`,
     title: item.title || 'Untitled Document',
     description: item.description || 'Education resource from RealMindX.',
-    url: documentUrl(item),
+    source,
+    url,
     type,
   };
 };
@@ -91,7 +108,7 @@ const DocumentsPage = ({ navigate }) => {
     const needle = query.trim().toLowerCase();
     return documents.filter((item) => {
       const matchesFilter = filter === 'all' || item.type.key === filter;
-      const matchesQuery = !needle || `${item.title} ${item.description} ${item.type.label}`.toLowerCase().includes(needle);
+      const matchesQuery = !needle || `${item.title} ${item.description} ${item.source} ${item.type.label}`.toLowerCase().includes(needle);
       return matchesFilter && matchesQuery;
     });
   }, [documents, filter, query]);
@@ -171,6 +188,7 @@ const DocumentsPage = ({ navigate }) => {
                 <div className="bs-document-copy">
                   <span>{item.type.label}</span>
                   <h2>{item.title}</h2>
+                  <div className="bs-document-source"><Icon name="globe" size={14} /> {item.source}</div>
                   <p>{item.description}</p>
                 </div>
                 <div className="bs-document-actions">

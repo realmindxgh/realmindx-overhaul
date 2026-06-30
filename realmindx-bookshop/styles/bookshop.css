@@ -322,6 +322,7 @@
   /* Mobile search lives directly inside the Quick Search dropdown. */
   .bs-nav-search-wrap { display: none; }
   .bs-nav-user-slot { display: none; }
+  .bs-more-nav { display: none; }
   .bs-nav-cats { display: block; }
   .bs-cats-search-wrap { display: block; }
   .bs-nav-cats-btn {
@@ -2258,6 +2259,25 @@
   font-family: 'Montserrat', sans-serif;
   font-size: 18px;
   line-height: 1.25;
+}
+.bs-document-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgba(20,54,112,.14);
+  border-radius: 999px;
+  background: #f5f8fc;
+  color: var(--bs-navy);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.bs-document-source svg {
+  flex: 0 0 auto;
 }
 .bs-document-copy p {
   color: var(--bs-muted);
