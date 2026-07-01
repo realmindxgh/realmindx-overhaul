@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
+from html import escape
 import hashlib
 import hmac
 import re
@@ -8,7 +9,6 @@ from uuid import uuid4
 from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
-from markupsafe import escape
 import requests
 from sqlalchemy import or_
 

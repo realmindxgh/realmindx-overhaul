@@ -4810,8 +4810,8 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   height: 100% !important;
   background-image: url('/logo-white.png') !important;
   background-repeat: no-repeat !important;
-  background-position: right clamp(18px, 3vw, 48px) center !important;
-  background-size: min(44vw, 620px) auto !important;
+  background-position: right clamp(6px, 1vw, 16px) center !important;
+  background-size: min(42vw, 600px) auto !important;
   opacity: 0.13 !important;
   pointer-events: none !important;
   z-index: 1 !important;
@@ -4826,8 +4826,8 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 
 @media (max-width: 860px) {
   body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .services-policy-hero)::after {
-    background-position: right -32px center !important;
-    background-size: min(70vw, 430px) auto !important;
+    background-position: right 6px center !important;
+    background-size: min(62vw, 380px) auto !important;
     opacity: 0.08 !important;
   }
 }
