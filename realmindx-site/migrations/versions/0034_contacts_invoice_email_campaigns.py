@@ -1,6 +1,6 @@
 """contacts_invoice_email_campaigns
 
-Revision ID: 0034_contacts_invoice_email_campaigns
+Revision ID: 0034_contacts_campaigns
 Revises: 0033_resource_source
 Create Date: 2026-06-30
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0034_contacts_invoice_email_campaigns"
+revision = "0034_contacts_campaigns"
 down_revision = "0033_resource_source"
 branch_labels = None
 depends_on = None
