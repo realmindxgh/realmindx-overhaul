@@ -44,11 +44,18 @@ def upgrade():
         batch_op.create_index("ix_newsletter_subscribers_communication_status", ["communication_status"])
 
     bind = op.get_bind()
-    bind.execute(sa.text("""
-        UPDATE newsletter_subscribers
-        SET sources = json_array(source)
-        WHERE sources IS NULL OR sources = '[]'
-    """))
+    if bind.dialect.name == "postgresql":
+        bind.execute(sa.text("""
+            UPDATE newsletter_subscribers
+            SET sources = json_build_array(COALESCE(NULLIF(source, ''), 'site'))
+            WHERE sources IS NULL OR json_array_length(sources) = 0
+        """))
+    else:
+        bind.execute(sa.text("""
+            UPDATE newsletter_subscribers
+            SET sources = json_array(COALESCE(NULLIF(source, ''), 'site'))
+            WHERE sources IS NULL OR json_array_length(sources) = 0
+        """))
 
 
 def downgrade():
