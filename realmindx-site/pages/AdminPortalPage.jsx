@@ -26,6 +26,7 @@ const NAV = [
   { key: 'deliveryZones', label: 'Delivery Prices', group: 'Bookshop', icon: 'money' },
   { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
   { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
+  { key: 'receiptsInvoices', label: 'Receipts & Invoices', group: 'Bookshop', icon: 'files' },
   { key: 'orderReviews', label: 'Order Reviews', group: 'Bookshop', icon: 'message' },
   { key: 'services', label: 'Services', group: 'Content', icon: 'consulting' },
   { key: 'partners', label: 'Partners', group: 'Content', icon: 'users' },
@@ -94,6 +95,8 @@ const NAV_PERMISSION_GROUPS = NAV
       ? ['view', 'export']
       : item.key === 'alerts'
         ? ['view', 'edit']
+        : item.key === 'receiptsInvoices'
+          ? ['view']
         : item.key === 'staff'
           ? ['view', 'create', 'edit', 'delete']
           : item.key === 'teachers'
@@ -139,7 +142,7 @@ const expandPermissionsForSave = permissions => {
   addLegacy('applications', 'view_applications');
   if (selected.has('applications.edit')) selected.add('manage_applications');
   if ([...selected].some(key => ['products.', 'productReviews.', 'categories.', 'flyers.', 'deliveryZones.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_products');
-  if ([...selected].some(key => ['orders.', 'orderReviews.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_orders');
+  if ([...selected].some(key => ['orders.', 'receiptsInvoices.', 'orderReviews.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_orders');
   if ([...selected].some(key => key.startsWith('news.'))) selected.add('manage_news');
   if ([...selected].some(key => key.startsWith('gallery.'))) selected.add('manage_gallery');
   if ([...selected].some(key => key.startsWith('resources.'))) selected.add('manage_resources');
@@ -157,6 +160,7 @@ const canAccessAdminItem = (item, session) => {
   if (role === 'admin') return true;
   if (item.key === 'dashboard' || item.key === 'account') return ['admin', 'staff'].includes(role);
   if (item.key === 'admins' || item.key === 'auditLogs') return false;
+  if (item.key === 'receiptsInvoices') return hasSessionPermission(session, 'orders.view') || hasSessionPermission(session, 'receiptsInvoices.view');
   return hasSessionPermission(session, `${item.key}.view`);
 };
 
@@ -1075,6 +1079,223 @@ const MiniTable = ({ rows, columns }) => (
     </table>
   </AdminTableScroll>
 );
+
+const ledgerMoney = new Intl.NumberFormat('en-GH', { style: 'currency', currency: 'GHS', maximumFractionDigits: 2 });
+
+const ledgerDate = (value) => {
+  if (!value) return 'Not recorded';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not recorded';
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const ledgerMoneyValue = (value) => ledgerMoney.format(Number(value || 0));
+const ledgerStatusLabel = (value) => String(value || 'unknown').replace(/_/g, ' ');
+
+const localReceiptRows = (orders = []) => orders.map(order => ({
+  id: `receipt-${order.id}`,
+  document_type: 'receipt',
+  document_label: 'Receipt',
+  document_id: order.invoice_id || order.order_reference || '',
+  lookup_id: order.order_reference || order.invoice_id || '',
+  order_reference: order.order_reference || '',
+  customer_name: order.customer_name || order.name || '',
+  email: order.email || '',
+  recipients: order.email ? [order.email] : [],
+  source: 'bookshop_order',
+  status: order.status || 'new',
+  payment_status: order.payment_status || '',
+  total_amount: Number(order.total_amount || order.total || 0),
+  created_at: order.created_at || order.date || '',
+  issued_at: order.created_at || order.date || '',
+  converted_at: order.created_at || order.date || '',
+  item_count: Array.isArray(order.items) ? order.items.length : 0,
+  pdf_document: 'receipt',
+}));
+
+const ReceiptsInvoicesView = ({ content }) => {
+  const [rows, setRows] = React.useState([]);
+  const [summary, setSummary] = React.useState({ total: 0, receipts: 0, cart_invoices: 0, converted: 0, emailed: 0 });
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+  const [query, setQuery] = React.useState('');
+  const [typeFilter, setTypeFilter] = React.useState('all');
+  const [statusFilter, setStatusFilter] = React.useState('all');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    if (!isApiMode()) {
+      const localRows = localReceiptRows(content.orders || []);
+      if (!cancelled) {
+        setRows(localRows);
+        setSummary({
+          total: localRows.length,
+          receipts: localRows.length,
+          cart_invoices: 0,
+          converted: 0,
+          emailed: 0,
+        });
+        setLoading(false);
+      }
+      return () => { cancelled = true; };
+    }
+    api.adminReceiptsInvoices()
+      .then(data => {
+        if (cancelled) return;
+        setRows(data.items || []);
+        setSummary(data.summary || {});
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setError(err.message || 'Could not load receipts and invoices.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [content.orders]);
+
+  const statusOptions = React.useMemo(() => (
+    [...new Set(rows.map(row => row.status).filter(Boolean))].sort()
+  ), [rows]);
+
+  const filteredRows = React.useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return rows.filter(row => {
+      if (typeFilter !== 'all' && row.document_type !== typeFilter) return false;
+      if (statusFilter !== 'all' && row.status !== statusFilter) return false;
+      if (!needle) return true;
+      return [
+        row.document_id,
+        row.order_reference,
+        row.customer_name,
+        row.email,
+        row.source,
+        row.status,
+        ...(row.recipients || []),
+      ].join(' ').toLowerCase().includes(needle);
+    });
+  }, [query, rows, statusFilter, typeFilter]);
+
+  const linkFor = (row, download = false) => {
+    if (!row.lookup_id || !isApiMode()) return '';
+    const options = row.pdf_document ? { document: row.pdf_document, download } : { download };
+    return api.invoicePdfUrl(row.lookup_id, options);
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 20 }}>
+      <section className="admin-table-card" style={{ padding: 24 }}>
+        <div className="atc-header" style={{ alignItems: 'flex-start', gap: 16 }}>
+          <div>
+            <span style={{ color: 'var(--gold)', fontSize: 12, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Bookshop documents</span>
+            <h3 style={{ marginTop: 8 }}>Receipts & Invoices Database</h3>
+            <p style={{ margin: '8px 0 0', color: 'var(--gray-700)', maxWidth: 760 }}>
+              Track generated cart invoices, issued order receipts, recipients, conversion status, and totals from one control surface.
+            </p>
+          </div>
+        </div>
+        <div className="admin-stats-row" style={{ marginTop: 20 }}>
+          {[
+            ['Total documents', summary.total || rows.length],
+            ['Receipts', summary.receipts || 0],
+            ['Cart invoices', summary.cart_invoices || 0],
+            ['Converted', summary.converted || 0],
+            ['Emailed', summary.emailed || 0],
+          ].map(([label, value]) => (
+            <div className="admin-stat" key={label} style={{ cursor: 'default' }}>
+              <div className="admin-stat-info">
+                <div className="ast-value">{value}</div>
+                <div className="ast-label">{label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="admin-table-card" style={{ padding: 22 }}>
+        <div className="admin-ledger-controls">
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ color: 'var(--gray-700)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Search</span>
+            <input className="form-input" value={query} onChange={event => setQuery(event.target.value)} placeholder="Invoice ID, order reference, recipient, customer..." />
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ color: 'var(--gray-700)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Type</span>
+            <select className="form-input" value={typeFilter} onChange={event => setTypeFilter(event.target.value)}>
+              <option value="all">All documents</option>
+              <option value="receipt">Receipts</option>
+              <option value="cart_invoice">Cart invoices</option>
+            </select>
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ color: 'var(--gray-700)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Status</span>
+            <select className="form-input" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
+              <option value="all">All statuses</option>
+              {statusOptions.map(status => <option key={status} value={status}>{ledgerStatusLabel(status)}</option>)}
+            </select>
+          </label>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: 30, color: 'var(--navy)', fontWeight: 800 }}>Loading receipts and invoices...</div>
+        ) : error ? (
+          <div style={{ padding: 30, color: '#b42318', fontWeight: 800 }}>{error}</div>
+        ) : filteredRows.length ? (
+          <AdminTableScroll>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Document</th>
+                  <th>Customer / Recipient</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Issued</th>
+                  <th>Conversion</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map(row => {
+                  const previewUrl = linkFor(row);
+                  const downloadUrl = linkFor(row, true);
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        <strong>{row.document_id || row.lookup_id}</strong>
+                        <div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{row.document_label} · {row.source}</div>
+                      </td>
+                      <td>
+                        <strong>{row.customer_name || 'Cart invoice'}</strong>
+                        <div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{(row.recipients || []).join(', ') || row.email || 'No recipient recorded'}</div>
+                      </td>
+                      <td>{ledgerStatusLabel(row.status)}<div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{ledgerStatusLabel(row.payment_status)}</div></td>
+                      <td>{ledgerMoneyValue(row.total_amount)}<div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{row.item_count || 0} item(s)</div></td>
+                      <td>{ledgerDate(row.issued_at || row.created_at)}<div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>Created {ledgerDate(row.created_at)}</div></td>
+                      <td>
+                        {row.converted_at ? ledgerDate(row.converted_at) : 'Not converted'}
+                        {row.linked_cart_invoice_id ? <div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>Linked {row.linked_cart_invoice_id}</div> : null}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {previewUrl ? <a className="btn btn-sm btn-outline-navy" href={previewUrl} target="_blank" rel="noreferrer">View</a> : null}
+                          {downloadUrl ? <a className="btn btn-sm btn-primary" href={downloadUrl} target="_blank" rel="noreferrer">PDF</a> : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </AdminTableScroll>
+        ) : (
+          <EmptySection title="No Receipts or Invoices Found" body="Generated cart invoices and issued order receipts will appear here once available." />
+        )}
+      </section>
+    </div>
+  );
+};
 
 // ---------- Image upload field (with crop) ----------
 const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspectRatio, cropTitle, guide }) => {
@@ -3650,6 +3871,8 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
     ? <DashboardView content={content} setActive={setActiveView} session={session} />
     : activeView === 'analytics'
       ? <AnalyticsView session={session} />
+    : activeView === 'receiptsInvoices'
+      ? <ReceiptsInvoicesView content={content} />
     : activeView === 'applications'
       ? <ApplicationsView content={content} session={session} />
       : activeView === 'alerts'

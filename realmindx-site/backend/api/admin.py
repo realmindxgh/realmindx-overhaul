@@ -52,6 +52,7 @@ from ..models import (
     AnalyticsEvent,
     AuditLog,
     ContactMessage,
+    CartInvoice,
     DeliveryZone,
     Flyer,
     Job,
@@ -2492,6 +2493,140 @@ def delete_delivery_zone(zone_id):
 def orders():
     rows = placed_order_query().order_by(Order.created_at.desc()).limit(200).all()
     return jsonify(items=[order_json(order) for order in rows])
+
+
+def _ledger_iso(value):
+    return value.isoformat() if value else None
+
+
+def _ledger_amount(value):
+    return float(value or 0)
+
+
+def _cart_invoice_status(invoice):
+    if invoice.converted_at or invoice.converted_order_id:
+        return "converted"
+    if invoice.emailed_at:
+        return "emailed"
+    return invoice.status or "generated"
+
+
+def _receipt_invoice_order_row(order):
+    document_id = order.invoice_id or order.order_reference
+    return {
+        "id": f"receipt-{order.id}",
+        "record_id": order.id,
+        "document_type": "receipt",
+        "document_label": "Receipt",
+        "document_id": document_id,
+        "lookup_id": order.order_reference or document_id,
+        "order_reference": order.order_reference,
+        "customer_name": order.customer_name,
+        "email": order.email,
+        "phone": order.phone,
+        "recipients": [order.email] if order.email else [],
+        "status": normalize_order_status(order.status),
+        "payment_status": order.payment_status or "",
+        "source": "bookshop_order",
+        "subtotal_amount": _ledger_amount(order.subtotal_amount),
+        "delivery_fee": _ledger_amount(order.delivery_fee),
+        "total_amount": _ledger_amount(order.total_amount),
+        "created_at": _ledger_iso(order.created_at),
+        "issued_at": _ledger_iso(order.paid_at or order.created_at),
+        "emailed_at": None,
+        "viewed_at": None,
+        "converted_at": _ledger_iso(order.created_at),
+        "converted_order_id": order.id,
+        "linked_cart_invoice_id": order.cart_invoice.invoice_id if order.cart_invoice else None,
+        "item_count": len(order.items or []),
+        "pdf_document": "receipt",
+    }
+
+
+def _receipt_invoice_cart_row(invoice):
+    recipients = [str(email) for email in (invoice.recipients or []) if email]
+    return {
+        "id": f"cart-invoice-{invoice.id}",
+        "record_id": invoice.id,
+        "document_type": "cart_invoice",
+        "document_label": "Cart Invoice",
+        "document_id": invoice.invoice_id,
+        "lookup_id": invoice.invoice_id,
+        "order_reference": "",
+        "customer_name": "Cart invoice",
+        "email": recipients[0] if recipients else "",
+        "phone": "",
+        "recipients": recipients,
+        "status": _cart_invoice_status(invoice),
+        "payment_status": "not_applicable",
+        "source": "cart_invoice",
+        "subtotal_amount": _ledger_amount(invoice.subtotal_amount),
+        "delivery_fee": _ledger_amount(invoice.delivery_fee),
+        "total_amount": _ledger_amount(invoice.total_amount),
+        "created_at": _ledger_iso(invoice.created_at),
+        "issued_at": _ledger_iso(invoice.created_at),
+        "emailed_at": _ledger_iso(invoice.emailed_at),
+        "viewed_at": _ledger_iso(invoice.viewed_at),
+        "converted_at": _ledger_iso(invoice.converted_at),
+        "converted_order_id": invoice.converted_order_id,
+        "linked_cart_invoice_id": invoice.invoice_id,
+        "item_count": len(invoice.items or []),
+        "pdf_document": "",
+    }
+
+
+@admin_bp.get("/receipts-invoices")
+@login_required
+@permission_required("orders.view")
+def receipts_invoices():
+    orders = (
+        placed_order_query()
+        .options(joinedload(Order.items), joinedload(Order.cart_invoice))
+        .order_by(Order.created_at.desc())
+        .limit(300)
+        .all()
+    )
+    invoices = (
+        CartInvoice.query
+        .options(joinedload(CartInvoice.items))
+        .order_by(CartInvoice.created_at.desc())
+        .limit(300)
+        .all()
+    )
+    rows = [_receipt_invoice_order_row(order) for order in orders]
+    rows.extend(_receipt_invoice_cart_row(invoice) for invoice in invoices)
+
+    query = (request.args.get("q") or "").strip().lower()
+    document_type = (request.args.get("type") or "all").strip()
+    status = (request.args.get("status") or "all").strip().lower()
+
+    if document_type != "all":
+        rows = [row for row in rows if row["document_type"] == document_type]
+    if status != "all":
+        rows = [row for row in rows if str(row["status"]).lower() == status]
+    if query:
+        rows = [
+            row for row in rows
+            if query in " ".join([
+                str(row.get("document_id") or ""),
+                str(row.get("order_reference") or ""),
+                str(row.get("customer_name") or ""),
+                str(row.get("email") or ""),
+                " ".join(row.get("recipients") or []),
+                str(row.get("source") or ""),
+                str(row.get("status") or ""),
+            ]).lower()
+        ]
+
+    rows.sort(key=lambda row: row.get("created_at") or "", reverse=True)
+    summary = {
+        "total": len(rows),
+        "receipts": sum(1 for row in rows if row["document_type"] == "receipt"),
+        "cart_invoices": sum(1 for row in rows if row["document_type"] == "cart_invoice"),
+        "converted": sum(1 for row in rows if row["status"] == "converted"),
+        "emailed": sum(1 for row in rows if row["status"] == "emailed"),
+    }
+    return jsonify(items=rows[:400], summary=summary)
 
 
 @admin_bp.get("/orders/export")

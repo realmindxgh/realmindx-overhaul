@@ -2991,6 +2991,14 @@ html {
   color: #008435 !important;
 }
 
+.admin-ledger-controls {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(150px, 180px) minmax(150px, 180px);
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
 .admin-sidebar-logo {
   padding-left: 20px !important;
   padding-right: 20px !important;
@@ -4317,6 +4325,10 @@ html {
   .admin-stat-info .ast-change {
     font-size: 0.74rem !important;
     line-height: 1.3 !important;
+  }
+
+  .admin-ledger-controls {
+    grid-template-columns: 1fr !important;
   }
 
   .quick-actions-row {

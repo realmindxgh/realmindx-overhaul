@@ -232,6 +232,14 @@ export const api = {
     return url(`/admin/analytics/export?${sp.toString()}`);
   },
   adminClearAnalyticsLocations: () => apiFetch('/admin/analytics/location-history', { method: 'DELETE' }),
+  adminReceiptsInvoices: (params = {}) => {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') sp.set(key, value);
+    });
+    const suffix = sp.toString() ? `?${sp.toString()}` : '';
+    return apiFetch(`/admin/receipts-invoices${suffix}`);
+  },
   adminProductMissingImages: () => apiFetch('/admin/products/missing-images'),
   adminUnpublishProductsMissingImages: () => apiFetch('/admin/products/missing-images/unpublish', { method: 'POST' }),
   adminList: (collection) => apiFetch(`/admin/${collection}`),

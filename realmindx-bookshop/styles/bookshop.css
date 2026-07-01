@@ -2351,22 +2351,23 @@
 .bs-documents-workspace { padding: 30px 28px 72px; }
 .bs-documents-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 420px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(360px, 560px) minmax(0, 1fr);
+  gap: 20px;
   align-items: center;
   margin-bottom: 18px;
 }
 .bs-documents-search {
-  min-height: 48px;
+  min-height: 58px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 14px;
+  gap: 12px;
+  padding: 0 20px;
   border: 1.5px solid var(--bs-border);
-  border-radius: var(--bs-radius-sm);
-  background: #fff;
+  border-radius: 999px;
+  background: var(--bs-off-white);
   color: var(--bs-navy);
   box-shadow: var(--bs-shadow-sm);
+  transition: border-color .2s, box-shadow .2s, background .2s;
 }
 .bs-documents-search input {
   width: 100%;
@@ -2377,9 +2378,14 @@
   font-size: 15px;
   background: transparent;
 }
+.bs-documents-search input:focus,
+.bs-documents-search input:focus-visible {
+  outline: none;
+}
 .bs-documents-search:focus-within {
   border-color: var(--bs-navy);
-  box-shadow: 0 0 0 3px rgba(20,54,112,.1);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(20,54,112,.12), var(--bs-shadow-sm);
 }
 .bs-documents-filter {
   display: flex;

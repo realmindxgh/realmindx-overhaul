@@ -274,7 +274,7 @@ const LineChart = ({ series = [], color = chartColors.navy, compact = false, for
   );
 };
 
-const MultiLineChart = ({ groups = [] }) => {
+const MultiLineChart = ({ groups = [], tall = false }) => {
   const availableGroups = groups.filter(group => (group.data || []).length);
   const first = availableGroups[0];
   if (!first) return <EmptyChart />;
@@ -283,11 +283,12 @@ const MultiLineChart = ({ groups = [] }) => {
     ...availableGroups.flatMap(group => (group.data || []).map(item => Number(item.value || 0))),
     0,
   );
-  const width = 640;
-  const height = 270;
-  const margin = { top: 38, right: 36, bottom: 38, left: 48 };
+  const width = 860;
+  const height = tall ? 360 : 300;
+  const margin = { top: 42, right: 42, bottom: 42, left: 58 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
+  const verticalEvery = Math.max(1, Math.ceil(dates.length / 8));
 
   return (
     <div className="analytics-multi-chart">
@@ -297,6 +298,11 @@ const MultiLineChart = ({ groups = [] }) => {
         ))}
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} className="analytics-line-chart" aria-hidden="true">
+        {dates.map((date, index) => {
+          if (index !== 0 && index !== dates.length - 1 && index % verticalEvery !== 0) return null;
+          const x = margin.left + (dates.length === 1 ? innerWidth / 2 : (index / Math.max(dates.length - 1, 1)) * innerWidth);
+          return <line key={`${date}-${index}`} x1={x} y1={margin.top} x2={x} y2={margin.top + innerHeight} className="analytics-chart-grid vertical" />;
+        })}
         {[0, 0.5, 1].map(tick => {
           const y = margin.top + innerHeight - (tick * innerHeight);
           return (
@@ -371,27 +377,45 @@ const TrendSummary = ({ items = [], lowDataThreshold = 20 }) => {
   const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
   const activeDays = Math.max(...items.map(item => activeSeriesPoints(item.data || [])), 0);
   const lowData = total > 0 && (total < lowDataThreshold || activeDays < 3);
+  const groups = items.map(item => ({
+    label: item.label,
+    color: item.color || chartColors.navy,
+    data: item.data || [],
+  }));
+  const hasSeries = groups.some(group => group.data.length);
 
   return (
-    <div className="analytics-trend-summary">
+    <div className="analytics-trend-summary analytics-trend-report">
+      <div className="analytics-trend-card-grid">
+        {items.map(item => {
+          const series = item.data || [];
+          const values = series.map(point => Number(point.value || 0));
+          const peak = Math.max(...values, 0);
+          const latest = series.length ? Number(series[series.length - 1]?.value || 0) : Number(item.value || 0);
+          const formatter = item.formatter || formatNumber;
+          return (
+            <article className="analytics-trend-card" key={item.label}>
+              <div className="analytics-trend-card-label">
+                <i style={{ background: item.color || chartColors.navy }} />
+                <span>{item.label}</span>
+              </div>
+              <strong>{formatter(item.value)}</strong>
+              {item.note ? <small>{item.note}</small> : null}
+              <div className="analytics-trend-card-meta">
+                <span>Peak <b>{formatter(peak)}</b></span>
+                <span>Latest <b>{formatter(latest)}</b></span>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {hasSeries ? <MultiLineChart groups={groups} tall /> : <EmptyChart />}
       {lowData ? (
         <div className="analytics-low-data-note">
           <Icon name="warning" size={16} />
-          <span>Low sample size: totals are useful, but trend lines would exaggerate the movement.</span>
+          <span>Low sample size: read this as directional, not a forecast.</span>
         </div>
       ) : null}
-      <div className="analytics-trend-card-grid">
-        {items.map(item => (
-          <article className="analytics-trend-card" key={item.label}>
-            <div className="analytics-trend-card-head">
-              <span>{item.label}</span>
-              <strong>{item.formatter ? item.formatter(item.value) : formatNumber(item.value)}</strong>
-            </div>
-            {item.note ? <small>{item.note}</small> : null}
-            <SparkBars data={item.data || []} color={item.color || chartColors.navy} />
-          </article>
-        ))}
-      </div>
     </div>
   );
 };
@@ -1017,12 +1041,11 @@ const AnalyticsView = ({ session }) => {
             <StatCard label="Searches with no results" value={formatNumber(bookshopSummary.searches_no_results)} note="Bookshop demand gaps" icon="warning" tone="gold" />
           </section>
 
-          <div className="analytics-two-grid">
-            <section className="analytics-panel">
+          <section className="analytics-panel analytics-panel-featured">
               <SectionHeader
                 eyebrow="Traffic snapshot"
                 title="Traffic at a glance"
-                body="Totals plus compact daily bars. This stays readable even when traffic is still sparse."
+                body="A larger trend view for page views, sessions, and unique visitors across the selected period."
                 actions={canExport ? <ExportButton href={api.adminAnalyticsExportUrl('top-pages', rangeParams)} label="Export top pages" /> : null}
               />
               <TrendSummary
@@ -1051,17 +1074,16 @@ const AnalyticsView = ({ session }) => {
                   },
                 ]}
               />
-            </section>
+          </section>
 
-            <section className="analytics-panel">
+          <section className="analytics-panel analytics-panel-featured analytics-journey-panel">
               <SectionHeader
                 eyebrow="Journey snapshot"
                 title="From visit to order"
                 body="A quick view of how broad traffic narrows into search, product interest, and paid orders."
               />
               <FunnelChart stages={journeyStages} />
-            </section>
-          </div>
+          </section>
 
           <div className="analytics-three-grid">
             <article className="analytics-panel">
@@ -1310,12 +1332,11 @@ const AnalyticsView = ({ session }) => {
             <StatCard label="Searches with no results" value={formatNumber(search.summary?.searches_without_results)} icon="warning" tone="gold" />
           </section>
 
-          <div className="analytics-two-grid">
-            <article className="analytics-panel">
+          <section className="analytics-panel analytics-panel-featured">
               <SectionHeader
                 eyebrow="Search snapshot"
                 title="Search demand and response"
-                body="Compact totals and daily bars for searches, result quality, and click-through."
+                body="A larger trend view for search demand, result coverage, and product click-through."
               />
               <TrendSummary
                 lowDataThreshold={30}
@@ -1350,9 +1371,9 @@ const AnalyticsView = ({ session }) => {
                   },
                 ]}
               />
-            </article>
+          </section>
 
-            <article className="analytics-panel">
+          <section className="analytics-panel analytics-panel-featured analytics-quality-panel">
               <SectionHeader title="Search quality split" body="A direct view of how often the search experience is meeting intent." />
               <SplitBar
                 centerLabel="Searches"
@@ -1361,8 +1382,7 @@ const AnalyticsView = ({ session }) => {
                   { label: 'No results', count: search.summary?.searches_without_results || 0, color: chartColors.gold },
                 ]}
               />
-            </article>
-          </div>
+          </section>
 
           <div className="analytics-two-grid">
             <article className="analytics-panel">
