@@ -948,13 +948,24 @@ const statusRank = {
 const trackingTimeline = (order) => {
   const status = normalizeOrderStatus(order?.status);
   const payment = String(order?.payment_status || 'unpaid').toLowerCase();
+  const deliveryTracking = order?.delivery_tracking || {};
+  const deliveryStatus = String(deliveryTracking.status || '').toLowerCase();
+  const deliveryIssue = Boolean(deliveryTracking.issue);
+  const deliveryDelivered = deliveryStatus === 'delivered';
   const paid = payment === 'paid';
   const payOnDelivery = order?.payment_method === 'cash_on_delivery';
   const awaitingPayment = status === 'awaiting_payment' && !paid;
   const method = String(order?.delivery_method || '').toLowerCase();
-  const deliveryLabel = method === 'pickup' ? 'Ready for Pickup' : 'Out for Delivery';
+  const deliveryLabel = method === 'pickup'
+    ? 'Ready for Pickup'
+    : deliveryTracking.label || 'Ready for delivery';
   const rank = statusRank[status] || (paid ? 2 : 1);
-  const current = awaitingPayment ? 0 : status === 'cancelled' ? 1 : Math.max(rank, paid ? 2 : 1);
+  const deliveryCurrent = deliveryDelivered ? 4 : deliveryIssue ? 3 : deliveryStatus ? 3 : 0;
+  const current = awaitingPayment
+    ? 0
+    : status === 'cancelled'
+      ? 1
+      : Math.max(rank, deliveryCurrent, paid ? 2 : 1);
 
   return {
     current,
@@ -966,7 +977,7 @@ const trackingTimeline = (order) => {
         icon:'lock',
       },
       {
-        label:'Processing',
+        label:'Preparing order',
         time: current >= 2 ? formatOrderDate(order?.updated_at || order?.created_at) : 'Pending',
         icon:'box',
       },
@@ -976,9 +987,9 @@ const trackingTimeline = (order) => {
         icon: method === 'pickup' ? 'home' : 'truck',
       },
       {
-        label: status === 'cancelled' ? 'Cancelled' : 'Delivered',
-        time: current >= 4 || status === 'cancelled' ? formatOrderDate(order?.updated_at) : 'Pending',
-        icon: status === 'cancelled' ? 'close' : 'home',
+        label: status === 'cancelled' ? 'Cancelled' : deliveryIssue ? 'Delivery issue, our team will contact you' : 'Delivered',
+        time: current >= 4 || status === 'cancelled' || deliveryIssue ? formatOrderDate(order?.updated_at) : 'Pending',
+        icon: status === 'cancelled' || deliveryIssue ? 'close' : 'home',
       },
     ],
   };
@@ -991,34 +1002,66 @@ const TrackPage = ({ navigate }) => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const inputRef = React.useRef(null);
+  const latestQueryRef = React.useRef('');
 
-  const submit = async (e) => {
-    e.preventDefault();
-    const trimmed = query.trim();
+  const loadTracking = React.useCallback(async (rawQuery, { reset = false } = {}) => {
+    const trimmed = rawQuery.trim();
     setError('');
-    setSearched(false);
-    setOrders([]);
+    if (reset) {
+      setSearched(false);
+      setOrders([]);
+    }
     if (!trimmed) {
       setError('Enter your order reference or checkout email.');
       inputRef.current?.focus();
-      return;
+      return false;
     }
     if (!isApiMode()) {
       setError('Live order tracking is available on the deployed bookshop.');
-      return;
+      return false;
     }
     setLoading(true);
     try {
       const data = await api.trackOrders(trimmed);
       setOrders(data.items || []);
       setSearched(true);
+      latestQueryRef.current = trimmed;
+      return true;
     } catch (err) {
       setError(err?.message || 'Could not track that order.');
       inputRef.current?.focus();
+      return false;
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    await loadTracking(query, { reset: true });
   };
+
+  const hasActiveTracking = orders.some(order => {
+    const status = normalizeOrderStatus(order?.status);
+    const deliveryStatus = String(order?.delivery_tracking?.status || '');
+    return !['complete', 'cancelled', 'archived'].includes(status)
+      || Boolean(deliveryStatus && !['delivered', 'failed', 'returned', 'cancelled'].includes(deliveryStatus));
+  });
+
+  React.useEffect(() => {
+    if (!searched || !isApiMode() || !hasActiveTracking) return undefined;
+    const poll = () => {
+      if (document.visibilityState === 'visible' && latestQueryRef.current) {
+        loadTracking(latestQueryRef.current).catch(() => {});
+      }
+    };
+    const timer = window.setInterval(poll, 25000);
+    document.addEventListener('visibilitychange', poll);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', poll);
+    };
+  }, [hasActiveTracking, loadTracking, searched]);
 
   return (
     <div className="bs-container bs-fade-page">
@@ -1074,7 +1117,15 @@ const TrackPage = ({ navigate }) => {
               </div>
               <div style={{ background:'var(--bs-off-white)', borderRadius:12, padding:'16px 18px', display:'flex', alignItems:'center', gap:12 }}>
                 <Icon name="truck" size={22} className="bs-ci" style={{ color:'var(--bs-navy)' }} />
-                <div><div style={{ fontFamily:'Montserrat', fontWeight:700, fontSize:14, color:'var(--bs-navy)' }}>{order.delivery_method === 'pickup' ? 'Pickup at Dome Pillar 2, Accra' : order.location || order.delivery_zone_name || 'Delivery details on file'}</div><div className="bs-muted" style={{ fontSize:13 }}>Questions? <a href="https://wa.link/q5rjtp" style={{ color:'var(--bs-navy)', textDecoration:'underline' }}>Contact support</a></div></div>
+                <div>
+                  <div style={{ fontFamily:'Montserrat', fontWeight:700, fontSize:14, color:'var(--bs-navy)' }}>
+                    {order.delivery_tracking?.label || (order.delivery_method === 'pickup' ? 'Pickup at Dome Pillar 2, Accra' : order.location || order.delivery_zone_name || 'Delivery details on file')}
+                  </div>
+                  <div className="bs-muted" style={{ fontSize:13 }}>
+                    {order.delivery_tracking?.otp_required ? 'Have your delivery OTP ready when the rider arrives. ' : ''}
+                    Questions? <a href="https://wa.link/q5rjtp" style={{ color:'var(--bs-navy)', textDecoration:'underline' }}>Contact support</a>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

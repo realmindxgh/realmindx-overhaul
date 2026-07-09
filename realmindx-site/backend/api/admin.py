@@ -46,13 +46,32 @@ from ..email_service import (
 )
 from ..extensions import db
 from ..delivery_locations import format_location_aliases
+from ..delivery_service import (
+    DeliveryError,
+    OTP_OVERRIDE_REASONS,
+    actor_from_user,
+    assign_order_to_company,
+    cancel_delivery,
+    create_company,
+    create_company_user,
+    reset_portal_password,
+    resend_delivery_otp,
+    staff_delivery_contact_warning,
+    staff_override_otp,
+)
 from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
+from ..sms_service import normalise_phone
 from ..models import (
     AnalyticsEvent,
     AuditLog,
     ContactMessage,
     CartInvoice,
+    DeliveryCompany,
+    DeliveryCompanyUser,
+    DeliveryEvent,
+    DeliveryOtp,
+    DeliveryRider,
     DeliveryZone,
     Flyer,
     Job,
@@ -83,7 +102,19 @@ from ..promo_affiliates import (
     usage_snapshot,
 )
 from ..security import admin_or_staff_required, admin_required, permission_required
-from ..serializers import delivery_zone_json, job_json, order_json, order_review_json, product_json, user_json
+from ..serializers import (
+    delivery_company_json,
+    delivery_company_user_json,
+    delivery_event_json,
+    delivery_json,
+    delivery_rider_json,
+    delivery_zone_json,
+    job_json,
+    order_json,
+    order_review_json,
+    product_json,
+    user_json,
+)
 from ..upload_utils import save_upload
 
 admin_bp = Blueprint("admin", __name__)
@@ -2487,6 +2518,235 @@ def delete_delivery_zone(zone_id):
     return jsonify(message="Delivery zone deleted.")
 
 
+def _delivery_error_response(exc):
+    return jsonify(error=exc.message, code=exc.code), exc.status_code
+
+
+@admin_bp.get("/delivery-companies")
+@login_required
+@permission_required("delivery.view")
+def delivery_companies():
+    rows = DeliveryCompany.query.order_by(DeliveryCompany.name.asc()).all()
+    return jsonify(items=[delivery_company_json(company) for company in rows])
+
+
+@admin_bp.post("/delivery-companies")
+@login_required
+@permission_required("delivery.companies.manage")
+def create_delivery_company():
+    payload = request.get_json(silent=True) or {}
+    try:
+        company, manager = create_company(payload, actor=actor_from_user(current_user))
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    log_action("create_delivery_company", "delivery_company", company.id, {"name": company.name})
+    db.session.commit()
+    return jsonify(
+        company=delivery_company_json(company),
+        manager=delivery_company_user_json(manager) if manager else None,
+    ), 201
+
+
+@admin_bp.get("/delivery-companies/<int:company_id>")
+@login_required
+@permission_required("delivery.view")
+def delivery_company_detail(company_id):
+    company = db.get_or_404(DeliveryCompany, company_id)
+    deliveries = (
+        OrderDelivery.query
+        .filter_by(company_id=company.id)
+        .order_by(OrderDelivery.updated_at.desc())
+        .limit(100)
+        .all()
+    )
+    return jsonify(
+        company=delivery_company_json(company),
+        managers=[delivery_company_user_json(user) for user in company.company_users],
+        riders=[delivery_rider_json(rider) for rider in company.riders],
+        deliveries=[delivery_json(delivery) for delivery in deliveries],
+    )
+
+
+@admin_bp.put("/delivery-companies/<int:company_id>")
+@login_required
+@permission_required("delivery.companies.manage")
+def update_delivery_company(company_id):
+    company = db.get_or_404(DeliveryCompany, company_id)
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or company.name).strip()
+    if not name:
+        return jsonify(error="Delivery company name is required."), 400
+    duplicate = DeliveryCompany.query.filter(func.lower(DeliveryCompany.name) == name.lower(), DeliveryCompany.id != company.id).first()
+    if duplicate:
+        return jsonify(error="A delivery company with this name already exists."), 409
+    company.name = name
+    company.contact_name = (payload.get("contact_name") if "contact_name" in payload else company.contact_name) or None
+    company.contact_email = (payload.get("contact_email") if "contact_email" in payload else company.contact_email) or None
+    if "contact_phone" in payload:
+        raw_phone = payload.get("contact_phone") or ""
+        company.contact_phone = normalise_phone(raw_phone) if raw_phone else None
+    company.notes = (payload.get("notes") if "notes" in payload else company.notes) or None
+    if "is_active" in payload:
+        company.is_active = _boolish(payload.get("is_active"))
+        company.status = "active" if company.is_active else "inactive"
+    if "status" in payload:
+        company.status = str(payload.get("status") or company.status).strip() or company.status
+        company.is_active = company.status == "active"
+    log_action("update_delivery_company", "delivery_company", company.id, {"name": company.name})
+    db.session.commit()
+    return jsonify(company=delivery_company_json(company))
+
+
+@admin_bp.post("/delivery-companies/<int:company_id>/managers")
+@login_required
+@permission_required("delivery.companies.manage")
+def create_delivery_company_manager(company_id):
+    company = db.get_or_404(DeliveryCompany, company_id)
+    payload = request.get_json(silent=True) or {}
+    try:
+        manager = create_company_user(company, payload, actor=actor_from_user(current_user))
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    log_action("create_delivery_company_manager", "delivery_company_user", manager.id, {"company_id": company.id})
+    db.session.commit()
+    return jsonify(manager=delivery_company_user_json(manager)), 201
+
+
+@admin_bp.put("/delivery-company-users/<int:company_user_id>")
+@login_required
+@permission_required("delivery.companies.manage")
+def update_delivery_company_user(company_user_id):
+    company_user = db.get_or_404(DeliveryCompanyUser, company_user_id)
+    payload = request.get_json(silent=True) or {}
+    if "name" in payload:
+        company_user.name = (payload.get("name") or company_user.name).strip()
+        first, _, last = company_user.name.partition(" ")
+        company_user.user.first_name = first or company_user.user.first_name
+        company_user.user.last_name = last
+    if "title" in payload:
+        company_user.title = (payload.get("title") or "").strip() or None
+    if "phone" in payload:
+        phone = normalise_phone(payload.get("phone") or "")
+        if not phone:
+            return jsonify(error="Enter a valid Ghana phone number."), 400
+        duplicate = DeliveryCompanyUser.query.filter(DeliveryCompanyUser.phone == phone, DeliveryCompanyUser.id != company_user.id).first()
+        if duplicate:
+            return jsonify(error="A company user already exists for this phone number."), 409
+        company_user.phone = phone
+        company_user.user.phone = phone
+    if "is_active" in payload:
+        company_user.is_active = _boolish(payload.get("is_active"))
+        company_user.user.is_active = company_user.is_active
+    log_action("update_delivery_company_user", "delivery_company_user", company_user.id)
+    db.session.commit()
+    return jsonify(manager=delivery_company_user_json(company_user))
+
+
+@admin_bp.post("/delivery-company-users/<int:company_user_id>/reset-password")
+@login_required
+@permission_required("delivery.companies.manage")
+def reset_delivery_company_user_password(company_user_id):
+    company_user = db.get_or_404(DeliveryCompanyUser, company_user_id)
+    payload = request.get_json(silent=True) or {}
+    try:
+        reset_portal_password(company_user.user, payload.get("password") or "")
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    log_action("reset_delivery_company_user_password", "delivery_company_user", company_user.id)
+    db.session.commit()
+    return jsonify(message="Company manager password reset. They must change it on next login.")
+
+
+@admin_bp.get("/deliveries")
+@login_required
+@permission_required("delivery.view")
+def admin_deliveries():
+    status = (request.args.get("status") or "").strip()
+    query = OrderDelivery.query.order_by(OrderDelivery.updated_at.desc())
+    if status:
+        query = query.filter_by(status=status)
+    rows = query.limit(200).all()
+    return jsonify(items=[delivery_json(delivery) for delivery in rows])
+
+
+@admin_bp.get("/orders/<int:order_id>/delivery")
+@login_required
+@permission_required("delivery.view")
+def admin_order_delivery(order_id):
+    order = db.get_or_404(Order, order_id)
+    delivery = getattr(order, "delivery", None)
+    return jsonify(
+        order=order_json(order),
+        delivery=delivery_json(delivery, include_events=True) if delivery else None,
+        contact_warning=staff_delivery_contact_warning(order),
+        override_reasons=OTP_OVERRIDE_REASONS,
+    )
+
+
+@admin_bp.post("/orders/<int:order_id>/delivery/assign")
+@login_required
+@permission_required("delivery.assign")
+@permission_required("orders.edit")
+def admin_assign_order_delivery(order_id):
+    order = db.get_or_404(Order, order_id)
+    payload = request.get_json(silent=True) or {}
+    company = db.session.get(DeliveryCompany, payload.get("company_id"))
+    if not company:
+        return jsonify(error="Choose a delivery company."), 400
+    try:
+        delivery = assign_order_to_company(order, company, actor_from_user(current_user), note=payload.get("note"))
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    log_action("assign_order_delivery_company", "order_delivery", delivery.id, {
+        "order_reference": order.order_reference,
+        "company_id": company.id,
+    })
+    db.session.commit()
+    return jsonify(
+        delivery=delivery_json(delivery, include_events=True),
+        contact_warning=staff_delivery_contact_warning(order),
+    )
+
+
+@admin_bp.post("/deliveries/<int:delivery_id>/otp-resend")
+@login_required
+@permission_required("delivery.assign")
+@permission_required("orders.edit")
+def admin_resend_delivery_otp(delivery_id):
+    delivery = db.get_or_404(OrderDelivery, delivery_id)
+    try:
+        resend_delivery_otp(delivery, actor_from_user(current_user))
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    log_action("resend_delivery_otp", "order_delivery", delivery.id)
+    db.session.commit()
+    return jsonify(delivery=delivery_json(delivery, include_events=True))
+
+
+@admin_bp.post("/deliveries/<int:delivery_id>/otp-override")
+@login_required
+@permission_required("delivery.override_otp")
+@permission_required("orders.edit")
+def admin_override_delivery_otp(delivery_id):
+    delivery = db.get_or_404(OrderDelivery, delivery_id)
+    payload = request.get_json(silent=True) or {}
+    try:
+        staff_override_otp(
+            delivery,
+            actor_from_user(current_user),
+            payload.get("reason"),
+            note=payload.get("note"),
+        )
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    log_action("override_delivery_otp", "order_delivery", delivery.id, {
+        "reason": payload.get("reason"),
+        "order_reference": delivery.order.order_reference if delivery.order else None,
+    })
+    db.session.commit()
+    return jsonify(delivery=delivery_json(delivery, include_events=True))
+
+
 @admin_bp.get("/orders")
 @login_required
 @permission_required("orders.view")
@@ -2766,6 +3026,11 @@ def update_order_status(order_id):
     order.status = status
     if cancel_reason:
         order.notes = cancel_reason
+    if status == "cancelled" and getattr(order, "delivery", None):
+        try:
+            cancel_delivery(order.delivery, actor_from_user(current_user), reason=cancel_reason or "order_cancelled")
+        except DeliveryError:
+            pass
     promo_snapshot = None
     if status == "complete" and old_status != "complete":
         usage, created = record_completed_order_promo_usage(order)

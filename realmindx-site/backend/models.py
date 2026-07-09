@@ -358,6 +358,129 @@ class DeliveryZone(TimestampMixin, db.Model):
     sort_order = db.Column(db.Integer, default=0, nullable=False)
 
 
+class DeliveryCompany(TimestampMixin, db.Model):
+    __tablename__ = "delivery_companies"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(180), unique=True, nullable=False, index=True)
+    contact_name = db.Column(db.String(160), nullable=True)
+    contact_phone = db.Column(db.String(40), nullable=True)
+    contact_email = db.Column(db.String(255), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(30), default="active", nullable=False, index=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+
+
+class DeliveryCompanyUser(TimestampMixin, db.Model):
+    __tablename__ = "delivery_company_users"
+    __table_args__ = (
+        UniqueConstraint("company_id", "user_id", name="uq_delivery_company_user"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("delivery_companies.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    phone = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    title = db.Column(db.String(120), nullable=True)
+    is_manager = db.Column(db.Boolean, default=True, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+
+    company = db.relationship("DeliveryCompany", backref=db.backref("company_users", cascade="all, delete-orphan"))
+    user = db.relationship("User", backref=db.backref("delivery_company_profile", uselist=False, cascade="all, delete-orphan"))
+
+
+class DeliveryRider(TimestampMixin, db.Model):
+    __tablename__ = "delivery_riders"
+    __table_args__ = (
+        UniqueConstraint("company_id", "user_id", name="uq_delivery_rider_user"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("delivery_companies.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    phone = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    status = db.Column(db.String(30), default="active", nullable=False, index=True)
+    last_seen_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    company = db.relationship("DeliveryCompany", backref=db.backref("riders", cascade="all, delete-orphan"))
+    user = db.relationship("User", backref=db.backref("delivery_rider_profile", uselist=False, cascade="all, delete-orphan"))
+
+
+class OrderDelivery(TimestampMixin, db.Model):
+    __tablename__ = "order_deliveries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), unique=True, nullable=False, index=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("delivery_companies.id"), nullable=True, index=True)
+    rider_id = db.Column(db.Integer, db.ForeignKey("delivery_riders.id"), nullable=True, index=True)
+    status = db.Column(db.String(40), default="assigned_to_company", nullable=False, index=True)
+    assigned_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    assigned_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    rejected_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    picked_up_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    delivered_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    issue_reported_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    failed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    returned_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    cancelled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    otp_required = db.Column(db.Boolean, default=True, nullable=False)
+    otp_blocked = db.Column(db.Boolean, default=False, nullable=False)
+    issue_reason = db.Column(db.String(80), nullable=True)
+    issue_note = db.Column(db.Text, nullable=True)
+    failed_reason = db.Column(db.String(160), nullable=True)
+    staff_notes = db.Column(db.Text, nullable=True)
+
+    order = db.relationship("Order", backref=db.backref("delivery", uselist=False, cascade="all, delete-orphan"))
+    company = db.relationship("DeliveryCompany", backref="deliveries")
+    rider = db.relationship("DeliveryRider", backref="deliveries")
+    assigned_by = db.relationship("User", foreign_keys=[assigned_by_id])
+
+
+class DeliveryEvent(TimestampMixin, db.Model):
+    __tablename__ = "delivery_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    delivery_id = db.Column(db.Integer, db.ForeignKey("order_deliveries.id"), nullable=False, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False, index=True)
+    event_type = db.Column(db.String(60), nullable=False, index=True)
+    actor_type = db.Column(db.String(30), nullable=False, index=True)
+    actor_id = db.Column(db.Integer, nullable=True, index=True)
+    from_status = db.Column(db.String(40), nullable=True)
+    to_status = db.Column(db.String(40), nullable=True)
+    reason = db.Column(db.String(160), nullable=True)
+    note = db.Column(db.Text, nullable=True)
+    details = db.Column("metadata", db.JSON, default=dict, nullable=False)
+
+    delivery = db.relationship("OrderDelivery", backref=db.backref("events", cascade="all, delete-orphan"))
+    order = db.relationship("Order")
+
+
+class DeliveryOtp(TimestampMixin, db.Model):
+    __tablename__ = "delivery_otps"
+
+    id = db.Column(db.Integer, primary_key=True)
+    delivery_id = db.Column(db.Integer, db.ForeignKey("order_deliveries.id"), nullable=False, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), nullable=False, index=True)
+    token_hash = db.Column(db.String(255), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    attempts_count = db.Column(db.Integer, default=0, nullable=False)
+    max_attempts = db.Column(db.Integer, default=5, nullable=False)
+    used_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    resend_count = db.Column(db.Integer, default=0, nullable=False)
+    send_channel = db.Column(db.String(20), nullable=True)
+    send_status = db.Column(db.String(30), default="pending", nullable=False, index=True)
+    replaced_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+
+    delivery = db.relationship("OrderDelivery", backref=db.backref("otps", cascade="all, delete-orphan"))
+    order = db.relationship("Order")
+
+
 class CheckoutDetail(TimestampMixin, db.Model):
     __tablename__ = "checkout_details"
     __table_args__ = (

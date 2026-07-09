@@ -1,5 +1,6 @@
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
+from html import escape
 import hashlib
 import hmac
 import re
@@ -8,7 +9,6 @@ from uuid import uuid4
 from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
-from markupsafe import escape
 import requests
 from sqlalchemy import or_
 
@@ -53,7 +53,15 @@ from ..models import (
     PromoCode,
 )
 from ..security import require_turnstile
-from ..serializers import category_json, delivery_zone_json, order_json, order_review_json, product_json, product_review_json
+from ..serializers import (
+    category_json,
+    delivery_tracking_json,
+    delivery_zone_json,
+    order_json,
+    order_review_json,
+    product_json,
+    product_review_json,
+)
 
 bookshop_bp = Blueprint("bookshop", __name__)
 
@@ -592,10 +600,11 @@ def list_delivery_zones():
 
 
 def order_tracking_json(order):
-    payload = order_json(order)
+    payload = order_json(order, include_delivery=False)
     payload["created_at"] = order.created_at.isoformat() if order.created_at else None
     payload["updated_at"] = order.updated_at.isoformat() if order.updated_at else None
     payload["paid_at"] = order.paid_at.isoformat() if order.paid_at else None
+    payload["delivery_tracking"] = delivery_tracking_json(getattr(order, "delivery", None))
     return payload
 
 

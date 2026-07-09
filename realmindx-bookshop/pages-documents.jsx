@@ -77,7 +77,11 @@ const normalizeDocument = (item) => {
 };
 
 const DocumentsPage = ({ navigate }) => {
-  const [documents, setDocuments] = React.useState(FALLBACK_DOCUMENTS.map(normalizeDocument));
+  const [documents, setDocuments] = React.useState(() => (
+    !isApiMode() && import.meta.env.DEV
+      ? FALLBACK_DOCUMENTS.map(normalizeDocument)
+      : []
+  ));
   const [query, setQuery] = React.useState('');
   const [filter, setFilter] = React.useState('all');
   const [loading, setLoading] = React.useState(isApiMode());
@@ -96,6 +100,7 @@ const DocumentsPage = ({ navigate }) => {
       })
       .catch((err) => {
         if (!alive) return;
+        setDocuments([]);
         setError(err?.message || 'Could not load documents.');
       })
       .finally(() => {

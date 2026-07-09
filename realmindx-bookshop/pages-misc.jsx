@@ -2,7 +2,7 @@ import React from 'react';
 import { Icon, LoadingState, cedis } from './shared.jsx';
 import { useCart } from './chrome.jsx';
 import { submitMessage } from '../src/lib/managedContent.js';
-import { usePublicSettings, useSiteCopyState } from '../src/lib/siteContent.js';
+import { canUseLocalFallback, usePublicSettings, useSiteCopyState } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import {
   completeTwoFactorLogin,
@@ -676,6 +676,9 @@ const CopyParagraphs = ({ value }) => String(value || '')
 const InfoPage = ({ navigate }) => {
   const settings = usePublicSettings();
   const { copy: siteCopy, loading: copyLoading } = useSiteCopyState({ waitForApi: true });
+  const allowLocalFallback = canUseLocalFallback();
+  const copyValue = (key, fallback, empty = 'This information is currently unavailable.') =>
+    siteCopy[key] || (allowLocalFallback ? fallback : empty);
 
   if (copyLoading) {
     return (
@@ -698,19 +701,19 @@ const InfoPage = ({ navigate }) => {
           <div>
             <div className="bs-info-section">
               <h2 className="bs-h3">Our Story</h2>
-              <CopyParagraphs value={siteCopy.bookshop_about_story || BOOKSHOP_ABOUT_STORY_FALLBACK} />
+              <CopyParagraphs value={copyValue('bookshop_about_story', BOOKSHOP_ABOUT_STORY_FALLBACK)} />
             </div>
             <div className="bs-info-section">
               <h2 className="bs-h3">What We Sell</h2>
-              <CopyParagraphs value={siteCopy.bookshop_about_inventory || BOOKSHOP_INVENTORY_FALLBACK} />
+              <CopyParagraphs value={copyValue('bookshop_about_inventory', BOOKSHOP_INVENTORY_FALLBACK)} />
             </div>
             <div className="bs-info-section">
               <h2 className="bs-h3">Delivery Information</h2>
-              <CopyParagraphs value={siteCopy.bookshop_pdp_delivery_info || BOOKSHOP_DELIVERY_FALLBACK} />
+              <CopyParagraphs value={copyValue('bookshop_pdp_delivery_info', BOOKSHOP_DELIVERY_FALLBACK)} />
             </div>
             <div className="bs-info-section">
               <h2 className="bs-h3">Return Policy</h2>
-              <CopyParagraphs value={siteCopy.bookshop_pdp_return_policy || BOOKSHOP_RETURNS_FALLBACK} />
+              <CopyParagraphs value={copyValue('bookshop_pdp_return_policy', BOOKSHOP_RETURNS_FALLBACK)} />
             </div>
             <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('shop')}>Start Shopping <Icon name="arrow" size={16} /></button>
           </div>

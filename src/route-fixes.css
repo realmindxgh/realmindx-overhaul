@@ -4810,8 +4810,8 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   height: 100% !important;
   background-image: url('/logo-white.png') !important;
   background-repeat: no-repeat !important;
-  background-position: right clamp(18px, 3vw, 48px) center !important;
-  background-size: min(44vw, 620px) auto !important;
+  background-position: right clamp(6px, 1vw, 16px) center !important;
+  background-size: min(42vw, 600px) auto !important;
   opacity: 0.13 !important;
   pointer-events: none !important;
   z-index: 1 !important;
@@ -4826,9 +4826,297 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 
 @media (max-width: 860px) {
   body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .services-policy-hero)::after {
-    background-position: right -32px center !important;
-    background-size: min(70vw, 430px) auto !important;
+    background-position: right 6px center !important;
+    background-size: min(62vw, 380px) auto !important;
     opacity: 0.08 !important;
   }
 }
 
+/* Delivery company and rider portals */
+.delivery-portal {
+  min-height: 100vh;
+  background: #f5f8fc;
+  color: #1a2a40;
+  padding: 24px;
+}
+
+.delivery-portal-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1120px;
+  margin: 0 auto 20px;
+}
+
+.delivery-portal-top span {
+  display: block;
+  color: #9a6b00;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.delivery-portal-top h1 {
+  margin: 4px 0;
+  color: #143670;
+  font-size: 1.8rem;
+  line-height: 1.15;
+}
+
+.delivery-portal-top p {
+  margin: 0;
+  color: #53657d;
+}
+
+.delivery-login-panel,
+.delivery-section,
+.delivery-card,
+.delivery-empty {
+  max-width: 1120px;
+  margin: 0 auto 16px;
+  background: #fff;
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(20, 54, 112, 0.07);
+}
+
+.delivery-login-panel {
+  max-width: 440px;
+  padding: 20px;
+}
+
+.delivery-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  color: #31445e;
+  font-weight: 700;
+}
+
+.delivery-field input,
+.delivery-actions input,
+.delivery-actions select,
+.delivery-issue-row input,
+.delivery-issue-row select,
+.delivery-rider-form input,
+.delivery-rider-form select {
+  width: 100%;
+  border: 1px solid #cbd8e8;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  color: #1a2a40;
+  background: #fff;
+}
+
+.delivery-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: #53657d;
+}
+
+.delivery-toolbar,
+.delivery-alert {
+  max-width: 1120px;
+  margin: 0 auto 16px;
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  color: #143670;
+  background: transparent;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.segmented button.active {
+  color: #fff;
+  background: #143670;
+}
+
+.delivery-section {
+  padding: 16px;
+}
+
+.delivery-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.delivery-section-head h2,
+.delivery-card h2,
+.delivery-empty h2 {
+  margin: 0;
+  color: #143670;
+  font-size: 1.05rem;
+}
+
+.delivery-rider-form,
+.delivery-actions,
+.delivery-issue-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
+.delivery-rider-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.delivery-rider-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) auto auto minmax(160px, 220px) auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fbff;
+  color: #31445e;
+  font-size: 0.85rem;
+}
+
+.delivery-rider-row > div {
+  display: grid;
+  gap: 2px;
+}
+
+.delivery-rider-row strong {
+  color: #143670;
+}
+
+.delivery-rider-row span {
+  color: #53657d;
+}
+
+.delivery-rider-row.inactive {
+  color: #8a98aa;
+  background: #f3f5f8;
+}
+
+.delivery-rider-row input {
+  width: 100%;
+  border: 1px solid #cbd8e8;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.delivery-grid {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+}
+
+.delivery-card {
+  padding: 16px;
+}
+
+.delivery-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.delivery-card-head p {
+  margin: 4px 0 0;
+  color: #53657d;
+}
+
+.delivery-card-head > span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #fff7d1;
+  color: #7a5600;
+  padding: 5px 9px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.delivery-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.delivery-meta div {
+  border: 1px solid #edf2f8;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fbfdff;
+}
+
+.delivery-meta div.wide {
+  grid-column: 1 / -1;
+}
+
+.delivery-meta dt {
+  color: #6b7d95;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.delivery-meta dd {
+  margin: 3px 0 0;
+  color: #1a2a40;
+  font-weight: 700;
+}
+
+.delivery-issue-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #edf2f8;
+}
+
+.delivery-empty {
+  padding: 28px;
+  text-align: center;
+}
+
+.delivery-empty p {
+  margin: 6px 0 0;
+  color: #53657d;
+}
+
+@media (max-width: 640px) {
+  .delivery-portal {
+    padding: 16px;
+  }
+
+  .delivery-portal-top {
+    flex-direction: column;
+  }
+
+  .delivery-portal-top h1 {
+    font-size: 1.45rem;
+  }
+
+  .delivery-rider-row {
+    grid-template-columns: 1fr;
+  }
+}
