@@ -31,6 +31,7 @@ const COLLECTION_TO_ENDPOINT = {
   categories: 'categories',
   flyers: 'flyers',
   deliveryZones: 'delivery-zones',
+  deliveryCompanies: 'delivery-companies',
   promoCodes: 'promo-codes',
   services: 'services',
   partners: 'partners',
@@ -95,31 +96,92 @@ function isSimpleSetting(row) {
 // â”€â”€ API-mode implementation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const EVENT = 'realmindx:admin-content-updated';
+const apiContentCache = new Map();
+const apiFetchedCollections = new Set();
+const apiLoadingCollections = new Set();
+const apiErrors = new Map();
+const apiInFlightRequests = new Map();
+const apiContentSubscribers = new Set();
+
+const apiStateSnapshot = () => {
+  const content = {};
+  const fetched = {};
+  const loading = {};
+  const errors = {};
+  apiContentCache.forEach((items, collection) => {
+    content[collection] = items;
+  });
+  apiFetchedCollections.forEach(collection => {
+    fetched[collection] = true;
+  });
+  apiLoadingCollections.forEach(collection => {
+    loading[collection] = true;
+  });
+  apiErrors.forEach((message, collection) => {
+    errors[collection] = message;
+  });
+  return { content, fetched, loading, errors };
+};
+
+const publishApiState = () => {
+  const snapshot = apiStateSnapshot();
+  apiContentSubscribers.forEach(listener => listener(snapshot));
+};
 
 function useApiContent() {
-  const [content, setContent] = React.useState({});
-  const [loading, setLoading] = React.useState({});
-  const [fetched, setFetched] = React.useState({});
-  const [errors, setErrors] = React.useState({});
+  const [state, setState] = React.useState(apiStateSnapshot);
 
-  const fetchCollection = React.useCallback(async (collection) => {
+  React.useEffect(() => {
+    apiContentSubscribers.add(setState);
+    setState(apiStateSnapshot());
+    return () => {
+      apiContentSubscribers.delete(setState);
+    };
+  }, []);
+
+  const fetchCollection = React.useCallback(async (collection, options = {}) => {
     const endpoint = COLLECTION_TO_ENDPOINT[collection];
     if (!endpoint) return;
-    setLoading(prev => ({ ...prev, [collection]: true }));
-    setErrors(prev => ({ ...prev, [collection]: '' }));
-    try {
+
+    if (!options.force && apiFetchedCollections.has(collection)) {
+      return apiContentCache.get(collection) || [];
+    }
+
+    const activeRequest = apiInFlightRequests.get(collection);
+    if (activeRequest) return activeRequest;
+
+    apiLoadingCollections.add(collection);
+    apiErrors.delete(collection);
+    publishApiState();
+
+    const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const request = (async () => {
       const data = await api.adminList(endpoint);
       const items = (data.items || [])
         .map(normalise)
         .filter(item => collection !== 'settings' || isSimpleSetting(item));
-      setContent(prev => ({ ...prev, [collection]: items }));
-      setFetched(prev => ({ ...prev, [collection]: true }));
-    } catch (err) {
-      console.warn(`[useAdminContent] fetch ${collection} failed:`, err.message);
-      setErrors(prev => ({ ...prev, [collection]: err.message || 'Could not load this section.' }));
-    } finally {
-      setLoading(prev => ({ ...prev, [collection]: false }));
-    }
+      apiContentCache.set(collection, items);
+      apiFetchedCollections.add(collection);
+      apiErrors.delete(collection);
+      if (import.meta.env.DEV) {
+        const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - started;
+        console.debug(`[useAdminContent] fetched ${collection} in ${Math.round(elapsed)}ms`);
+      }
+      return items;
+    })()
+      .catch((err) => {
+        console.warn(`[useAdminContent] fetch ${collection} failed:`, err.message);
+        apiErrors.set(collection, err.message || 'Could not load this section.');
+        return apiContentCache.get(collection) || [];
+      })
+      .finally(() => {
+        apiInFlightRequests.delete(collection);
+        apiLoadingCollections.delete(collection);
+        publishApiState();
+      });
+
+    apiInFlightRequests.set(collection, request);
+    return request;
   }, []);
 
   // Fetch also on content-updated events (so changes from other tabs / actions
@@ -127,27 +189,22 @@ function useApiContent() {
   React.useEffect(() => {
     const handle = (e) => {
       const collection = e?.detail?.collection;
-      if (collection) fetchCollection(collection);
+      if (collection) fetchCollection(collection, { force: true }).catch(() => {});
     };
     window.addEventListener(EVENT, handle);
     return () => window.removeEventListener(EVENT, handle);
   }, [fetchCollection]);
-
-  const notify = (collection) =>
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: { collection } }));
 
   const createItem = React.useCallback(async (collection, payload) => {
     const endpoint = COLLECTION_TO_ENDPOINT[collection];
     if (!endpoint) return;
     if (collection === 'settings') {
       await api.adminUpsertSetting(payload.key, payload.value, payload.public);
-      notify(collection);
-      await fetchCollection(collection);
+      await fetchCollection(collection, { force: true });
       return;
     }
     await api.adminCreate(endpoint, payload);
-    notify(collection);
-    await fetchCollection(collection);
+    await fetchCollection(collection, { force: true });
   }, [fetchCollection]);
 
   const updateItem = React.useCallback(async (collection, id, payload) => {
@@ -161,16 +218,14 @@ function useApiContent() {
     } else {
       await api.adminUpdate(endpoint, id, payload);
     }
-    notify(collection);
-    await fetchCollection(collection);
+    await fetchCollection(collection, { force: true });
   }, [fetchCollection]);
 
   const deleteItem = React.useCallback(async (collection, id) => {
     const endpoint = COLLECTION_TO_ENDPOINT[collection];
     if (!endpoint) return;
     await api.adminDelete(endpoint, id);
-    notify(collection);
-    await fetchCollection(collection);
+    await fetchCollection(collection, { force: true });
   }, [fetchCollection]);
 
   const togglePublish = React.useCallback(async (collection, row) => {
@@ -184,11 +239,10 @@ function useApiContent() {
     } catch {
       // some endpoints accept a status-only PUT
     }
-    notify(collection);
-    await fetchCollection(collection);
+    await fetchCollection(collection, { force: true });
   }, [fetchCollection]);
 
-  return { content, loading, fetched, errors, fetchCollection, createItem, updateItem, deleteItem, togglePublish };
+  return { ...state, fetchCollection, createItem, updateItem, deleteItem, togglePublish };
 }
 
 // â”€â”€ Local-mode implementation (thin wrapper around existing helpers) â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -14,6 +14,7 @@ import ContactPage from '../realmindx-site/pages/ContactPage.jsx';
 import JobsPage from '../realmindx-site/pages/JobsPage.jsx';
 import UserPortalPage from '../realmindx-site/pages/UserPortalPage.jsx';
 import AdminPortalPage from '../realmindx-site/pages/AdminPortalPage.jsx';
+import DeliveryPortalPage from '../realmindx-site/pages/DeliveryPortalPage.jsx';
 import { AdminLoginPage, PasswordResetPage, StaffLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
 import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
@@ -696,6 +697,9 @@ const shouldNoIndexPath = (path) => (
   || path === '/reset-password'
   || path.startsWith('/portal')
   || path.startsWith('/admin')
+  || path.startsWith('/staff')
+  || path.startsWith('/delivery-company')
+  || path.startsWith('/delivery')
 );
 
 const serviceMeta = (service) => ({
@@ -842,7 +846,11 @@ const IdleGuard = () => {
   const isBookshopRoute = location.pathname.startsWith('/bookshop');
   // Only dashboards send the user to a login screen on sign-out; any other
   // page just reloads in place, now logged out, with a toast explaining why.
-  const isDashboardRoute = location.pathname.startsWith('/portal') || location.pathname.startsWith('/admin') || location.pathname.startsWith('/staff');
+  const isDashboardRoute = location.pathname.startsWith('/portal')
+    || location.pathname.startsWith('/admin')
+    || location.pathname.startsWith('/staff')
+    || location.pathname.startsWith('/delivery-company')
+    || location.pathname.startsWith('/delivery');
 
   React.useEffect(() => {
     const handler = () => setSession(getDemoSession());
@@ -883,6 +891,14 @@ const IdleGuard = () => {
 const SessionBridge = () => {
   const location = useLocation();
   React.useEffect(() => {
+    if (
+      location.pathname.startsWith('/admin')
+      || location.pathname.startsWith('/staff')
+      || location.pathname.startsWith('/delivery-company')
+      || location.pathname.startsWith('/delivery')
+    ) {
+      return undefined;
+    }
     let alive = true;
     syncSessionFromApi().then(() => {
       if (alive) window.dispatchEvent(new Event('rmx-session-sync'));
@@ -899,7 +915,14 @@ const RouteAnalyticsTracker = () => {
 
   React.useEffect(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
-    if (path.startsWith('/bookshop') || path.startsWith('/admin') || path.startsWith('/portal')) return;
+    if (
+      path.startsWith('/bookshop')
+      || path.startsWith('/admin')
+      || path.startsWith('/staff')
+      || path.startsWith('/portal')
+      || path.startsWith('/delivery-company')
+      || path.startsWith('/delivery')
+    ) return;
 
     let pageType = 'website';
     let serviceId = null;
@@ -1024,7 +1047,9 @@ const FlyerFocusModal = () => {
 };
 
 const AppRoutes = () => {
-  if (isBookshopSubdomain) {
+  const deliveryPortalPath = typeof window !== 'undefined'
+    && (window.location.pathname.startsWith('/delivery-company') || window.location.pathname.startsWith('/delivery'));
+  if (isBookshopSubdomain && !deliveryPortalPath) {
     return (
       <>
         <FlyerFocusModal />
@@ -1068,6 +1093,10 @@ const AppRoutes = () => {
         <Route path="/staff/login" element={<StaffLoginPage />} />
         <Route path="/staff/dashboard" element={<AdminPortalPage portalRole="staff" />} />
         <Route path="/staff/*" element={<AdminPortalPage portalRole="staff" />} />
+        <Route path="/delivery-company/login" element={<DeliveryPortalPage role="delivery_company_user" />} />
+        <Route path="/delivery-company/*" element={<DeliveryPortalPage role="delivery_company_user" />} />
+        <Route path="/delivery/login" element={<DeliveryPortalPage role="delivery_rider" />} />
+        <Route path="/delivery/*" element={<DeliveryPortalPage role="delivery_rider" />} />
 
         <Route path="/bookshop/*" element={<BookshopApp />} />
 

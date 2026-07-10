@@ -55,6 +55,8 @@ const INITIAL_ROUTE_DATA = (() => {
   }
 })();
 
+export const canUseLocalFallback = () => !isApiMode() && import.meta.env.DEV;
+
 const apiItemsCache = new WeakMap();
 const apiItemsRequests = new WeakMap();
 
@@ -338,7 +340,7 @@ export const usePublicServicesState = () => {
 
   const localServices = localContent.services?.length ? localContent.services : DEFAULT_SERVICES;
   const source = isApiMode()
-    ? (apiState.failed ? localServices : (apiState.items || []))
+    ? (apiState.items || [])
     : localServices;
   return {
     ...apiState,
@@ -350,11 +352,11 @@ export const usePublicServices = () => usePublicServicesState().items;
 
 export const usePublicPartners = () => {
   const localContent = useManagedContent();
-  const { items: apiPartners, failed } = useApiItems(api.fetchPartners);
+  const { items: apiPartners } = useApiItems(api.fetchPartners);
 
   const localPartners = localContent.partners?.length ? localContent.partners : DEFAULT_PARTNERS;
   const source = isApiMode()
-    ? (failed ? localPartners : (apiPartners ?? localPartners))
+    ? (apiPartners ?? [])
     : localPartners;
   return publicItems(source)
     .map(normalisePartner)
@@ -363,11 +365,11 @@ export const usePublicPartners = () => {
 
 export const usePublicPeople = () => {
   const localContent = useManagedContent();
-  const { items: apiPeople, failed } = useApiItems(api.fetchPeople);
+  const { items: apiPeople } = useApiItems(api.fetchPeople);
 
   const localPeople = localContent.people?.length ? localContent.people : DEFAULT_PEOPLE;
   const source = isApiMode()
-    ? (failed ? localPeople : (apiPeople ?? localPeople))
+    ? (apiPeople ?? [])
     : localPeople;
   return publicItems(source)
     .map(normalisePerson)
@@ -389,13 +391,11 @@ const normaliseTestimonial = (item, index = 0) => ({
 
 export const useTestimonials = () => {
   const localContent = useManagedContent();
-  const { items: apiTestimonials, failed } = useApiItems(api.fetchTestimonials);
+  const { items: apiTestimonials } = useApiItems(api.fetchTestimonials);
 
   const localTestimonials = localContent.testimonials?.length ? localContent.testimonials : DEFAULT_TESTIMONIALS;
-  // While the API fetch is in flight, show the defaults (they mirror the
-  // seeded rows) so the section never flashes empty on the homepage.
   const source = isApiMode()
-    ? (failed ? localTestimonials : (apiTestimonials ?? localTestimonials))
+    ? (apiTestimonials ?? [])
     : localTestimonials;
   return publicItems(source)
     .map(normaliseTestimonial)
@@ -405,11 +405,11 @@ export const useTestimonials = () => {
 
 const usePublicCollection = (collection, loader, fallback) => {
   const localContent = useManagedContent();
-  const { items: apiItems, failed } = useApiItems(loader);
+  const { items: apiItems } = useApiItems(loader);
 
   const localItems = localContent[collection]?.length ? localContent[collection] : fallback;
   return isApiMode()
-    ? (failed ? localItems : (apiItems ?? localItems))
+    ? (apiItems ?? [])
     : localItems;
 };
 
@@ -430,7 +430,7 @@ export const usePublicNewsState = (limit = 3) => {
 
   const localNews = localContent.news?.length ? localContent.news : [];
   const source = isApiMode()
-    ? (failed ? localNews : (apiNews ?? localNews))
+    ? (apiNews ?? [])
     : localNews;
   const visible = isApiMode() ? source : publicItems(source);
   const items = visible
@@ -454,7 +454,7 @@ export const usePublicGalleryState = (limit = 6) => {
 
   const localGallery = localContent.gallery?.length ? localContent.gallery : [];
   const source = isApiMode()
-    ? (failed ? localGallery : (apiGallery ?? localGallery))
+    ? (apiGallery ?? [])
     : localGallery;
   const visible = isApiMode() ? source : publicItems(source);
   const items = visible
@@ -512,8 +512,8 @@ export const useSiteCopyState = ({ waitForApi = false } = {}) => {
   const waitingForFreshCopy = waitForApi && isApiMode() && loading && !failed;
   const source = waitingForFreshCopy
     ? []
-    : isApiMode() && !failed && apiCopy?.length
-      ? apiCopy
+    : isApiMode()
+      ? (apiCopy?.length ? apiCopy : [])
       : localCopy;
   const copy = publicItems(source).reduce((acc, item) => {
     acc[item.key] = item.value;

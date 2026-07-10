@@ -110,6 +110,29 @@ export const signIn = async ({ email, password, role = 'user', remember = false 
   return getDemoSession();
 };
 
+export const signInWithPhone = async ({ phone, password, role, remember = false }) => {
+  if (!isApiMode()) {
+    throw invalidCredentials(role);
+  }
+  const login = role === 'delivery_company_user'
+    ? api.deliveryCompanyLogin
+    : role === 'delivery_rider'
+      ? api.deliveryRiderLogin
+      : null;
+  if (!login) throw invalidCredentials(role);
+  const result = await login({ phone, password, remember });
+  const user = result.user;
+  const actualRole = user?.role?.name || user?.role;
+  if (actualRole !== role) {
+    try { await api.deliveryLogout(); } catch { /* ignore cleanup errors */ }
+    clearDemoSession();
+    throw invalidCredentials(role);
+  }
+  const session = toSession(user, role);
+  saveDemoSession(session);
+  return session;
+};
+
 export const completeTwoFactorLogin = async ({ otp, role = 'user' }) => {
   if (!isApiMode()) return getDemoSession();
   const { user } = await api.completeTwoFactorLogin({ otp });

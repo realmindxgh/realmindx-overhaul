@@ -24,6 +24,7 @@ const NAV = [
   { key: 'categories', label: 'Categories', group: 'Bookshop', icon: 'package' },
   { key: 'flyers', label: 'Flyers', group: 'Bookshop', icon: 'image' },
   { key: 'deliveryZones', label: 'Delivery Prices', group: 'Bookshop', icon: 'money' },
+  { key: 'deliveryCompanies', label: 'Delivery Companies', group: 'Bookshop', icon: 'briefcase' },
   { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
   { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
   { key: 'receiptsInvoices', label: 'Receipts & Invoices', group: 'Bookshop', icon: 'files' },
@@ -87,9 +88,18 @@ const SERVICE_ICON_OPTIONS = [
   { value: 'schoolms', label: 'SchoolMS' },
 ];
 
+const OTP_OVERRIDE_OPTIONS = [
+  { value: 'customer_phone_unreachable_confirmed', label: 'Customer phone unreachable but delivery confirmed' },
+  { value: 'authorized_person_received', label: 'Package received by authorized person' },
+  { value: 'sms_failed', label: 'SMS failed' },
+  { value: 'customer_unable_to_provide_otp', label: 'Customer unable to provide OTP' },
+  { value: 'manual_realmindx_confirmation', label: 'Manual confirmation by RealMindX staff' },
+  { value: 'other', label: 'Other' },
+];
+
 const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 'orders']);
 const NAV_PERMISSION_GROUPS = NAV
-  .filter(item => !['dashboard', 'admins', 'auditLogs', 'account'].includes(item.key))
+  .filter(item => !['dashboard', 'admins', 'auditLogs', 'account', 'deliveryCompanies'].includes(item.key))
   .map(item => {
     const actions = item.key === 'analytics'
       ? ['view', 'export']
@@ -107,6 +117,7 @@ const NAV_PERMISSION_GROUPS = NAV
     return { ...item, actions };
   });
 const EXTRA_PERMISSION_GROUPS = [
+  { key: 'delivery', label: 'Delivery System', group: 'Bookshop', icon: 'briefcase', actions: ['view', 'assign', 'companies.manage', 'audit.view', 'override_otp'] },
   { key: 'uploads', label: 'File Uploads', group: 'System', icon: 'image', actions: ['create'] },
 ];
 const PERMISSION_GROUPS = [...NAV_PERMISSION_GROUPS, ...EXTRA_PERMISSION_GROUPS];
@@ -143,6 +154,7 @@ const expandPermissionsForSave = permissions => {
   if (selected.has('applications.edit')) selected.add('manage_applications');
   if ([...selected].some(key => ['products.', 'productReviews.', 'categories.', 'flyers.', 'deliveryZones.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_products');
   if ([...selected].some(key => ['orders.', 'receiptsInvoices.', 'orderReviews.'].some(prefix => key.startsWith(prefix)))) selected.add('manage_orders');
+  if ([...selected].some(key => key.startsWith('delivery.'))) selected.add('manage_orders');
   if ([...selected].some(key => key.startsWith('news.'))) selected.add('manage_news');
   if ([...selected].some(key => key.startsWith('gallery.'))) selected.add('manage_gallery');
   if ([...selected].some(key => key.startsWith('resources.'))) selected.add('manage_resources');
@@ -161,6 +173,7 @@ const canAccessAdminItem = (item, session) => {
   if (item.key === 'dashboard' || item.key === 'account') return ['admin', 'staff'].includes(role);
   if (item.key === 'admins' || item.key === 'auditLogs') return false;
   if (item.key === 'receiptsInvoices') return hasSessionPermission(session, 'orders.view') || hasSessionPermission(session, 'receiptsInvoices.view');
+  if (item.key === 'deliveryCompanies') return hasSessionPermission(session, 'delivery.view') || hasSessionPermission(session, 'delivery.companies.manage');
   return hasSessionPermission(session, `${item.key}.view`);
 };
 
@@ -325,6 +338,27 @@ const CONFIG = {
     ],
     columns: ['name', 'fee', 'region', 'nearby_major_town', 'delivery_zone_label', 'is_active'],
     columnLabels: { nearby_major_town: 'Nearby Town', delivery_zone_label: 'Delivery Belt', is_active: 'Active' },
+  },
+  deliveryCompanies: {
+    title: 'Delivery Companies',
+    description: 'Create delivery partners, manage company access, and review delivery performance.',
+    collection: 'deliveryCompanies',
+    createLabel: 'Create Delivery Company',
+    permissionKey: 'delivery',
+    allowDelete: false,
+    fields: [
+      field('name', 'Company Name'),
+      field('contact_name', 'Contact Name'),
+      field('contact_phone', 'Contact Phone'),
+      field('contact_email', 'Contact Email', 'email'),
+      field('notes', 'Internal Notes', 'textarea'),
+      field('manager_name', 'First Manager Name', 'text', { help: 'Used when creating the first company manager.' }),
+      field('manager_phone', 'First Manager Phone', 'text', { help: 'Phone/password login for the delivery company portal.' }),
+      field('manager_password', 'Temporary Manager Password', 'password', { help: 'Minimum 8 characters. The manager must change it after login.' }),
+      field('is_active', 'Active', 'checkbox'),
+    ],
+    columns: ['name', 'contact_phone', 'contact_email', 'active_deliveries', 'completed_deliveries', 'status'],
+    columnLabels: { contact_phone: 'Phone', contact_email: 'Email', active_deliveries: 'Active', completed_deliveries: 'Delivered' },
   },
   services: {
     title: 'Services',
@@ -596,7 +630,8 @@ const CONFIG = {
     emptyTitle: 'No Bookshop Orders Yet',
     emptyBody: 'Customer orders from the bookshop will appear here.',
     fields: [],             // no edit form fields
-    columns: ['order_reference', 'customer_name', 'total_amount', 'status'],
+    columns: ['order_reference', 'customer_name', 'total_amount', 'status', 'delivery_company', 'delivery_rider', 'delivery_status', 'otp_status'],
+    columnLabels: { delivery_company: 'Company', delivery_rider: 'Rider', delivery_status: 'Delivery', otp_status: 'OTP' },
   },
   orderReviews: {
     title: 'Order Reviews',
@@ -2420,6 +2455,21 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [missingImageStats, setMissingImageStats] = React.useState(null);
   const [showMissingImageConfirm, setShowMissingImageConfirm] = React.useState(false);
   const [bulkUnpublishing, setBulkUnpublishing] = React.useState(false);
+  const [deliveryAssign, setDeliveryAssign] = React.useState(null);
+  const [deliveryAssignCompany, setDeliveryAssignCompany] = React.useState('');
+  const [deliveryAssignNote, setDeliveryAssignNote] = React.useState('');
+  const [deliveryAssignError, setDeliveryAssignError] = React.useState('');
+  const [deliveryAssignBusy, setDeliveryAssignBusy] = React.useState(false);
+  const [deliveryDetail, setDeliveryDetail] = React.useState(null);
+  const [deliveryDetailError, setDeliveryDetailError] = React.useState('');
+  const [deliveryDetailBusy, setDeliveryDetailBusy] = React.useState(false);
+  const [otpOverrideReason, setOtpOverrideReason] = React.useState('');
+  const [otpOverrideNote, setOtpOverrideNote] = React.useState('');
+  const [companyDetail, setCompanyDetail] = React.useState(null);
+  const [companyDetailError, setCompanyDetailError] = React.useState('');
+  const [companyDetailBusy, setCompanyDetailBusy] = React.useState(false);
+  const [companyManagerForm, setCompanyManagerForm] = React.useState({ name: '', phone: '', password: '' });
+  const [companyManagerPasswords, setCompanyManagerPasswords] = React.useState({});
 
   // In API mode: fetch on mount; in local mode: use rowsProp from parent.
   React.useEffect(() => {
@@ -2431,6 +2481,23 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
   // In API mode the hook owns the data; in local mode the parent passes rows.
   const rows = isApiMode() ? (localRows || rowsProp || []) : (rowsProp || []);
+
+  React.useEffect(() => {
+    if (!isApiMode() || config.collection !== 'orders') return undefined;
+    const hasActiveOrders = rows.some(row => !['complete', 'cancelled', 'archived'].includes(row.status));
+    if (!hasActiveOrders) return undefined;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') {
+        fetchCollection(config.collection, { force: true }).then(() => {});
+      }
+    };
+    const timer = window.setInterval(refresh, 15000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [config.collection, fetchCollection, rows]);
 
   // Subscribe to content updates from the hook (API mode).
   React.useEffect(() => {
@@ -2544,8 +2611,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     ? loginPathForRole('staff')
     : loginPathForRole('admin');
   const permissionKey = config.permissionKey || config.collection;
-  const canCreate = config.allowCreate !== false && Boolean(config.createLabel) && hasSessionPermission(session, `${permissionKey}.create`);
-  const canUpdate = config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly && hasSessionPermission(session, `${permissionKey}.edit`);
+  const isDeliveryCompanies = config.collection === 'deliveryCompanies';
+  const canManageDeliveryCompanies = hasSessionPermission(session, 'delivery.companies.manage');
+  const canCreate = config.allowCreate !== false && Boolean(config.createLabel) && (isDeliveryCompanies ? canManageDeliveryCompanies : hasSessionPermission(session, `${permissionKey}.create`));
+  const canUpdate = config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly && (isDeliveryCompanies ? canManageDeliveryCompanies : hasSessionPermission(session, `${permissionKey}.edit`));
   const canDelete = config.allowDelete !== false && !config.readOnly && hasSessionPermission(session, `${permissionKey}.delete`);
   const canReply = config.collection === 'messages' && !config.readOnly && hasSessionPermission(session, `${permissionKey}.edit`);
   const canPublish = PUBLISHABLE_COLLECTIONS.has(config.collection) && !config.readOnly && !config.statusOnly && hasSessionPermission(session, `${permissionKey}.edit`);
@@ -2554,7 +2623,14 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const allowArchive = Boolean(config.allowArchive);
   const canStatusEdit = isStatusOnly && hasSessionPermission(session, `${permissionKey}.edit`);
   const canModerate = isModerationOnly && hasSessionPermission(session, `${permissionKey}.edit`);
-  const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate;
+  const canAssignDelivery = config.collection === 'orders'
+    && hasSessionPermission(session, 'delivery.assign')
+    && hasSessionPermission(session, 'orders.edit');
+  const canViewDelivery = config.collection === 'orders' && hasSessionPermission(session, 'delivery.view');
+  const canOverrideOtp = config.collection === 'orders'
+    && hasSessionPermission(session, 'delivery.override_otp')
+    && hasSessionPermission(session, 'orders.edit');
+  const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate || canAssignDelivery || canViewDelivery || canOverrideOtp;
 
   const refreshMissingImageStats = React.useCallback(async () => {
     if (config.collection !== 'products' || !isApiMode()) return;
@@ -2569,6 +2645,11 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     if (config.collection !== 'products' || !canUpdate || !isApiMode()) return;
     refreshMissingImageStats();
   }, [canUpdate, config.collection, refreshMissingImageStats]);
+
+  React.useEffect(() => {
+    if (config.collection !== 'orders' || !canAssignDelivery || !isApiMode()) return;
+    fetchCollection('deliveryCompanies').then(() => {});
+  }, [canAssignDelivery, config.collection, fetchCollection]);
 
   const executeBulkMissingImageUnpublish = async () => {
     setBulkUnpublishing(true);
@@ -2633,6 +2714,168 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       setActionStatus({ type: 'error', message: err?.message || `Could not update ${labelForRow(row)}.` });
     }
   };
+
+  const openDeliveryAssign = (row) => {
+    setDeliveryAssign(row);
+    setDeliveryAssignCompany(row.delivery?.company_id ? String(row.delivery.company_id) : '');
+    setDeliveryAssignNote('');
+    setDeliveryAssignError('');
+  };
+
+  const submitDeliveryAssign = async () => {
+    if (!deliveryAssignCompany) {
+      setDeliveryAssignError('Choose a delivery company.');
+      return;
+    }
+    setDeliveryAssignBusy(true);
+    setDeliveryAssignError('');
+    try {
+      const result = await api.adminAssignDeliveryCompany(getItemId(deliveryAssign), {
+        company_id: Number(deliveryAssignCompany),
+        note: deliveryAssignNote.trim() || undefined,
+      });
+      await fetchCollection(config.collection, { force: true });
+      setDeliveryAssign(null);
+      setActionStatus({
+        type: 'success',
+        message: result?.contact_warning
+          ? `Assigned ${labelForRow(deliveryAssign)}. ${result.contact_warning}`
+          : `Assigned ${labelForRow(deliveryAssign)} for delivery.`,
+      });
+    } catch (err) {
+      setDeliveryAssignError(err?.message || 'Could not assign delivery.');
+    } finally {
+      setDeliveryAssignBusy(false);
+    }
+  };
+
+  const openDeliveryDetail = async (row) => {
+    setDeliveryDetail({ order: row, delivery: row.delivery || null });
+    setDeliveryDetailError('');
+    setDeliveryDetailBusy(true);
+    setOtpOverrideReason('');
+    setOtpOverrideNote('');
+    try {
+      const data = await api.adminOrderDelivery(getItemId(row));
+      setDeliveryDetail(data);
+    } catch (err) {
+      setDeliveryDetailError(err?.message || 'Could not load delivery details.');
+    } finally {
+      setDeliveryDetailBusy(false);
+    }
+  };
+
+  const refreshDeliveryDetail = async () => {
+    if (!deliveryDetail?.order?.id) return;
+    try {
+      const data = await api.adminOrderDelivery(deliveryDetail.order.id);
+      setDeliveryDetail(data);
+    } catch (err) {
+      setDeliveryDetailError(err?.message || 'Could not refresh delivery details.');
+    }
+  };
+
+  const resendDeliveryOtp = async () => {
+    const deliveryId = deliveryDetail?.delivery?.id;
+    if (!deliveryId) return;
+    setDeliveryDetailBusy(true);
+    setDeliveryDetailError('');
+    try {
+      await api.adminDeliveryOtpResend(deliveryId);
+      await Promise.all([refreshDeliveryDetail(), fetchCollection(config.collection, { force: true })]);
+      setActionStatus({ type: 'success', message: 'Delivery OTP resent to the customer.' });
+    } catch (err) {
+      setDeliveryDetailError(err?.message || 'Could not resend OTP.');
+    } finally {
+      setDeliveryDetailBusy(false);
+    }
+  };
+
+  const submitOtpOverride = async () => {
+    const deliveryId = deliveryDetail?.delivery?.id;
+    if (!deliveryId) return;
+    if (!otpOverrideReason) {
+      setDeliveryDetailError('Choose an OTP override reason.');
+      return;
+    }
+    setDeliveryDetailBusy(true);
+    setDeliveryDetailError('');
+    try {
+      await api.adminDeliveryOtpOverride(deliveryId, {
+        reason: otpOverrideReason,
+        note: otpOverrideNote.trim() || undefined,
+      });
+      await Promise.all([refreshDeliveryDetail(), fetchCollection(config.collection, { force: true })]);
+      setOtpOverrideReason('');
+      setOtpOverrideNote('');
+      setActionStatus({ type: 'success', message: 'OTP override recorded and delivery completed.' });
+    } catch (err) {
+      setDeliveryDetailError(err?.message || 'Could not override OTP.');
+    } finally {
+      setDeliveryDetailBusy(false);
+    }
+  };
+
+  const openCompanyDetail = async (row) => {
+    setCompanyDetail({ company: row, managers: [], riders: [], deliveries: [] });
+    setCompanyDetailError('');
+    setCompanyDetailBusy(true);
+    setCompanyManagerForm({ name: '', phone: '', password: '' });
+    setCompanyManagerPasswords({});
+    try {
+      setCompanyDetail(await api.adminDeliveryCompanyDetail(getItemId(row)));
+    } catch (err) {
+      setCompanyDetailError(err?.message || 'Could not load delivery company details.');
+    } finally {
+      setCompanyDetailBusy(false);
+    }
+  };
+
+  const refreshCompanyDetail = async () => {
+    if (!companyDetail?.company?.id) return;
+    setCompanyDetail(await api.adminDeliveryCompanyDetail(companyDetail.company.id));
+  };
+
+  const createCompanyManager = async () => {
+    if (!companyManagerForm.name.trim() || !companyManagerForm.phone.trim() || companyManagerForm.password.length < 8) {
+      setCompanyDetailError('Manager name, phone, and an 8+ character temporary password are required.');
+      return;
+    }
+    setCompanyDetailBusy(true);
+    setCompanyDetailError('');
+    try {
+      await api.adminCreateDeliveryCompanyManager(companyDetail.company.id, companyManagerForm);
+      await refreshCompanyDetail();
+      setCompanyManagerForm({ name: '', phone: '', password: '' });
+      setActionStatus({ type: 'success', message: 'Company manager account created.' });
+    } catch (err) {
+      setCompanyDetailError(err?.message || 'Could not create company manager.');
+    } finally {
+      setCompanyDetailBusy(false);
+    }
+  };
+
+  const resetCompanyManagerPassword = async (managerId) => {
+    const password = companyManagerPasswords[managerId] || '';
+    if (password.length < 8) {
+      setCompanyDetailError('Temporary password must be at least 8 characters.');
+      return;
+    }
+    setCompanyDetailBusy(true);
+    setCompanyDetailError('');
+    try {
+      await api.adminResetCompanyUserPassword(managerId, password);
+      await refreshCompanyDetail();
+      setCompanyManagerPasswords(prev => ({ ...prev, [managerId]: '' }));
+      setActionStatus({ type: 'success', message: 'Company manager password reset.' });
+    } catch (err) {
+      setCompanyDetailError(err?.message || 'Could not reset company manager password.');
+    } finally {
+      setCompanyDetailBusy(false);
+    }
+  };
+
+  const activeDeliveryCompanies = (content.deliveryCompanies || []).filter(company => company.is_active !== false);
   const createAction = canCreate ? config.createLabel : '';
   const closeFormModal = () => { setCreating(false); setEditing(null); };
 
@@ -2679,6 +2922,18 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           {statusLabel(row[column])}
         </span>
       );
+    }
+
+    if (config.collection === 'orders') {
+      if (column === 'delivery_company') return <span>{row.delivery?.company_name || 'Unassigned'}</span>;
+      if (column === 'delivery_rider') return <span>{row.delivery?.rider_name || '-'}</span>;
+      if (column === 'delivery_status') {
+        return <span className="badge badge-navy">{statusLabel(row.delivery?.status || 'not_assigned')}</span>;
+      }
+      if (column === 'otp_status') {
+        const otp = row.delivery?.otp;
+        return <span>{otp?.blocked ? 'Blocked' : statusLabel(otp?.status || 'not_generated')}</span>;
+      }
     }
 
     const value = row[column];
@@ -2875,6 +3130,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {/* Standard edit/publish */}
                         {canUpdate && <button className="table-action-btn" onClick={() => { setEditing(row); setCreating(false); }}>Edit</button>}
+                        {isDeliveryCompanies && canManageDeliveryCompanies && (
+                          <button className="table-action-btn" onClick={() => openCompanyDetail(row)}>Company Access</button>
+                        )}
                         {canReply && <button className="table-action-btn" onClick={() => { setReplying(row); setReplyText(''); setReplyError(''); setEditing(null); setCreating(false); }}>Reply</button>}
                         {'status' in row && canPublish && <button className="table-action-btn" onClick={() => togglePublish(row)}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</button>}
 
@@ -2889,6 +3147,14 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                         )}
                         {canStatusEdit && allowArchive && row.status !== 'archived' && (
                           <button className="table-action-btn" onClick={() => handleArchive(row)}>Archive</button>
+                        )}
+                        {canAssignDelivery && !['complete', 'cancelled', 'archived'].includes(row.status) && (
+                          <button className="table-action-btn" onClick={() => openDeliveryAssign(row)}>
+                            {row.delivery?.company_id ? 'Reassign Delivery' : 'Assign Delivery'}
+                          </button>
+                        )}
+                        {canViewDelivery && row.delivery && (
+                          <button className="table-action-btn" onClick={() => openDeliveryDetail(row)}>Delivery Details</button>
                         )}
 
                         {/* Product reviews: moderation only */}
@@ -2957,6 +3223,179 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       )}
 
       {/* Confirm delete modal — replaces window.confirm */}
+      {companyDetail && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:520, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
+          <div role="dialog" aria-modal="true" aria-label="Delivery company access" style={{ position:'relative', background:'#fff', borderRadius:12, padding:28, width:'100%', maxWidth:820, maxHeight:'88vh', overflow:'auto', boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setCompanyDetail(null)} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Company Access</h3>
+            <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:16 }}>
+              {companyDetail.company?.name}
+            </p>
+            {companyDetailError ? <p className="form-error">{companyDetailError}</p> : null}
+            <div style={{ border:'1px solid var(--border-light,#e2e8f0)', borderRadius:10, padding:14, marginBottom:18 }}>
+              <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Create Company Manager</h4>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))', gap:10 }}>
+                <input className="form-input" placeholder="Manager name" value={companyManagerForm.name} onChange={e => setCompanyManagerForm(prev => ({ ...prev, name: e.target.value }))} />
+                <input className="form-input" placeholder="Phone number" value={companyManagerForm.phone} onChange={e => setCompanyManagerForm(prev => ({ ...prev, phone: e.target.value }))} />
+                <input className="form-input" type="password" placeholder="Temporary password" value={companyManagerForm.password} onChange={e => setCompanyManagerForm(prev => ({ ...prev, password: e.target.value }))} />
+                <button className="btn btn-primary btn-sm" type="button" disabled={companyDetailBusy} onClick={createCompanyManager}>Create Manager</button>
+              </div>
+            </div>
+            <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Managers</h4>
+            <div style={{ display:'grid', gap:8, marginBottom:18 }}>
+              {(companyDetail.managers || []).length === 0 ? <p style={{ color:'var(--gray-600)', margin:0 }}>No company managers yet.</p> : null}
+              {(companyDetail.managers || []).map(manager => (
+                <div key={manager.id} style={{ display:'grid', gridTemplateColumns:'minmax(180px,1fr) minmax(160px,220px) auto', gap:8, alignItems:'center', border:'1px solid var(--border-light,#e2e8f0)', borderRadius:8, padding:10 }}>
+                  <div>
+                    <strong style={{ color:'var(--navy)' }}>{manager.name}</strong>
+                    <div style={{ color:'var(--gray-600)', fontSize:'0.8rem' }}>{manager.phone} | {manager.is_active ? 'Active' : 'Inactive'}</div>
+                  </div>
+                  <input className="form-input" type="password" placeholder="New temporary password" value={companyManagerPasswords[manager.id] || ''} onChange={e => setCompanyManagerPasswords(prev => ({ ...prev, [manager.id]: e.target.value }))} />
+                  <button className="btn btn-outline-navy btn-sm" type="button" disabled={companyDetailBusy} onClick={() => resetCompanyManagerPassword(manager.id)}>Reset Password</button>
+                </div>
+              ))}
+            </div>
+            <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Riders</h4>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18 }}>
+              {(companyDetail.riders || []).length === 0 ? <p style={{ color:'var(--gray-600)', margin:0 }}>Riders are created by the company manager in the company portal.</p> : null}
+              {(companyDetail.riders || []).map(rider => (
+                <span key={rider.id} style={{ border:'1px solid var(--border-light,#e2e8f0)', borderRadius:999, padding:'6px 10px', color:'var(--navy)' }}>{rider.name} ({rider.is_active ? 'active' : 'inactive'})</span>
+              ))}
+            </div>
+            <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Recent Deliveries</h4>
+            <div style={{ display:'grid', gap:8 }}>
+              {(companyDetail.deliveries || []).length === 0 ? <p style={{ color:'var(--gray-600)', margin:0 }}>No delivery history yet.</p> : null}
+              {(companyDetail.deliveries || []).slice(0, 12).map(delivery => (
+                <div key={delivery.id} style={{ display:'flex', justifyContent:'space-between', gap:10, border:'1px solid var(--border-light,#e2e8f0)', borderRadius:8, padding:'9px 10px' }}>
+                  <strong style={{ color:'var(--navy)' }}>{delivery.order_reference}</strong>
+                  <span>{statusLabel(delivery.status)}</span>
+                  <span>{delivery.rider_name || 'Unassigned'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deliveryAssign && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-label="Assign order to delivery company" style={{ position:'relative', background:'#fff', borderRadius:12, padding:32, width:'100%', maxWidth:480, boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setDeliveryAssign(null)} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Assign Delivery</h3>
+            <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:20 }}>
+              Order: <strong>{deliveryAssign.order_reference}</strong> for {deliveryAssign.customer_name}
+            </p>
+            {deliveryAssign.delivery?.status === 'rejected_by_company' && (
+              <p className="form-error" style={{ marginBottom:12 }}>
+                The previous delivery company rejected this order. Assign it to another company for staff action.
+              </p>
+            )}
+            <div className="form-group" style={{ marginBottom:16 }}>
+              <label className="form-label">Delivery Company</label>
+              <select className="form-select" value={deliveryAssignCompany} onChange={e => setDeliveryAssignCompany(e.target.value)}>
+                <option value="">Choose company</option>
+                {activeDeliveryCompanies.map(company => (
+                  <option key={company.id} value={company.id}>{company.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group" style={{ marginBottom:16 }}>
+              <label className="form-label">Assignment Note</label>
+              <textarea className="form-textarea" rows={3} value={deliveryAssignNote}
+                onChange={e => setDeliveryAssignNote(e.target.value)}
+                placeholder="Optional note for dispatch context." />
+            </div>
+            {deliveryAssignError && <p style={{ color:'var(--danger)', fontSize:'0.8rem', marginBottom:12 }}>{deliveryAssignError}</p>}
+            <div style={{ display:'flex', gap:10 }}>
+              <button className="btn btn-primary" disabled={deliveryAssignBusy} onClick={submitDeliveryAssign}>
+                {deliveryAssignBusy ? 'Assigning...' : 'Assign'}
+              </button>
+              <button className="btn btn-outline-navy" onClick={() => setDeliveryAssign(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deliveryDetail && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:520, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
+          <div role="dialog" aria-modal="true" aria-label="Delivery details" style={{ position:'relative', background:'#fff', borderRadius:12, padding:28, width:'100%', maxWidth:760, maxHeight:'88vh', overflow:'auto', boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setDeliveryDetail(null)} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Delivery Details</h3>
+            <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:16 }}>
+              Order: <strong>{deliveryDetail.order?.order_reference}</strong> for {deliveryDetail.order?.customer_name}
+            </p>
+            {deliveryDetailError ? <p className="form-error">{deliveryDetailError}</p> : null}
+            {deliveryDetail.contact_warning ? <p className="form-error">{deliveryDetail.contact_warning}</p> : null}
+            {deliveryDetail.delivery ? (
+              <>
+                <div className="admin-detail-grid" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:10, marginBottom:18 }}>
+                  {[
+                    ['Company', deliveryDetail.delivery.company_name || 'Unassigned'],
+                    ['Rider', deliveryDetail.delivery.rider_name || 'Unassigned'],
+                    ['Delivery Status', statusLabel(deliveryDetail.delivery.status)],
+                    ['OTP Status', deliveryDetail.delivery.otp?.blocked ? 'Blocked' : statusLabel(deliveryDetail.delivery.otp?.status || 'not_generated')],
+                    ['Picked Up', deliveryDetail.delivery.picked_up_at ? new Date(deliveryDetail.delivery.picked_up_at).toLocaleString() : '-'],
+                    ['Delivered', deliveryDetail.delivery.delivered_at ? new Date(deliveryDetail.delivery.delivered_at).toLocaleString() : '-'],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ border:'1px solid var(--border-light,#e2e8f0)', borderRadius:8, padding:'10px 12px' }}>
+                      <div style={{ fontSize:'0.7rem', color:'var(--gray-600)', fontWeight:800, textTransform:'uppercase' }}>{label}</div>
+                      <div style={{ color:'var(--navy)', fontWeight:700, marginTop:3 }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:18 }}>
+                  {canAssignDelivery && deliveryDetail.delivery.status === 'picked_up' && (
+                    <button className="btn btn-outline-navy btn-sm" type="button" disabled={deliveryDetailBusy} onClick={resendDeliveryOtp}>Resend OTP</button>
+                  )}
+                </div>
+                {canOverrideOtp && ['picked_up', 'issue_reported'].includes(deliveryDetail.delivery.status) && (
+                  <div style={{ border:'1px solid var(--border-light,#e2e8f0)', borderRadius:10, padding:14, marginBottom:18 }}>
+                    <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>OTP Override</h4>
+                    <div className="form-group" style={{ marginBottom:10 }}>
+                      <label className="form-label">Reason</label>
+                      <select className="form-select" value={otpOverrideReason} onChange={e => setOtpOverrideReason(e.target.value)}>
+                        <option value="">Choose reason</option>
+                        {OTP_OVERRIDE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ marginBottom:10 }}>
+                      <label className="form-label">Note</label>
+                      <textarea className="form-textarea" rows={3} value={otpOverrideNote} onChange={e => setOtpOverrideNote(e.target.value)} placeholder="Required context for the audit trail." />
+                    </div>
+                    <button className="btn btn-primary btn-sm" type="button" disabled={deliveryDetailBusy} onClick={submitOtpOverride}>Record Override</button>
+                  </div>
+                )}
+                <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Audit Trail</h4>
+                <div style={{ display:'grid', gap:8 }}>
+                  {(deliveryDetail.delivery.events || []).length === 0 ? (
+                    <p style={{ color:'var(--gray-600)', margin:0 }}>No delivery events recorded yet.</p>
+                  ) : deliveryDetail.delivery.events.map(event => (
+                    <div key={event.id} style={{ border:'1px solid var(--border-light,#e2e8f0)', borderRadius:8, padding:'10px 12px' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', gap:10, flexWrap:'wrap' }}>
+                        <strong style={{ color:'var(--navy)' }}>{statusLabel(event.event_type)}</strong>
+                        <span style={{ fontSize:'0.78rem', color:'var(--gray-600)' }}>{event.created_at ? new Date(event.created_at).toLocaleString() : ''}</span>
+                      </div>
+                      <div style={{ fontSize:'0.8rem', color:'var(--gray-600)', marginTop:4 }}>
+                        Actor: {statusLabel(event.actor_type)}{event.reason ? ` | Reason: ${statusLabel(event.reason)}` : ''}
+                      </div>
+                      {event.note ? <p style={{ margin:'6px 0 0', color:'var(--gray-700)' }}>{event.note}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <EmptySection title="No Delivery Assigned" body="Assign this order to a delivery company to start delivery tracking." />
+            )}
+          </div>
+        </div>
+      )}
+
       {confirmModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
           <div role="dialog" aria-modal="true" aria-label="Confirm permanent deletion" style={{ position:'relative', background:'#fff', borderRadius:16, padding:'36px 32px', width:'100%', maxWidth:420, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>

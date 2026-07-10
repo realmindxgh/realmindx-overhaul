@@ -270,6 +270,11 @@ DEFAULT_PERMISSIONS = [
     "manage_newsletters",
     "manage_settings",
     "manage_admins",
+    "delivery.view",
+    "delivery.assign",
+    "delivery.companies.manage",
+    "delivery.audit.view",
+    "delivery.override_otp",
     *[
         f"{area}.{action}"
         for area, actions in {
@@ -328,6 +333,8 @@ def seed_permissions():
     admin = ensure_role("admin", "Full RealMindX administration access.")
     staff = ensure_role("staff", "Permission-scoped staff account.")
     user = ensure_role("user", "Public applicant or customer account.")
+    ensure_role("delivery_company_user", "Delivery company portal user.")
+    ensure_role("delivery_rider", "Delivery rider portal user.")
     admin.permissions = list(permissions.values())
     db.session.flush()
     return admin, staff, user

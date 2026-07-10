@@ -83,6 +83,13 @@ def create_app(config_object=Config):
     def service_detail(slug):
         return service_public_page(slug)
 
+    @app.get("/delivery-company", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/delivery-company/<path:tail>", strict_slashes=False)
+    @app.get("/delivery", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/delivery/<path:tail>", strict_slashes=False)
+    def delivery_portal_page(tail):
+        return main_public_page("")
+
     @app.get("/", strict_slashes=False)
     def bookshop_root_page():
         if is_bookshop_host():

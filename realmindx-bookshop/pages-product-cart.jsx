@@ -4,7 +4,7 @@ import { useCart, useWishlist, ProductCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { trackProductView } from '../src/lib/analytics.js';
-import { useSiteCopyState } from '../src/lib/siteContent.js';
+import { canUseLocalFallback, useSiteCopyState } from '../src/lib/siteContent.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { setBookshopAuthReturn } from './authReturn.js';
 import globalToast from '../src/lib/toast.js';
@@ -165,6 +165,7 @@ const PDP_RETURNS_FALLBACK = 'Unused items in original condition can be returned
 const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
   const { books, loading: catalogLoading } = useCatalog();
   const { copy: siteCopy, loading: siteCopyLoading } = useSiteCopyState({ waitForApi: true });
+  const allowLocalFallback = canUseLocalFallback();
   const book = books.find(b => b.id === bookId) || books.find(b => productMatchesSegment(b, bookSlug)) || null;
   const { add, buyNow } = useCart();
   const wishlist = useWishlist();
@@ -266,6 +267,10 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
   const relatedTitle = samePublisher.length && book.publisher
     ? `More from ${book.publisher}`
     : 'More in this category';
+  const deliveryCopy = siteCopy.bookshop_pdp_delivery_info
+    || (allowLocalFallback ? PDP_DELIVERY_FALLBACK : 'Current delivery information is unavailable.');
+  const returnsCopy = siteCopy.bookshop_pdp_return_policy
+    || (allowLocalFallback ? PDP_RETURNS_FALLBACK : 'Current return policy is unavailable.');
   // Star distribution computed from the actual fetched reviews (5★ first)
   const ratingDist = [5, 4, 3, 2, 1].map(star => (
     productReviews.length
@@ -386,10 +391,10 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
               exercises and revision questions - ideal for both classroom teaching and self-study at home.`}
             </Accordion>
             <Accordion title="Delivery information">
-              <span style={{ whiteSpace: 'pre-line' }}>{siteCopyLoading ? 'Loading current delivery information...' : siteCopy.bookshop_pdp_delivery_info || PDP_DELIVERY_FALLBACK}</span>
+              <span style={{ whiteSpace: 'pre-line' }}>{siteCopyLoading ? 'Loading current delivery information...' : deliveryCopy}</span>
             </Accordion>
             <Accordion title="Return policy">
-              <span style={{ whiteSpace: 'pre-line' }}>{siteCopyLoading ? 'Loading current return policy...' : siteCopy.bookshop_pdp_return_policy || PDP_RETURNS_FALLBACK}</span>
+              <span style={{ whiteSpace: 'pre-line' }}>{siteCopyLoading ? 'Loading current return policy...' : returnsCopy}</span>
             </Accordion>
           </div>
         </div>

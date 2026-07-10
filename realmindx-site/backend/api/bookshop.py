@@ -53,7 +53,15 @@ from ..models import (
     PromoCode,
 )
 from ..security import require_turnstile
-from ..serializers import category_json, delivery_zone_json, order_json, order_review_json, product_json, product_review_json
+from ..serializers import (
+    category_json,
+    delivery_tracking_json,
+    delivery_zone_json,
+    order_json,
+    order_review_json,
+    product_json,
+    product_review_json,
+)
 
 bookshop_bp = Blueprint("bookshop", __name__)
 
@@ -592,10 +600,11 @@ def list_delivery_zones():
 
 
 def order_tracking_json(order):
-    payload = order_json(order)
+    payload = order_json(order, include_delivery=False)
     payload["created_at"] = order.created_at.isoformat() if order.created_at else None
     payload["updated_at"] = order.updated_at.isoformat() if order.updated_at else None
     payload["paid_at"] = order.paid_at.isoformat() if order.paid_at else None
+    payload["delivery_tracking"] = delivery_tracking_json(getattr(order, "delivery", None))
     return payload
 
 
