@@ -457,7 +457,7 @@ const JOB_ALERT_MODAL_KEY = 'rmx-jobs-alert-modal-dismissed';
 const JobsPage = () => {
   const managedJobs = publicItems(useManagedCollection('jobs'));
   const [apiJobs, setApiJobs] = React.useState(null);
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
 
   React.useEffect(() => {
     if (!isApiMode()) return;

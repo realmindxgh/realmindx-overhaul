@@ -694,6 +694,10 @@ const shouldNoIndexPath = (path) => (
   || path === '/login'
   || path === '/register'
   || path === '/signup'
+  || path === '/forgot-password'
+  || path === '/user/login'
+  || path === '/user/register'
+  || path === '/user/signup'
   || path === '/reset-password'
   || path.startsWith('/portal')
   || path.startsWith('/admin')
@@ -842,7 +846,7 @@ const HashScroll = ({ children }) => {
 
 const IdleGuard = () => {
   const location = useLocation();
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const isBookshopRoute = location.pathname.startsWith('/bookshop');
   // Only dashboards send the user to a login screen on sign-out; any other
   // page just reloads in place, now logged out, with a toast explaining why.
@@ -894,6 +898,7 @@ const SessionBridge = () => {
     if (
       location.pathname.startsWith('/admin')
       || location.pathname.startsWith('/staff')
+      || location.pathname.startsWith('/portal')
       || location.pathname.startsWith('/delivery-company')
       || location.pathname.startsWith('/delivery')
     ) {
@@ -984,8 +989,8 @@ const FlyerFocusModal = () => {
   const [flyer, setFlyer] = React.useState(null);
 
   React.useEffect(() => {
-    const path = window.location.pathname;
-    if (/^\/(admin|staff|portal)(\/|$)/.test(path)) return undefined;
+    const path = window.location.pathname.replace(/\/$/, '') || '/';
+    if (shouldNoIndexPath(path)) return undefined;
 
     let lastSeen = 0;
     try {

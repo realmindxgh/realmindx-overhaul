@@ -13,6 +13,7 @@ import logoWhite from '../assets/logo-white.png';
 import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
 import { TEACHING_CURRICULA } from '../../src/lib/teachingOptions.js';
 import { PRODUCT_CURRICULUM_OPTIONS, PRODUCT_LEVEL_OPTIONS, PRODUCT_SUBJECT_OPTIONS } from '../../src/lib/bookshopTaxonomy.js';
+import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
@@ -4206,7 +4207,7 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
   const loginPath = loginPathForRole(requiredRole);
   const [activeView, setActiveView] = React.useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const [sessionChecked, setSessionChecked] = React.useState(!isApiMode());
   const isInternalSession = ['admin', 'staff'].includes(session?.role);
   const adminName = isInternalSession ? (session.firstName || portalLabel) : portalLabel;
@@ -4304,7 +4305,7 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
     }
   }, [loginPath, requiredRole, session, sessionChecked]);
 
-  if (!sessionChecked) return null;
+  if (!sessionChecked) return <AuthLoadingScreen />;
 
   const view = activeView === 'dashboard'
     ? <DashboardView content={content} setActive={setActiveView} session={session} />

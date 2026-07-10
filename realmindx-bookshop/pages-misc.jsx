@@ -22,6 +22,7 @@ import { API_BASE, api, isApiMode } from '../src/lib/apiClient.js';
 import { normalizeOrderStatus, orderStatusLabel } from '../src/lib/orderStatus.js';
 import VerifiedContactField from '../src/lib/VerifiedContactField.jsx';
 import { bookshopPathForRoute } from './urls.js';
+import AuthLoadingScreen from '../src/lib/AuthLoadingScreen.jsx';
 const bookshopHeroImage = '/bookshop-og.png';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
@@ -1048,9 +1049,13 @@ const OrderCard = ({ order, onOpen }) => {
 // ─── Account page ─────────────────────────────────────────────────────────────
 
 const useSession = () => {
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
+  const [checking, setChecking] = React.useState(isApiMode());
   React.useEffect(() => {
-    const refresh = () => setSession(getDemoSession());
+    const refresh = () => {
+      setSession(getDemoSession());
+      setChecking(false);
+    };
     window.addEventListener('rmx-session-sync', refresh);
     window.addEventListener('storage', refresh);
     return () => {
@@ -1060,10 +1065,14 @@ const useSession = () => {
   }, []);
   React.useEffect(() => {
     let alive = true;
-    syncSessionFromApi().then(s => { if (alive) setSession(s); });
+    syncSessionFromApi().then(s => {
+      if (!alive) return;
+      setSession(s);
+      setChecking(false);
+    });
     return () => { alive = false; };
   }, []);
-  return session;
+  return { session, checking };
 };
 
 const AccountSidebar = ({
@@ -1102,7 +1111,7 @@ const AccountSidebar = ({
 );
 
 const LegacyAccountPage = ({ navigate }) => {
-  const session = useSession();
+  const { session, checking: sessionChecking } = useSession();
   const [orders, setOrders] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [modalOrder, setModalOrder] = React.useState(null);
@@ -1124,6 +1133,8 @@ const LegacyAccountPage = ({ navigate }) => {
       lastName: session?.lastName || '',
     });
   }, [session?.firstName, session?.lastName]);
+
+  if (sessionChecking) return <AuthLoadingScreen />;
 
   if (!session?.role) {
     return (
@@ -1327,7 +1338,7 @@ const LegacyAccountPage = ({ navigate }) => {
 // ─── Orders page ──────────────────────────────────────────────────────────────
 
 const ExperimentalAccountPage = ({ navigate }) => {
-  const session = useSession();
+  const { session, checking: sessionChecking } = useSession();
   const [orders, setOrders] = React.useState([]);
   const [orderCount, setOrderCount] = React.useState(0);
   const [checkoutDetails, setCheckoutDetails] = React.useState([]);
@@ -1369,6 +1380,8 @@ const ExperimentalAccountPage = ({ navigate }) => {
     });
     return () => { alive = false; };
   }, [session?.role]);
+
+  if (sessionChecking) return <AuthLoadingScreen />;
 
   if (!session?.role) {
     return (
@@ -1674,7 +1687,7 @@ const ExperimentalAccountPage = ({ navigate }) => {
 };
 
 const AccountPage = ({ navigate }) => {
-  const session = useSession();
+  const { session, checking: sessionChecking } = useSession();
   const [orders, setOrders] = React.useState([]);
   const [checkoutDetails, setCheckoutDetails] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -1730,6 +1743,8 @@ const AccountPage = ({ navigate }) => {
     });
     return () => { alive = false; };
   }, [session?.role]);
+
+  if (sessionChecking) return <AuthLoadingScreen />;
 
   if (!session?.role) {
     return (
@@ -2229,7 +2244,7 @@ const ORDER_STATUS_OPTIONS = [
 const ORDERS_PER_PAGE = 40; // 2 cols × 20 rows; paginate after this
 
 const LegacyOrdersPage = ({ navigate }) => {
-  const session = useSession();
+  const { session, checking: sessionChecking } = useSession();
   const [orders, setOrders] = React.useState([]);
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
@@ -2259,6 +2274,8 @@ const LegacyOrdersPage = ({ navigate }) => {
       setPages(data.pages || 1);
     }).catch(() => setOrders([])).finally(() => setLoading(false));
   }, [session?.role, page, debouncedSearch, sort, statusFilter]);
+
+  if (sessionChecking) return <AuthLoadingScreen />;
 
   if (!session?.role) {
     return (
@@ -2394,7 +2411,7 @@ const LegacyOrdersPage = ({ navigate }) => {
 const ORDER_REVIEW_SCORES = Array.from({ length: 10 }, (_, index) => index + 1);
 
 const OrdersPage = ({ navigate }) => {
-  const session = useSession();
+  const { session, checking: sessionChecking } = useSession();
   const [orders, setOrders] = React.useState([]);
   const [total, setTotal] = React.useState(0);
   const [pages, setPages] = React.useState(1);
@@ -2436,6 +2453,8 @@ const OrdersPage = ({ navigate }) => {
     });
     return () => { alive = false; };
   }, [session?.role, page, debouncedSearch, sort, statusFilter]);
+
+  if (sessionChecking) return <AuthLoadingScreen />;
 
   if (!session?.role) {
     return (
@@ -2598,7 +2617,7 @@ const OrdersPage = ({ navigate }) => {
 };
 
 const OrderReviewPage = ({ navigate }) => {
-  const session = useSession();
+  const { session } = useSession();
   const initialSearch = React.useMemo(() => (
     typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search)
   ), []);

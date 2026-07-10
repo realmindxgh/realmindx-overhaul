@@ -5,6 +5,7 @@ import { getDemoSession } from '../../src/lib/demoAccounts.js';
 import { trackNewsServiceClick } from '../../src/lib/analytics.js';
 import { signOut, syncSessionFromApi } from '../../src/lib/authClient.js';
 import { dashboardPathForRole } from '../../src/lib/sessionRoutes.js';
+import { isApiMode } from '../../src/lib/apiClient.js';
 import toast from '../../src/lib/toast.js';
 import { servicePath } from '../../src/lib/seoRoutes.js';
 import {
@@ -79,7 +80,7 @@ const currentPageKey = () => {
 const SESSION_KEY = 'realmindx.demoSession';
 
 const NavUserPill = () => {
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -185,7 +186,7 @@ export const Nav = ({ activePage, solid = false }) => {
   const [open, setOpen] = React.useState(false);
   const [activeDropdown, setActiveDropdown] = React.useState(null);
   const [openMobileDropdown, setOpenMobileDropdown] = React.useState(null);
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const managedServices = usePublicServices();
   const currentPage = activePage || currentPageKey();
   const isLoggedIn = Boolean(session?.role);

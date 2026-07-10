@@ -15,6 +15,7 @@ import {
   TEACHING_SUBJECTS,
   TEACHING_WORK_TYPES,
 } from '../../src/lib/teachingOptions.js';
+import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 
 // Splits a comma-joined multi-select value (e.g. "Mathematics, Physics, ICT")
 // into trimmed, non-empty parts. Mirrors the `.join(', ')` used whenever a
@@ -1613,7 +1614,7 @@ const UserPortalPage = () => {
   const [activeView, setActiveView] = useState(viewFromLocation);
   const pendingActionRef = React.useRef(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const [sessionChecked, setSessionChecked] = React.useState(!isApiMode());
   const [apiProfile, setApiProfile] = React.useState(null);
   const [apiApplications, setApiApplications] = React.useState(null);
@@ -1738,7 +1739,7 @@ const UserPortalPage = () => {
     };
   }, [session, sessionChecked]);
 
-  if (!sessionChecked || !session) return <PortalLoadingState />;
+  if (!sessionChecked || !session) return <AuthLoadingScreen />;
   if (['admin', 'staff'].includes(session.role)) return null;
   if (portalLoading) return <PortalLoadingState />;
   if (portalLoadError) return <PortalLoadingState error={portalLoadError} />;

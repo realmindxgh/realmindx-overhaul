@@ -4833,6 +4833,33 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 }
 
 /* Delivery company and rider portals */
+.auth-route-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: #f5f8fc;
+  color: #143670;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.auth-route-loading-spinner {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 2px solid #cbd7e7;
+  border-top-color: #143670;
+  border-radius: 50%;
+  animation: authRouteSpin 0.75s linear infinite;
+}
+
+@keyframes authRouteSpin {
+  to { transform: rotate(360deg); }
+}
+
 .delivery-portal {
   min-height: 100vh;
   background: #f5f8fc;

@@ -55,7 +55,11 @@ export const syncSessionFromApi = async () => {
     saveDemoSession(session);
     return session;
   } catch {
-    return getDemoSession();
+    // A locally mirrored identity is never proof of a live API session.
+    // Clear it whenever verification fails so protected or auth-related UI
+    // cannot briefly render stale user details.
+    clearDemoSession();
+    return null;
   }
 };
 

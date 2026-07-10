@@ -4,6 +4,7 @@ import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { signInWithPhone, signOut } from '../../src/lib/authClient.js';
 import { clearDemoSession } from '../../src/lib/demoAccounts.js';
 import { loginPathForRole } from '../../src/lib/sessionRoutes.js';
+import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 
 const ACTIVE_POLL_MS = 15000;
 
@@ -116,15 +117,6 @@ const EmptyState = ({ title, body }) => (
   </div>
 );
 
-const PortalAccessChecking = () => (
-  <main className="delivery-portal delivery-auth-check">
-    <div className="delivery-empty">
-      <h2>Checking secure access</h2>
-      <p>Confirming your delivery portal session.</p>
-    </div>
-  </main>
-);
-
 const PortalAccessGate = ({ role, children }) => {
   const [verified, setVerified] = React.useState(false);
 
@@ -153,7 +145,7 @@ const PortalAccessGate = ({ role, children }) => {
     return () => { alive = false; };
   }, [role]);
 
-  if (!verified) return <PortalAccessChecking />;
+  if (!verified) return <AuthLoadingScreen />;
   return children;
 };
 

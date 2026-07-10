@@ -362,7 +362,7 @@ const CartProviderInner = ({ children, navigate }) => {
 
 // ---------- User account pill (navbar) ----------
 const NavUserMenu = ({ navigate }) => {
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
 
@@ -936,7 +936,7 @@ const ScrollToTopFab = ({ route }) => {
 // ---------- Mobile bottom nav ----------
 const BottomNav = ({ route, navigate }) => {
   const { count } = useCart();
-  const [session, setSession] = React.useState(() => getDemoSession());
+  const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   React.useEffect(() => {
     const refresh = () => setSession(getDemoSession());
     window.addEventListener('rmx-session-sync', refresh);
