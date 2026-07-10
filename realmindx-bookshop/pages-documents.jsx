@@ -124,10 +124,9 @@ const DocumentsPage = ({ navigate }) => {
             <h1 className="bs-h1">Guides, templates, and learning resources</h1>
             <p>Helpful education documents for schools, teachers, parents, and learners.</p>
           </div>
-          <div className="bs-documents-count" aria-label={`${documents.length} published documents`}>
+          <div className="bs-documents-count" aria-label={loading ? 'Published documents loading' : error ? 'Published documents unavailable' : `${documents.length} published documents`} aria-busy={loading}>
             <Icon name="files" size={24} />
-            <strong>{documents.length}</strong>
-            <span>Published</span>
+            {loading ? <span>Loading</span> : error ? <span>Unavailable</span> : <><strong>{documents.length}</strong><span>Published</span></>}
           </div>
         </div>
       </section>
@@ -159,12 +158,14 @@ const DocumentsPage = ({ navigate }) => {
           </div>
         </div>
 
-        <div className="bs-documents-results-head">
-          <span>{filteredDocuments.length} document{filteredDocuments.length === 1 ? '' : 's'}</span>
-          {(query || filter !== 'all') && (
-            <button type="button" onClick={() => { setQuery(''); setFilter('all'); }}>Clear</button>
-          )}
-        </div>
+        {!loading && !error ? (
+          <div className="bs-documents-results-head">
+            <span>{filteredDocuments.length} document{filteredDocuments.length === 1 ? '' : 's'}</span>
+            {(query || filter !== 'all') && (
+              <button type="button" onClick={() => { setQuery(''); setFilter('all'); }}>Clear</button>
+            )}
+          </div>
+        ) : null}
 
         {loading ? (
           <LoadingState title="Loading documents" body="Fetching the latest education resources." />
