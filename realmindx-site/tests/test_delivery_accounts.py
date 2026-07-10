@@ -310,7 +310,9 @@ class DeliveryAccountTests(unittest.TestCase):
         ]:
             response = client.get(path, headers={"Host": "bookshop.realmindxgh.com"})
             self.assertEqual(response.status_code, 200, path)
-            self.assertIn('content="index, follow"', response.get_data(as_text=True), path)
+            document = response.get_data(as_text=True)
+            self.assertIn('content="index, follow"', document, path)
+            self.assertIn(f'href="https://bookshop.realmindxgh.com{path}"', document, path)
 
         sitemap = client.get("/sitemap.xml", headers={"Host": "bookshop.realmindxgh.com"}).get_data(as_text=True)
         self.assertIn("/products/mathematics-practice-book", sitemap)
@@ -318,6 +320,14 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertIn("/subjects/mathematics", sitemap)
         self.assertIn("/track", sitemap)
         self.assertIn("/invoice", sitemap)
+
+    def test_private_portal_shells_are_noindex(self):
+        client = self.app.test_client()
+        for path in ["/admin/dashboard", "/staff/dashboard", "/delivery-company/", "/delivery/"]:
+            response = client.get(path, headers={"Host": "realmindxgh.com"})
+            self.assertEqual(response.status_code, 200, path)
+            self.assertEqual(response.headers.get("X-Robots-Tag"), "noindex, nofollow", path)
+            self.assertIn('content="noindex, nofollow"', response.get_data(as_text=True), path)
 
     @patch("backend.api.admin._send_internal_account_access_email", return_value="sent")
     def test_admin_created_staff_gets_default_password(self, _notify):

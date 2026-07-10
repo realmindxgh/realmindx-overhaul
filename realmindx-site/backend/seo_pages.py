@@ -810,6 +810,34 @@ def main_public_page(path=""):
     return response
 
 
+def private_app_page(path=""):
+    clean_path = str(path or "").strip("/")
+    canonical = MAIN_SITE_BASE_URL if not clean_path else f"{MAIN_SITE_BASE_URL}/{clean_path}"
+    document = _frontend_document()
+    if document is None:
+        return Response("The portal is temporarily unavailable.", status=503, mimetype="text/plain")
+
+    rendered = _render_document(
+        document,
+        title="RealMindX Secure Portal",
+        description="Secure access for authorised RealMindX users.",
+        canonical=canonical,
+        robots="noindex, nofollow",
+        image=SITE_DEFAULT_IMAGE,
+        markup="",
+        site_name="RealMindX Education",
+        image_alt="RealMindX Education",
+        image_dimensions=(1200, 630),
+        favicon=EDUCATION_FAVICON,
+        apple_touch_icon=EDUCATION_APPLE_TOUCH_ICON,
+        theme_color="#143670",
+    )
+    response = Response(rendered, status=200, mimetype="text/html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
+
 def news_article_page(slug):
     canonical = f"{MAIN_SITE_BASE_URL}/news/{slug}"
     if request.path.endswith("/"):

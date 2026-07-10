@@ -7,7 +7,7 @@ from .cli import register_cli
 from .config import Config
 from .extensions import cors, csrf, db, limiter, login_manager, migrate
 from .models import User
-from .seo_pages import bookshop_public_page, main_public_page, news_article_page, service_public_page
+from .seo_pages import bookshop_public_page, main_public_page, news_article_page, private_app_page, service_public_page
 
 
 def create_app(config_object=Config):
@@ -87,8 +87,12 @@ def create_app(config_object=Config):
     @app.get("/delivery-company/<path:tail>", strict_slashes=False)
     @app.get("/delivery", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/delivery/<path:tail>", strict_slashes=False)
+    @app.get("/admin", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/admin/<path:tail>", strict_slashes=False)
+    @app.get("/staff", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/staff/<path:tail>", strict_slashes=False)
     def delivery_portal_page(tail):
-        return main_public_page("")
+        return private_app_page(request.path)
 
     @app.get("/", strict_slashes=False)
     def bookshop_root_page():
