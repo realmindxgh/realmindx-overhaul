@@ -69,6 +69,12 @@ ROUTE_BLOCK = f"""{START_MARKER}
         proxy_set_header   X-Forwarded-Proto $scheme;
         proxy_read_timeout 60;
     }}
+
+    location ~ ^/(admin|staff|bookshop|delivery-company|delivery)\.webmanifest$ {{
+        types {{ application/manifest+json webmanifest; }}
+        try_files $uri =404;
+        add_header Cache-Control "no-cache, must-revalidate";
+    }}
 {END_MARKER}
 """
 
@@ -105,6 +111,12 @@ BOOKSHOP_ROUTE_BLOCK = f"""{BOOKSHOP_START_MARKER}
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
         proxy_read_timeout 60;
+    }}
+
+    location ~ ^/(admin|staff|bookshop|delivery-company|delivery)\.webmanifest$ {{
+        types {{ application/manifest+json webmanifest; }}
+        try_files $uri =404;
+        add_header Cache-Control "no-cache, must-revalidate";
     }}
 {BOOKSHOP_END_MARKER}
 """

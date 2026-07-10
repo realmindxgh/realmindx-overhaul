@@ -85,13 +85,22 @@ def create_app(config_object=Config):
 
     @app.get("/delivery-company", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/delivery-company/<path:tail>", strict_slashes=False)
+    def delivery_company_portal_page(tail):
+        return private_app_page(request.path)
+
     @app.get("/delivery", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/delivery/<path:tail>", strict_slashes=False)
+    def rider_portal_page(tail):
+        return private_app_page(request.path)
+
     @app.get("/admin", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/admin/<path:tail>", strict_slashes=False)
+    def admin_portal_page(tail):
+        return private_app_page(request.path)
+
     @app.get("/staff", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/staff/<path:tail>", strict_slashes=False)
-    def delivery_portal_page(tail):
+    def staff_portal_page(tail):
         return private_app_page(request.path)
 
     @app.get("/", strict_slashes=False)

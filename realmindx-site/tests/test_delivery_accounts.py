@@ -326,8 +326,11 @@ class DeliveryAccountTests(unittest.TestCase):
         for path in ["/admin/dashboard", "/staff/dashboard", "/delivery-company/", "/delivery/"]:
             response = client.get(path, headers={"Host": "realmindxgh.com"})
             self.assertEqual(response.status_code, 200, path)
+            self.assertIsNone(response.headers.get("Location"), path)
             self.assertEqual(response.headers.get("X-Robots-Tag"), "noindex, nofollow", path)
-            self.assertIn('content="noindex, nofollow"', response.get_data(as_text=True), path)
+            document = response.get_data(as_text=True)
+            self.assertIn('content="noindex, nofollow"', document, path)
+            self.assertIn(f'href="https://realmindxgh.com{path.rstrip("/")}"', document, path)
 
     @patch("backend.api.admin._send_internal_account_access_email", return_value="sent")
     def test_admin_created_staff_gets_default_password(self, _notify):
