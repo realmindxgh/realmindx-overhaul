@@ -14,6 +14,7 @@ import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
 import { TEACHING_CURRICULA } from '../../src/lib/teachingOptions.js';
 import { PRODUCT_CURRICULUM_OPTIONS, PRODUCT_LEVEL_OPTIONS, PRODUCT_SUBJECT_OPTIONS } from '../../src/lib/bookshopTaxonomy.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
+import { copyTextToClipboard } from '../../src/lib/clipboard.js';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
@@ -354,8 +355,7 @@ const CONFIG = {
       field('contact_email', 'Contact Email', 'email'),
       field('notes', 'Internal Notes', 'textarea'),
       field('manager_name', 'First Manager Name', 'text', { help: 'Used when creating the first company manager.' }),
-      field('manager_phone', 'First Manager Phone', 'text', { help: 'Phone/password login for the delivery company portal.' }),
-      field('manager_password', 'Temporary Manager Password', 'password', { help: 'Minimum 8 characters. The manager must change it after login.' }),
+      field('manager_phone', 'First Manager Phone', 'text', { help: 'Creates portal access with temporary password 12345678 and requires a first-login password change.' }),
       field('is_active', 'Active', 'checkbox'),
     ],
     columns: ['name', 'contact_phone', 'contact_email', 'active_deliveries', 'completed_deliveries', 'status'],
@@ -683,7 +683,6 @@ const CONFIG = {
     createLabel: 'Create Staff Account',
     fields: [
       field('email', 'Email Address', 'email'),
-      field('password', 'Password', 'password', { help: 'Required for new staff. Any new or reset password becomes temporary and must be changed on first sign-in.' }),
       field('first_name', 'First Name'),
       field('last_name', 'Last Name'),
       field('permissions', 'Permissions', 'permission-list', { options: PERMISSION_OPTIONS, groups: PERMISSION_GROUPS }),
@@ -698,7 +697,6 @@ const CONFIG = {
     createLabel: 'Create Admin Account',
     fields: [
       field('email', 'Email Address', 'email', { help: 'Use an official RealMindX admin email where possible.' }),
-      field('password', 'Temporary Password', 'password', { help: 'Required for new admins. Any new or reset password must be changed on first sign-in.' }),
       field('first_name', 'First Name'),
       field('last_name', 'Last Name'),
       field('status', 'Status', 'select', { options: ['active', 'inactive'] }),
@@ -2469,8 +2467,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [companyDetail, setCompanyDetail] = React.useState(null);
   const [companyDetailError, setCompanyDetailError] = React.useState('');
   const [companyDetailBusy, setCompanyDetailBusy] = React.useState(false);
-  const [companyManagerForm, setCompanyManagerForm] = React.useState({ name: '', phone: '', password: '' });
-  const [companyManagerPasswords, setCompanyManagerPasswords] = React.useState({});
+  const [companyManagerForm, setCompanyManagerForm] = React.useState({ name: '', phone: '' });
+  const [companyDetailTab, setCompanyDetailTab] = React.useState('overview');
+  const [companyRiderDetail, setCompanyRiderDetail] = React.useState(null);
+  const [companyRiderDetailBusy, setCompanyRiderDetailBusy] = React.useState(false);
 
   // In API mode: fetch on mount; in local mode: use rowsProp from parent.
   React.useEffect(() => {
@@ -2542,9 +2542,30 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const paginatedRows = sorted.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE);
 
   const handleCreate = async (payload) => {
-    await createItem(config.collection, payload);
-    setActionStatus({ type: 'success', message: `${config.title} record created.` });
+    const result = await createItem(config.collection, payload);
+    const temporaryPassword = result?.temporary_password;
+    const copied = temporaryPassword ? await copyTextToClipboard(temporaryPassword) : false;
+    const credentialMessage = temporaryPassword
+      ? ` Temporary password ${temporaryPassword}${copied ? ' was copied to the clipboard' : ' is ready to share'}. A first-login change is required.`
+      : '';
+    setActionStatus({ type: 'success', message: `${config.title} record created.${credentialMessage}` });
     setCreating(false);
+  };
+
+  const resetInternalAccountPassword = async (row) => {
+    setActionStatus(null);
+    try {
+      const result = await api.adminResetInternalPassword(config.collection, getItemId(row));
+      const temporaryPassword = result?.temporary_password || '12345678';
+      const copied = await copyTextToClipboard(temporaryPassword);
+      await fetchCollection(config.collection, { force: true });
+      setActionStatus({
+        type: 'success',
+        message: `Temporary password ${temporaryPassword}${copied ? ' was copied to the clipboard' : ' is ready to share'}. The account must change it on next sign-in.`,
+      });
+    } catch (err) {
+      setActionStatus({ type: 'error', message: err?.message || 'Could not reset the account password.' });
+    }
   };
 
   const getItemId = (row) => config.idField ? row[config.idField] : row.id;
@@ -2614,6 +2635,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const permissionKey = config.permissionKey || config.collection;
   const isDeliveryCompanies = config.collection === 'deliveryCompanies';
   const canManageDeliveryCompanies = hasSessionPermission(session, 'delivery.companies.manage');
+  const canViewDeliveryCompanies = isDeliveryCompanies && (hasSessionPermission(session, 'delivery.view') || canManageDeliveryCompanies);
   const canCreate = config.allowCreate !== false && Boolean(config.createLabel) && (isDeliveryCompanies ? canManageDeliveryCompanies : hasSessionPermission(session, `${permissionKey}.create`));
   const canUpdate = config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly && (isDeliveryCompanies ? canManageDeliveryCompanies : hasSessionPermission(session, `${permissionKey}.edit`));
   const canDelete = config.allowDelete !== false && !config.readOnly && hasSessionPermission(session, `${permissionKey}.delete`);
@@ -2631,7 +2653,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const canOverrideOtp = config.collection === 'orders'
     && hasSessionPermission(session, 'delivery.override_otp')
     && hasSessionPermission(session, 'orders.edit');
-  const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate || canAssignDelivery || canViewDelivery || canOverrideOtp;
+  const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate || canAssignDelivery || canViewDelivery || canOverrideOtp || canViewDeliveryCompanies;
 
   const refreshMissingImageStats = React.useCallback(async () => {
     if (config.collection !== 'products' || !isApiMode()) return;
@@ -2821,8 +2843,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     setCompanyDetail({ company: row, managers: [], riders: [], deliveries: [] });
     setCompanyDetailError('');
     setCompanyDetailBusy(true);
-    setCompanyManagerForm({ name: '', phone: '', password: '' });
-    setCompanyManagerPasswords({});
+    setCompanyManagerForm({ name: '', phone: '' });
+    setCompanyDetailTab('overview');
+    setCompanyRiderDetail(null);
     try {
       setCompanyDetail(await api.adminDeliveryCompanyDetail(getItemId(row)));
     } catch (err) {
@@ -2838,17 +2861,19 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   };
 
   const createCompanyManager = async () => {
-    if (!companyManagerForm.name.trim() || !companyManagerForm.phone.trim() || companyManagerForm.password.length < 8) {
-      setCompanyDetailError('Manager name, phone, and an 8+ character temporary password are required.');
+    if (!companyManagerForm.name.trim() || !companyManagerForm.phone.trim()) {
+      setCompanyDetailError('Manager name and phone are required.');
       return;
     }
     setCompanyDetailBusy(true);
     setCompanyDetailError('');
     try {
-      await api.adminCreateDeliveryCompanyManager(companyDetail.company.id, companyManagerForm);
+      const result = await api.adminCreateDeliveryCompanyManager(companyDetail.company.id, companyManagerForm);
+      const temporaryPassword = result?.temporary_password || '12345678';
+      const copied = await copyTextToClipboard(temporaryPassword);
       await refreshCompanyDetail();
-      setCompanyManagerForm({ name: '', phone: '', password: '' });
-      setActionStatus({ type: 'success', message: 'Company manager account created.' });
+      setCompanyManagerForm({ name: '', phone: '' });
+      setActionStatus({ type: 'success', message: `Company manager created. Temporary password ${temporaryPassword}${copied ? ' was copied to the clipboard' : ' is ready to share'}.` });
     } catch (err) {
       setCompanyDetailError(err?.message || 'Could not create company manager.');
     } finally {
@@ -2857,22 +2882,32 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   };
 
   const resetCompanyManagerPassword = async (managerId) => {
-    const password = companyManagerPasswords[managerId] || '';
-    if (password.length < 8) {
-      setCompanyDetailError('Temporary password must be at least 8 characters.');
-      return;
-    }
     setCompanyDetailBusy(true);
     setCompanyDetailError('');
     try {
-      await api.adminResetCompanyUserPassword(managerId, password);
+      const result = await api.adminResetCompanyUserPassword(managerId);
+      const temporaryPassword = result?.temporary_password || '12345678';
+      const copied = await copyTextToClipboard(temporaryPassword);
       await refreshCompanyDetail();
-      setCompanyManagerPasswords(prev => ({ ...prev, [managerId]: '' }));
-      setActionStatus({ type: 'success', message: 'Company manager password reset.' });
+      setActionStatus({ type: 'success', message: `Company manager password reset to ${temporaryPassword}${copied ? ' and copied to the clipboard' : ''}.` });
     } catch (err) {
       setCompanyDetailError(err?.message || 'Could not reset company manager password.');
     } finally {
       setCompanyDetailBusy(false);
+    }
+  };
+
+  const openCompanyRiderDetail = async (rider) => {
+    setCompanyRiderDetail({ rider, deliveries: [] });
+    setCompanyRiderDetailBusy(true);
+    setCompanyDetailError('');
+    try {
+      setCompanyRiderDetail(await api.adminDeliveryRiderDetail(rider.id));
+    } catch (err) {
+      setCompanyDetailError(err?.message || 'Could not load rider details.');
+      setCompanyRiderDetail(null);
+    } finally {
+      setCompanyRiderDetailBusy(false);
     }
   };
 
@@ -3131,8 +3166,11 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {/* Standard edit/publish */}
                         {canUpdate && <button className="table-action-btn" onClick={() => { setEditing(row); setCreating(false); }}>Edit</button>}
-                        {isDeliveryCompanies && canManageDeliveryCompanies && (
-                          <button className="table-action-btn" onClick={() => openCompanyDetail(row)}>Company Access</button>
+                        {canViewDeliveryCompanies && (
+                          <button className="table-action-btn" onClick={() => openCompanyDetail(row)}>View Company</button>
+                        )}
+                        {['admins', 'staff'].includes(config.collection) && canUpdate && (
+                          <button className="table-action-btn" onClick={() => resetInternalAccountPassword(row)}>Reset Password</button>
                         )}
                         {canReply && <button className="table-action-btn" onClick={() => { setReplying(row); setReplyText(''); setReplyError(''); setEditing(null); setCreating(false); }}>Reply</button>}
                         {'status' in row && canPublish && <button className="table-action-btn" onClick={() => togglePublish(row)}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</button>}
@@ -3230,52 +3268,109 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             <button className="admin-modal-close" type="button" onClick={() => setCompanyDetail(null)} aria-label="Close">
               <Icon name="x" size={16} />
             </button>
-            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Company Access</h3>
-            <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:16 }}>
-              {companyDetail.company?.name}
-            </p>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Delivery Company Details</h3>
+            <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:16 }}>{companyDetail.company?.name}</p>
             {companyDetailError ? <p className="form-error">{companyDetailError}</p> : null}
-            <div style={{ border:'1px solid var(--border-light,#e2e8f0)', borderRadius:10, padding:14, marginBottom:18 }}>
-              <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Create Company Manager</h4>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))', gap:10 }}>
-                <input className="form-input" placeholder="Manager name" value={companyManagerForm.name} onChange={e => setCompanyManagerForm(prev => ({ ...prev, name: e.target.value }))} />
-                <input className="form-input" placeholder="Phone number" value={companyManagerForm.phone} onChange={e => setCompanyManagerForm(prev => ({ ...prev, phone: e.target.value }))} />
-                <input className="form-input" type="password" placeholder="Temporary password" value={companyManagerForm.password} onChange={e => setCompanyManagerForm(prev => ({ ...prev, password: e.target.value }))} />
-                <button className="btn btn-primary btn-sm" type="button" disabled={companyDetailBusy} onClick={createCompanyManager}>Create Manager</button>
+            <div className="delivery-company-summary-grid">
+              {[
+                ['Status', companyDetail.company?.is_active ? 'Active' : 'Inactive'],
+                ['Contact', companyDetail.company?.contact_name || '-'],
+                ['Phone', companyDetail.company?.contact_phone || '-'],
+                ['Email', companyDetail.company?.contact_email || '-'],
+                ['Active Deliveries', companyDetail.company?.active_deliveries ?? 0],
+                ['Delivered', companyDetail.company?.completed_deliveries ?? 0],
+              ].map(([label, value]) => (
+                <div key={label}><span>{label}</span><strong>{value}</strong></div>
+              ))}
+            </div>
+            <div className="delivery-company-tabs" role="tablist" aria-label="Delivery company details">
+              {['overview', 'managers', 'riders', 'deliveries'].map(tab => (
+                <button key={tab} type="button" className={companyDetailTab === tab ? 'active' : ''} onClick={() => { setCompanyDetailTab(tab); setCompanyRiderDetail(null); }}>
+                  {statusLabel(tab)}
+                </button>
+              ))}
+            </div>
+
+            {companyDetailTab === 'overview' && (
+              <div className="delivery-company-overview">
+                <h4>Company Notes</h4>
+                <p>{companyDetail.company?.notes || 'No internal notes have been added.'}</p>
+                <h4>Operational Summary</h4>
+                <p>{(companyDetail.riders || []).length} rider{(companyDetail.riders || []).length === 1 ? '' : 's'}, {(companyDetail.managers || []).length} manager{(companyDetail.managers || []).length === 1 ? '' : 's'}, and {(companyDetail.deliveries || []).length} recorded deliver{(companyDetail.deliveries || []).length === 1 ? 'y' : 'ies'}.</p>
               </div>
-            </div>
-            <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Managers</h4>
-            <div style={{ display:'grid', gap:8, marginBottom:18 }}>
-              {(companyDetail.managers || []).length === 0 ? <p style={{ color:'var(--gray-600)', margin:0 }}>No company managers yet.</p> : null}
-              {(companyDetail.managers || []).map(manager => (
-                <div key={manager.id} style={{ display:'grid', gridTemplateColumns:'minmax(180px,1fr) minmax(160px,220px) auto', gap:8, alignItems:'center', border:'1px solid var(--border-light,#e2e8f0)', borderRadius:8, padding:10 }}>
-                  <div>
-                    <strong style={{ color:'var(--navy)' }}>{manager.name}</strong>
-                    <div style={{ color:'var(--gray-600)', fontSize:'0.8rem' }}>{manager.phone} | {manager.is_active ? 'Active' : 'Inactive'}</div>
+            )}
+
+            {companyDetailTab === 'managers' && (
+              <div>
+                {canManageDeliveryCompanies && (
+                  <div className="delivery-company-create-row">
+                    <div><h4>Create Company Manager</h4><p>Temporary password 12345678 is copied after creation and must be changed on first login.</p></div>
+                    <input className="form-input" placeholder="Manager name" value={companyManagerForm.name} onChange={e => setCompanyManagerForm(prev => ({ ...prev, name: e.target.value }))} />
+                    <input className="form-input" placeholder="Phone number" value={companyManagerForm.phone} onChange={e => setCompanyManagerForm(prev => ({ ...prev, phone: e.target.value }))} />
+                    <button className="btn btn-primary btn-sm" type="button" disabled={companyDetailBusy} onClick={createCompanyManager}>Create Manager</button>
                   </div>
-                  <input className="form-input" type="password" placeholder="New temporary password" value={companyManagerPasswords[manager.id] || ''} onChange={e => setCompanyManagerPasswords(prev => ({ ...prev, [manager.id]: e.target.value }))} />
-                  <button className="btn btn-outline-navy btn-sm" type="button" disabled={companyDetailBusy} onClick={() => resetCompanyManagerPassword(manager.id)}>Reset Password</button>
+                )}
+                <div className="delivery-company-list">
+                  {(companyDetail.managers || []).length === 0 ? <p>No company managers yet.</p> : null}
+                  {(companyDetail.managers || []).map(manager => (
+                    <div className="delivery-company-person-row" key={manager.id}>
+                      <div><strong>{manager.name}</strong><span>{manager.phone} | {manager.is_active ? 'Active' : 'Inactive'}{manager.must_change_password ? ' | Password change required' : ''}</span></div>
+                      {canManageDeliveryCompanies && <button className="btn btn-outline-navy btn-sm" type="button" disabled={companyDetailBusy} onClick={() => resetCompanyManagerPassword(manager.id)}>Reset to 12345678</button>}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Riders</h4>
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18 }}>
-              {(companyDetail.riders || []).length === 0 ? <p style={{ color:'var(--gray-600)', margin:0 }}>Riders are created by the company manager in the company portal.</p> : null}
-              {(companyDetail.riders || []).map(rider => (
-                <span key={rider.id} style={{ border:'1px solid var(--border-light,#e2e8f0)', borderRadius:999, padding:'6px 10px', color:'var(--navy)' }}>{rider.name} ({rider.is_active ? 'active' : 'inactive'})</span>
-              ))}
-            </div>
-            <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>Recent Deliveries</h4>
-            <div style={{ display:'grid', gap:8 }}>
-              {(companyDetail.deliveries || []).length === 0 ? <p style={{ color:'var(--gray-600)', margin:0 }}>No delivery history yet.</p> : null}
-              {(companyDetail.deliveries || []).slice(0, 12).map(delivery => (
-                <div key={delivery.id} style={{ display:'flex', justifyContent:'space-between', gap:10, border:'1px solid var(--border-light,#e2e8f0)', borderRadius:8, padding:'9px 10px' }}>
-                  <strong style={{ color:'var(--navy)' }}>{delivery.order_reference}</strong>
-                  <span>{statusLabel(delivery.status)}</span>
-                  <span>{delivery.rider_name || 'Unassigned'}</span>
+              </div>
+            )}
+
+            {companyDetailTab === 'riders' && (
+              <div className="delivery-company-list">
+                {(companyDetail.riders || []).length === 0 ? <p>Riders are created by the company manager in the company portal.</p> : null}
+                {(companyDetail.riders || []).map(rider => (
+                  <button className="delivery-company-rider-row" type="button" key={rider.id} onClick={() => openCompanyRiderDetail(rider)}>
+                    <span><strong>{rider.name}</strong><small>{rider.phone} | {rider.is_active ? 'Active' : 'Inactive'}</small></span>
+                    <span>{rider.active_deliveries || 0} active</span>
+                    <span>{rider.completed_deliveries || 0} delivered</span>
+                    <Icon name="chevR" size={16} />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {companyDetailTab === 'deliveries' && (
+              <div className="delivery-company-deliveries">
+                {(companyDetail.deliveries || []).length === 0 ? <p>No delivery history yet.</p> : null}
+                {(companyDetail.deliveries || []).map(delivery => (
+                  <div key={delivery.id}>
+                    <span><strong>{delivery.order_reference}</strong><small>{delivery.customer_name || 'Customer'}</small></span>
+                    <span>{delivery.rider_name || 'Unassigned'}</span>
+                    <span>{statusLabel(delivery.status)}</span>
+                    <span>{delivery.delivered_at ? new Date(delivery.delivered_at).toLocaleString() : delivery.picked_up_at ? `Picked up ${new Date(delivery.picked_up_at).toLocaleString()}` : '-'}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {companyRiderDetail && (
+              <section className="delivery-company-rider-detail">
+                <div className="delivery-company-rider-detail-head">
+                  <div><span>Rider Details</span><h4>{companyRiderDetail.rider?.name}</h4><p>{companyRiderDetail.rider?.phone} | {companyRiderDetail.rider?.is_active ? 'Active' : 'Inactive'}</p></div>
+                  <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setCompanyRiderDetail(null)}>Back to Riders</button>
                 </div>
-              ))}
-            </div>
+                {companyRiderDetailBusy ? <p>Loading rider history...</p> : (
+                  <div className="delivery-company-deliveries">
+                    {(companyRiderDetail.deliveries || []).length === 0 ? <p>No deliveries have been assigned to this rider.</p> : null}
+                    {(companyRiderDetail.deliveries || []).map(delivery => (
+                      <div key={delivery.id}>
+                        <span><strong>{delivery.order_reference}</strong><small>{delivery.customer_name || 'Customer'}</small></span>
+                        <span>{statusLabel(delivery.status)}</span>
+                        <span>{delivery.delivery_location || '-'}</span>
+                        <span>{delivery.delivered_at ? new Date(delivery.delivered_at).toLocaleString() : delivery.updated_at ? new Date(delivery.updated_at).toLocaleString() : '-'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         </div>
       )}

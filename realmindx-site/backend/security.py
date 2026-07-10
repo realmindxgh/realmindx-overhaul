@@ -7,6 +7,9 @@ from flask_login import current_user
 from itsdangerous import URLSafeTimedSerializer
 
 
+DEFAULT_TEMPORARY_PASSWORD = "12345678"
+
+
 def serializer():
     return URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
 

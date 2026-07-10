@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import secrets
 
+from flask import current_app
 from markupsafe import escape
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -18,6 +19,7 @@ from .models import (
     User,
 )
 from .order_status import normalize_order_status
+from .security import DEFAULT_TEMPORARY_PASSWORD
 from .sms_service import normalise_phone, send_sms
 
 
@@ -119,8 +121,9 @@ def split_name(name):
     return parts[0], " ".join(parts[1:]) or ""
 
 
-def create_portal_user(kind, name, phone, password, role_name, must_change_password=True):
+def create_portal_user(kind, name, phone, password=None, role_name=None, must_change_password=True):
     phone = normalize_delivery_phone(phone)
+    password = password or DEFAULT_TEMPORARY_PASSWORD
     if len(password or "") < 8:
         raise DeliveryError("Password must be at least 8 characters.", 400, "weak_password")
     email = synthetic_delivery_email(kind, phone)
@@ -164,14 +167,12 @@ def create_company(payload, actor=None):
     db.session.flush()
     manager = None
     manager_phone = payload.get("manager_phone")
-    manager_password = payload.get("manager_password") or payload.get("password")
-    if manager_phone and manager_password:
+    if manager_phone:
         manager = create_company_user(
             company,
             {
                 "name": payload.get("manager_name") or company.contact_name or f"{company.name} Manager",
                 "phone": manager_phone,
-                "password": manager_password,
                 "title": payload.get("manager_title") or "Manager",
             },
             actor=actor,
@@ -189,7 +190,7 @@ def create_company_user(company, payload, actor=None):
         "company",
         payload.get("name") or "Company Manager",
         phone,
-        payload.get("password") or "",
+        payload.get("password") or DEFAULT_TEMPORARY_PASSWORD,
         "delivery_company_user",
         must_change_password=True,
     )
@@ -219,7 +220,7 @@ def create_rider(company, payload, actor=None):
         "rider",
         payload.get("name") or "Delivery Rider",
         phone,
-        payload.get("password") or "",
+        payload.get("password") or DEFAULT_TEMPORARY_PASSWORD,
         "delivery_rider",
         must_change_password=True,
     )
@@ -236,13 +237,71 @@ def create_rider(company, payload, actor=None):
     return rider
 
 
-def reset_portal_password(user, password):
+def reset_portal_password(user, password=None):
+    password = password or DEFAULT_TEMPORARY_PASSWORD
     if len(password or "") < 8:
         raise DeliveryError("Password must be at least 8 characters.", 400, "weak_password")
     user.set_password(password)
     user.must_change_password = True
     user.failed_login_count = 0
     user.locked_until = None
+
+
+def send_portal_access_notification(profile, account_kind, temporary_password=DEFAULT_TEMPORARY_PASSWORD):
+    company = getattr(profile, "company", None)
+    phone = getattr(profile, "phone", None)
+    name = getattr(profile, "name", None) or "Delivery portal user"
+    is_rider = account_kind == "rider"
+    portal_path = "/delivery/login" if is_rider else "/delivery-company/login"
+    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}{portal_path}"
+    label = "rider" if is_rider else "company manager"
+    sms_text = (
+        f"Your RealMindX {label} account is ready. Login: {phone}. "
+        f"Temporary password: {temporary_password}. Open {portal_url} and change it on first login."
+    )
+    sms_sent = bool(phone and send_sms(phone, sms_text))
+
+    email = (getattr(company, "contact_email", None) or "").strip().lower()
+    email_status = "unavailable"
+    if email:
+        body = (
+            f"<p>A RealMindX delivery {escape(label)} account has been created for "
+            f"<strong>{escape(name)}</strong>.</p>"
+            '<div style="background:#f5f8fc;border:1px solid #d9e3f0;border-radius:10px;padding:18px 20px;margin:20px 0;">'
+            f"<p style=\"margin:0 0 8px;\"><strong>Phone:</strong> {escape(phone or '')}</p>"
+            f"<p style=\"margin:0;\"><strong>Temporary password:</strong> {escape(temporary_password)}</p>"
+            "</div>"
+            "<p>The account holder must change this temporary password immediately after signing in.</p>"
+        )
+        try:
+            result = send_email(OutboundEmail(
+                to=email,
+                subject=f"RealMindX {label.title()} account created",
+                html=bookshop_email_shell(
+                    f"{label.title()} account ready",
+                    body,
+                    cta_label="Open delivery portal",
+                    cta_url=portal_url,
+                    eyebrow="RealMindX Bookshop Delivery",
+                    preheader=f"Portal access has been created for {name}.",
+                ),
+                text=(
+                    f"RealMindX {label.title()} account for {name}. Phone: {phone}. "
+                    f"Temporary password: {temporary_password}. Portal: {portal_url}. "
+                    "The password must be changed on first login."
+                ),
+                from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
+            ))
+            email_status = result.get("status", "failed")
+        except Exception as exc:
+            current_app.logger.warning("Delivery portal account email failed for %s: %s", phone, exc)
+            email_status = "failed"
+
+    return {
+        "sms": "sent" if sms_sent else "failed",
+        "email": email_status,
+        "email_to": email or None,
+    }
 
 
 def log_delivery_event(delivery, event_type, actor_type, actor_id=None, from_status=None, to_status=None, reason=None, note=None, details=None):
@@ -260,6 +319,140 @@ def log_delivery_event(delivery, event_type, actor_type, actor_id=None, from_sta
     )
     db.session.add(event)
     return event
+
+
+def _send_delivery_update_email(to, subject, title, body, preheader):
+    if not to:
+        return "unavailable"
+    try:
+        result = send_email(OutboundEmail(
+            to=to,
+            subject=subject,
+            html=bookshop_email_shell(
+                title,
+                body,
+                cta_label="Track your order",
+                cta_url=f"{current_app.config.get('BOOKSHOP_URL', '').rstrip('/')}/track",
+                eyebrow="RealMindX Bookshop Delivery",
+                preheader=preheader,
+            ),
+            text=preheader,
+            from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
+        ))
+        return result.get("status", "failed")
+    except Exception as exc:
+        current_app.logger.warning("Delivery update email failed for %s: %s", to, exc)
+        return "failed"
+
+
+def _notify_customer_status(delivery, status):
+    order = delivery.order
+    messages = {
+        "assigned_to_company": (
+            "Assigned to delivery partner",
+            f"Your RealMindX order {order.order_reference} has been assigned to a delivery partner.",
+        ),
+        "delivered": (
+            "Order delivered",
+            f"Your RealMindX order {order.order_reference} has been delivered successfully.",
+        ),
+        "rejected_by_company": (
+            "Delivery update",
+            f"There is a delivery issue with order {order.order_reference}. Our team will contact you.",
+        ),
+        "issue_reported": (
+            "Delivery issue reported",
+            f"A delivery issue was reported for order {order.order_reference}. Our team will contact you.",
+        ),
+        "failed": (
+            "Delivery could not be completed",
+            f"Delivery could not be completed for order {order.order_reference}. Our team will contact you.",
+        ),
+        "returned": (
+            "Order returned",
+            f"Order {order.order_reference} has been returned for RealMindX review. Our team will contact you.",
+        ),
+        "cancelled": (
+            "Delivery cancelled",
+            f"Delivery for order {order.order_reference} has been cancelled. Our team will contact you if needed.",
+        ),
+    }
+    notice = messages.get(status)
+    if not notice:
+        return
+    title, text = notice
+    phone = normalise_phone(getattr(order, "phone", "") or "")
+    email = (getattr(order, "email", "") or "").strip().lower()
+    sms_status = "sent" if phone and send_sms(phone, text) else ("unavailable" if not phone else "failed")
+    email_status = _send_delivery_update_email(
+        email,
+        f"{title}: {order.order_reference}",
+        title,
+        f"<p>Hello {escape(order.customer_name or 'there')},</p><p>{escape(text)}</p>",
+        text,
+    )
+    event_type = "customer_notification_sent" if "sent" in {sms_status, email_status} else "customer_notification_failed"
+    log_delivery_event(
+        delivery,
+        event_type,
+        "system",
+        to_status=delivery.status,
+        details={"status": status, "sms": sms_status, "email": email_status},
+    )
+
+
+def _notify_delivery_partner(delivery):
+    company = delivery.company
+    order = delivery.order
+    if not company or not order:
+        return
+    text = f"New RealMindX delivery {order.order_reference} has been assigned to {company.name}. Open the company portal to review it."
+    sent_phones = 0
+    for manager in getattr(company, "company_users", []) or []:
+        if manager.is_active and manager.user and manager.user.is_active and send_sms(manager.phone, text):
+            sent_phones += 1
+    email = (company.contact_email or "").strip().lower()
+    email_status = _send_delivery_update_email(
+        email,
+        f"New delivery assigned: {order.order_reference}",
+        "New delivery assigned",
+        f"<p>RealMindX has assigned order <strong>{escape(order.order_reference)}</strong> to {escape(company.name)}.</p>"
+        "<p>Sign in to the delivery company portal to accept the order and assign a rider.</p>",
+        text,
+    )
+    log_delivery_event(
+        delivery,
+        "partner_notification_sent" if sent_phones or email_status == "sent" else "partner_notification_failed",
+        "system",
+        to_status=delivery.status,
+        details={"sms_recipients": sent_phones, "email": email_status},
+    )
+
+
+def _notify_assigned_rider(delivery):
+    rider = delivery.rider
+    order = delivery.order
+    if not rider or not order:
+        return
+    text = f"RealMindX delivery {order.order_reference} has been assigned to you. Open the rider portal for delivery details."
+    status = "sent" if send_sms(rider.phone, text) else "failed"
+    log_delivery_event(
+        delivery,
+        "rider_notification_sent" if status == "sent" else "rider_notification_failed",
+        "system",
+        to_status=delivery.status,
+        details={"sms": status, "rider_id": rider.id},
+    )
+
+
+def notify_delivery_transition(delivery, status, event_type):
+    if event_type == "assigned_to_company":
+        _notify_delivery_partner(delivery)
+        _notify_customer_status(delivery, status)
+    elif event_type in {"assigned_to_rider", "reassigned_to_rider"}:
+        _notify_assigned_rider(delivery)
+    elif status in {"delivered", "rejected_by_company", "issue_reported", "failed", "returned", "cancelled"}:
+        _notify_customer_status(delivery, status)
 
 
 def transition_delivery(delivery, status, actor, event_type, reason=None, note=None, details=None):
@@ -300,6 +493,7 @@ def transition_delivery(delivery, status, actor, event_type, reason=None, note=N
         note=note,
         details=details,
     )
+    notify_delivery_transition(delivery, status, event_type)
     return delivery
 
 
@@ -403,14 +597,13 @@ def send_delivery_otp(delivery, otp, code):
     )
     current_time = now_utc()
 
-    if phone and send_sms(phone, text):
-        otp.sent_at = current_time
-        otp.last_sent_at = current_time
-        otp.send_channel = "sms"
-        otp.send_status = "sent"
-        log_delivery_event(delivery, "otp_sent", "system", to_status=delivery.status, details={"channel": "sms"})
-        return True
-
+    channels = []
+    sms_status = "unavailable"
+    email_status = "unavailable"
+    if phone:
+        sms_status = "sent" if send_sms(phone, text) else "failed"
+        if sms_status == "sent":
+            channels.append("sms")
     if email:
         body = (
             f"<p>Hello {escape(order.customer_name or 'there')},</p>"
@@ -424,26 +617,41 @@ def send_delivery_otp(delivery, otp, code):
             "</div></div>"
             f"<p>This code expires in {OTP_EXPIRY_HOURS} hours. Share it with the rider only after receiving your package.</p>"
         )
-        result = send_email(
-            OutboundEmail(
-                to=email,
-                subject=f"Your RealMindX delivery OTP: {code}",
-                html=bookshop_email_shell(
-                    "Your delivery OTP",
-                    body,
-                    eyebrow="RealMindX Bookshop Delivery",
-                    preheader=f"Your delivery OTP for {order_reference} is {code}.",
-                ),
-                text=text,
+        try:
+            result = send_email(
+                OutboundEmail(
+                    to=email,
+                    subject=f"Your RealMindX delivery OTP: {code}",
+                    html=bookshop_email_shell(
+                        "Your delivery OTP",
+                        body,
+                        eyebrow="RealMindX Bookshop Delivery",
+                        preheader=f"Your delivery OTP for {order_reference} is {code}.",
+                    ),
+                    text=text,
+                    from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
+                )
             )
+            email_status = result.get("status", "failed")
+        except Exception as exc:
+            current_app.logger.warning("Delivery OTP email failed for %s: %s", email, exc)
+            email_status = "failed"
+        if email_status == "sent":
+            channels.append("email")
+
+    if channels:
+        otp.sent_at = current_time
+        otp.last_sent_at = current_time
+        otp.send_channel = "+".join(channels)
+        otp.send_status = "sent"
+        log_delivery_event(
+            delivery,
+            "otp_sent",
+            "system",
+            to_status=delivery.status,
+            details={"channels": channels, "sms": sms_status, "email": email_status},
         )
-        if result.get("status") == "sent":
-            otp.sent_at = current_time
-            otp.last_sent_at = current_time
-            otp.send_channel = "email"
-            otp.send_status = "sent"
-            log_delivery_event(delivery, "otp_sent", "system", to_status=delivery.status, details={"channel": "email"})
-            return True
+        return True
 
     otp.send_status = "failed"
     otp.last_sent_at = current_time
@@ -452,7 +660,7 @@ def send_delivery_otp(delivery, otp, code):
         "notification_failed",
         "system",
         to_status=delivery.status,
-        details={"has_phone": bool(phone), "has_email": bool(email)},
+        details={"has_phone": bool(phone), "has_email": bool(email), "sms": sms_status, "email": email_status},
     )
     return False
 

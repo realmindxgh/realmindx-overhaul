@@ -56,6 +56,7 @@ from ..delivery_service import (
     create_company_user,
     reset_portal_password,
     resend_delivery_otp,
+    send_portal_access_notification,
     staff_delivery_contact_warning,
     staff_override_otp,
 )
@@ -101,7 +102,7 @@ from ..promo_affiliates import (
     send_promo_usage_notification,
     usage_snapshot,
 )
-from ..security import admin_or_staff_required, admin_required, permission_required
+from ..security import DEFAULT_TEMPORARY_PASSWORD, admin_or_staff_required, admin_required, permission_required
 from ..serializers import (
     delivery_company_json,
     delivery_company_user_json,
@@ -123,6 +124,43 @@ admin_bp = Blueprint("admin", __name__)
 def slugify(value):
     slug = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
     return slug or "item"
+
+
+def _send_internal_account_access_email(user, role_name):
+    login_path = "/staff/login" if role_name == "staff" else "/admin/login"
+    login_url = f"{current_app.config['BASE_URL'].rstrip('/')}{login_path}"
+    role_label = "Staff" if role_name == "staff" else "Admin"
+    body = (
+        f"<p>Hello {escape(user.full_name or role_label)},</p>"
+        f"<p>Your RealMindX {role_label.lower()} account has been created or reset.</p>"
+        '<div style="background:#f5f8fc;border:1px solid #d9e3f0;border-radius:10px;padding:18px 20px;margin:20px 0;">'
+        f"<p style=\"margin:0 0 8px;\"><strong>Email:</strong> {escape(user.email)}</p>"
+        f"<p style=\"margin:0;\"><strong>Temporary password:</strong> {escape(DEFAULT_TEMPORARY_PASSWORD)}</p>"
+        "</div>"
+        "<p>You must change this password immediately after your first sign-in.</p>"
+    )
+    try:
+        result = send_email(OutboundEmail(
+            to=user.email,
+            subject=f"Your RealMindX {role_label} account",
+            html=app_email_shell(
+                f"{role_label} account ready",
+                body,
+                cta_label=f"Open {role_label} sign in",
+                cta_url=login_url,
+                eyebrow="RealMindX Secure Access",
+                preheader=f"Your RealMindX {role_label.lower()} account is ready.",
+            ),
+            text=(
+                f"Your RealMindX {role_label} account is ready. Email: {user.email}. "
+                f"Temporary password: {DEFAULT_TEMPORARY_PASSWORD}. Login: {login_url}. "
+                "Change the password on first sign-in."
+            ),
+        ))
+        return result.get("status", "failed")
+    except Exception as exc:
+        current_app.logger.warning("Internal account email failed for user %s: %s", user.id, exc)
+        return "failed"
 
 
 def placed_order_query():
@@ -1420,9 +1458,8 @@ def upload_admin_file():
 def create_staff():
     payload = request.get_json(silent=True) or {}
     email = (payload.get("email") or "").strip().lower()
-    password = payload.get("password") or ""
-    if not email or len(password) < 8:
-        return jsonify(error="Staff email and an 8 character password are required."), 400
+    if not email:
+        return jsonify(error="Staff email is required."), 400
     if User.query.filter_by(email=email).first():
         return jsonify(error="User already exists."), 409
     role = Role.query.filter_by(name="staff").first() or Role(name="staff", description="Staff")
@@ -1436,14 +1473,19 @@ def create_staff():
         is_active=payload.get("status", "active") != "inactive",
         must_change_password=True,
     )
-    user.set_password(password)
+    user.set_password(DEFAULT_TEMPORARY_PASSWORD)
     user.direct_permissions = permissions
     db.session.add_all([role, user])
     db.session.flush()
     db.session.add(UserProfile(user_id=user.id))
     log_action("create_staff", "user", user.id, {"permissions": [p.key for p in permissions]})
+    notification_status = _send_internal_account_access_email(user, "staff")
     db.session.commit()
-    return jsonify(user=_staff_payload(user)), 201
+    return jsonify(
+        user=_staff_payload(user),
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        notification={"email": notification_status, "email_to": user.email},
+    ), 201
 
 
 @admin_bp.get("/permissions")
@@ -1480,11 +1522,6 @@ def update_staff(user_id):
         if existing:
             return jsonify(error="Another account already uses this email."), 409
         user.email = next_email
-    if payload.get("password"):
-        if len(payload["password"]) < 8:
-            return jsonify(error="Password must be at least 8 characters."), 400
-        user.set_password(payload["password"])
-        user.must_change_password = True
     if "permissions" in payload:
         user.direct_permissions = Permission.query.filter(Permission.key.in_(payload.get("permissions") or [])).all()
     if "status" in payload:
@@ -1507,6 +1544,27 @@ def delete_staff(user_id):
     return jsonify(message="Staff account deleted.")
 
 
+@admin_bp.post("/staff/<int:user_id>/reset-password")
+@login_required
+@admin_required
+def reset_staff_password(user_id):
+    user = db.get_or_404(User, user_id)
+    if not user.role or user.role.name != "staff":
+        return jsonify(error="Only staff accounts can be reset here."), 400
+    user.set_password(DEFAULT_TEMPORARY_PASSWORD)
+    user.must_change_password = True
+    user.failed_login_count = 0
+    user.locked_until = None
+    notification_status = _send_internal_account_access_email(user, "staff")
+    log_action("reset_staff_password", "user", user.id, {"email": user.email})
+    db.session.commit()
+    return jsonify(
+        message="Staff password reset. They must change it on next login.",
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        notification={"email": notification_status, "email_to": user.email},
+    )
+
+
 @admin_bp.get("/admins")
 @login_required
 @admin_required
@@ -1522,9 +1580,8 @@ def list_admins():
 def create_admin():
     payload = request.get_json(silent=True) or {}
     email = (payload.get("email") or "").strip().lower()
-    password = payload.get("password") or ""
-    if not email or len(password) < 8:
-        return jsonify(error="Admin email and an 8 character temporary password are required."), 400
+    if not email:
+        return jsonify(error="Admin email is required."), 400
     if User.query.filter_by(email=email).first():
         return jsonify(error="User already exists."), 409
     role = Role.query.filter_by(name="admin").first() or Role(name="admin", description="Full administrator")
@@ -1537,13 +1594,18 @@ def create_admin():
         is_active=payload.get("status", "active") != "inactive",
         must_change_password=True,
     )
-    user.set_password(password)
+    user.set_password(DEFAULT_TEMPORARY_PASSWORD)
     db.session.add_all([role, user])
     db.session.flush()
     db.session.add(UserProfile(user_id=user.id))
     log_action("create_admin", "user", user.id, {"email": user.email})
+    notification_status = _send_internal_account_access_email(user, "admin")
     db.session.commit()
-    return jsonify(user=_admin_payload(user)), 201
+    return jsonify(
+        user=_admin_payload(user),
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        notification={"email": notification_status, "email_to": user.email},
+    ), 201
 
 
 @admin_bp.put("/admins/<int:user_id>")
@@ -1564,11 +1626,6 @@ def update_admin(user_id):
         if existing:
             return jsonify(error="Another account already uses this email."), 409
         user.email = next_email
-    if payload.get("password"):
-        if len(payload["password"]) < 8:
-            return jsonify(error="Password must be at least 8 characters."), 400
-        user.set_password(payload["password"])
-        user.must_change_password = True
     if "status" in payload:
         if user.id == current_user.id and payload["status"] != "active":
             return jsonify(error="You cannot deactivate the admin account you are currently using."), 400
@@ -1592,6 +1649,29 @@ def delete_admin(user_id):
     db.session.delete(user)
     db.session.commit()
     return jsonify(message="Admin account deleted.")
+
+
+@admin_bp.post("/admins/<int:user_id>/reset-password")
+@login_required
+@admin_required
+def reset_admin_password(user_id):
+    user = db.get_or_404(User, user_id)
+    if not user.role or user.role.name != "admin":
+        return jsonify(error="Only admin accounts can be reset here."), 400
+    if user.id == current_user.id:
+        return jsonify(error="Use My Account to change your own password."), 400
+    user.set_password(DEFAULT_TEMPORARY_PASSWORD)
+    user.must_change_password = True
+    user.failed_login_count = 0
+    user.locked_until = None
+    notification_status = _send_internal_account_access_email(user, "admin")
+    log_action("reset_admin_password", "user", user.id, {"email": user.email})
+    db.session.commit()
+    return jsonify(
+        message="Admin password reset. They must change it on next login.",
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        notification={"email": notification_status, "email_to": user.email},
+    )
 
 
 @admin_bp.get("/audit-logs")
@@ -2539,11 +2619,14 @@ def create_delivery_company():
         company, manager = create_company(payload, actor=actor_from_user(current_user))
     except DeliveryError as exc:
         return _delivery_error_response(exc)
+    notification = send_portal_access_notification(manager, "manager") if manager else None
     log_action("create_delivery_company", "delivery_company", company.id, {"name": company.name})
     db.session.commit()
     return jsonify(
         company=delivery_company_json(company),
         manager=delivery_company_user_json(manager) if manager else None,
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD if manager else None,
+        notification=notification,
     ), 201
 
 
@@ -2563,7 +2646,30 @@ def delivery_company_detail(company_id):
         company=delivery_company_json(company),
         managers=[delivery_company_user_json(user) for user in company.company_users],
         riders=[delivery_rider_json(rider) for rider in company.riders],
-        deliveries=[delivery_json(delivery) for delivery in deliveries],
+        deliveries=[
+            delivery_json(delivery, include_events=current_user.has_permission("delivery.audit.view"))
+            for delivery in deliveries
+        ],
+    )
+
+
+@admin_bp.get("/delivery-riders/<int:rider_id>")
+@login_required
+@permission_required("delivery.view")
+def admin_delivery_rider_detail(rider_id):
+    rider = db.get_or_404(DeliveryRider, rider_id)
+    deliveries = (
+        OrderDelivery.query
+        .filter_by(rider_id=rider.id)
+        .order_by(OrderDelivery.updated_at.desc())
+        .limit(200)
+        .all()
+    )
+    include_events = current_user.has_permission("delivery.audit.view")
+    return jsonify(
+        rider=delivery_rider_json(rider),
+        company=delivery_company_json(rider.company),
+        deliveries=[delivery_json(delivery, include_events=include_events) for delivery in deliveries],
     )
 
 
@@ -2607,9 +2713,14 @@ def create_delivery_company_manager(company_id):
         manager = create_company_user(company, payload, actor=actor_from_user(current_user))
     except DeliveryError as exc:
         return _delivery_error_response(exc)
+    notification = send_portal_access_notification(manager, "manager")
     log_action("create_delivery_company_manager", "delivery_company_user", manager.id, {"company_id": company.id})
     db.session.commit()
-    return jsonify(manager=delivery_company_user_json(manager)), 201
+    return jsonify(
+        manager=delivery_company_user_json(manager),
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        notification=notification,
+    ), 201
 
 
 @admin_bp.put("/delivery-company-users/<int:company_user_id>")
@@ -2647,14 +2758,18 @@ def update_delivery_company_user(company_user_id):
 @permission_required("delivery.companies.manage")
 def reset_delivery_company_user_password(company_user_id):
     company_user = db.get_or_404(DeliveryCompanyUser, company_user_id)
-    payload = request.get_json(silent=True) or {}
     try:
-        reset_portal_password(company_user.user, payload.get("password") or "")
+        reset_portal_password(company_user.user)
     except DeliveryError as exc:
         return _delivery_error_response(exc)
+    notification = send_portal_access_notification(company_user, "manager")
     log_action("reset_delivery_company_user_password", "delivery_company_user", company_user.id)
     db.session.commit()
-    return jsonify(message="Company manager password reset. They must change it on next login.")
+    return jsonify(
+        message="Company manager password reset. They must change it on next login.",
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        notification=notification,
+    )
 
 
 @admin_bp.get("/deliveries")

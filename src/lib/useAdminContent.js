@@ -203,8 +203,9 @@ function useApiContent() {
       await fetchCollection(collection, { force: true });
       return;
     }
-    await api.adminCreate(endpoint, payload);
+    const result = await api.adminCreate(endpoint, payload);
     await fetchCollection(collection, { force: true });
+    return result;
   }, [fetchCollection]);
 
   const updateItem = React.useCallback(async (collection, id, payload) => {

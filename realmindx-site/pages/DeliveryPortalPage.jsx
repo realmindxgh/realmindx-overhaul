@@ -1,10 +1,12 @@
 import React from 'react';
 
+import { Icon } from '../assets/components.jsx';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { signInWithPhone, signOut } from '../../src/lib/authClient.js';
 import { clearDemoSession } from '../../src/lib/demoAccounts.js';
 import { loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
+import { copyTextToClipboard } from '../../src/lib/clipboard.js';
 
 const ACTIVE_POLL_MS = 15000;
 
@@ -42,6 +44,27 @@ const Field = ({ label, children }) => (
     {children}
   </label>
 );
+
+const DeliveryPasswordInput = ({ value, onChange, placeholder, autoComplete, required = false, minLength, name }) => {
+  const [visible, setVisible] = React.useState(false);
+  return (
+    <div className="delivery-password-field">
+      <input
+        type={visible ? 'text' : 'password'}
+        name={name}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        required={required}
+        minLength={minLength}
+      />
+      <button type="button" onClick={() => setVisible(current => !current)} aria-label={visible ? 'Hide password' : 'Show password'} title={visible ? 'Hide password' : 'Show password'}>
+        <Icon name={visible ? 'eyeOff' : 'eye'} size={18} />
+      </button>
+    </div>
+  );
+};
 
 const DeliveryLogin = ({ role }) => {
   const isCompany = role === 'delivery_company_user';
@@ -82,7 +105,7 @@ const DeliveryLogin = ({ role }) => {
           <input value={form.phone} onChange={set('phone')} placeholder="024XXXXXXX" autoComplete="tel" required />
         </Field>
         <Field label="Password">
-          <input type="password" value={form.password} onChange={set('password')} autoComplete="current-password" required />
+          <DeliveryPasswordInput value={form.password} onChange={set('password')} autoComplete="current-password" required />
         </Field>
         <label className="delivery-check">
           <input type="checkbox" checked={form.remember} onChange={set('remember')} />
@@ -147,6 +170,63 @@ const PortalAccessGate = ({ role, children }) => {
 
   if (!verified) return <AuthLoadingScreen />;
   return children;
+};
+
+const ForcedDeliveryPasswordModal = ({ accountLabel, onChanged, onSignOut }) => {
+  const [form, setForm] = React.useState({ current_password: '', new_password: '', confirm_password: '' });
+  const [error, setError] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const set = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
+
+  const submit = async event => {
+    event.preventDefault();
+    setError('');
+    if (form.new_password.length < 8) {
+      setError('New password must be at least 8 characters.');
+      return;
+    }
+    if (form.new_password !== form.confirm_password) {
+      setError('New passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.changePassword({ current_password: form.current_password, new_password: form.new_password });
+      onChanged();
+    } catch (err) {
+      setError(err?.message || 'Could not change the password.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="delivery-password-modal-backdrop">
+      <section className="delivery-password-modal" role="dialog" aria-modal="true" aria-label="Change temporary password">
+        <div className="delivery-password-modal-head">
+          <div>
+            <span>First Sign-In</span>
+            <h2>Change your temporary password</h2>
+            <p>Your {accountLabel} account cannot perform delivery actions until you choose a private password.</p>
+          </div>
+          <button className="btn btn-outline-navy btn-sm" type="button" onClick={onSignOut}>Sign Out</button>
+        </div>
+        <form onSubmit={submit}>
+          <Field label="Current temporary password">
+            <DeliveryPasswordInput value={form.current_password} onChange={set('current_password')} autoComplete="current-password" required />
+          </Field>
+          <Field label="New password">
+            <DeliveryPasswordInput value={form.new_password} onChange={set('new_password')} autoComplete="new-password" minLength={8} required />
+          </Field>
+          <Field label="Confirm new password">
+            <DeliveryPasswordInput value={form.confirm_password} onChange={set('confirm_password')} autoComplete="new-password" required />
+          </Field>
+          {error ? <p className="form-error">{error}</p> : null}
+          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Updating...' : 'Change Password and Continue'}</button>
+        </form>
+      </section>
+    </div>
+  );
 };
 
 const DeliveryMeta = ({ delivery, riderSafe = false }) => (
@@ -223,17 +303,22 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
   );
 };
 
-const RiderForm = ({ onCreated }) => {
-  const [form, setForm] = React.useState({ name: '', phone: '', password: '' });
+const RiderForm = ({ onCreated, onError, onNotice }) => {
+  const [form, setForm] = React.useState({ name: '', phone: '' });
   const [busy, setBusy] = React.useState(false);
   const set = key => event => setForm(prev => ({ ...prev, [key]: event.target.value }));
   const submit = async event => {
     event.preventDefault();
     setBusy(true);
     try {
-      await api.deliveryCompanyCreateRider(form);
-      setForm({ name: '', phone: '', password: '' });
-      onCreated();
+      const result = await api.deliveryCompanyCreateRider(form);
+      const temporaryPassword = result?.temporary_password || '12345678';
+      const copied = await copyTextToClipboard(temporaryPassword);
+      setForm({ name: '', phone: '' });
+      onNotice(`Rider created. Temporary password ${temporaryPassword}${copied ? ' was copied to the clipboard' : ' is ready to share'}.`);
+      await onCreated();
+    } catch (err) {
+      onError(err?.message || 'Could not create rider.');
     } finally {
       setBusy(false);
     }
@@ -242,16 +327,14 @@ const RiderForm = ({ onCreated }) => {
     <form className="delivery-rider-form" onSubmit={submit}>
       <input value={form.name} onChange={set('name')} placeholder="Rider name" required />
       <input value={form.phone} onChange={set('phone')} placeholder="Phone number" required />
-      <input type="password" value={form.password} onChange={set('password')} placeholder="Temporary password" required minLength={8} />
       <button className="btn btn-primary btn-sm" type="submit" disabled={busy}>{busy ? 'Creating...' : 'Create Rider'}</button>
     </form>
   );
 };
 
-const RiderManagementRow = ({ rider, onChanged, onError }) => {
+const RiderManagementRow = ({ rider, onChanged, onError, onNotice, onSelect }) => {
   const [editing, setEditing] = React.useState(false);
   const [form, setForm] = React.useState({ name: rider.name || '', phone: rider.phone || '' });
-  const [password, setPassword] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const set = key => event => setForm(prev => ({ ...prev, [key]: event.target.value }));
 
@@ -281,15 +364,13 @@ const RiderManagementRow = ({ rider, onChanged, onError }) => {
   };
 
   const resetPassword = async () => {
-    if (password.length < 8) {
-      onError('Temporary password must be at least 8 characters.');
-      return;
-    }
     setBusy(true);
     try {
-      await api.deliveryCompanyResetRiderPassword(rider.id, password);
-      setPassword('');
-      onChanged();
+      const result = await api.deliveryCompanyResetRiderPassword(rider.id);
+      const temporaryPassword = result?.temporary_password || '12345678';
+      const copied = await copyTextToClipboard(temporaryPassword);
+      onNotice(`Password reset to ${temporaryPassword}${copied ? ' and copied to the clipboard' : ''}.`);
+      await onChanged();
     } catch (err) {
       onError(err?.message || 'Could not reset rider password.');
     } finally {
@@ -309,13 +390,15 @@ const RiderManagementRow = ({ rider, onChanged, onError }) => {
       ) : (
         <>
           <div>
-            <strong>{rider.name}</strong>
+            <button className="delivery-rider-name-button" type="button" onClick={() => onSelect(rider)}>{rider.name}</button>
             <span>{rider.phone} | {rider.is_active ? 'Active' : 'Inactive'}</span>
           </div>
+          <span className="delivery-rider-count">{rider.active_deliveries || 0} active</span>
+          <span className="delivery-rider-count">{rider.completed_deliveries || 0} delivered</span>
+          <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onSelect(rider)}>View History</button>
           <button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
           <button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={toggleActive}>{rider.is_active ? 'Deactivate' : 'Activate'}</button>
-          <input type="password" value={password} onChange={event => setPassword(event.target.value)} placeholder="New temporary password" />
-          <button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={resetPassword}>Reset Password</button>
+          <button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={resetPassword}>Reset to 12345678</button>
         </>
       )}
     </div>
@@ -326,19 +409,24 @@ const CompanyPortal = () => {
   const [profile, setProfile] = React.useState(null);
   const [deliveries, setDeliveries] = React.useState([]);
   const [riders, setRiders] = React.useState([]);
+  const [view, setView] = React.useState('deliveries');
   const [scope, setScope] = React.useState('active');
+  const [selectedRider, setSelectedRider] = React.useState(null);
+  const [riderScope, setRiderScope] = React.useState('all');
+  const [riderDetailBusy, setRiderDetailBusy] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [notice, setNotice] = React.useState('');
 
   const load = React.useCallback(async () => {
     if (!isApiMode()) return;
     try {
-      const [me, deliveryData, riderData] = await Promise.all([
-        api.deliveryCompanyMe(),
+      const me = await api.deliveryCompanyMe();
+      const [deliveryData, riderData] = await Promise.all([
         api.deliveryCompanyDeliveries(scope),
         api.deliveryCompanyRiders(),
       ]);
-      setProfile(me.company_user);
+      setProfile({ ...me.company_user, must_change_password: Boolean(me.user?.must_change_password) });
       setDeliveries(deliveryData.items || []);
       setRiders(riderData.items || []);
       setError('');
@@ -354,7 +442,24 @@ const CompanyPortal = () => {
   }, [scope]);
 
   React.useEffect(() => { load(); }, [load]);
-  useVisiblePolling(Boolean(profile), load);
+  useVisiblePolling(Boolean(profile) && view === 'deliveries' && scope === 'active', load);
+
+  const openRider = React.useCallback(async (rider, nextScope = riderScope) => {
+    setSelectedRider(current => current?.rider?.id === rider.id ? current : { rider, deliveries: [] });
+    setRiderDetailBusy(true);
+    setError('');
+    try {
+      setSelectedRider(await api.deliveryCompanyRiderDetail(rider.id, nextScope));
+    } catch (err) {
+      setError(err?.message || 'Could not load rider history.');
+    } finally {
+      setRiderDetailBusy(false);
+    }
+  }, [riderScope]);
+
+  React.useEffect(() => {
+    if (selectedRider?.rider?.id) openRider(selectedRider.rider, riderScope);
+  }, [riderScope]);
 
   const onAction = async fn => {
     setError('');
@@ -374,30 +479,73 @@ const CompanyPortal = () => {
   return (
     <PortalShell title="Delivery Company Portal" subtitle={profile?.company_name} onLogout={logout}>
       {error ? <div className="form-error delivery-alert">{error}</div> : null}
+      {notice ? <div className="delivery-success-alert">{notice}<button type="button" onClick={() => setNotice('')} aria-label="Dismiss">Close</button></div> : null}
       <section className="delivery-toolbar">
         <div className="segmented">
-          <button type="button" className={scope === 'active' ? 'active' : ''} onClick={() => setScope('active')}>Active</button>
-          <button type="button" className={scope === 'completed' ? 'active' : ''} onClick={() => setScope('completed')}>Completed</button>
+          <button type="button" className={view === 'deliveries' ? 'active' : ''} onClick={() => setView('deliveries')}>Deliveries</button>
+          <button type="button" className={view === 'riders' ? 'active' : ''} onClick={() => setView('riders')}>Riders</button>
         </div>
       </section>
-      <section className="delivery-section">
-        <div className="delivery-section-head">
-          <h2>Riders</h2>
-        </div>
-        <RiderForm onCreated={load} />
-        <div className="delivery-rider-list">
-          {riders.map(rider => (
-            <RiderManagementRow key={rider.id} rider={rider} onChanged={load} onError={setError} />
-          ))}
-        </div>
-      </section>
-      <section className="delivery-grid">
-        {loading ? <EmptyState title="Loading deliveries" body="Fetching assigned orders." /> : null}
-        {!loading && deliveries.length === 0 ? <EmptyState title="No deliveries here" body="Assigned orders will appear here." /> : null}
-        {deliveries.map(delivery => (
-          <CompanyDeliveryCard key={delivery.id} delivery={delivery} riders={riders} onAction={onAction} />
-        ))}
-      </section>
+      {view === 'deliveries' ? (
+        <>
+          <section className="delivery-toolbar delivery-subtoolbar">
+            <div className="segmented">
+              <button type="button" className={scope === 'active' ? 'active' : ''} onClick={() => setScope('active')}>Active</button>
+              <button type="button" className={scope === 'completed' ? 'active' : ''} onClick={() => setScope('completed')}>Completed</button>
+            </div>
+          </section>
+          <section className="delivery-grid">
+            {loading ? <EmptyState title="Loading deliveries" body="Fetching assigned orders." /> : null}
+            {!loading && deliveries.length === 0 ? <EmptyState title="No deliveries here" body="Assigned orders will appear here." /> : null}
+            {deliveries.map(delivery => (
+              <CompanyDeliveryCard key={delivery.id} delivery={delivery} riders={riders} onAction={onAction} />
+            ))}
+          </section>
+        </>
+      ) : (
+        <section className="delivery-section delivery-riders-page">
+          <div className="delivery-section-head">
+            <div><h2>Riders</h2><p>Create accounts, manage access, and review each rider's assigned delivery history.</p></div>
+          </div>
+          <RiderForm onCreated={load} onError={setError} onNotice={setNotice} />
+          <div className="delivery-rider-list">
+            {riders.length === 0 ? <EmptyState title="No riders yet" body="Create the first rider account for this company." /> : null}
+            {riders.map(rider => (
+              <RiderManagementRow key={rider.id} rider={rider} onChanged={load} onError={setError} onNotice={setNotice} onSelect={openRider} />
+            ))}
+          </div>
+          {selectedRider && (
+            <section className="delivery-rider-history">
+              <div className="delivery-rider-history-head">
+                <div><span>Rider Profile</span><h2>{selectedRider.rider?.name}</h2><p>{selectedRider.rider?.phone} | {selectedRider.rider?.is_active ? 'Active' : 'Inactive'}</p></div>
+                <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setSelectedRider(null)}>Close</button>
+              </div>
+              <div className="segmented">
+                {['all', 'active', 'completed'].map(value => <button key={value} type="button" className={riderScope === value ? 'active' : ''} onClick={() => setRiderScope(value)}>{statusLabel(value)}</button>)}
+              </div>
+              <div className="delivery-rider-history-list">
+                {riderDetailBusy ? <p>Loading rider history...</p> : null}
+                {!riderDetailBusy && (selectedRider.deliveries || []).length === 0 ? <p>No deliveries in this view.</p> : null}
+                {(selectedRider.deliveries || []).map(delivery => (
+                  <div key={delivery.id}>
+                    <span><strong>{delivery.order_reference}</strong><small>{delivery.customer_name || 'Customer'}</small></span>
+                    <span>{statusLabel(delivery.status)}</span>
+                    <span>{delivery.delivery_location || '-'}</span>
+                    <span>{delivery.delivered_at ? new Date(delivery.delivered_at).toLocaleString() : delivery.updated_at ? new Date(delivery.updated_at).toLocaleString() : '-'}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </section>
+      )}
+      {profile?.must_change_password ? (
+        <ForcedDeliveryPasswordModal
+          accountLabel="company manager"
+          onChanged={() => { setProfile(current => ({ ...current, must_change_password: false })); load(); }}
+          onSignOut={logout}
+        />
+      ) : null}
     </PortalShell>
   );
 };
@@ -454,7 +602,7 @@ const RiderPortal = () => {
         api.deliveryRiderMe(),
         api.deliveryRiderDeliveries(scope === 'history' ? 'history' : 'active'),
       ]);
-      setRider(me.rider);
+      setRider({ ...me.rider, must_change_password: Boolean(me.user?.must_change_password) });
       setDeliveries(deliveryData.items || []);
       setError('');
     } catch (err) {
@@ -502,6 +650,13 @@ const RiderPortal = () => {
           <RiderDeliveryCard key={delivery.id} delivery={delivery} onAction={onAction} />
         ))}
       </section>
+      {rider?.must_change_password ? (
+        <ForcedDeliveryPasswordModal
+          accountLabel="rider"
+          onChanged={() => { setRider(current => ({ ...current, must_change_password: false })); load(); }}
+          onSignOut={logout}
+        />
+      ) : null}
     </PortalShell>
   );
 };

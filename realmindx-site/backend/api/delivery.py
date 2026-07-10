@@ -15,10 +15,12 @@ from ..delivery_service import (
     mark_picked_up,
     report_delivery_issue,
     reset_portal_password,
+    send_portal_access_notification,
 )
 from ..extensions import db, limiter
 from ..models import DeliveryCompanyUser, DeliveryRider, OrderDelivery
-from ..serializers import delivery_json, delivery_rider_json, user_json
+from ..security import DEFAULT_TEMPORARY_PASSWORD
+from ..serializers import delivery_company_user_json, delivery_json, delivery_rider_json, user_json
 from ..sms_service import normalise_phone
 
 
@@ -77,6 +79,15 @@ def _rider_delivery_or_404(delivery_id, profile):
     return delivery
 
 
+def _require_password_changed():
+    if current_user.must_change_password:
+        raise DeliveryError(
+            "Change your temporary password before using delivery actions.",
+            428,
+            "password_change_required",
+        )
+
+
 @delivery_bp.post("/company/login")
 @limiter.limit("10/minute")
 def company_login():
@@ -88,13 +99,9 @@ def company_login():
     login_user(user, remember=bool(payload.get("remember")))
     audit("delivery_company_login", "delivery_company_user", profile.id, {"company_id": profile.company_id})
     db.session.commit()
-    return jsonify(user=user_json(user), company_user={
-        "id": profile.id,
-        "company_id": profile.company_id,
-        "company_name": profile.company.name,
-        "name": profile.name,
-        "phone": profile.phone,
-    })
+    company_user = delivery_company_user_json(profile)
+    company_user["company_name"] = profile.company.name
+    return jsonify(user=user_json(user), company_user=company_user)
 
 
 @delivery_bp.post("/rider/login")
@@ -128,13 +135,9 @@ def company_me():
         profile = _company_profile()
     except DeliveryError as exc:
         return _delivery_error_response(exc)
-    return jsonify(user=user_json(current_user), company_user={
-        "id": profile.id,
-        "company_id": profile.company_id,
-        "company_name": profile.company.name,
-        "name": profile.name,
-        "phone": profile.phone,
-    })
+    company_user = delivery_company_user_json(profile)
+    company_user["company_name"] = profile.company.name
+    return jsonify(user=user_json(current_user), company_user=company_user)
 
 
 @delivery_bp.get("/company/deliveries")
@@ -162,6 +165,7 @@ def company_deliveries():
 def company_accept(delivery_id):
     try:
         profile = _company_profile()
+        _require_password_changed()
         delivery = _company_delivery_or_404(delivery_id, profile)
         company_accept_delivery(delivery, actor_from_user(current_user))
     except DeliveryError as exc:
@@ -176,6 +180,7 @@ def company_reject(delivery_id):
     payload = request.get_json(silent=True) or {}
     try:
         profile = _company_profile()
+        _require_password_changed()
         delivery = _company_delivery_or_404(delivery_id, profile)
         company_reject_delivery(delivery, actor_from_user(current_user), payload.get("reason"), note=payload.get("note"))
     except DeliveryError as exc:
@@ -201,12 +206,41 @@ def company_create_rider():
     payload = request.get_json(silent=True) or {}
     try:
         profile = _company_profile()
+        _require_password_changed()
         rider = create_rider(profile.company, payload, actor=actor_from_user(current_user))
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     audit("delivery_company_create_rider", "delivery_rider", rider.id, {"company_id": rider.company_id})
+    notification = send_portal_access_notification(rider, "rider")
     db.session.commit()
-    return jsonify(rider=delivery_rider_json(rider)), 201
+    return jsonify(
+        rider=delivery_rider_json(rider),
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        notification=notification,
+    ), 201
+
+
+@delivery_bp.get("/company/riders/<int:rider_id>")
+@login_required
+def company_rider_detail(rider_id):
+    try:
+        profile = _company_profile()
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    rider = db.get_or_404(DeliveryRider, rider_id)
+    if rider.company_id != profile.company_id:
+        return jsonify(error="Rider not found for this company."), 404
+    scope = (request.args.get("scope") or "all").strip().lower()
+    query = OrderDelivery.query.filter_by(rider_id=rider.id).order_by(OrderDelivery.updated_at.desc())
+    if scope == "active":
+        query = query.filter(OrderDelivery.status.in_(["assigned_to_rider", "picked_up", "issue_reported"]))
+    elif scope in {"completed", "history"}:
+        query = query.filter(OrderDelivery.status.in_(["delivered", "failed", "returned", "cancelled"]))
+    rows = query.limit(200).all()
+    return jsonify(
+        rider=delivery_rider_json(rider),
+        deliveries=[delivery_json(delivery, include_events=True, rider_safe=True) for delivery in rows],
+    )
 
 
 @delivery_bp.put("/company/riders/<int:rider_id>")
@@ -215,6 +249,7 @@ def company_update_rider(rider_id):
     payload = request.get_json(silent=True) or {}
     try:
         profile = _company_profile()
+        _require_password_changed()
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     rider = db.get_or_404(DeliveryRider, rider_id)
@@ -246,21 +281,26 @@ def company_update_rider(rider_id):
 @delivery_bp.post("/company/riders/<int:rider_id>/reset-password")
 @login_required
 def company_reset_rider_password(rider_id):
-    payload = request.get_json(silent=True) or {}
     try:
         profile = _company_profile()
+        _require_password_changed()
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     rider = db.get_or_404(DeliveryRider, rider_id)
     if rider.company_id != profile.company_id:
         return jsonify(error="Rider not found for this company."), 404
     try:
-        reset_portal_password(rider.user, payload.get("password") or "")
+        reset_portal_password(rider.user)
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     audit("delivery_company_reset_rider_password", "delivery_rider", rider.id, {"company_id": rider.company_id})
+    notification = send_portal_access_notification(rider, "rider")
     db.session.commit()
-    return jsonify(message="Rider password reset. They must change it on next login.")
+    return jsonify(
+        message="Rider password reset. They must change it on next login.",
+        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        notification=notification,
+    )
 
 
 @delivery_bp.post("/company/deliveries/<int:delivery_id>/assign-rider")
@@ -269,6 +309,7 @@ def company_assign_rider(delivery_id):
     payload = request.get_json(silent=True) or {}
     try:
         profile = _company_profile()
+        _require_password_changed()
         delivery = _company_delivery_or_404(delivery_id, profile)
         rider = db.session.get(DeliveryRider, payload.get("rider_id"))
         if not rider or rider.company_id != profile.company_id:
@@ -286,6 +327,7 @@ def company_report_issue(delivery_id):
     payload = request.get_json(silent=True) or {}
     try:
         profile = _company_profile()
+        _require_password_changed()
         delivery = _company_delivery_or_404(delivery_id, profile)
         report_delivery_issue(delivery, actor_from_user(current_user), payload.get("reason"), note=payload.get("note"))
     except DeliveryError as exc:
@@ -326,6 +368,7 @@ def rider_deliveries():
 def rider_pickup(delivery_id):
     try:
         rider = _rider_profile()
+        _require_password_changed()
         delivery = _rider_delivery_or_404(delivery_id, rider)
         mark_picked_up(delivery, actor_from_user(current_user))
     except DeliveryError as exc:
@@ -340,6 +383,7 @@ def rider_deliver(delivery_id):
     payload = request.get_json(silent=True) or {}
     try:
         rider = _rider_profile()
+        _require_password_changed()
         delivery = _rider_delivery_or_404(delivery_id, rider)
         complete_delivery_with_otp(delivery, payload.get("otp"), actor_from_user(current_user))
     except DeliveryError as exc:
@@ -354,6 +398,7 @@ def rider_report_issue(delivery_id):
     payload = request.get_json(silent=True) or {}
     try:
         rider = _rider_profile()
+        _require_password_changed()
         delivery = _rider_delivery_or_404(delivery_id, rider)
         report_delivery_issue(delivery, actor_from_user(current_user), payload.get("reason"), note=payload.get("note"))
     except DeliveryError as exc:

@@ -4938,6 +4938,29 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   background: #fff;
 }
 
+.delivery-password-field {
+  position: relative;
+}
+
+.delivery-password-field input {
+  padding-right: 44px;
+}
+
+.delivery-password-field > button {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #53657d;
+  cursor: pointer;
+}
+
 .delivery-check {
   display: flex;
   align-items: center;
@@ -4947,9 +4970,35 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 }
 
 .delivery-toolbar,
-.delivery-alert {
+.delivery-alert,
+.delivery-success-alert {
   max-width: 1120px;
   margin: 0 auto 16px;
+}
+
+.delivery-success-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid #9bd4ad;
+  border-radius: 8px;
+  background: #edf9f1;
+  color: #176535;
+  font-weight: 700;
+}
+
+.delivery-success-alert button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.delivery-subtoolbar {
+  margin-top: -8px;
 }
 
 .segmented {
@@ -4995,6 +5044,11 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   font-size: 1.05rem;
 }
 
+.delivery-section-head p {
+  margin: 4px 0 0;
+  color: #53657d;
+}
+
 .delivery-rider-form,
 .delivery-actions,
 .delivery-issue-row {
@@ -5012,7 +5066,7 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 
 .delivery-rider-row {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) auto auto minmax(160px, 220px) auto;
+  grid-template-columns: minmax(170px, 1fr) repeat(6, auto);
   gap: 8px;
   align-items: center;
   border: 1px solid #dce5f0;
@@ -5021,6 +5075,24 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   background: #f8fbff;
   color: #31445e;
   font-size: 0.85rem;
+}
+
+.delivery-rider-name-button {
+  width: max-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #143670;
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.delivery-rider-count {
+  white-space: nowrap;
+  font-size: 0.78rem;
 }
 
 .delivery-rider-row > div {
@@ -5130,6 +5202,248 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   color: #53657d;
 }
 
+.delivery-rider-history {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #dce5f0;
+}
+
+.delivery-rider-history-head,
+.delivery-company-rider-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.delivery-rider-history-head span,
+.delivery-company-rider-detail-head span {
+  color: #9a6b00;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.delivery-rider-history-head h2,
+.delivery-company-rider-detail-head h4 {
+  margin: 3px 0;
+  color: #143670;
+}
+
+.delivery-rider-history-head p,
+.delivery-company-rider-detail-head p {
+  margin: 0;
+  color: #53657d;
+}
+
+.delivery-rider-history-list,
+.delivery-company-deliveries {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.delivery-rider-history-list > div,
+.delivery-company-deliveries > div {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(120px, 0.7fr) minmax(150px, 1fr) minmax(160px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #31445e;
+  font-size: 0.82rem;
+}
+
+.delivery-rider-history-list span,
+.delivery-company-deliveries span {
+  display: grid;
+  gap: 2px;
+}
+
+.delivery-rider-history-list small,
+.delivery-company-deliveries small {
+  color: #6b7d95;
+}
+
+.delivery-password-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(12, 22, 46, 0.64);
+}
+
+.delivery-password-modal {
+  width: min(100%, 560px);
+  padding: 26px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(9, 20, 43, 0.28);
+}
+
+.delivery-password-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.delivery-password-modal-head span {
+  color: #9a6b00;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.delivery-password-modal-head h2 {
+  margin: 4px 0 8px;
+  color: #143670;
+  font-size: 1.25rem;
+}
+
+.delivery-password-modal-head p {
+  margin: 0;
+  color: #53657d;
+  line-height: 1.55;
+}
+
+.delivery-company-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.delivery-company-summary-grid > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.delivery-company-summary-grid span {
+  color: #6b7d95;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.delivery-company-summary-grid strong {
+  color: #143670;
+  overflow-wrap: anywhere;
+}
+
+.delivery-company-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dce5f0;
+  overflow-x: auto;
+}
+
+.delivery-company-tabs button {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: transparent;
+  color: #53657d;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.delivery-company-tabs button.active {
+  background: #143670;
+  color: #fff;
+}
+
+.delivery-company-overview h4 {
+  margin: 14px 0 5px;
+  color: #143670;
+}
+
+.delivery-company-overview p,
+.delivery-company-list > p,
+.delivery-company-deliveries > p {
+  margin: 0;
+  color: #53657d;
+}
+
+.delivery-company-create-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.delivery-company-create-row h4,
+.delivery-company-create-row p {
+  margin: 0;
+}
+
+.delivery-company-create-row p {
+  margin-top: 4px;
+  color: #53657d;
+  font-size: 0.78rem;
+}
+
+.delivery-company-list {
+  display: grid;
+  gap: 8px;
+}
+
+.delivery-company-person-row,
+.delivery-company-rider-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #31445e;
+  text-align: left;
+}
+
+.delivery-company-person-row > div,
+.delivery-company-rider-row > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.delivery-company-person-row span,
+.delivery-company-rider-row small {
+  color: #6b7d95;
+  font-size: 0.78rem;
+}
+
+.delivery-company-rider-row {
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  cursor: pointer;
+}
+
+.delivery-company-rider-detail {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 2px solid #143670;
+}
+
 @media (max-width: 640px) {
   .delivery-portal {
     padding: 16px;
@@ -5144,6 +5458,20 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   }
 
   .delivery-rider-row {
+    grid-template-columns: 1fr;
+  }
+
+  .delivery-rider-history-head,
+  .delivery-company-rider-detail-head,
+  .delivery-password-modal-head {
+    flex-direction: column;
+  }
+
+  .delivery-rider-history-list > div,
+  .delivery-company-deliveries > div,
+  .delivery-company-create-row,
+  .delivery-company-person-row,
+  .delivery-company-rider-row {
     grid-template-columns: 1fr;
   }
 }
