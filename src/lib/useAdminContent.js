@@ -32,6 +32,7 @@ const COLLECTION_TO_ENDPOINT = {
   flyers: 'flyers',
   deliveryZones: 'delivery-zones',
   deliveryCompanies: 'delivery-companies',
+  deliverySettlements: 'delivery-settlements',
   promoCodes: 'promo-codes',
   services: 'services',
   partners: 'partners',

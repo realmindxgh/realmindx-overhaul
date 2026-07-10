@@ -299,6 +299,7 @@ const DeliveryMeta = ({ delivery, riderSafe = false }) => (
 );
 
 const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
+  const [open, setOpen] = React.useState(false);
   const [riderId, setRiderId] = React.useState(delivery.rider_id || '');
   const [reason, setReason] = React.useState('');
   const [rejectReason, setRejectReason] = React.useState('');
@@ -308,7 +309,15 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
   const needsReassignReason = delivery.status === 'picked_up' && riderId && Number(riderId) !== Number(delivery.rider_id);
 
   return (
-    <article className="delivery-card">
+    <>
+      <button className="delivery-compact-card" type="button" onClick={() => setOpen(true)}>
+        <strong>{delivery.order_reference}</strong>
+        <span>{delivery.delivery_location || 'Location unavailable'}</span>
+        <small>{statusLabel(delivery.status)}</small>
+      </button>
+      {open ? <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
+    <article className="delivery-card delivery-detail-modal" role="dialog" aria-modal="true">
+      <button className="delivery-icon-button delivery-detail-close" type="button" onClick={() => setOpen(false)} aria-label="Close"><Icon name="x" size={20} /></button>
       <div className="delivery-card-head">
         <div>
           <h2>{delivery.order_reference}</h2>
@@ -354,7 +363,8 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
           <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryCompanyReportIssue(delivery.id, { reason: issueReason, note: issueNote }))}>Report Issue</button>
         </div>
       ) : null}
-    </article>
+    </article></div> : null}
+    </>
   );
 };
 
@@ -437,6 +447,63 @@ const RiderManagementRow = ({ rider, onChanged, onEdit, onSelect }) => {
   );
 };
 
+const moneyLabel = value => `GHS ${Number(value || 0).toFixed(2)}`;
+
+const CompanySettlements = () => {
+  const [items, setItems] = React.useState([]);
+  const [selected, setSelected] = React.useState(null);
+  const [note, setNote] = React.useState('');
+  const [loading, setLoading] = React.useState(true);
+  const [search, setSearch] = React.useState('');
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+  const load = React.useCallback(async () => {
+    try { setItems((await api.deliveryCompanySettlements()).items || []); }
+    catch (err) { toast.error(err?.message || 'Could not load settlements.'); }
+    finally { setLoading(false); }
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+  const open = async item => {
+    try { setSelected((await api.deliveryCompanySettlement(item.id)).settlement); }
+    catch (err) { toast.error(err?.message || 'Could not open settlement.'); }
+  };
+  const dispute = async () => {
+    try {
+      const result = await api.deliveryCompanyDisputeSettlement(selected.id, { note });
+      setSelected(result.settlement); setNote(''); await load(); toast.success('Settlement dispute submitted.');
+    } catch (err) { toast.error(err?.message || 'Could not submit dispute.'); }
+  };
+  const filtered = React.useMemo(
+    () => rankByFuzzyMatch(items, search, item => [item.reference, item.settlement_date, item.status, item.company_name]),
+    [items, search],
+  );
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+  React.useEffect(() => setPage(1), [search, pageSize]);
+  React.useEffect(() => setPage(current => Math.min(current, Math.max(1, Math.ceil(filtered.length / pageSize)))), [filtered.length, pageSize]);
+  if (loading) return <EmptyState title="Loading settlements" body="Preparing the daily accounting view." />;
+  return <section className="delivery-section">
+    <div className="delivery-section-head"><div><h2>Settlements</h2><p>Daily delivery collections and balances with RealMindX.</p></div></div>
+    <div className="delivery-list-toolbar"><label className="delivery-search-field"><Icon name="search" size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search settlements" /></label></div>
+    <div className="settlement-card-grid">
+      {paged.map(item => <button key={item.id} className="settlement-summary-card" type="button" onClick={() => open(item)}>
+        <span>{item.settlement_date}</span><strong>{item.reference}</strong><small>{item.delivery_count} deliveries</small>
+        <b className={item.net_balance >= 0 ? 'due-rmx' : 'due-company'}>{item.balance_direction === 'company_owes_realmindx' ? `Company owes ${moneyLabel(item.net_balance)}` : item.balance_direction === 'realmindx_owes_company' ? `RealMindX owes ${moneyLabel(Math.abs(item.net_balance))}` : 'Balanced'}</b>
+      </button>)}
+      {!filtered.length ? <EmptyState title={search ? 'No matching settlements' : 'No settlements yet'} body={search ? 'Try a different reference, date, or status.' : 'A daily settlement appears after a delivery is completed.'} /> : null}
+    </div>
+    <PaginationControls page={page} pageSize={pageSize} total={filtered.length} onPage={setPage} onPageSize={setPageSize} />
+    {selected ? <div className="delivery-password-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}>
+      <section className="delivery-password-modal settlement-detail-modal" role="dialog" aria-modal="true">
+        <div className="delivery-password-modal-head"><div><span>Settlement</span><h2>{selected.reference}</h2><p>{selected.settlement_date} | {statusLabel(selected.status)}</p></div><button className="delivery-icon-button" type="button" onClick={() => setSelected(null)}><Icon name="x" size={20} /></button></div>
+        <div className="delivery-kpi-strip"><div><span>Book value</span><strong>{moneyLabel(selected.book_subtotal)}</strong></div><div><span>Company payable</span><strong>{moneyLabel(selected.company_payable)}</strong></div><div><span>Net balance</span><strong>{moneyLabel(selected.net_balance)}</strong></div></div>
+        <div className="settlement-line-list">{(selected.lines || []).map(line => <div key={line.id}><strong>{line.order_reference}</strong><span>{line.rider_name || '-'}</span><span>{line.delivery_location || '-'}</span><span>{statusLabel(line.payment_method)}</span><b>{moneyLabel(line.net_balance)}</b></div>)}</div>
+        <div className="delivery-modal-actions">{['csv', 'xlsx', 'pdf'].map(format => <a key={format} className="btn btn-outline-navy" href={api.deliveryCompanySettlementExportUrl(selected.id, format)}>{format.toUpperCase()}</a>)}</div>
+        {selected.dispute_status !== 'open' ? <div className="delivery-issue-row"><input value={note} onChange={event => setNote(event.target.value)} placeholder="Explain the settlement concern" /><button className="btn btn-outline-navy" type="button" disabled={!note.trim()} onClick={dispute}>Raise Dispute</button></div> : <p className="form-error">Dispute open: {selected.dispute_notes}</p>}
+      </section>
+    </div> : null}
+  </section>;
+};
+
 const CompanyPortal = () => {
   const [profile, setProfile] = React.useState(null);
   const [deliveries, setDeliveries] = React.useState([]);
@@ -449,6 +516,9 @@ const CompanyPortal = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [riderSearch, setRiderSearch] = React.useState('');
+  const [deliverySearch, setDeliverySearch] = React.useState('');
+  const [deliveryPage, setDeliveryPage] = React.useState(1);
+  const [deliveryPageSize, setDeliveryPageSize] = React.useState(10);
   const [riderPage, setRiderPage] = React.useState(1);
   const [riderPageSize, setRiderPageSize] = React.useState(10);
   const [historyPage, setHistoryPage] = React.useState(1);
@@ -502,6 +572,12 @@ const CompanyPortal = () => {
     () => rankByFuzzyMatch(riders, riderSearch, rider => [rider.name, rider.phone, rider.status]),
     [riderSearch, riders],
   );
+  const filteredDeliveries = React.useMemo(
+    () => rankByFuzzyMatch(deliveries, deliverySearch, delivery => [delivery.order_reference, delivery.delivery_location, delivery.status, delivery.rider_name]),
+    [deliveries, deliverySearch],
+  );
+  const deliveryTotalPages = Math.max(1, Math.ceil(filteredDeliveries.length / deliveryPageSize));
+  const pagedDeliveries = filteredDeliveries.slice((deliveryPage - 1) * deliveryPageSize, deliveryPage * deliveryPageSize);
   const riderTotalPages = Math.max(1, Math.ceil(filteredRiders.length / riderPageSize));
   const pagedRiders = filteredRiders.slice((riderPage - 1) * riderPageSize, riderPage * riderPageSize);
   const riderHistory = selectedRider?.deliveries || [];
@@ -509,6 +585,8 @@ const CompanyPortal = () => {
   const pagedHistory = riderHistory.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize);
 
   React.useEffect(() => { setRiderPage(1); }, [riderSearch, riderPageSize]);
+  React.useEffect(() => { setDeliveryPage(1); }, [deliverySearch, deliveryPageSize, scope]);
+  React.useEffect(() => { setDeliveryPage(current => Math.min(current, deliveryTotalPages)); }, [deliveryTotalPages]);
   React.useEffect(() => { setRiderPage(current => Math.min(current, riderTotalPages)); }, [riderTotalPages]);
   React.useEffect(() => { setHistoryPage(1); }, [riderScope, historyPageSize, selectedRider?.rider?.id]);
   React.useEffect(() => { setHistoryPage(current => Math.min(current, historyTotalPages)); }, [historyTotalPages]);
@@ -542,23 +620,26 @@ const CompanyPortal = () => {
         <div className="segmented">
           <button type="button" className={view === 'deliveries' ? 'active' : ''} onClick={() => setView('deliveries')}>Deliveries</button>
           <button type="button" className={view === 'riders' ? 'active' : ''} onClick={() => setView('riders')}>Riders</button>
+          <button type="button" className={view === 'settlements' ? 'active' : ''} onClick={() => setView('settlements')}>Settlements</button>
         </div>
       </section>
-      {view === 'deliveries' ? (
+      {view === 'settlements' ? <CompanySettlements /> : view === 'deliveries' ? (
         <>
           <section className="delivery-toolbar delivery-subtoolbar">
             <div className="segmented">
               <button type="button" className={scope === 'active' ? 'active' : ''} onClick={() => setScope('active')}>Active</button>
               <button type="button" className={scope === 'completed' ? 'active' : ''} onClick={() => setScope('completed')}>Completed</button>
             </div>
+            <label className="delivery-search-field"><Icon name="search" size={18} /><input value={deliverySearch} onChange={event => setDeliverySearch(event.target.value)} placeholder="Search deliveries" /></label>
           </section>
           <section className="delivery-grid">
             {loading ? <EmptyState title="Loading deliveries" body="Fetching assigned orders." /> : null}
-            {!loading && deliveries.length === 0 ? <EmptyState title="No deliveries here" body="Assigned orders will appear here." /> : null}
-            {deliveries.map(delivery => (
+            {!loading && filteredDeliveries.length === 0 ? <EmptyState title={deliverySearch ? 'No matching deliveries' : 'No deliveries here'} body={deliverySearch ? 'Try a different order reference, location, rider, or status.' : 'Assigned orders will appear here.'} /> : null}
+            {pagedDeliveries.map(delivery => (
               <CompanyDeliveryCard key={delivery.id} delivery={delivery} riders={riders} onAction={onAction} />
             ))}
           </section>
+          <PaginationControls page={deliveryPage} pageSize={deliveryPageSize} total={filteredDeliveries.length} onPage={setDeliveryPage} onPageSize={setDeliveryPageSize} />
         </>
       ) : (
         <section className="delivery-section delivery-riders-page">
@@ -616,11 +697,20 @@ const CompanyPortal = () => {
 };
 
 const RiderDeliveryCard = ({ delivery, onAction }) => {
+  const [open, setOpen] = React.useState(false);
   const [otp, setOtp] = React.useState('');
   const [issueReason, setIssueReason] = React.useState('customer_unavailable');
   const [issueNote, setIssueNote] = React.useState('');
   return (
-    <article className="delivery-card">
+    <>
+      <button className="delivery-compact-card" type="button" onClick={() => setOpen(true)}>
+        <strong>{delivery.order_reference}</strong>
+        <span>{delivery.delivery_location || 'Location unavailable'}</span>
+        <small>{statusLabel(delivery.status)}</small>
+      </button>
+      {open ? <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
+    <article className="delivery-card delivery-detail-modal" role="dialog" aria-modal="true">
+      <button className="delivery-icon-button delivery-detail-close" type="button" onClick={() => setOpen(false)} aria-label="Close"><Icon name="x" size={20} /></button>
       <div className="delivery-card-head">
         <div>
           <h2>{delivery.order_reference}</h2>
@@ -649,7 +739,8 @@ const RiderDeliveryCard = ({ delivery, onAction }) => {
           <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryRiderReportIssue(delivery.id, { reason: issueReason, note: issueNote }))}>Report Issue</button>
         </div>
       ) : null}
-    </article>
+    </article></div> : null}
+    </>
   );
 };
 

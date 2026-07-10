@@ -1,6 +1,6 @@
 import sys
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,6 +13,7 @@ if str(SITE_ROOT) not in sys.path:
 
 from backend import create_app
 from backend.api.bookshop import order_tracking_json
+from backend.analytics import build_analytics_dashboard
 from backend.config import Config
 from backend.delivery_service import (
     DeliveryError,
@@ -27,7 +28,7 @@ from backend.delivery_service import (
     verify_delivery_otp,
 )
 from backend.extensions import db
-from backend.models import AuditLog, Order, Product, ProductCategory, Role, User
+from backend.models import AuditLog, DeliverySettlementLine, Order, Product, ProductCategory, Role, User
 from backend.security import DEFAULT_TEMPORARY_PASSWORD
 
 
@@ -75,6 +76,142 @@ class DeliveryAccountTests(unittest.TestCase):
         db.session.add(order)
         db.session.flush()
         return order
+
+    def _complete_delivery(self, order, company, rider, otp_value="654321", **assignment):
+        delivery = assign_order_to_company(order, company, ("admin", 1), **assignment)
+        company_accept_delivery(delivery, ("company_user", 2))
+        assign_rider(delivery, rider, ("company_user", 2))
+        mark_picked_up(delivery, ("rider", rider.user_id))
+        active_otp(delivery).token_hash = generate_password_hash(otp_value)
+        complete_delivery_with_otp(delivery, otp_value, ("rider", rider.user_id))
+        return delivery
+
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=True)
+    def test_online_delivery_creates_snapshot_settlement_once(self, _sms, _email):
+        company, _ = create_company({"name": "Online Settlement", "default_delivery_payable": 25})
+        self.assertEqual(float(company.default_delivery_payable), 25)
+        rider = create_rider(company, {"name": "Online Rider", "phone": "0240101010"})
+        order = self._order("RMX-SET-ONLINE")
+        order.subtotal_amount = 200
+        order.delivery_fee = 25
+        order.total_amount = 225
+        delivery = self._complete_delivery(order, company, rider)
+        db.session.commit()
+
+        line = DeliverySettlementLine.query.filter_by(delivery_id=delivery.id).one()
+        self.assertEqual(float(line.book_subtotal), 200)
+        self.assertEqual(float(line.customer_delivery_fee), 25)
+        self.assertEqual(float(line.company_payable), 25)
+        self.assertEqual(float(line.amount_collected_realmindx), 225)
+        self.assertEqual(float(line.amount_due_company), 25)
+        self.assertEqual(float(line.net_balance), -25)
+        self.assertEqual(DeliverySettlementLine.query.filter_by(delivery_id=delivery.id).count(), 1)
+        order.subtotal_amount = 999
+        order.delivery_fee = 99
+        company.default_delivery_payable = 88
+        db.session.commit()
+        db.session.refresh(line)
+        self.assertEqual(float(line.book_subtotal), 200)
+        self.assertEqual(float(line.customer_delivery_fee), 25)
+        self.assertEqual(float(line.company_payable), 25)
+
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=True)
+    def test_admin_settlement_exports_adjustment_and_payment_controls(self, _sms, _email):
+        admin_role = Role(name="admin", description="Admin")
+        admin = User(email="settlement-admin@example.com", first_name="Admin", role=admin_role, is_verified=True, is_active=True)
+        admin.set_password("AdminPassword123!")
+        db.session.add_all([admin_role, admin])
+        company, _ = create_company({"name": "Admin Settlement", "default_delivery_payable": 15})
+        rider = create_rider(company, {"name": "Admin Settlement Rider", "phone": "0240505050"})
+        delivery = self._complete_delivery(self._order("RMX-SET-ADMIN"), company, rider)
+        db.session.commit()
+        batch_id = DeliverySettlementLine.query.filter_by(delivery_id=delivery.id).one().batch_id
+
+        client = self.app.test_client()
+        self.assertEqual(client.post("/api/auth/login", json={"email": admin.email, "password": "AdminPassword123!"}).status_code, 200)
+        self.assertEqual(client.get("/api/admin/delivery-settlements").status_code, 200)
+        adjusted = client.post(f"/api/admin/delivery-settlements/{batch_id}/adjust", json={"amount": 5, "reason": "Route surcharge correction"})
+        self.assertEqual(adjusted.status_code, 200)
+        for export_format, content_type in [("csv", "text/csv"), ("xlsx", "spreadsheetml"), ("pdf", "application/pdf")]:
+            response = client.get(f"/api/admin/delivery-settlements/{batch_id}/export/{export_format}")
+            self.assertEqual(response.status_code, 200, export_format)
+            self.assertIn(content_type, response.content_type, export_format)
+        settled = client.post(f"/api/admin/delivery-settlements/{batch_id}/mark-paid", json={"payment_reference": "PAY-001", "payment_date": "2026-07-10"})
+        self.assertEqual(settled.status_code, 200)
+        self.assertEqual(settled.get_json()["settlement"]["status"], "settled")
+        self.assertEqual(client.post(f"/api/admin/delivery-settlements/{batch_id}/mark-paid", json={"payment_reference": "PAY-002", "payment_date": "2026-07-10"}).status_code, 409)
+
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=True)
+    def test_pay_on_delivery_and_free_delivery_settlement_math(self, _sms, _email):
+        company, _ = create_company({"name": "COD Settlement", "default_delivery_payable": 25})
+        rider = create_rider(company, {"name": "COD Rider", "phone": "0240202020"})
+        cod = self._order("RMX-SET-COD")
+        cod.payment_method = "cash_on_delivery"
+        cod.payment_status = "unpaid"
+        cod.subtotal_amount = 200
+        cod.delivery_fee = 25
+        cod.total_amount = 225
+        cod_delivery = self._complete_delivery(cod, company, rider)
+
+        free = self._order("RMX-SET-FREE")
+        free.subtotal_amount = 200
+        free.delivery_fee = 0
+        free.total_amount = 200
+        free_delivery = self._complete_delivery(
+            free, company, rider, company_payable_amount=25,
+            promotion_payer="realmindx", promotion_amount=25,
+        )
+        db.session.commit()
+
+        cod_line = DeliverySettlementLine.query.filter_by(delivery_id=cod_delivery.id).one()
+        self.assertEqual(float(cod_line.amount_collected_company), 225)
+        self.assertEqual(float(cod_line.amount_due_realmindx), 200)
+        self.assertEqual(float(cod_line.net_balance), 200)
+        free_line = DeliverySettlementLine.query.filter_by(delivery_id=free_delivery.id).one()
+        self.assertEqual(float(free_line.customer_delivery_fee), 0)
+        self.assertEqual(float(free_line.company_payable), 25)
+        self.assertEqual(float(free_line.amount_due_company), 25)
+        self.assertEqual(free_line.promotion_payer, "realmindx")
+
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=True)
+    def test_company_cannot_read_another_company_settlement(self, _sms, _email):
+        company_one, _ = create_company({"name": "Settlement One"})
+        company_two, manager_two = create_company({"name": "Settlement Two", "manager_name": "Second Manager", "manager_phone": "0240303030"})
+        rider = create_rider(company_one, {"name": "Scoped Rider", "phone": "0240404040"})
+        delivery = self._complete_delivery(self._order("RMX-SET-SCOPE"), company_one, rider)
+        db.session.commit()
+
+        client = self.app.test_client()
+        login = client.post("/api/delivery/company/login", json={"phone": manager_two.phone, "password": DEFAULT_TEMPORARY_PASSWORD})
+        self.assertEqual(login.status_code, 200)
+        listing = client.get("/api/delivery/company/settlements")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.get_json()["items"], [])
+        batch_id = DeliverySettlementLine.query.filter_by(delivery_id=delivery.id).one().batch_id
+        self.assertEqual(client.get(f"/api/delivery/company/settlements/{batch_id}").status_code, 404)
+
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=False)
+    def test_external_delivery_status_is_system_managed(self, _sms, _email):
+        admin_role = Role(name="admin", description="Admin")
+        admin = User(email="status-admin@example.com", first_name="Admin", role=admin_role, is_verified=True, is_active=True)
+        admin.set_password("AdminPassword123!")
+        db.session.add_all([admin_role, admin])
+        company, _ = create_company({"name": "Managed Status"})
+        order = self._order("RMX-MANAGED-STATUS")
+        db.session.flush()
+        assign_order_to_company(order, company, ("admin", admin.id))
+        db.session.commit()
+
+        client = self.app.test_client()
+        self.assertEqual(client.post("/api/auth/login", json={"email": admin.email, "password": "AdminPassword123!"}).status_code, 200)
+        response = client.put(f"/api/admin/orders/{order.id}/status", json={"status": "complete"})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.get_json()["code"], "external_delivery_status_managed")
 
     @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
     @patch("backend.delivery_service.send_sms", return_value=True)
@@ -225,6 +362,39 @@ class DeliveryAccountTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.get_json()["code"], "inactive_account")
+
+    @patch("backend.cli.send_email", return_value={"status": "sent"})
+    def test_annual_teacher_reminder_includes_never_reminded_accounts(self, email_mock):
+        role = Role(name="user", description="Teacher")
+        teacher = User(email="teacher-reminder@example.com", first_name="Ama", role=role, is_active=True, is_verified=True)
+        teacher.set_password("TeacherPassword123!")
+        db.session.add_all([role, teacher])
+        db.session.commit()
+
+        result = self.app.test_cli_runner().invoke(args=["send-teacher-profile-reminders", "--force"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(email_mock.call_count, 1)
+        self.assertEqual(teacher.profile_reminder_sent_year, date.today().year)
+
+    def test_demographic_analytics_use_order_and_account_snapshots(self):
+        role = Role(name="user", description="Public account")
+        user = User(email="demographics@example.com", first_name="Kojo", role=role, sex="male", age_range="25_34")
+        user.set_password("Password123!")
+        order = self._order("RMX-DEMOGRAPHICS")
+        order.customer_sex = "female"
+        order.customer_age_range = "35_44"
+        db.session.add_all([role, user])
+        db.session.commit()
+        now = datetime.now(timezone.utc)
+        payload = build_analytics_dashboard({
+            "start": now - timedelta(days=1), "end": now + timedelta(days=1),
+            "compare_start": now - timedelta(days=3), "compare_end": now - timedelta(days=1),
+            "preset": "custom", "label": "Test", "start_date": date.today().isoformat(),
+            "end_date": date.today().isoformat(), "compare_start_date": date.today().isoformat(),
+            "compare_end_date": date.today().isoformat(),
+        })
+        self.assertEqual(payload["bookshop"]["customer_demographics"]["sex"][0]["label"], "Female")
+        self.assertEqual(payload["registered_user_demographics"]["age_ranges"][0]["label"], "25-34")
 
     @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
     @patch("backend.delivery_service.send_sms", return_value=False)

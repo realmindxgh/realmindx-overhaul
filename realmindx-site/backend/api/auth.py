@@ -159,7 +159,15 @@ def signup():
 
     role = Role.query.filter_by(name="user").first() or Role(name="user", description="Public account")
     db.session.add(role)
-    user = User(email=email, first_name=first_name, last_name=last_name, phone=phone, role=role)
+    user = User(
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        phone=phone,
+        sex=(payload.get("sex") or "").strip() or None,
+        age_range=(payload.get("age_range") or "").strip() or None,
+        role=role,
+    )
     user.set_password(password)
     db.session.add(user)
     db.session.flush()

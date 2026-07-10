@@ -19,7 +19,7 @@ except ImportError:  # Optional during local development before dependencies are
     maxminddb = None
 
 from .extensions import db
-from .models import AnalyticsEvent, AuditLog, ContactMessage, JobApplication, News, NewsletterSubscriber, Order, Product
+from .models import AnalyticsEvent, AuditLog, ContactMessage, JobApplication, News, NewsletterSubscriber, Order, Product, User
 from .order_status import normalize_order_status
 
 
@@ -690,6 +690,11 @@ def build_analytics_dashboard(range_info):
     previous_view_events = _analytics_events(compare_start, compare_end, event_types=["product_view"])
     current_orders = _valid_orders(_analytics_orders(start, end))
     completed_sales = _successful_orders(current_orders)
+    registered_users = User.query.filter(User.created_at >= start, User.created_at < end).all()
+    customer_sex = Counter((order.customer_sex or UNKNOWN_LABEL).replace("_", " ").title() for order in current_orders)
+    customer_age = Counter((order.customer_age_range or UNKNOWN_LABEL).replace("_", "-").title() for order in current_orders)
+    registered_sex = Counter((user.sex or UNKNOWN_LABEL).replace("_", " ").title() for user in registered_users)
+    registered_age = Counter((user.age_range or UNKNOWN_LABEL).replace("_", "-").title() for user in registered_users)
 
     page_events = [event for event in current_events if event.event_type == "page_view"]
     search_events = [event for event in current_events if event.event_type == "search"]
@@ -1198,6 +1203,10 @@ def build_analytics_dashboard(range_info):
                 "revenue": sorted(product_items, key=lambda item: item["revenue"], reverse=True)[:8],
             },
             "top_categories": _counter_rows(category_interest, limit=8),
+            "customer_demographics": {
+                "sex": _counter_rows(customer_sex, include_unknown=True),
+                "age_ranges": _counter_rows(customer_age, include_unknown=True),
+            },
         },
         "search": {
             "summary": {
@@ -1214,6 +1223,10 @@ def build_analytics_dashboard(range_info):
             },
             "terms": search_terms[:20],
             "top_products": [{"product": name, "count": count} for name, count in search_product_counter.most_common(12)],
+        },
+        "registered_user_demographics": {
+            "sex": _counter_rows(registered_sex, include_unknown=True),
+            "age_ranges": _counter_rows(registered_age, include_unknown=True),
         },
         "products": {
             "items": product_items,

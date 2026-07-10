@@ -160,6 +160,7 @@ def create_company(payload, actor=None):
         contact_phone=normalise_phone(payload.get("contact_phone") or "") if payload.get("contact_phone") else None,
         contact_email=(payload.get("contact_email") or "").strip().lower() or None,
         notes=(payload.get("notes") or "").strip() or None,
+        default_delivery_payable=payload.get("default_delivery_payable") or None,
         status="active" if payload.get("is_active", True) else "inactive",
         is_active=bool(payload.get("is_active", True)),
     )
@@ -495,6 +496,16 @@ def transition_delivery(delivery, status, actor, event_type, reason=None, note=N
         note=note,
         details=details,
     )
+    if status == "delivered":
+        from .settlement_service import SettlementError, create_settlement_line
+        try:
+            create_settlement_line(delivery, actor)
+        except SettlementError as exc:
+            raise DeliveryError(
+                f"Delivery could not be completed because its settlement record failed: {exc.message}",
+                exc.status_code,
+                "settlement_creation_failed",
+            ) from exc
     notify_delivery_transition(delivery, status, event_type)
     return delivery
 
@@ -513,7 +524,7 @@ def customer_contact_available(order):
     return bool(normalise_phone(getattr(order, "phone", "") or "") or (getattr(order, "email", "") or "").strip())
 
 
-def assign_order_to_company(order, company, actor, note=None):
+def assign_order_to_company(order, company, actor, note=None, company_payable_amount=None, promotion_payer=None, promotion_amount=None):
     if not company or not company.is_active:
         raise DeliveryError("Delivery company is inactive or unavailable.", 400, "company_inactive")
     if normalize_order_status(order.status) in {"cancelled", "archived", "complete"}:
@@ -526,13 +537,26 @@ def assign_order_to_company(order, company, actor, note=None):
     delivery.rider_id = None
     delivery.assigned_by_id = actor[1]
     delivery.otp_blocked = False
+    if company_payable_amount is not None:
+        delivery.company_payable_amount = company_payable_amount
+    elif delivery.company_payable_amount is None:
+        delivery.company_payable_amount = company.default_delivery_payable if company.default_delivery_payable is not None else order.delivery_fee
+    if promotion_payer is not None:
+        delivery.promotion_payer = str(promotion_payer or "none").strip().lower()
+    if promotion_amount is not None:
+        delivery.promotion_amount = promotion_amount
     transition_delivery(
         delivery,
         "assigned_to_company",
         actor,
         "assigned_to_company",
         note=note,
-        details={"previous_company_id": previous_company_id, "company_id": company.id},
+        details={
+            "previous_company_id": previous_company_id, "company_id": company.id,
+            "company_payable_amount": str(delivery.company_payable_amount or 0),
+            "promotion_payer": delivery.promotion_payer,
+            "promotion_amount": str(delivery.promotion_amount or 0),
+        },
     )
     return delivery
 

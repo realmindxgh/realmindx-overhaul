@@ -29,7 +29,7 @@ import DonatePage from '../realmindx-site/pages/DonatePage.jsx';
 import { publicItems, useManagedContent } from './lib/managedContent.js';
 import { useIdleTimeout } from './lib/useIdleTimeout.js';
 import { IdleWarning } from './lib/IdleWarning.jsx';
-import InstallAppPrompt from './lib/InstallAppPrompt.jsx';
+import InstallAppPrompt, { isInstalledApp } from './lib/InstallAppPrompt.jsx';
 import { getDemoSession } from './lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from './lib/authClient.js';
 import { loginPathForRole } from './lib/sessionRoutes.js';
@@ -733,7 +733,17 @@ const RouteTitle = () => {
     let structuredData = null;
     let robots = shouldNoIndexPath(path) ? 'noindex,follow' : 'index,follow';
 
-    if (path.startsWith('/services/')) {
+    if (path.startsWith('/admin')) {
+      meta = { title: 'RealMindX Admin - RealMindX Education', desc: 'Secure RealMindX administration portal.' };
+    } else if (path.startsWith('/staff')) {
+      meta = { title: 'RealMindX Staff - RealMindX Education', desc: 'Secure RealMindX staff portal.' };
+    } else if (path.startsWith('/delivery-company')) {
+      meta = { title: 'RealMindX Delivery Company Portal', desc: 'Secure dispatch portal for RealMindX delivery partners.' };
+    } else if (path.startsWith('/delivery')) {
+      meta = { title: 'RealMindX Rider Portal - RealMindX Education', desc: 'Secure delivery workspace for assigned RealMindX riders.' };
+    } else if (path.startsWith('/portal')) {
+      meta = { title: 'My RealMindX Profile - RealMindX Education', desc: 'Secure RealMindX teacher account portal.' };
+    } else if (path.startsWith('/services/')) {
       const serviceSlug = path.split('/services/')[1] || '';
       const service = services.find(item => slugify(item.id) === slugify(serviceSlug));
       if (service) {
@@ -880,7 +890,7 @@ const IdleGuard = () => {
   };
 
   const { countdown, keepAlive } = useIdleTimeout({
-    enabled: Boolean(session?.role) && !isBookshopRoute,
+    enabled: Boolean(session?.role) && !isBookshopRoute && !isInstalledApp(),
     idleMs,
     onTimeout: () => signOutHere(timeoutMessage, { idle: true }),
   });
@@ -986,6 +996,38 @@ const publicAssetUrl = (value) => {
   return new URL(value, base).toString();
 };
 
+const InstalledSurfaceLinkGuard = () => {
+  React.useEffect(() => {
+    if (!isInstalledApp()) return undefined;
+    const path = window.location.pathname;
+    const host = window.location.hostname;
+    const scope = host.startsWith('bookshop.') ? '/'
+      : path.startsWith('/delivery-company') ? '/delivery-company/'
+      : path.startsWith('/delivery') ? '/delivery/'
+      : path.startsWith('/admin') ? '/admin/'
+      : path.startsWith('/staff') ? '/staff/'
+      : null;
+    if (!scope) return undefined;
+
+    const outsideSurface = url => {
+      if (url.origin !== window.location.origin) return true;
+      if (scope === '/') return false;
+      return !(url.pathname === scope.slice(0, -1) || url.pathname.startsWith(scope) || url.pathname.startsWith('/api/'));
+    };
+    const handleClick = event => {
+      const anchor = event.target.closest?.('a[href]');
+      if (!anchor || event.defaultPrevented || anchor.hasAttribute('download')) return;
+      const url = new URL(anchor.href, window.location.href);
+      if (!outsideSurface(url)) return;
+      event.preventDefault();
+      window.open(url.href, '_blank', 'noopener,noreferrer');
+    };
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
+  }, []);
+  return null;
+};
+
 const FlyerFocusModal = () => {
   const [flyer, setFlyer] = React.useState(null);
 
@@ -1060,6 +1102,7 @@ const AppRoutes = () => {
       <>
         <FlyerFocusModal />
         <InstallAppPrompt />
+        <InstalledSurfaceLinkGuard />
         <BookshopApp />
       </>
     );
@@ -1068,6 +1111,7 @@ const AppRoutes = () => {
   <>
     <FlyerFocusModal />
     <InstallAppPrompt />
+    <InstalledSurfaceLinkGuard />
     <BrowserRouter>
       <RouteTitle />
       <RouteAnalyticsTracker />

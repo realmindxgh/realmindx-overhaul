@@ -38,6 +38,8 @@ const cleanCheckoutForm = (value = {}) => ({
   address: String(value.address || ''),
   city: String(value.city || ''),
   region: String(value.region || ''),
+  sex: String(value.sex || ''),
+  ageRange: String(value.ageRange || value.age_range || ''),
 });
 
 const cartSignatureFor = (items = []) => items
@@ -190,6 +192,8 @@ const CheckoutPage = ({ navigate }) => {
       name: [session?.firstName, session?.lastName].filter(Boolean).join(' '),
       phone: session?.phone || '',
       email: session?.email || '',
+      sex: session?.sex || '',
+      ageRange: session?.ageRange || session?.age_range || '',
       address: '',
       city: '',
       region: '',
@@ -456,6 +460,8 @@ const CheckoutPage = ({ navigate }) => {
     }));
     const checkoutPayload = {
       customer_name: form.name,
+      customer_sex: form.sex || null,
+      customer_age_range: form.ageRange || null,
       email: form.email,
       phone: form.phone,
       delivery_method: method,
@@ -695,6 +701,10 @@ const CheckoutPage = ({ navigate }) => {
                 <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number *</label><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." />{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
               </div>
               <div className={`bs-field${errors.email?' err':''}`}><label>Email *</label><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" />{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
+              <div className="bs-field-row">
+                <div className="bs-field"><label>Sex</label><select value={form.sex} onChange={set('sex')}><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></div>
+                <div className="bs-field"><label>Age range</label><select value={form.ageRange} onChange={set('ageRange')}><option value="">Prefer not to say</option>{['under_18','18_24','25_34','35_44','45_54','55_64','65_plus'].map(value => <option key={value} value={value}>{value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())}</option>)}</select></div>
+              </div>
 
               <label className="bs-field" style={{ marginBottom:8 }}><span style={{ fontFamily:'Montserrat', fontWeight:600, fontSize:13, color:'var(--bs-navy)', display:'block', marginBottom:7 }}>Delivery Method</span></label>
               <div className={`bs-radio-card${method==='delivery'?' sel':''}`} onClick={() => setMethod('delivery')}>

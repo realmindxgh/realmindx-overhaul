@@ -73,6 +73,7 @@ from ..models import (
     DeliveryEvent,
     DeliveryOtp,
     DeliveryRider,
+    DeliverySettlementBatch,
     DeliveryZone,
     Flyer,
     Job,
@@ -104,6 +105,10 @@ from ..promo_affiliates import (
     usage_snapshot,
 )
 from ..security import DEFAULT_TEMPORARY_PASSWORD, admin_or_staff_required, admin_required, permission_required
+from ..settlement_service import (
+    SettlementError, apply_adjustment, batch_json, line_json, mark_settled,
+    raise_dispute, resolve_dispute,
+)
 from ..serializers import (
     delivery_company_json,
     delivery_company_user_json,
@@ -805,7 +810,7 @@ def _delete_admin_collection_item(setting_key, default_items, item_id, entity_ty
     return jsonify(message="Item deleted.")
 
 
-def _matches_job_alert(job, preference):
+def _matches_job_alert(job, preference, user=None):
     # preference.subject is a comma-joined multi-select value (a teacher can
     # now save several teaching subjects, e.g. "Mathematics, Physics,
     # Chemistry"). Match if ANY one of those subjects appears in the job's
@@ -858,7 +863,11 @@ def _matches_job_alert(job, preference):
     type_match = not pref_types or (
         job_type and job_type in pref_types
     )
-    return subject_match and location_match and level_match and curriculum_match and type_match
+    required_sex = (job.preferred_sex or "any").strip().lower()
+    required_age = (job.preferred_age_range or "any").strip().lower()
+    sex_match = required_sex == "any" or (user and (user.sex or "").lower() == required_sex)
+    age_match = required_age == "any" or (user and (user.age_range or "").lower() == required_age)
+    return subject_match and location_match and level_match and curriculum_match and type_match and sex_match and age_match
 
 
 def dispatch_job_alerts(job):
@@ -878,7 +887,7 @@ def dispatch_job_alerts(job):
     sent = 0
     for preference in preferences:
         user = db.session.get(User, preference.user_id)
-        if not user or not _matches_job_alert(job, preference):
+        if not user or not _matches_job_alert(job, preference, user):
             continue
         job_url = f"{current_app.config['BASE_URL'].rstrip('/')}/jobs#{job.id}"
         send_email(
@@ -1146,6 +1155,8 @@ def create_job():
         level=payload.get("level"),
         curriculum=payload.get("curriculum"),
         employment_type=payload.get("employment_type"),
+        preferred_sex=payload.get("preferred_sex"),
+        preferred_age_range=payload.get("preferred_age_range"),
         description=payload.get("description") or "",
         requirements=payload.get("requirements"),
         responsibilities=payload.get("responsibilities"),
@@ -1179,7 +1190,7 @@ def update_job(job_id):
             return jsonify(error="Choose a valid job location from the delivery-area list."), 400
         job.delivery_zone_id = delivery_zone.id
         job.location = delivery_zone.name
-    for field in ["title", "organisation", "subject", "level", "curriculum", "employment_type", "description", "requirements", "responsibilities", "salary_min", "salary_max", "status"]:
+    for field in ["title", "organisation", "subject", "level", "curriculum", "employment_type", "preferred_sex", "preferred_age_range", "description", "requirements", "responsibilities", "salary_min", "salary_max", "status"]:
         if field in payload:
             setattr(job, field, payload[field])
     if "deadline" in payload:
@@ -2710,6 +2721,8 @@ def update_delivery_company(company_id):
         raw_phone = payload.get("contact_phone") or ""
         company.contact_phone = normalise_phone(raw_phone) if raw_phone else None
     company.notes = (payload.get("notes") if "notes" in payload else company.notes) or None
+    if "default_delivery_payable" in payload:
+        company.default_delivery_payable = payload.get("default_delivery_payable") or None
     if "is_active" in payload:
         company.is_active = _boolish(payload.get("is_active"))
         company.status = "active" if company.is_active else "inactive"
@@ -2827,7 +2840,11 @@ def admin_assign_order_delivery(order_id):
     if not company:
         return jsonify(error="Choose a delivery company."), 400
     try:
-        delivery = assign_order_to_company(order, company, actor_from_user(current_user), note=payload.get("note"))
+        delivery = assign_order_to_company(
+            order, company, actor_from_user(current_user), note=payload.get("note"),
+            company_payable_amount=payload.get("company_payable_amount"),
+            promotion_payer=payload.get("promotion_payer"), promotion_amount=payload.get("promotion_amount"),
+        )
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     log_action("assign_order_delivery_company", "order_delivery", delivery.id, {
@@ -2878,6 +2895,151 @@ def admin_override_delivery_otp(delivery_id):
     })
     db.session.commit()
     return jsonify(delivery=delivery_json(delivery, include_events=True))
+
+
+@admin_bp.post("/deliveries/<int:delivery_id>/cancel")
+@login_required
+@permission_required("delivery.assign")
+@permission_required("orders.edit")
+def admin_cancel_delivery(delivery_id):
+    delivery = db.get_or_404(OrderDelivery, delivery_id)
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or "cancelled_by_realmindx").strip()
+    cancel_delivery(delivery, actor_from_user(current_user), reason=reason, note=payload.get("note"))
+    if payload.get("cancel_order"):
+        delivery.order.status = "cancelled"
+    log_action("cancel_delivery_assignment", "order_delivery", delivery.id, {"reason": reason, "cancel_order": bool(payload.get("cancel_order"))})
+    db.session.commit()
+    return jsonify(delivery=delivery_json(delivery, include_events=True), order=order_json(delivery.order))
+
+
+def _settlement_query():
+    query = DeliverySettlementBatch.query.order_by(DeliverySettlementBatch.settlement_date.desc(), DeliverySettlementBatch.id.desc())
+    company_id = request.args.get("company_id", type=int)
+    status = (request.args.get("status") or "").strip()
+    start = (request.args.get("start_date") or "").strip()
+    end = (request.args.get("end_date") or "").strip()
+    payment_method = (request.args.get("payment_method") or "").strip()
+    if company_id: query = query.filter_by(company_id=company_id)
+    if status: query = query.filter_by(status=status)
+    if start: query = query.filter(DeliverySettlementBatch.settlement_date >= date.fromisoformat(start))
+    if end: query = query.filter(DeliverySettlementBatch.settlement_date <= date.fromisoformat(end))
+    rows = query.all()
+    if payment_method:
+        rows = [row for row in rows if any(line.payment_method == payment_method for line in row.lines)]
+    return rows
+
+
+@admin_bp.get("/delivery-settlements")
+@login_required
+@permission_required("delivery.settlements.view")
+def admin_delivery_settlements():
+    return jsonify(items=[batch_json(batch) for batch in _settlement_query()])
+
+
+@admin_bp.get("/delivery-settlements/<int:batch_id>")
+@login_required
+@permission_required("delivery.settlements.view")
+def admin_delivery_settlement_detail(batch_id):
+    return jsonify(settlement=batch_json(db.get_or_404(DeliverySettlementBatch, batch_id), include_lines=True, include_events=True))
+
+
+@admin_bp.post("/delivery-settlements/<int:batch_id>/adjust")
+@login_required
+@permission_required("delivery.settlements.adjust")
+def admin_adjust_delivery_settlement(batch_id):
+    payload = request.get_json(silent=True) or {}
+    try: batch = apply_adjustment(db.get_or_404(DeliverySettlementBatch, batch_id), payload.get("amount"), payload.get("reason"), actor_from_user(current_user))
+    except SettlementError as exc: return jsonify(error=exc.message, code=exc.code), exc.status_code
+    db.session.commit()
+    return jsonify(settlement=batch_json(batch, include_lines=True, include_events=True))
+
+
+@admin_bp.post("/delivery-settlements/<int:batch_id>/mark-paid")
+@login_required
+@permission_required("delivery.settlements.mark_paid")
+def admin_mark_delivery_settlement_paid(batch_id):
+    payload = request.get_json(silent=True) or {}
+    try:
+        batch = mark_settled(db.get_or_404(DeliverySettlementBatch, batch_id), payload.get("payment_reference"), payload.get("payment_date"), actor_from_user(current_user), payload.get("payment_proof_url"))
+    except (SettlementError, ValueError) as exc:
+        return jsonify(error=getattr(exc, "message", "Enter a valid payment date.")), getattr(exc, "status_code", 400)
+    db.session.commit()
+    company_email = (batch.company.contact_email or "").strip() if batch.company else ""
+    if company_email:
+        portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/delivery-company/"
+        try:
+            send_email(OutboundEmail(
+                to=company_email,
+                subject=f"Delivery settlement confirmed: {batch.reference}",
+                html=app_email_shell(
+                    "Delivery settlement confirmed",
+                    f"<p>Settlement <strong>{escape(batch.reference)}</strong> has been marked settled.</p><p>Payment reference: <strong>{escape(batch.payment_reference)}</strong>.</p>",
+                    cta_label="Open delivery company portal", cta_url=portal_url,
+                ),
+                text=f"Settlement {batch.reference} has been marked settled. Payment reference: {batch.payment_reference}. {portal_url}",
+            ))
+        except Exception:
+            current_app.logger.exception("Could not send settlement confirmation for %s", batch.reference)
+    return jsonify(settlement=batch_json(batch, include_lines=True, include_events=True))
+
+
+@admin_bp.post("/delivery-settlements/<int:batch_id>/resolve-dispute")
+@login_required
+@permission_required("delivery.settlements.dispute_resolve")
+def admin_resolve_delivery_settlement_dispute(batch_id):
+    payload = request.get_json(silent=True) or {}
+    try: batch = resolve_dispute(db.get_or_404(DeliverySettlementBatch, batch_id), payload.get("note"), actor_from_user(current_user))
+    except SettlementError as exc: return jsonify(error=exc.message, code=exc.code), exc.status_code
+    db.session.commit()
+    return jsonify(settlement=batch_json(batch, include_lines=True, include_events=True))
+
+
+def _settlement_export_response(batch, export_format):
+    rows = [line_json(line) for line in batch.lines]
+    for row in rows:
+        row.update(payment_reference=batch.payment_reference, dispute_status=batch.dispute_status)
+    headers = ["settlement_date", "order_reference", "company_name", "rider_name", "customer_name", "delivery_location", "payment_method", "book_subtotal", "customer_delivery_fee", "company_payable", "promotion_amount", "promotion_payer", "amount_collected_realmindx", "amount_collected_company", "amount_due_realmindx", "amount_due_company", "net_balance", "status", "delivered_at", "payment_reference", "dispute_status"]
+    if export_format == "csv":
+        output = io.StringIO(); writer = csv.DictWriter(output, fieldnames=headers); writer.writeheader()
+        writer.writerows([{key: row.get(key) for key in headers} for row in rows])
+        return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={batch.reference}.csv"})
+    if export_format == "xlsx":
+        try: from openpyxl import Workbook
+        except ImportError: return jsonify(error="XLSX export requires openpyxl."), 501
+        workbook = Workbook(); sheet = workbook.active; sheet.title = "Settlement"; sheet.append(headers)
+        for row in rows: sheet.append([row.get(key) for key in headers])
+        stream = io.BytesIO(); workbook.save(stream); stream.seek(0)
+        return send_file(stream, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=f"{batch.reference}.xlsx")
+    if export_format == "pdf":
+        try:
+            from reportlab.lib.pagesizes import landscape, A4
+            from reportlab.pdfgen import canvas as rl_canvas
+        except ImportError: return jsonify(error="PDF export requires reportlab."), 501
+        stream = io.BytesIO(); pdf = rl_canvas.Canvas(stream, pagesize=landscape(A4)); width, height = landscape(A4)
+        totals = batch_json(batch); y = height - 40; pdf.setFont("Helvetica-Bold", 16); pdf.drawString(35, y, "RealMindX Delivery Settlement")
+        y -= 20; pdf.setFont("Helvetica", 9); pdf.drawString(35, y, f"{batch.reference} | {batch.company.name} | {batch.settlement_date} | {batch.status}")
+        y -= 18; pdf.drawString(35, y, f"Deliveries: {totals['delivery_count']} | Book value: GHS {totals['book_subtotal']:.2f} | Company payable: GHS {totals['company_payable']:.2f} | Net: GHS {totals['net_balance']:.2f}")
+        y -= 24; pdf.setFont("Helvetica-Bold", 7); pdf.drawString(35, y, "Order | Rider | Location | Payment | Book | Delivery | Payable | Due RMX | Due Company | Net")
+        pdf.setFont("Helvetica", 7)
+        for row in rows:
+            y -= 14
+            if y < 35: pdf.showPage(); y = height - 40; pdf.setFont("Helvetica", 7)
+            text = f"{row['order_reference']} | {row['rider_name'] or '-'} | {row['delivery_location'] or '-'} | {row['payment_method']} | {row['book_subtotal']:.2f} | {row['customer_delivery_fee']:.2f} | {row['company_payable']:.2f} | {row['amount_due_realmindx']:.2f} | {row['amount_due_company']:.2f} | {row['net_balance']:.2f}"
+            pdf.drawString(35, y, text[:180])
+        pdf.save(); stream.seek(0)
+        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name=f"{batch.reference}.pdf")
+    return jsonify(error="Use csv, xlsx, or pdf."), 400
+
+
+@admin_bp.get("/delivery-settlements/<int:batch_id>/export/<string:export_format>")
+@login_required
+@permission_required("delivery.settlements.export")
+def admin_export_delivery_settlement(batch_id, export_format):
+    batch = db.get_or_404(DeliverySettlementBatch, batch_id)
+    log_action("settlement_exported", "delivery_settlement", batch.id, {"format": export_format})
+    db.session.commit()
+    return _settlement_export_response(batch, export_format)
 
 
 @admin_bp.get("/orders")
@@ -3151,6 +3313,12 @@ def update_order_status(order_id):
     if raw_status in {None, ""}:
         return jsonify(error="Select a valid order status."), 400
     status = normalize_order_status(raw_status)
+    delivery = getattr(order, "delivery", None)
+    if delivery and delivery.company_id:
+        return jsonify(
+            error="This order is managed by an external delivery company. Use delivery actions instead of the manual order status control.",
+            code="external_delivery_status_managed",
+        ), 409
     cancel_reason = (payload.get("cancel_reason") or "").strip()
     valid_statuses = {"new", "confirmed", "shipped", "complete", "cancelled", "archived"}
     if status not in valid_statuses:

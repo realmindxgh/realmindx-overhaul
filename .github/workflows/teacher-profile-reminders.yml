@@ -1,0 +1,15 @@
+name: Annual Teacher Profile Reminders
+
+on:
+  schedule:
+    - cron: "0 9 1 8 *"
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: self-hosted
+    steps:
+      - name: Send profile reminders
+        run: |
+          cd /var/www/realmindx/realmindx-site
+          .venv/bin/python -m flask --app backend:create_app send-teacher-profile-reminders

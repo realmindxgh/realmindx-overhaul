@@ -151,7 +151,7 @@ export const completeTwoFactorLogin = async ({ otp, role = 'user' }) => {
   return session;
 };
 
-export const signUp = async ({ email, phone = '', password, firstName, lastName, acceptedTerms = false, turnstileToken = '' }) => {
+export const signUp = async ({ email, phone = '', password, firstName, lastName, sex = '', ageRange = '', acceptedTerms = false, turnstileToken = '' }) => {
   if (isApiMode()) {
     const result = await api.signup({
       email,
@@ -159,6 +159,8 @@ export const signUp = async ({ email, phone = '', password, firstName, lastName,
       first_name: firstName,
       last_name: lastName,
       phone,
+      sex,
+      age_range: ageRange,
       accepted_terms: acceptedTerms,
       turnstile_token: turnstileToken,
     });

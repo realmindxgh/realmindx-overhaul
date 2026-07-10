@@ -912,6 +912,8 @@ const AnalyticsView = ({ session }) => {
   const topViewed = payload?.bookshop?.top_products?.viewed?.[0];
   const topSearched = payload?.bookshop?.top_products?.searched?.[0];
   const bookshopSummary = payload?.bookshop?.summary || {};
+  const customerDemographics = payload?.bookshop?.customer_demographics || {};
+  const registeredDemographics = payload?.registered_user_demographics || {};
   const overview = payload?.overview || {};
   const search = payload?.search || { summary: {}, terms: [], top_products: [], timeline: {} };
   const engagement = payload?.engagement || {
@@ -1125,6 +1127,23 @@ const AnalyticsView = ({ session }) => {
                 <div><span>Conversion rate</span><strong>{formatPercent(bookshopSummary.conversion_rate)}</strong></div>
                 <div><span>Abandoned carts</span><strong>{formatNumber(bookshopSummary.abandoned_carts)}</strong></div>
                 <div><span>Service enquiry clicks</span><strong>{formatNumber(engagement.services.summary?.enquiry_clicks)}</strong></div>
+              </div>
+            </article>
+          </div>
+
+          <div className="analytics-two-grid">
+            <article className="analytics-panel">
+              <SectionHeader title="Bookshop customer demographics" body="Optional demographic information captured with orders in this period." />
+              <div className="analytics-mini-columns">
+                <div><h4>Sex</h4><DistributionList rows={customerDemographics.sex || []} emptyLabel="No customer demographic data yet." /></div>
+                <div><h4>Age ranges</h4><DistributionList rows={customerDemographics.age_ranges || []} emptyLabel="No customer age data yet." /></div>
+              </div>
+            </article>
+            <article className="analytics-panel">
+              <SectionHeader title="New account demographics" body="Optional demographics for accounts created in this period." />
+              <div className="analytics-mini-columns">
+                <div><h4>Sex</h4><DistributionList rows={registeredDemographics.sex || []} emptyLabel="No account demographic data yet." /></div>
+                <div><h4>Age ranges</h4><DistributionList rows={registeredDemographics.age_ranges || []} emptyLabel="No account age data yet." /></div>
               </div>
             </article>
           </div>

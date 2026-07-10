@@ -28,6 +28,7 @@ const NAV = [
   { key: 'flyers', label: 'Flyers', group: 'Bookshop', icon: 'image' },
   { key: 'deliveryZones', label: 'Delivery Prices', group: 'Bookshop', icon: 'money' },
   { key: 'deliveryCompanies', label: 'Delivery Companies', group: 'Bookshop', icon: 'briefcase' },
+  { key: 'deliverySettlements', label: 'Delivery Settlements', group: 'Bookshop', icon: 'money' },
   { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
   { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
   { key: 'receiptsInvoices', label: 'Receipts & Invoices', group: 'Bookshop', icon: 'files' },
@@ -102,7 +103,7 @@ const OTP_OVERRIDE_OPTIONS = [
 
 const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 'orders']);
 const NAV_PERMISSION_GROUPS = NAV
-  .filter(item => !['dashboard', 'admins', 'auditLogs', 'account', 'deliveryCompanies'].includes(item.key))
+  .filter(item => !['dashboard', 'admins', 'auditLogs', 'account', 'deliveryCompanies', 'deliverySettlements'].includes(item.key))
   .map(item => {
     const actions = item.key === 'analytics'
       ? ['view', 'export']
@@ -120,7 +121,7 @@ const NAV_PERMISSION_GROUPS = NAV
     return { ...item, actions };
   });
 const EXTRA_PERMISSION_GROUPS = [
-  { key: 'delivery', label: 'Delivery System', group: 'Bookshop', icon: 'briefcase', actions: ['view', 'assign', 'companies.manage', 'audit.view', 'override_otp'] },
+  { key: 'delivery', label: 'Delivery System', group: 'Bookshop', icon: 'briefcase', actions: ['view', 'assign', 'companies.manage', 'audit.view', 'override_otp', 'settlements.view', 'settlements.manage', 'settlements.export', 'settlements.adjust', 'settlements.mark_paid', 'settlements.dispute_resolve'] },
   { key: 'uploads', label: 'File Uploads', group: 'System', icon: 'image', actions: ['create'] },
 ];
 const PERMISSION_GROUPS = [...NAV_PERMISSION_GROUPS, ...EXTRA_PERMISSION_GROUPS];
@@ -177,6 +178,7 @@ const canAccessAdminItem = (item, session) => {
   if (item.key === 'admins' || item.key === 'auditLogs') return false;
   if (item.key === 'receiptsInvoices') return hasSessionPermission(session, 'orders.view') || hasSessionPermission(session, 'receiptsInvoices.view');
   if (item.key === 'deliveryCompanies') return hasSessionPermission(session, 'delivery.view') || hasSessionPermission(session, 'delivery.companies.manage');
+  if (item.key === 'deliverySettlements') return hasSessionPermission(session, 'delivery.settlements.view');
   return hasSessionPermission(session, `${item.key}.view`);
 };
 
@@ -194,6 +196,8 @@ const CONFIG = {
       field('level', 'Level', 'select', { options: JOB_LEVELS }),
       field('curriculum', 'Curriculum', 'select', { options: TEACHING_CURRICULA }),
       field('employment_type', 'Employment Type', 'select', { options: JOB_TYPES }),
+      field('preferred_sex', 'Preferred Sex', 'select', { options: ['any', 'female', 'male', 'other'], help: 'Use Any unless the school has a lawful role-specific requirement.' }),
+      field('preferred_age_range', 'Preferred Age Range', 'select', { options: ['any', '18_24', '25_34', '35_44', '45_54', '55_64', '65_plus'] }),
       field('salary_min', 'Minimum Salary (GHS)', 'number', { help: 'Monthly salary range shown to applicants. Leave both blank to show "Available on request".' }),
       field('salary_max', 'Maximum Salary (GHS)', 'number'),
       field('deadline', 'Deadline', 'date', { placeholder: 'No application deadline' }),
@@ -354,6 +358,7 @@ const CONFIG = {
       field('contact_name', 'Contact Name'),
       field('contact_phone', 'Contact Phone'),
       field('contact_email', 'Contact Email', 'email'),
+      field('default_delivery_payable', 'Default Company Payable (GHS)', 'number', { help: 'The amount this company earns per successful delivery unless overridden during assignment.' }),
       field('notes', 'Internal Notes', 'textarea'),
       field('manager_name', 'First Manager Name', 'text', { help: 'Used when creating the first company manager.' }),
       field('manager_phone', 'First Manager Phone', 'text', { help: 'Creates portal access with temporary password 12345678 and requires a first-login password change.' }),
@@ -361,6 +366,17 @@ const CONFIG = {
     ],
     columns: ['name', 'contact_phone', 'contact_email', 'active_deliveries', 'completed_deliveries', 'status'],
     columnLabels: { contact_phone: 'Phone', contact_email: 'Email', active_deliveries: 'Active', completed_deliveries: 'Delivered' },
+  },
+  deliverySettlements: {
+    title: 'Delivery Settlements',
+    description: 'Daily external delivery collections, company payables, balances, payments, and disputes.',
+    collection: 'deliverySettlements',
+    permissionKey: 'delivery.settlements',
+    readOnly: true,
+    allowCreate: false,
+    allowDelete: false,
+    columns: ['reference', 'company_name', 'settlement_date', 'delivery_count', 'due_realmindx', 'due_company', 'net_balance', 'status'],
+    columnLabels: { company_name: 'Company', settlement_date: 'Date', delivery_count: 'Deliveries', due_realmindx: 'Due RealMindX', due_company: 'Due Company', net_balance: 'Net' },
   },
   services: {
     title: 'Services',
@@ -2446,6 +2462,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [replyError, setReplyError] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [filterStatus, setFilterStatus] = React.useState('');
+  const [settlementCompany, setSettlementCompany] = React.useState('');
+  const [settlementPayment, setSettlementPayment] = React.useState('');
+  const [settlementStart, setSettlementStart] = React.useState('');
+  const [settlementEnd, setSettlementEnd] = React.useState('');
   const [sortCol, setSortCol] = React.useState(null);
   const [sortDir, setSortDir] = React.useState('asc');
   const [localRows, setLocalRows] = React.useState(null);
@@ -2457,11 +2477,15 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [deliveryAssign, setDeliveryAssign] = React.useState(null);
   const [deliveryAssignCompany, setDeliveryAssignCompany] = React.useState('');
   const [deliveryAssignNote, setDeliveryAssignNote] = React.useState('');
+  const [deliveryPayable, setDeliveryPayable] = React.useState('');
+  const [deliveryPromotionPayer, setDeliveryPromotionPayer] = React.useState('none');
+  const [deliveryPromotionAmount, setDeliveryPromotionAmount] = React.useState('0');
   const [deliveryAssignError, setDeliveryAssignError] = React.useState('');
   const [deliveryAssignBusy, setDeliveryAssignBusy] = React.useState(false);
   const [deliveryDetail, setDeliveryDetail] = React.useState(null);
   const [deliveryDetailError, setDeliveryDetailError] = React.useState('');
   const [deliveryDetailBusy, setDeliveryDetailBusy] = React.useState(false);
+  const [deliveryCancelReason, setDeliveryCancelReason] = React.useState('');
   const [otpOverrideReason, setOtpOverrideReason] = React.useState('');
   const [otpOverrideNote, setOtpOverrideNote] = React.useState('');
   const [companyDetail, setCompanyDetail] = React.useState(null);
@@ -2511,9 +2535,18 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [tablePageSize, setTablePageSize] = React.useState(10);
 
   // Reset to page 1 when search or filter changes
-  React.useEffect(() => { setTablePage(1); }, [search, filterStatus, tablePageSize]);
+  React.useEffect(() => { setTablePage(1); }, [search, filterStatus, tablePageSize, settlementCompany, settlementPayment, settlementStart, settlementEnd]);
 
-  const filteredByStatus = rows.filter(row => !filterStatus || row.status === filterStatus);
+  const filteredByStatus = rows.filter(row => {
+    if (filterStatus && row.status !== filterStatus) return false;
+    if (config.collection !== 'deliverySettlements') return true;
+    if (settlementCompany && String(row.company_id) !== settlementCompany) return false;
+    if (settlementStart && row.settlement_date < settlementStart) return false;
+    if (settlementEnd && row.settlement_date > settlementEnd) return false;
+    if (settlementPayment === 'online' && !row.online_count) return false;
+    if (settlementPayment === 'pay_on_delivery' && !row.pay_on_delivery_count) return false;
+    return true;
+  });
   const filtered = rankByFuzzyMatch(filteredByStatus, search, row => Object.values(row));
 
   // Column sort — clicking a header cycles asc → desc → off
@@ -2655,7 +2688,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const canOverrideOtp = config.collection === 'orders'
     && hasSessionPermission(session, 'delivery.override_otp')
     && hasSessionPermission(session, 'orders.edit');
-  const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate || canAssignDelivery || canViewDelivery || canOverrideOtp || canViewDeliveryCompanies;
+  const canViewSettlements = config.collection === 'deliverySettlements' && hasSessionPermission(session, 'delivery.settlements.view');
+  const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate || canAssignDelivery || canViewDelivery || canOverrideOtp || canViewDeliveryCompanies || canViewSettlements;
 
   const refreshMissingImageStats = React.useCallback(async () => {
     if (config.collection !== 'products' || !isApiMode()) return;
@@ -2702,6 +2736,24 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [statusChoice, setStatusChoice] = React.useState('');
   const [cancelReason, setCancelReason] = React.useState('');
   const [statusError, setStatusError] = React.useState('');
+  const [settlementDetail, setSettlementDetail] = React.useState(null);
+  const [settlementForm, setSettlementForm] = React.useState({ adjustment_amount: '', adjustment_reason: '', payment_reference: '', payment_date: '', payment_proof_url: '', resolution_note: '' });
+
+  const openSettlementDetail = async row => {
+    try { setSettlementDetail((await api.adminDeliverySettlement(row.id)).settlement); }
+    catch (err) { setActionStatus({ type: 'error', message: err?.message || 'Could not open settlement.' }); }
+  };
+  const updateSettlementAction = async action => {
+    try {
+      let result;
+      if (action === 'adjust') result = await api.adminAdjustDeliverySettlement(settlementDetail.id, { amount: settlementForm.adjustment_amount, reason: settlementForm.adjustment_reason });
+      if (action === 'paid') result = await api.adminMarkDeliverySettlementPaid(settlementDetail.id, { payment_reference: settlementForm.payment_reference, payment_date: settlementForm.payment_date, payment_proof_url: settlementForm.payment_proof_url || undefined });
+      if (action === 'resolve') result = await api.adminResolveDeliverySettlementDispute(settlementDetail.id, { note: settlementForm.resolution_note });
+      setSettlementDetail(result.settlement);
+      await fetchCollection('deliverySettlements', { force: true, silent: true });
+      setActionStatus({ type: 'success', message: 'Settlement updated.' });
+    } catch (err) { setActionStatus({ type: 'error', message: err?.message || 'Could not update settlement.' }); }
+  };
 
   const openStatusModal = (row) => {
     setStatusModal({ row });
@@ -2743,6 +2795,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const openDeliveryAssign = (row) => {
     setDeliveryAssign(row);
     setDeliveryAssignCompany(row.delivery?.company_id ? String(row.delivery.company_id) : '');
+    setDeliveryPayable(String(row.delivery?.company_payable_amount ?? row.delivery_fee ?? ''));
+    setDeliveryPromotionPayer(row.delivery?.promotion_payer || 'none');
+    setDeliveryPromotionAmount(String(row.delivery?.promotion_amount || 0));
     setDeliveryAssignNote('');
     setDeliveryAssignError('');
   };
@@ -2758,6 +2813,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       const result = await api.adminAssignDeliveryCompany(getItemId(deliveryAssign), {
         company_id: Number(deliveryAssignCompany),
         note: deliveryAssignNote.trim() || undefined,
+        company_payable_amount: deliveryPayable === '' ? undefined : Number(deliveryPayable),
+        promotion_payer: deliveryPromotionPayer,
+        promotion_amount: Number(deliveryPromotionAmount || 0),
       });
       await fetchCollection(config.collection, { force: true });
       setDeliveryAssign(null);
@@ -2836,6 +2894,26 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       setActionStatus({ type: 'success', message: 'OTP override recorded and delivery completed.' });
     } catch (err) {
       setDeliveryDetailError(err?.message || 'Could not override OTP.');
+    } finally {
+      setDeliveryDetailBusy(false);
+    }
+  };
+
+  const cancelExternalDelivery = async () => {
+    const deliveryId = deliveryDetail?.delivery?.id;
+    if (!deliveryId || !deliveryCancelReason.trim()) {
+      setDeliveryDetailError('A cancellation reason is required.');
+      return;
+    }
+    setDeliveryDetailBusy(true);
+    setDeliveryDetailError('');
+    try {
+      await api.adminCancelDelivery(deliveryId, { reason: deliveryCancelReason.trim() });
+      await Promise.all([refreshDeliveryDetail(), fetchCollection(config.collection, { force: true })]);
+      setDeliveryCancelReason('');
+      setActionStatus({ type: 'success', message: 'External delivery assignment cancelled.' });
+    } catch (err) {
+      setDeliveryDetailError(err?.message || 'Could not cancel the delivery assignment.');
     } finally {
       setDeliveryDetailBusy(false);
     }
@@ -2955,9 +3033,12 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     }
 
     if (column === 'status') {
+      const displayStatus = config.collection === 'orders' && row.delivery?.company_id && row[column] === 'shipped'
+        ? 'Out for delivery'
+        : statusLabel(row[column]);
       return (
         <span className={`badge ${row[column] === 'published' || row[column] === 'active' || row[column] === 'new' ? 'badge-success' : 'badge-navy'}`}>
-          {statusLabel(row[column])}
+          {displayStatus}
         </span>
       );
     }
@@ -2972,6 +3053,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         const otp = row.delivery?.otp;
         return <span>{otp?.blocked ? 'Blocked' : statusLabel(otp?.status || 'not_generated')}</span>;
       }
+    }
+
+    if (config.collection === 'deliverySettlements' && ['due_realmindx', 'due_company', 'net_balance'].includes(column)) {
+      return <span className={column === 'net_balance' ? 'td-primary' : ''}>GHS {Number(row[column] || 0).toFixed(2)}</span>;
     }
 
     const value = row[column];
@@ -3091,6 +3176,15 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         <div className="atc-header" style={{ flexWrap: 'wrap', gap: 10 }}>
           <h3>{sorted.length} Record{sorted.length !== 1 ? 's' : ''}{sorted.length > tablePageSize ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
           <div className="admin-table-tools">
+            {config.collection === 'deliverySettlements' && <>
+              <select value={settlementCompany} onChange={event => setSettlementCompany(event.target.value)}>
+                <option value="">All companies</option>
+                {[...new Map(rows.map(row => [row.company_id, row.company_name])).entries()].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+              <select value={settlementPayment} onChange={event => setSettlementPayment(event.target.value)}><option value="">All payment methods</option><option value="online">Online</option><option value="pay_on_delivery">Pay on delivery</option></select>
+              <input type="date" aria-label="Settlement start date" value={settlementStart} onChange={event => setSettlementStart(event.target.value)} />
+              <input type="date" aria-label="Settlement end date" value={settlementEnd} onChange={event => setSettlementEnd(event.target.value)} />
+            </>}
             {/* Status filter — shown whenever rows have a status column */}
             {rows.some(r => 'status' in r) && (
               <select
@@ -3177,6 +3271,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                         {canViewDeliveryCompanies && (
                           <button className="table-action-btn" onClick={() => openCompanyDetail(row)}>View Company</button>
                         )}
+                        {canViewSettlements && <button className="table-action-btn" onClick={() => openSettlementDetail(row)}>View Settlement</button>}
                         {['admins', 'staff'].includes(config.collection) && canUpdate && (
                           <button className="table-action-btn" onClick={() => resetInternalAccountPassword(row)}>Reset Password</button>
                         )}
@@ -3184,7 +3279,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                         {'status' in row && canPublish && <button className="table-action-btn" onClick={() => togglePublish(row)}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</button>}
 
                         {/* Status-only tables: inline status selector, with archive where enabled */}
-                        {canStatusEdit && row.status !== 'archived' && (
+                        {canStatusEdit && !row.delivery?.company_id && row.status !== 'archived' && (
                           <OrderStatusSelector
                             row={row}
                             options={config.statusOptions || ['new', 'confirmed', 'shipped', 'complete', 'cancelled']}
@@ -3270,6 +3365,21 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       )}
 
       {/* Confirm delete modal — replaces window.confirm */}
+      {settlementDetail && (
+        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSettlementDetail(null); }}>
+          <section className="admin-modal-panel settlement-detail-modal" role="dialog" aria-modal="true">
+            <button className="admin-modal-close" type="button" onClick={() => setSettlementDetail(null)}><Icon name="x" size={16} /><span>Close</span></button>
+            <p className="overline">Delivery Settlement</p><h2 className="admin-page-title">{settlementDetail.reference}</h2><p>{settlementDetail.company_name} | {settlementDetail.settlement_date} | {statusLabel(settlementDetail.status)}</p>
+            <div className="delivery-kpi-strip"><div><span>Book value</span><strong>GHS {Number(settlementDetail.book_subtotal || 0).toFixed(2)}</strong></div><div><span>Company payable</span><strong>GHS {Number(settlementDetail.company_payable || 0).toFixed(2)}</strong></div><div><span>Net</span><strong>GHS {Number(settlementDetail.net_balance || 0).toFixed(2)}</strong></div></div>
+            <div className="settlement-line-list">{(settlementDetail.lines || []).map(line => <div key={line.id}><strong>{line.order_reference}</strong><span>{line.rider_name || '-'}</span><span>{line.delivery_location || '-'}</span><span>{statusLabel(line.payment_method)}</span><b>GHS {Number(line.net_balance || 0).toFixed(2)}</b></div>)}</div>
+            <div className="delivery-modal-actions">{['csv','xlsx','pdf'].map(format => <a key={format} className="btn btn-outline-navy" href={api.adminDeliverySettlementExportUrl(settlementDetail.id, format)}>{format.toUpperCase()}</a>)}</div>
+            {hasSessionPermission(session, 'delivery.settlements.adjust') && settlementDetail.status !== 'settled' ? <div className="delivery-company-create-row"><input className="form-input" type="number" step="0.01" placeholder="Adjustment amount" value={settlementForm.adjustment_amount} onChange={event => setSettlementForm(current => ({ ...current, adjustment_amount: event.target.value }))} /><input className="form-input" placeholder="Required adjustment reason" value={settlementForm.adjustment_reason} onChange={event => setSettlementForm(current => ({ ...current, adjustment_reason: event.target.value }))} /><button className="btn btn-outline-navy" type="button" onClick={() => updateSettlementAction('adjust')}>Apply Adjustment</button></div> : null}
+            {hasSessionPermission(session, 'delivery.settlements.mark_paid') && settlementDetail.status !== 'settled' ? <div className="delivery-company-create-row"><input className="form-input" placeholder="Payment reference" value={settlementForm.payment_reference} onChange={event => setSettlementForm(current => ({ ...current, payment_reference: event.target.value }))} /><input className="form-input" type="date" value={settlementForm.payment_date} onChange={event => setSettlementForm(current => ({ ...current, payment_date: event.target.value }))} /><input className="form-input" type="url" placeholder="Payment proof link (optional)" value={settlementForm.payment_proof_url} onChange={event => setSettlementForm(current => ({ ...current, payment_proof_url: event.target.value }))} /><button className="btn btn-primary" type="button" onClick={() => updateSettlementAction('paid')}>Mark Settled</button></div> : null}
+            {settlementDetail.dispute_status === 'open' && hasSessionPermission(session, 'delivery.settlements.dispute_resolve') ? <div className="delivery-company-create-row"><input className="form-input" placeholder="Resolution notes" value={settlementForm.resolution_note} onChange={event => setSettlementForm(current => ({ ...current, resolution_note: event.target.value }))} /><button className="btn btn-primary" type="button" onClick={() => updateSettlementAction('resolve')}>Resolve Dispute</button></div> : null}
+          </section>
+        </div>
+      )}
+
       {companyDetail && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:520, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
           <div role="dialog" aria-modal="true" aria-label="Delivery company access" style={{ position:'relative', background:'#fff', borderRadius:12, padding:28, width:'100%', maxWidth:820, maxHeight:'88vh', overflow:'auto', boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
@@ -3407,6 +3517,11 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                 ))}
               </select>
             </div>
+            <div className="form-grid-2">
+              <div className="form-group"><label className="form-label">Delivery company payable (GHS)</label><input className="form-input" type="number" min="0" step="0.01" value={deliveryPayable} onChange={event => setDeliveryPayable(event.target.value)} /></div>
+              <div className="form-group"><label className="form-label">Promotion payer</label><select className="form-select" value={deliveryPromotionPayer} onChange={event => setDeliveryPromotionPayer(event.target.value)}><option value="none">None</option><option value="realmindx">RealMindX</option><option value="delivery_company">Delivery company</option><option value="shared">Shared</option></select></div>
+            </div>
+            <div className="form-group"><label className="form-label">Promotion amount (GHS)</label><input className="form-input" type="number" min="0" step="0.01" value={deliveryPromotionAmount} onChange={event => setDeliveryPromotionAmount(event.target.value)} /></div>
             <div className="form-group" style={{ marginBottom:16 }}>
               <label className="form-label">Assignment Note</label>
               <textarea className="form-textarea" rows={3} value={deliveryAssignNote}
@@ -3454,10 +3569,22 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                   ))}
                 </div>
                 <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:18 }}>
+                  {canAssignDelivery && !['delivered', 'cancelled', 'returned'].includes(deliveryDetail.delivery.status) && (
+                    <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => {
+                      const row = items.find(item => getItemId(item) === deliveryDetail.order?.id);
+                      if (row) { setDeliveryDetail(null); openDeliveryAssign(row); }
+                    }}>Reassign Company</button>
+                  )}
                   {canAssignDelivery && deliveryDetail.delivery.status === 'picked_up' && (
                     <button className="btn btn-outline-navy btn-sm" type="button" disabled={deliveryDetailBusy} onClick={resendDeliveryOtp}>Resend OTP</button>
                   )}
                 </div>
+                {canAssignDelivery && !['delivered', 'cancelled', 'returned'].includes(deliveryDetail.delivery.status) && (
+                  <div className="delivery-company-create-row" style={{ marginBottom:18 }}>
+                    <input className="form-input" value={deliveryCancelReason} onChange={event => setDeliveryCancelReason(event.target.value)} placeholder="Required cancellation reason" />
+                    <button className="btn btn-outline-navy btn-sm" type="button" disabled={deliveryDetailBusy} onClick={cancelExternalDelivery}>Cancel Delivery Assignment</button>
+                  </div>
+                )}
                 {canOverrideOtp && ['picked_up', 'issue_reported'].includes(deliveryDetail.delivery.status) && (
                   <div style={{ border:'1px solid var(--border-light,#e2e8f0)', borderRadius:10, padding:14, marginBottom:18 }}>
                     <h4 style={{ margin:'0 0 10px', color:'var(--navy)' }}>OTP Override</h4>

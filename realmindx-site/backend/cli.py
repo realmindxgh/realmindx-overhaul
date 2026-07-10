@@ -1,11 +1,14 @@
 import click
 from datetime import date
+from markupsafe import escape
 from flask import current_app
+from sqlalchemy import or_
 
 from .delivery_locations import format_location_aliases, normalize_location_key, split_location_aliases
 from .extensions import db
 from .models import DeliveryZone, Permission, Role, User, UserProfile
 from .promo_affiliates import send_monthly_promo_statements
+from .email_service import OutboundEmail, app_email_shell, send_email
 
 # Baseline Greater Accra towns. Expanded delivery belts below add aliases,
 # metadata, and suggested fees for the checkout search experience.
@@ -275,6 +278,12 @@ DEFAULT_PERMISSIONS = [
     "delivery.companies.manage",
     "delivery.audit.view",
     "delivery.override_otp",
+    "delivery.settlements.view",
+    "delivery.settlements.manage",
+    "delivery.settlements.export",
+    "delivery.settlements.adjust",
+    "delivery.settlements.mark_paid",
+    "delivery.settlements.dispute_resolve",
     *[
         f"{area}.{action}"
         for area, actions in {
@@ -407,6 +416,42 @@ def register_cli(app):
 
         sent = send_due_cart_invoice_reminders()
         click.echo(f"Sent {sent} cart invoice reminder email(s).")
+
+    @app.cli.command("send-teacher-profile-reminders")
+    @click.option("--force", is_flag=True, help="Allow a manual run outside August 2027 or later.")
+    def send_teacher_profile_reminders_command(force):
+        today = date.today()
+        if not force and (today.year < 2027 or today.month != 8):
+            click.echo("Teacher profile reminders run only in August, starting in 2027.")
+            return
+        teacher_role = Role.query.filter_by(name="user").first()
+        if not teacher_role:
+            click.echo("No teacher role exists.")
+            return
+        users = User.query.filter_by(role_id=teacher_role.id, is_active=True).filter(or_(
+            User.profile_reminder_sent_year.is_(None),
+            User.profile_reminder_sent_year != today.year,
+        )).all()
+        sent = 0
+        portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal/profile"
+        for user in users:
+            result = send_email(OutboundEmail(
+                to=user.email,
+                subject="Please review your RealMindX teaching profile",
+                html=app_email_shell(
+                    "Keep your teaching profile current",
+                    f"<p>Hello {escape(user.first_name or 'Teacher')},</p><p>Schools make better matches when your subjects, experience, location, availability, age range, and other profile details are current. Please review your RealMindX profile for the new school year.</p>",
+                    "Review My Profile", portal_url,
+                    eyebrow="Annual Teacher Profile Review",
+                    preheader="Update your profile to improve future job matches.",
+                ),
+                text=f"Review and update your RealMindX teaching profile: {portal_url}",
+            ))
+            if result.get("status") == "sent":
+                user.profile_reminder_sent_year = today.year
+                sent += 1
+        db.session.commit()
+        click.echo(f"Sent {sent} teacher profile reminder(s) for {today.year}.")
 
     @app.cli.command("seed-delivery-zones")
     @click.option(

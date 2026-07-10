@@ -591,6 +591,8 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, onC
           { label: 'First Name',    value: user.firstName  },
           { label: 'Last Name',     value: user.lastName   },
           { label: 'Location',      value: user.location   },
+          { label: 'Sex',           value: user.sex ? user.sex.replace(/_/g, ' ') : '' },
+          { label: 'Age Range',     value: user.ageRange ? user.ageRange.replace(/_/g, '-') : '' },
         ].map(f => (
           <div key={f.label} className="profile-field">
             <div className="profile-field-label">{f.label}</div>
@@ -643,6 +645,16 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, onC
             {f.value ? <div className="profile-field-value">{f.value}</div> : <div className="profile-field-empty">Not provided</div>}
           </div>
         ))}
+      </div>
+
+      <div className="profile-section-card">
+        <h3>School Placements</h3>
+        {user.placements?.length ? user.placements.map(placement => (
+          <div className="profile-field" key={placement.id}>
+            <div className="profile-field-label">{placement.school_name}</div>
+            <div className="profile-field-value">{placement.job_title || 'Teacher'} · {String(placement.status || 'active').replace(/_/g, ' ')}</div>
+          </div>
+        )) : <div className="profile-field-empty">No school placement has been recorded yet.</div>}
       </div>
 
       {/* Profile picture slot */}
@@ -1090,6 +1102,19 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             </div>
           ))}
           {section === 'personal' && (
+            <>
+            <div className="form-group">
+              <label className="form-label">Sex</label>
+              <select className="form-input" value={form.sex || ''} onChange={event => setForm(prev => ({ ...prev, sex: event.target.value }))}>
+                <option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Age Range</label>
+              <select className="form-input" value={form.age_range || ''} onChange={event => setForm(prev => ({ ...prev, age_range: event.target.value }))}>
+                <option value="">Prefer not to say</option><option value="under_18">Under 18</option><option value="18_24">18-24</option><option value="25_34">25-34</option><option value="35_44">35-44</option><option value="45_54">45-54</option><option value="55_64">55-64</option><option value="65_plus">65+</option>
+              </select>
+            </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Short Bio</label>
               <textarea
@@ -1099,6 +1124,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
                 onChange={event => setForm(prev => ({ ...prev, bio: event.target.value }))}
               />
             </div>
+            </>
           )}
         </div>
         {error && <p className="form-error" style={{ marginTop: 12 }}>{error}</p>}
@@ -1773,6 +1799,8 @@ const UserPortalPage = () => {
         lastName,
         email,
         phone: profileSource.phone || '',
+        sex: profileSource.sex || '',
+        ageRange: profileSource.age_range || '',
         location: profileSource.location || '',
         subject: profileSource.teaching_subject || '',
         level: profileSource.preferred_level || '',
@@ -1796,6 +1824,7 @@ const UserPortalPage = () => {
         nextOfKinPhone: profileSource.next_of_kin_phone || '',
         nextOfKinRelationship: profileSource.next_of_kin_relationship || '',
         nextOfKinEmail: profileSource.next_of_kin_email || '',
+        placements: profileSource.placements || [],
       }
     : {
         ...MOCK_USER,
@@ -1848,6 +1877,8 @@ const UserPortalPage = () => {
     setProfileError('');
     setProfileForm({
       phone: profileSource.phone || '',
+      sex: profileSource.sex || '',
+      age_range: profileSource.age_range || '',
       location: profileSource.location || '',
       bio: profileSource.bio || '',
       teaching_subject: profileSource.teaching_subject || '',

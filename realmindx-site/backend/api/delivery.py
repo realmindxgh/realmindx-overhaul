@@ -1,4 +1,8 @@
-from flask import Blueprint, jsonify, request
+import csv
+import io
+from datetime import date
+from html import escape
+from flask import Blueprint, Response, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required, login_user, logout_user
 
 from ..audit import audit
@@ -18,7 +22,9 @@ from ..delivery_service import (
     send_portal_access_notification,
 )
 from ..extensions import db, limiter
-from ..models import DeliveryCompanyUser, DeliveryRider, OrderDelivery
+from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..models import DeliveryCompanyUser, DeliveryRider, DeliverySettlementBatch, OrderDelivery
+from ..settlement_service import SettlementError, batch_json, line_json, log_settlement_event, raise_dispute
 from ..security import DEFAULT_TEMPORARY_PASSWORD
 from ..serializers import delivery_company_user_json, delivery_json, delivery_rider_json, user_json
 from ..sms_service import normalise_phone
@@ -334,6 +340,104 @@ def company_report_issue(delivery_id):
         return _delivery_error_response(exc)
     db.session.commit()
     return jsonify(delivery=delivery_json(delivery, include_events=True, rider_safe=True))
+
+
+@delivery_bp.get("/company/settlements")
+@login_required
+def company_settlements():
+    try: profile = _company_profile()
+    except DeliveryError as exc: return _delivery_error_response(exc)
+    query = DeliverySettlementBatch.query.filter_by(company_id=profile.company_id).order_by(DeliverySettlementBatch.settlement_date.desc())
+    start = (request.args.get("start_date") or "").strip(); end = (request.args.get("end_date") or "").strip()
+    if start: query = query.filter(DeliverySettlementBatch.settlement_date >= date.fromisoformat(start))
+    if end: query = query.filter(DeliverySettlementBatch.settlement_date <= date.fromisoformat(end))
+    return jsonify(items=[batch_json(batch) for batch in query.all()])
+
+
+def _company_settlement_or_404(batch_id, profile):
+    batch = db.get_or_404(DeliverySettlementBatch, batch_id)
+    if batch.company_id != profile.company_id:
+        raise DeliveryError("Settlement not found for this company.", 404, "settlement_not_found")
+    return batch
+
+
+@delivery_bp.get("/company/settlements/<int:batch_id>")
+@login_required
+def company_settlement_detail(batch_id):
+    try:
+        profile = _company_profile(); batch = _company_settlement_or_404(batch_id, profile)
+    except DeliveryError as exc: return _delivery_error_response(exc)
+    return jsonify(settlement=batch_json(batch, include_lines=True, include_events=True))
+
+
+@delivery_bp.post("/company/settlements/<int:batch_id>/dispute")
+@login_required
+def company_settlement_dispute(batch_id):
+    payload = request.get_json(silent=True) or {}
+    try:
+        profile = _company_profile(); _require_password_changed(); batch = _company_settlement_or_404(batch_id, profile)
+        raise_dispute(batch, payload.get("note"), actor_from_user(current_user))
+    except DeliveryError as exc: return _delivery_error_response(exc)
+    except SettlementError as exc: return jsonify(error=exc.message, code=exc.code), exc.status_code
+    db.session.commit()
+    admin_email = (current_app.config.get("ADMIN_EMAIL") or "").strip()
+    if admin_email:
+        admin_url = f"{current_app.config['BASE_URL'].rstrip('/')}/admin/dashboard"
+        try:
+            send_email(OutboundEmail(
+                to=admin_email,
+                subject=f"Delivery settlement dispute: {batch.reference}",
+                html=app_email_shell(
+                    "Delivery settlement disputed",
+                    f"<p>{escape(batch.company.name)} raised a dispute for settlement <strong>{escape(batch.reference)}</strong>.</p><p>{escape(batch.dispute_notes or '')}</p>",
+                    cta_label="Review settlement", cta_url=admin_url,
+                ),
+                text=f"{batch.company.name} disputed {batch.reference}: {batch.dispute_notes}. {admin_url}",
+            ))
+        except Exception:
+            current_app.logger.exception("Could not send settlement dispute notification for %s", batch.reference)
+    return jsonify(settlement=batch_json(batch, include_lines=True, include_events=True))
+
+
+@delivery_bp.get("/company/settlements/<int:batch_id>/export/<string:export_format>")
+@login_required
+def company_settlement_export(batch_id, export_format):
+    try:
+        profile = _company_profile(); batch = _company_settlement_or_404(batch_id, profile)
+    except DeliveryError as exc: return _delivery_error_response(exc)
+    rows = [line_json(line) for line in batch.lines]
+    for row in rows:
+        row.update(payment_reference=batch.payment_reference, dispute_status=batch.dispute_status)
+    headers = ["settlement_date", "order_reference", "rider_name", "delivery_location", "payment_method", "book_subtotal", "customer_delivery_fee", "company_payable", "amount_due_realmindx", "amount_due_company", "net_balance", "status", "delivered_at", "payment_reference", "dispute_status"]
+    if export_format not in {"csv", "xlsx", "pdf"}:
+        return jsonify(error="Use csv, xlsx, or pdf."), 400
+    log_settlement_event(batch, "settlement_exported", actor_from_user(current_user), details={"format": export_format})
+    db.session.commit()
+    if export_format == "csv":
+        output = io.StringIO(); writer = csv.DictWriter(output, fieldnames=headers); writer.writeheader(); writer.writerows([{key: row.get(key) for key in headers} for row in rows])
+        return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={batch.reference}.csv"})
+    if export_format == "xlsx":
+        try: from openpyxl import Workbook
+        except ImportError: return jsonify(error="XLSX export requires openpyxl."), 501
+        workbook = Workbook(); sheet = workbook.active; sheet.title = "Settlement"; sheet.append(headers)
+        for row in rows: sheet.append([row.get(key) for key in headers])
+        stream = io.BytesIO(); workbook.save(stream); stream.seek(0)
+        return send_file(stream, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=f"{batch.reference}.xlsx")
+    if export_format == "pdf":
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas as rl_canvas
+        except ImportError: return jsonify(error="PDF export requires reportlab."), 501
+        stream = io.BytesIO(); pdf = rl_canvas.Canvas(stream, pagesize=A4); _, height = A4; y = height - 42
+        pdf.setFont("Helvetica-Bold", 15); pdf.drawString(36, y, "RealMindX Delivery Settlement")
+        y -= 20; pdf.setFont("Helvetica", 9); pdf.drawString(36, y, f"{batch.reference} | {batch.company.name} | {batch.settlement_date} | {batch.status}")
+        for row in rows:
+            y -= 16
+            if y < 40: pdf.showPage(); y = height - 42; pdf.setFont("Helvetica", 8)
+            pdf.drawString(36, y, f"{row['order_reference']} | {row['rider_name'] or '-'} | {row['payment_method']} | Due RMX {row['amount_due_realmindx']:.2f} | Due Company {row['amount_due_company']:.2f} | Net {row['net_balance']:.2f}")
+        pdf.save(); stream.seek(0)
+        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name=f"{batch.reference}.pdf")
+    return jsonify(error="Use csv, xlsx, or pdf."), 400
 
 
 @delivery_bp.get("/rider/me")

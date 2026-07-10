@@ -281,6 +281,92 @@ html {
   overscroll-behavior: contain;
 }
 
+/* Compact dispatch cards keep list scanning fast; full controls live in the modal. */
+.delivery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.delivery-compact-card {
+  min-width: 0;
+  min-height: 132px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
+  padding: 18px;
+  text-align: left;
+  border: 1px solid #d6e0ed;
+  border-left: 4px solid #ffcc01;
+  border-radius: 8px;
+  background: #fff;
+  color: #143670;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(20, 54, 112, 0.06);
+}
+
+.delivery-compact-card:hover,
+.delivery-compact-card:focus-visible {
+  border-color: #ffcc01;
+  box-shadow: 0 12px 28px rgba(20, 54, 112, 0.12);
+}
+
+.delivery-compact-card strong { font-size: 0.96rem; }
+.delivery-compact-card span { color: #536880; font-size: 0.86rem; line-height: 1.45; }
+.delivery-compact-card small { color: #8a6700; font-weight: 800; }
+
+.delivery-detail-modal {
+  position: relative;
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  margin: auto;
+}
+
+.delivery-detail-close { position: absolute; top: 12px; right: 12px; z-index: 2; }
+
+.settlement-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settlement-summary-card {
+  display: grid;
+  gap: 7px;
+  padding: 17px;
+  text-align: left;
+  border: 1px solid #d6e0ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #143670;
+  cursor: pointer;
+}
+
+.settlement-summary-card span,
+.settlement-summary-card small { color: #60728a; }
+.settlement-detail-modal { width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+.settlement-line-list { display: grid; margin: 16px 0; border: 1px solid #dbe4ef; border-radius: 8px; overflow: hidden; }
+.settlement-line-list > div { display: grid; grid-template-columns: 1fr 1fr 2fr 1fr 1fr; gap: 12px; padding: 12px; border-bottom: 1px solid #e4eaf2; align-items: center; font-size: 0.82rem; }
+.settlement-line-list > div:last-child { border-bottom: 0; }
+
+@media (max-width: 1200px) {
+  .delivery-grid,
+  .settlement-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 850px) {
+  .delivery-grid,
+  .settlement-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settlement-line-list > div { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 520px) {
+  .delivery-grid,
+  .settlement-card-grid { grid-template-columns: 1fr; }
+}
+
 .admin-modal-close {
   position: sticky;
   top: 0;
@@ -6004,4 +6090,22 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
     top: 3px;
     right: 3px;
   }
+}
+
+/* Final dispatch grid override: four compact records per desktop row. */
+.delivery-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+@media (max-width: 1200px) {
+  .delivery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 850px) {
+  .delivery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 520px) {
+  .delivery-grid { grid-template-columns: 1fr; }
 }

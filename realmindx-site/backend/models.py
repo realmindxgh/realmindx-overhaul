@@ -56,6 +56,9 @@ class User(UserMixin, TimestampMixin, db.Model):
     first_name = db.Column(db.String(120), nullable=False)
     last_name = db.Column(db.String(120), nullable=True)
     phone = db.Column(db.String(40), nullable=True)
+    sex = db.Column(db.String(30), nullable=True, index=True)
+    age_range = db.Column(db.String(30), nullable=True, index=True)
+    profile_reminder_sent_year = db.Column(db.Integer, nullable=True, index=True)
     phone_verified = db.Column(db.Boolean, default=False, nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey("roles.id"), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -166,6 +169,8 @@ class Job(TimestampMixin, db.Model):
     level = db.Column(db.String(120), nullable=True, index=True)
     curriculum = db.Column(db.String(180), nullable=True, index=True)
     employment_type = db.Column(db.String(80), nullable=True, index=True)
+    preferred_sex = db.Column(db.String(30), nullable=True, index=True)
+    preferred_age_range = db.Column(db.String(30), nullable=True, index=True)
     description = db.Column(db.Text, nullable=False)
     requirements = db.Column(db.Text, nullable=True)
     responsibilities = db.Column(db.Text, nullable=True)
@@ -288,6 +293,8 @@ class Order(TimestampMixin, db.Model):
     payment_reference = db.Column(db.String(80), unique=True, nullable=True, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     customer_name = db.Column(db.String(160), nullable=False)
+    customer_sex = db.Column(db.String(30), nullable=True, index=True)
+    customer_age_range = db.Column(db.String(30), nullable=True, index=True)
     email = db.Column(db.String(255), nullable=False)
     phone = db.Column(db.String(40), nullable=False)
     delivery_method = db.Column(db.String(30), nullable=False)
@@ -326,6 +333,8 @@ class BookshopPaymentIntent(TimestampMixin, db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), unique=True, nullable=True, index=True)
     customer_name = db.Column(db.String(160), nullable=False)
+    customer_sex = db.Column(db.String(30), nullable=True, index=True)
+    customer_age_range = db.Column(db.String(30), nullable=True, index=True)
     email = db.Column(db.String(255), nullable=False, index=True)
     phone = db.Column(db.String(40), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
@@ -369,6 +378,7 @@ class DeliveryCompany(TimestampMixin, db.Model):
     notes = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(30), default="active", nullable=False, index=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    default_delivery_payable = db.Column(db.Numeric(12, 2), nullable=True)
 
 
 class DeliveryCompanyUser(TimestampMixin, db.Model):
@@ -433,6 +443,9 @@ class OrderDelivery(TimestampMixin, db.Model):
     issue_note = db.Column(db.Text, nullable=True)
     failed_reason = db.Column(db.String(160), nullable=True)
     staff_notes = db.Column(db.Text, nullable=True)
+    company_payable_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    promotion_payer = db.Column(db.String(30), default="none", nullable=False)
+    promotion_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
 
     order = db.relationship("Order", backref=db.backref("delivery", uselist=False, cascade="all, delete-orphan"))
     company = db.relationship("DeliveryCompany", backref="deliveries")
@@ -479,6 +492,82 @@ class DeliveryOtp(TimestampMixin, db.Model):
 
     delivery = db.relationship("OrderDelivery", backref=db.backref("otps", cascade="all, delete-orphan"))
     order = db.relationship("Order")
+
+
+class DeliverySettlementBatch(TimestampMixin, db.Model):
+    __tablename__ = "delivery_settlement_batches"
+    __table_args__ = (UniqueConstraint("company_id", "settlement_date", name="uq_delivery_settlement_day"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    reference = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("delivery_companies.id"), nullable=False, index=True)
+    settlement_date = db.Column(db.Date, nullable=False, index=True)
+    status = db.Column(db.String(30), default="unsettled", nullable=False, index=True)
+    payment_reference = db.Column(db.String(120), nullable=True)
+    payment_date = db.Column(db.Date, nullable=True)
+    payment_proof_url = db.Column(db.String(500), nullable=True)
+    adjustment_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    adjustment_reason = db.Column(db.Text, nullable=True)
+    dispute_status = db.Column(db.String(30), default="none", nullable=False, index=True)
+    dispute_notes = db.Column(db.Text, nullable=True)
+    resolution_notes = db.Column(db.Text, nullable=True)
+    settled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    settled_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    prepared_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
+    company = db.relationship("DeliveryCompany", backref="settlement_batches")
+
+
+class DeliverySettlementLine(TimestampMixin, db.Model):
+    __tablename__ = "delivery_settlement_lines"
+
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey("delivery_settlement_batches.id"), nullable=False, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), unique=True, nullable=False, index=True)
+    delivery_id = db.Column(db.Integer, db.ForeignKey("order_deliveries.id"), unique=True, nullable=False, index=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("delivery_companies.id"), nullable=False, index=True)
+    rider_id = db.Column(db.Integer, db.ForeignKey("delivery_riders.id"), nullable=True, index=True)
+    settlement_date = db.Column(db.Date, nullable=False, index=True)
+    status = db.Column(db.String(30), default="unsettled", nullable=False, index=True)
+    order_reference = db.Column(db.String(40), nullable=False, index=True)
+    company_name = db.Column(db.String(180), nullable=False)
+    rider_name = db.Column(db.String(160), nullable=True)
+    customer_name = db.Column(db.String(160), nullable=False)
+    delivery_location = db.Column(db.String(255), nullable=True)
+    payment_method = db.Column(db.String(40), nullable=False, index=True)
+    book_subtotal = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    customer_delivery_fee = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    company_payable = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    promotion_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    promotion_payer = db.Column(db.String(30), default="none", nullable=False)
+    amount_collected_realmindx = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    amount_collected_company = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    amount_due_realmindx = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    amount_due_company = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    net_balance = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    adjustment_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    adjustment_reason = db.Column(db.Text, nullable=True)
+    delivered_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+
+    batch = db.relationship("DeliverySettlementBatch", backref=db.backref("lines", cascade="all, delete-orphan"))
+    order = db.relationship("Order")
+    delivery = db.relationship("OrderDelivery", backref=db.backref("settlement_line", uselist=False))
+    company = db.relationship("DeliveryCompany")
+    rider = db.relationship("DeliveryRider")
+
+
+class DeliverySettlementEvent(TimestampMixin, db.Model):
+    __tablename__ = "delivery_settlement_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(db.Integer, db.ForeignKey("delivery_settlement_batches.id"), nullable=False, index=True)
+    line_id = db.Column(db.Integer, db.ForeignKey("delivery_settlement_lines.id"), nullable=True, index=True)
+    event_type = db.Column(db.String(80), nullable=False, index=True)
+    actor_type = db.Column(db.String(30), nullable=False, index=True)
+    actor_id = db.Column(db.Integer, nullable=True, index=True)
+    details = db.Column("metadata", db.JSON, default=dict, nullable=False)
+
+    batch = db.relationship("DeliverySettlementBatch", backref=db.backref("events", cascade="all, delete-orphan"))
 
 
 class CheckoutDetail(TimestampMixin, db.Model):

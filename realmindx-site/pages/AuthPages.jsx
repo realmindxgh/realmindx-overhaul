@@ -216,6 +216,8 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
   const [confirmPass, setConfirm] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName]   = useState('');
+  const [sex, setSex]             = useState('');
+  const [ageRange, setAgeRange]   = useState('');
   const [showPass, setShowPass]   = useState(false);
   const [error, setError]         = useState('');
   const [loading, setLoading]     = useState(false);
@@ -308,7 +310,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
     if (!acceptedTerms) { showFieldProblem('terms', 'Please agree to the Terms of Service and Privacy Policy before creating an account.'); return; }
     setLoading(true);
     try {
-      const result = await signUp({ email, password, firstName, lastName, acceptedTerms, turnstileToken });
+      const result = await signUp({ email, password, firstName, lastName, sex, ageRange, acceptedTerms, turnstileToken });
       setPendingVerificationEmail(email);
       setOtp('');
       setSuccess(result?.message || 'Account created. Enter the verification code sent to your email.');
@@ -581,6 +583,21 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   <div className="form-group">
                     <label className="form-label">Last Name</label>
                     <input className="form-input" placeholder="Mensah" value={lastName} onChange={e => setLastName(e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-group">
+                    <label className="form-label">Sex</label>
+                    <select className="form-input" value={sex} onChange={event => setSex(event.target.value)}>
+                      <option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Age Range</label>
+                    <select className="form-input" value={ageRange} onChange={event => setAgeRange(event.target.value)}>
+                      <option value="">Prefer not to say</option><option value="under_18">Under 18</option><option value="18_24">18-24</option><option value="25_34">25-34</option><option value="35_44">35-44</option><option value="45_54">45-54</option><option value="55_64">55-64</option><option value="65_plus">65+</option>
+                    </select>
                   </div>
                 </div>
 

@@ -89,6 +89,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     fullName: '',
     email: '',
     phone: '',
+    sex: '',
+    ageRange: '',
     password: '',
     confirmPassword: '',
     remember: false,
@@ -224,6 +226,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
         firstName,
         lastName,
         phone: form.phone,
+        sex: form.sex,
+        ageRange: form.ageRange,
         acceptedTerms: form.acceptedTerms,
         turnstileToken,
       });
@@ -434,6 +438,12 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
             <div className="bs-field">
               <label>Full Name</label>
               <input ref={fullNameRef} placeholder="Ama Mensah" value={form.fullName} onChange={set('fullName')} />
+            </div>
+          )}
+          {!isLogin && (
+            <div className="bs-form-grid-2">
+              <div className="bs-field"><label>Sex</label><select value={form.sex} onChange={set('sex')}><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></div>
+              <div className="bs-field"><label>Age Range</label><select value={form.ageRange} onChange={set('ageRange')}><option value="">Prefer not to say</option><option value="under_18">Under 18</option><option value="18_24">18-24</option><option value="25_34">25-34</option><option value="35_44">35-44</option><option value="45_54">45-54</option><option value="55_64">55-64</option><option value="65_plus">65+</option></select></div>
             </div>
           )}
           <div className="bs-field">

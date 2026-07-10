@@ -11,7 +11,7 @@ const surfaceForLocation = () => {
   return null;
 };
 
-const installed = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+export const isInstalledApp = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
 const InstallAppPrompt = () => {
   const surface = React.useMemo(surfaceForLocation, []);
@@ -20,7 +20,7 @@ const InstallAppPrompt = () => {
   const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream;
 
   React.useEffect(() => {
-    if (!surface || installed()) return undefined;
+    if (!surface || isInstalledApp()) return undefined;
     const key = `rmx.install-dismissed.${surface.id}`;
     const dismissedAt = Number(window.localStorage.getItem(key) || 0);
     setDismissed(Date.now() - dismissedAt < 14 * 24 * 60 * 60 * 1000);
@@ -29,7 +29,7 @@ const InstallAppPrompt = () => {
     return () => window.removeEventListener('rmx:install-ready', capture);
   }, [surface]);
 
-  if (!surface || installed() || dismissed || (!installEvent && !isIos)) return null;
+  if (!surface || isInstalledApp() || dismissed || (!installEvent && !isIos)) return null;
 
   const dismiss = () => {
     window.localStorage.setItem(`rmx.install-dismissed.${surface.id}`, String(Date.now()));

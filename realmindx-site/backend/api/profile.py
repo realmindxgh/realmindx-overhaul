@@ -13,7 +13,7 @@ from ..checkout_details import checkout_detail_json, list_checkout_details, upse
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
 from ..location_data import canonical_delivery_locations, joined_location_ids, joined_location_names
-from ..models import CheckoutDetail, ContactChangeToken, JobAlertPreference, UploadedFile, User, UserProfile
+from ..models import CheckoutDetail, ContactChangeToken, JobAlertPreference, TeacherPlacement, UploadedFile, User, UserProfile
 from ..serializers import user_json
 from ..sms_service import normalise_phone, send_sms
 from ..upload_utils import save_upload
@@ -31,12 +31,15 @@ def profile_json(profile):
     picture = db.session.get(UploadedFile, profile.profile_picture_file_id) if profile.profile_picture_file_id else None
     cv = db.session.get(UploadedFile, profile.cv_file_id) if profile.cv_file_id else None
     certificate = db.session.get(UploadedFile, profile.certificate_file_id) if profile.certificate_file_id else None
+    placements = TeacherPlacement.query.filter_by(user_id=current_user.id).order_by(TeacherPlacement.accepted_at.desc()).all()
     return {
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
         "email": current_user.email,
         "phone": current_user.phone,
         "phone_verified": current_user.phone_verified,
+        "sex": current_user.sex,
+        "age_range": current_user.age_range,
         "is_verified": current_user.is_verified,
         "location": profile.location,
         "teaching_subject": profile.teaching_subject,
@@ -61,6 +64,12 @@ def profile_json(profile):
         "next_of_kin_email": profile.next_of_kin_email,
         "years_of_experience": profile.years_of_experience,
         "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+        "placements": [{
+            "id": row.id, "school_name": row.school_name, "job_title": row.job_title,
+            "status": row.status, "accepted_at": row.accepted_at.isoformat() if row.accepted_at else None,
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "ended_at": row.ended_at.isoformat() if row.ended_at else None,
+        } for row in placements],
     }
 
 
@@ -117,6 +126,10 @@ def get_profile():
 def update_profile():
     payload = request.get_json(silent=True) or {}
     profile = get_or_create_profile()
+    if "sex" in payload:
+        current_user.sex = str(payload.get("sex") or "").strip().lower() or None
+    if "age_range" in payload:
+        current_user.age_range = str(payload.get("age_range") or "").strip().lower() or None
     for field in [
         "location",
         "teaching_subject",
