@@ -465,7 +465,11 @@ def transition_delivery(delivery, status, actor, event_type, reason=None, note=N
     previous = delivery.status
     current_time = now_utc()
     delivery.status = status
-    if status in {"assigned_to_company", "assigned_to_rider"} and not delivery.assigned_at:
+    if status == "assigned_to_company":
+        # A company reassignment is a new customer-visible assignment and must
+        # not retain the timestamp of the previous delivery partner.
+        delivery.assigned_at = current_time
+    elif status == "assigned_to_rider" and not delivery.assigned_at:
         delivery.assigned_at = current_time
     elif status == "accepted_by_company":
         delivery.accepted_at = current_time

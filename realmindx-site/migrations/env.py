@@ -4,6 +4,8 @@ from logging.config import fileConfig
 from flask import current_app
 
 from alembic import context
+from alembic.script import ScriptDirectory
+import sqlalchemy as sa
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -102,6 +104,25 @@ def run_migrations_online():
             target_metadata=get_metadata(),
             **conf_args
         )
+
+        inspector = sa.inspect(connection)
+        application_tables = {
+            table_name
+            for table_name in inspector.get_table_names()
+            if table_name != "alembic_version"
+        }
+        if connection.dialect.name == "sqlite" and not application_tables:
+            # Revision 0001 intentionally builds the current model metadata.
+            # On a brand-new SQLite database, running every historical DDL
+            # revision afterward would try to recreate those same objects.
+            get_metadata().create_all(bind=connection)
+            migration_context = context.get_context()
+            migration_context._ensure_version_table()
+            script_directory = ScriptDirectory.from_config(config)
+            migration_context.stamp(script_directory, script_directory.get_heads())
+            connection.commit()
+            logger.info("Bootstrapped fresh SQLite schema at the current migration heads.")
+            return
 
         with context.begin_transaction():
             context.run_migrations()

@@ -739,6 +739,15 @@ const CONFIG = {
 };
 
 const statusLabel = value => String(value || 'draft').replace(/_/g, ' ');
+const orderStatusBadgeClass = status => {
+  const value = String(status || '').toLowerCase();
+  if (['complete', 'delivered'].includes(value)) return 'badge-success order-state-pill';
+  if (['cancelled', 'failed', 'returned', 'rejected_by_company'].includes(value)) return 'badge-danger order-state-pill';
+  return 'badge-warning order-state-pill';
+};
+const formatActivityDate = value => value
+  ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  : '-';
 
 const optionValue = option => (typeof option === 'object' ? option.value : option);
 const optionLabel = option => (typeof option === 'object' ? option.label : statusLabel(option));
@@ -2423,11 +2432,11 @@ const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
   };
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:4, minWidth:160 }}>
+    <div className="order-status-control">
       <div style={{ display:'flex', gap:4, alignItems:'center' }}>
         <select
           className="form-select"
-          style={{ fontSize:'0.78rem', height:30, padding:'0 8px', flex:1 }}
+          style={{ fontSize:'0.78rem', height:30, padding:'0 8px' }}
           value={val}
           onChange={handleChange}
         >
@@ -3037,7 +3046,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         ? 'Out for delivery'
         : statusLabel(row[column]);
       return (
-        <span className={`badge ${row[column] === 'published' || row[column] === 'active' || row[column] === 'new' ? 'badge-success' : 'badge-navy'}`}>
+        <span className={`badge ${config.collection === 'orders' ? orderStatusBadgeClass(row[column]) : row[column] === 'published' || row[column] === 'active' || row[column] === 'new' ? 'badge-success' : 'badge-navy'}`}>
           {displayStatus}
         </span>
       );
@@ -3047,7 +3056,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       if (column === 'delivery_company') return <span>{row.delivery?.company_name || 'Unassigned'}</span>;
       if (column === 'delivery_rider') return <span>{row.delivery?.rider_name || '-'}</span>;
       if (column === 'delivery_status') {
-        return <span className="badge badge-navy">{statusLabel(row.delivery?.status || 'not_assigned')}</span>;
+        return <span className={`badge ${orderStatusBadgeClass(row.delivery?.status || 'not_assigned')}`}>{statusLabel(row.delivery?.status || 'not_assigned')}</span>;
       }
       if (column === 'otp_status') {
         const otp = row.delivery?.otp;
@@ -3244,9 +3253,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                 <th
                   onClick={() => toggleSort('updated_at')}
                   style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
-                  title="Sort by date updated"
+                  title="Sort by last recorded order activity"
                 >
-                  Updated
+                  Last activity
                   <span style={{ marginLeft: 4, opacity: sortCol === 'updated_at' ? 1 : 0.3, fontSize: '0.75em' }}>
                     {sortCol === 'updated_at' ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
                   </span>
@@ -3262,7 +3271,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                       {renderCell(row, column, column === config.columns[0] || column === 'title' || column === 'name' || column === 'label')}
                     </td>
                   ))}
-                  <td style={{ fontSize: '0.76rem', color: 'var(--gray-600)' }}>{new Date(row.updated_at || row.created_at || Date.now()).toLocaleDateString()}</td>
+                  <td className="admin-activity-date">{formatActivityDate(row.updated_at || row.created_at)}</td>
                   {hasActions && (
                     <td>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -3499,7 +3508,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             <button className="admin-modal-close" type="button" onClick={() => setDeliveryAssign(null)} aria-label="Close">
               <Icon name="x" size={16} />
             </button>
-            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Assign Delivery</h3>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>{deliveryAssign.delivery?.company_id ? 'Reassign Delivery Company' : 'Assign Delivery'}</h3>
             <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:20 }}>
               Order: <strong>{deliveryAssign.order_reference}</strong> for {deliveryAssign.customer_name}
             </p>
@@ -3531,7 +3540,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             {deliveryAssignError && <p style={{ color:'var(--danger)', fontSize:'0.8rem', marginBottom:12 }}>{deliveryAssignError}</p>}
             <div style={{ display:'flex', gap:10 }}>
               <button className="btn btn-primary" disabled={deliveryAssignBusy} onClick={submitDeliveryAssign}>
-                {deliveryAssignBusy ? 'Assigning...' : 'Assign'}
+                {deliveryAssignBusy ? 'Saving...' : deliveryAssign.delivery?.company_id ? 'Reassign Company' : 'Assign Company'}
               </button>
               <button className="btn btn-outline-navy" onClick={() => setDeliveryAssign(null)}>Cancel</button>
             </div>
@@ -3541,7 +3550,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
       {deliveryDetail && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:520, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
-          <div role="dialog" aria-modal="true" aria-label="Delivery details" style={{ position:'relative', background:'#fff', borderRadius:12, padding:28, width:'100%', maxWidth:760, maxHeight:'88vh', overflow:'auto', boxShadow:'0 12px 48px rgba(0,0,0,0.2)' }}>
+          <div className={`admin-delivery-detail-modal tone-${deliveryDetail.delivery?.status === 'delivered' ? 'complete' : ['cancelled', 'failed', 'returned', 'rejected_by_company'].includes(deliveryDetail.delivery?.status) ? 'problem' : deliveryDetail.delivery?.status === 'picked_up' ? 'progress' : 'attention'}`} role="dialog" aria-modal="true" aria-label="Delivery details">
             <button className="admin-modal-close" type="button" onClick={() => setDeliveryDetail(null)} aria-label="Close">
               <Icon name="x" size={16} />
             </button>
@@ -3571,16 +3580,17 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                 <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:18 }}>
                   {canAssignDelivery && !['delivered', 'cancelled', 'returned'].includes(deliveryDetail.delivery.status) && (
                     <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => {
-                      const row = items.find(item => getItemId(item) === deliveryDetail.order?.id);
+                      const row = items.find(item => String(getItemId(item)) === String(deliveryDetail.order?.id));
                       if (row) { setDeliveryDetail(null); openDeliveryAssign(row); }
-                    }}>Reassign Company</button>
+                      else setDeliveryDetailError('The order list changed. Close this window and open Delivery Details again.');
+                    }} title="Choose a different delivery company while preserving the delivery audit trail">Reassign Company</button>
                   )}
                   {canAssignDelivery && deliveryDetail.delivery.status === 'picked_up' && (
                     <button className="btn btn-outline-navy btn-sm" type="button" disabled={deliveryDetailBusy} onClick={resendDeliveryOtp}>Resend OTP</button>
                   )}
                 </div>
                 {canAssignDelivery && !['delivered', 'cancelled', 'returned'].includes(deliveryDetail.delivery.status) && (
-                  <div className="delivery-company-create-row" style={{ marginBottom:18 }}>
+                  <div className="admin-delivery-cancel-row">
                     <input className="form-input" value={deliveryCancelReason} onChange={event => setDeliveryCancelReason(event.target.value)} placeholder="Required cancellation reason" />
                     <button className="btn btn-outline-navy btn-sm" type="button" disabled={deliveryDetailBusy} onClick={cancelExternalDelivery}>Cancel Delivery Assignment</button>
                   </div>

@@ -16,6 +16,13 @@ depends_on = None
 
 
 def upgrade():
+    inspector = sa.inspect(op.get_bind())
+    if inspector.has_table("flyers"):
+        # Revision 0001 builds the current metadata on a fresh database, which
+        # already includes this table. Existing installations must be left
+        # untouched while Alembic advances through this historical revision.
+        return
+
     op.create_table(
         "flyers",
         sa.Column("id", sa.Integer, primary_key=True),

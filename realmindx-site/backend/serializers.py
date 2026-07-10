@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from .extensions import db
 from .models import DeliveryOtp, UploadedFile
 from .order_status import normalize_order_status
@@ -187,6 +189,8 @@ def order_json(order, include_delivery=True):
         "promo_applies_to": order.promo_applies_to,
         "promo_discount_amount": float(order.promo_discount_amount or 0),
         "total_amount": float(order.total_amount) if order.total_amount else None,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
         "items": [
             {
                 "product_id": item.product_id,
@@ -388,16 +392,42 @@ def delivery_tracking_json(delivery):
             "label": "Preparing order",
             "otp_required": False,
         }
+    events = sorted(
+        getattr(delivery, "events", []) or [],
+        key=lambda item: (item.created_at.isoformat() if item.created_at else "", int(item.id or 0)),
+    )
+
+    def latest_event_time(*event_types, predicate=None):
+        event = next((
+            item for item in reversed(events)
+            if item.event_type in event_types
+            and item.created_at
+            and (predicate is None or predicate(item))
+        ), None)
+        return event.created_at if event else None
+
+    def latest_milestone(field_value, *event_types, predicate=None):
+        candidates = [value for value in (field_value, latest_event_time(*event_types, predicate=predicate)) if value]
+        if not candidates:
+            return None
+        def utc_value(value):
+            return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return max(candidates, key=utc_value).isoformat()
+
     return {
         "status": delivery.status,
         "label": DELIVERY_TRACKING_LABELS.get(delivery.status, "Preparing order"),
         "otp_required": bool(delivery.otp_required and delivery.status == "picked_up"),
         "issue": delivery.status in {"rejected_by_company", "issue_reported", "failed", "returned", "cancelled"},
-        "assigned_at": delivery.assigned_at.isoformat() if delivery.assigned_at else None,
+        "assigned_at": latest_milestone(
+            delivery.assigned_at,
+            "assigned_to_company",
+            predicate=lambda event: (event.details or {}).get("previous_company_id") is not None,
+        ),
         "accepted_at": delivery.accepted_at.isoformat() if delivery.accepted_at else None,
         "rejected_at": delivery.rejected_at.isoformat() if delivery.rejected_at else None,
-        "picked_up_at": delivery.picked_up_at.isoformat() if delivery.picked_up_at else None,
-        "delivered_at": delivery.delivered_at.isoformat() if delivery.delivered_at else None,
+        "picked_up_at": latest_milestone(delivery.picked_up_at, "picked_up"),
+        "delivered_at": latest_milestone(delivery.delivered_at, "delivered", "otp_verified", "otp_override"),
         "issue_reported_at": delivery.issue_reported_at.isoformat() if delivery.issue_reported_at else None,
         "failed_at": delivery.failed_at.isoformat() if delivery.failed_at else None,
         "returned_at": delivery.returned_at.isoformat() if delivery.returned_at else None,

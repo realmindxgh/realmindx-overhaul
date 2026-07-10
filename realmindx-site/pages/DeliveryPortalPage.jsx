@@ -25,6 +25,12 @@ const ISSUE_OPTIONS = [
 ];
 
 const statusLabel = value => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+const deliveryTone = status => {
+  if (status === 'delivered') return 'complete';
+  if (['assigned_to_company', 'accepted_by_company', 'assigned_to_rider'].includes(status)) return 'attention';
+  if (['rejected_by_company', 'issue_reported', 'failed', 'returned', 'cancelled'].includes(status)) return 'problem';
+  return 'progress';
+};
 
 const PortalShell = ({ title, subtitle, children, onLogout }) => (
   <main className="delivery-portal">
@@ -310,13 +316,13 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
 
   return (
     <>
-      <button className="delivery-compact-card" type="button" onClick={() => setOpen(true)}>
+      <button className={`delivery-compact-card tone-${deliveryTone(delivery.status)}`} type="button" onClick={() => setOpen(true)}>
         <strong>{delivery.order_reference}</strong>
         <span>{delivery.delivery_location || 'Location unavailable'}</span>
         <small>{statusLabel(delivery.status)}</small>
       </button>
       {open ? <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
-    <article className="delivery-card delivery-detail-modal" role="dialog" aria-modal="true">
+    <article className={`delivery-card delivery-detail-modal tone-${deliveryTone(delivery.status)}`} role="dialog" aria-modal="true">
       <button className="delivery-icon-button delivery-detail-close" type="button" onClick={() => setOpen(false)} aria-label="Close"><Icon name="x" size={20} /></button>
       <div className="delivery-card-head">
         <div>
@@ -530,7 +536,7 @@ const CompanyPortal = () => {
     try {
       const me = await api.deliveryCompanyMe();
       const [deliveryData, riderData] = await Promise.all([
-        api.deliveryCompanyDeliveries(scope),
+        api.deliveryCompanyDeliveries('all'),
         api.deliveryCompanyRiders(),
       ]);
       setProfile({ ...me.company_user, must_change_password: Boolean(me.user?.must_change_password) });
@@ -546,7 +552,7 @@ const CompanyPortal = () => {
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, []);
 
   React.useEffect(() => { load(); }, [load]);
   useVisiblePolling(Boolean(profile) && view === 'deliveries' && scope === 'active', load);
@@ -572,10 +578,12 @@ const CompanyPortal = () => {
     () => rankByFuzzyMatch(riders, riderSearch, rider => [rider.name, rider.phone, rider.status]),
     [riderSearch, riders],
   );
-  const filteredDeliveries = React.useMemo(
-    () => rankByFuzzyMatch(deliveries, deliverySearch, delivery => [delivery.order_reference, delivery.delivery_location, delivery.status, delivery.rider_name]),
-    [deliveries, deliverySearch],
-  );
+  const filteredDeliveries = React.useMemo(() => {
+    const scoped = deliverySearch ? deliveries : deliveries.filter(delivery => scope === 'completed'
+      ? ['delivered', 'failed', 'returned', 'cancelled'].includes(delivery.status)
+      : !['delivered', 'failed', 'returned', 'cancelled'].includes(delivery.status));
+    return rankByFuzzyMatch(scoped, deliverySearch, delivery => [delivery.order_reference, delivery.customer_name, delivery.customer_phone, delivery.delivery_location, delivery.status, delivery.rider_name]);
+  }, [deliveries, deliverySearch, scope]);
   const deliveryTotalPages = Math.max(1, Math.ceil(filteredDeliveries.length / deliveryPageSize));
   const pagedDeliveries = filteredDeliveries.slice((deliveryPage - 1) * deliveryPageSize, deliveryPage * deliveryPageSize);
   const riderTotalPages = Math.max(1, Math.ceil(filteredRiders.length / riderPageSize));
@@ -703,13 +711,13 @@ const RiderDeliveryCard = ({ delivery, onAction }) => {
   const [issueNote, setIssueNote] = React.useState('');
   return (
     <>
-      <button className="delivery-compact-card" type="button" onClick={() => setOpen(true)}>
+      <button className={`delivery-compact-card tone-${deliveryTone(delivery.status)}`} type="button" onClick={() => setOpen(true)}>
         <strong>{delivery.order_reference}</strong>
         <span>{delivery.delivery_location || 'Location unavailable'}</span>
         <small>{statusLabel(delivery.status)}</small>
       </button>
       {open ? <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
-    <article className="delivery-card delivery-detail-modal" role="dialog" aria-modal="true">
+    <article className={`delivery-card delivery-detail-modal tone-${deliveryTone(delivery.status)}`} role="dialog" aria-modal="true">
       <button className="delivery-icon-button delivery-detail-close" type="button" onClick={() => setOpen(false)} aria-label="Close"><Icon name="x" size={20} /></button>
       <div className="delivery-card-head">
         <div>
@@ -759,7 +767,7 @@ const RiderPortal = () => {
     try {
       const [me, deliveryData] = await Promise.all([
         api.deliveryRiderMe(),
-        api.deliveryRiderDeliveries(scope === 'history' ? 'history' : 'active'),
+        api.deliveryRiderDeliveries('all'),
       ]);
       setRider({ ...me.rider, must_change_password: Boolean(me.user?.must_change_password) });
       setDeliveries(deliveryData.items || []);
@@ -773,7 +781,7 @@ const RiderPortal = () => {
     } finally {
       setLoading(false);
     }
-  }, [scope]);
+  }, []);
 
   React.useEffect(() => { load(); }, [load]);
   useVisiblePolling(Boolean(rider) && scope === 'active', load);
@@ -795,10 +803,12 @@ const RiderPortal = () => {
     window.location.href = loginPathForRole('delivery_rider');
   };
 
-  const filteredDeliveries = React.useMemo(
-    () => rankByFuzzyMatch(deliveries, search, delivery => [delivery.order_reference, delivery.customer_name, delivery.customer_phone, delivery.delivery_location, delivery.status]),
-    [deliveries, search],
-  );
+  const filteredDeliveries = React.useMemo(() => {
+    const scoped = search ? deliveries : deliveries.filter(delivery => scope === 'history'
+      ? ['delivered', 'failed', 'returned', 'cancelled'].includes(delivery.status)
+      : ['assigned_to_rider', 'picked_up', 'issue_reported'].includes(delivery.status));
+    return rankByFuzzyMatch(scoped, search, delivery => [delivery.order_reference, delivery.customer_name, delivery.customer_phone, delivery.delivery_location, delivery.status]);
+  }, [deliveries, search, scope]);
   const totalPages = Math.max(1, Math.ceil(filteredDeliveries.length / pageSize));
   const pagedDeliveries = filteredDeliveries.slice((page - 1) * pageSize, page * pageSize);
   React.useEffect(() => { setPage(1); }, [scope, search, pageSize]);
