@@ -7,6 +7,8 @@ import { clearDemoSession } from '../../src/lib/demoAccounts.js';
 import { loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 import { copyTextToClipboard } from '../../src/lib/clipboard.js';
+import toast from '../../src/lib/toast.js';
+import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
 
 const ACTIVE_POLL_MS = 15000;
 
@@ -86,7 +88,7 @@ const DeliveryLogin = ({ role }) => {
     setBusy(true);
     try {
       await signInWithPhone({ ...form, role });
-      window.location.href = isCompany ? '/delivery-company' : '/delivery';
+      window.location.href = isCompany ? '/delivery-company/' : '/delivery/';
     } catch (err) {
       setError(err?.message || 'Could not sign in.');
     } finally {
@@ -139,6 +141,59 @@ const EmptyState = ({ title, body }) => (
     <p>{body}</p>
   </div>
 );
+
+const PAGE_SIZES = [5, 10, 20, 50, 100];
+
+const PaginationControls = ({ page, pageSize, total, onPage, onPageSize }) => {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (!total) return null;
+  return (
+    <div className="delivery-pagination">
+      <span>{total} result{total === 1 ? '' : 's'}</span>
+      <div>
+        <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Previous page"><Icon name="chevL" size={16} /></button>
+        <strong>Page {page} of {totalPages}</strong>
+        <button type="button" disabled={page >= totalPages} onClick={() => onPage(page + 1)} aria-label="Next page"><Icon name="chevR" size={16} /></button>
+      </div>
+      <label>Rows <select value={pageSize} onChange={event => onPageSize(Number(event.target.value))}>{PAGE_SIZES.map(size => <option key={size} value={size}>{size}</option>)}</select></label>
+    </div>
+  );
+};
+
+const RiderEditModal = ({ rider, onClose, onSaved }) => {
+  const [form, setForm] = React.useState({ name: rider.name || '', phone: rider.phone || '' });
+  const [busy, setBusy] = React.useState(false);
+  const submit = async event => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await api.deliveryCompanyUpdateRider(rider.id, form);
+      toast.success('Rider details updated.');
+      await onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err?.message || 'Could not update rider.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <form className="delivery-password-modal delivery-rider-edit-modal" onSubmit={submit} role="dialog" aria-modal="true" aria-label={`Edit ${rider.name}`}>
+        <div className="delivery-password-modal-head">
+          <div><span>Rider Account</span><h2>Edit rider</h2><p>Update the rider's name or normalized login phone number.</p></div>
+          <button className="delivery-icon-button" type="button" onClick={onClose} aria-label="Close"><Icon name="x" size={20} /></button>
+        </div>
+        <Field label="Rider name"><input value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} required /></Field>
+        <Field label="Phone number"><input value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} required /></Field>
+        <div className="delivery-modal-actions">
+          <button className="btn btn-outline-navy" type="button" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Saving...' : 'Save Changes'}</button>
+        </div>
+      </form>
+    </div>
+  );
+};
 
 const PortalAccessGate = ({ role, children }) => {
   const [verified, setVerified] = React.useState(false);
@@ -332,32 +387,17 @@ const RiderForm = ({ onCreated, onError, onNotice }) => {
   );
 };
 
-const RiderManagementRow = ({ rider, onChanged, onError, onNotice, onSelect }) => {
-  const [editing, setEditing] = React.useState(false);
-  const [form, setForm] = React.useState({ name: rider.name || '', phone: rider.phone || '' });
+const RiderManagementRow = ({ rider, onChanged, onEdit, onSelect }) => {
   const [busy, setBusy] = React.useState(false);
-  const set = key => event => setForm(prev => ({ ...prev, [key]: event.target.value }));
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await api.deliveryCompanyUpdateRider(rider.id, form);
-      setEditing(false);
-      onChanged();
-    } catch (err) {
-      onError(err?.message || 'Could not update rider.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const toggleActive = async () => {
     setBusy(true);
     try {
       await api.deliveryCompanyUpdateRider(rider.id, { is_active: !rider.is_active });
-      onChanged();
+      toast.success(rider.is_active ? 'Rider deactivated.' : 'Rider activated.');
+      await onChanged();
     } catch (err) {
-      onError(err?.message || 'Could not update rider status.');
+      toast.error(err?.message || 'Could not update rider status.');
     } finally {
       setBusy(false);
     }
@@ -369,10 +409,10 @@ const RiderManagementRow = ({ rider, onChanged, onError, onNotice, onSelect }) =
       const result = await api.deliveryCompanyResetRiderPassword(rider.id);
       const temporaryPassword = result?.temporary_password || '12345678';
       const copied = await copyTextToClipboard(temporaryPassword);
-      onNotice(`Password reset to ${temporaryPassword}${copied ? ' and copied to the clipboard' : ''}.`);
+      toast.success(`Password reset to ${temporaryPassword}${copied ? ' and copied to the clipboard' : ''}.`);
       await onChanged();
     } catch (err) {
-      onError(err?.message || 'Could not reset rider password.');
+      toast.error(err?.message || 'Could not reset rider password.');
     } finally {
       setBusy(false);
     }
@@ -380,27 +420,19 @@ const RiderManagementRow = ({ rider, onChanged, onError, onNotice, onSelect }) =
 
   return (
     <div className={`delivery-rider-row${rider.is_active ? '' : ' inactive'}`}>
-      {editing ? (
-        <>
-          <input value={form.name} onChange={set('name')} aria-label="Rider name" />
-          <input value={form.phone} onChange={set('phone')} aria-label="Rider phone" />
-          <button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={save}>Save</button>
-          <button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={() => setEditing(false)}>Cancel</button>
-        </>
-      ) : (
-        <>
-          <div>
-            <button className="delivery-rider-name-button" type="button" onClick={() => onSelect(rider)}>{rider.name}</button>
-            <span>{rider.phone} | {rider.is_active ? 'Active' : 'Inactive'}</span>
-          </div>
-          <span className="delivery-rider-count">{rider.active_deliveries || 0} active</span>
-          <span className="delivery-rider-count">{rider.completed_deliveries || 0} delivered</span>
-          <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onSelect(rider)}>View History</button>
-          <button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
-          <button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={toggleActive}>{rider.is_active ? 'Deactivate' : 'Activate'}</button>
-          <button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={resetPassword}>Reset to 12345678</button>
-        </>
-      )}
+      <div className="delivery-rider-identity">
+        <button className="delivery-rider-name-button" type="button" onClick={() => onSelect(rider)}>{rider.name}</button>
+        <span>{rider.phone}</span>
+      </div>
+      <span className={`delivery-status-pill ${rider.is_active ? 'active' : 'inactive'}`}>{rider.is_active ? 'Active' : 'Inactive'}</span>
+      <span className="delivery-rider-count"><strong>{rider.active_deliveries || 0}</strong> active</span>
+      <span className="delivery-rider-count"><strong>{rider.completed_deliveries || 0}</strong> delivered</span>
+      <div className="delivery-row-actions">
+        <button className="delivery-icon-text-button" type="button" onClick={() => onSelect(rider)}><Icon name="clock" size={16} /> History</button>
+        <button className="delivery-icon-text-button" type="button" disabled={busy} onClick={() => onEdit(rider)}><Icon name="settings" size={16} /> Edit</button>
+        <button className="delivery-icon-text-button" type="button" disabled={busy} onClick={toggleActive}>{rider.is_active ? 'Deactivate' : 'Activate'}</button>
+        <button className="delivery-icon-text-button" type="button" disabled={busy} onClick={resetPassword}><Icon name="lock" size={16} /> Reset</button>
+      </div>
     </div>
   );
 };
@@ -416,7 +448,12 @@ const CompanyPortal = () => {
   const [riderDetailBusy, setRiderDetailBusy] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
-  const [notice, setNotice] = React.useState('');
+  const [riderSearch, setRiderSearch] = React.useState('');
+  const [riderPage, setRiderPage] = React.useState(1);
+  const [riderPageSize, setRiderPageSize] = React.useState(10);
+  const [historyPage, setHistoryPage] = React.useState(1);
+  const [historyPageSize, setHistoryPageSize] = React.useState(10);
+  const [editingRider, setEditingRider] = React.useState(null);
 
   const load = React.useCallback(async () => {
     if (!isApiMode()) return;
@@ -459,15 +496,32 @@ const CompanyPortal = () => {
 
   React.useEffect(() => {
     if (selectedRider?.rider?.id) openRider(selectedRider.rider, riderScope);
-  }, [riderScope]);
+  }, [riderScope, openRider, selectedRider?.rider?.id]);
+
+  const filteredRiders = React.useMemo(
+    () => rankByFuzzyMatch(riders, riderSearch, rider => [rider.name, rider.phone, rider.status]),
+    [riderSearch, riders],
+  );
+  const riderTotalPages = Math.max(1, Math.ceil(filteredRiders.length / riderPageSize));
+  const pagedRiders = filteredRiders.slice((riderPage - 1) * riderPageSize, riderPage * riderPageSize);
+  const riderHistory = selectedRider?.deliveries || [];
+  const historyTotalPages = Math.max(1, Math.ceil(riderHistory.length / historyPageSize));
+  const pagedHistory = riderHistory.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize);
+
+  React.useEffect(() => { setRiderPage(1); }, [riderSearch, riderPageSize]);
+  React.useEffect(() => { setRiderPage(current => Math.min(current, riderTotalPages)); }, [riderTotalPages]);
+  React.useEffect(() => { setHistoryPage(1); }, [riderScope, historyPageSize, selectedRider?.rider?.id]);
+  React.useEffect(() => { setHistoryPage(current => Math.min(current, historyTotalPages)); }, [historyTotalPages]);
 
   const onAction = async fn => {
     setError('');
     try {
       await fn();
       await load();
+      toast.success('Delivery updated.');
     } catch (err) {
       setError(err?.message || 'Action failed.');
+      toast.error(err?.message || 'Action failed.');
     }
   };
 
@@ -479,7 +533,11 @@ const CompanyPortal = () => {
   return (
     <PortalShell title="Delivery Company Portal" subtitle={profile?.company_name} onLogout={logout}>
       {error ? <div className="form-error delivery-alert">{error}</div> : null}
-      {notice ? <div className="delivery-success-alert">{notice}<button type="button" onClick={() => setNotice('')} aria-label="Dismiss">Close</button></div> : null}
+      <section className="delivery-kpi-strip" aria-label="Delivery company summary">
+        <div><span>Active deliveries</span><strong>{deliveries.filter(item => !['delivered', 'failed', 'returned', 'cancelled'].includes(item.status)).length}</strong></div>
+        <div><span>Available riders</span><strong>{riders.filter(item => item.is_active).length}</strong></div>
+        <div><span>Total riders</span><strong>{riders.length}</strong></div>
+      </section>
       <section className="delivery-toolbar">
         <div className="segmented">
           <button type="button" className={view === 'deliveries' ? 'active' : ''} onClick={() => setView('deliveries')}>Deliveries</button>
@@ -507,13 +565,18 @@ const CompanyPortal = () => {
           <div className="delivery-section-head">
             <div><h2>Riders</h2><p>Create accounts, manage access, and review each rider's assigned delivery history.</p></div>
           </div>
-          <RiderForm onCreated={load} onError={setError} onNotice={setNotice} />
+          <RiderForm onCreated={load} onError={message => { setError(message); toast.error(message); }} onNotice={message => toast.success(message)} />
+          <div className="delivery-list-toolbar">
+            <label className="delivery-search-field"><Icon name="search" size={18} /><input value={riderSearch} onChange={event => setRiderSearch(event.target.value)} placeholder="Search riders by name, phone, or status" /></label>
+          </div>
+          <div className="delivery-rider-table-head" aria-hidden="true"><span>Rider</span><span>Status</span><span>Active</span><span>Delivered</span><span>Actions</span></div>
           <div className="delivery-rider-list">
-            {riders.length === 0 ? <EmptyState title="No riders yet" body="Create the first rider account for this company." /> : null}
-            {riders.map(rider => (
-              <RiderManagementRow key={rider.id} rider={rider} onChanged={load} onError={setError} onNotice={setNotice} onSelect={openRider} />
+            {filteredRiders.length === 0 ? <EmptyState title={riderSearch ? 'No matching riders' : 'No riders yet'} body={riderSearch ? 'Try a different spelling or fewer characters.' : 'Create the first rider account for this company.'} /> : null}
+            {pagedRiders.map(rider => (
+              <RiderManagementRow key={rider.id} rider={rider} onChanged={load} onEdit={setEditingRider} onSelect={openRider} />
             ))}
           </div>
+          <PaginationControls page={riderPage} pageSize={riderPageSize} total={filteredRiders.length} onPage={setRiderPage} onPageSize={setRiderPageSize} />
           {selectedRider && (
             <section className="delivery-rider-history">
               <div className="delivery-rider-history-head">
@@ -526,7 +589,7 @@ const CompanyPortal = () => {
               <div className="delivery-rider-history-list">
                 {riderDetailBusy ? <p>Loading rider history...</p> : null}
                 {!riderDetailBusy && (selectedRider.deliveries || []).length === 0 ? <p>No deliveries in this view.</p> : null}
-                {(selectedRider.deliveries || []).map(delivery => (
+                {pagedHistory.map(delivery => (
                   <div key={delivery.id}>
                     <span><strong>{delivery.order_reference}</strong><small>{delivery.customer_name || 'Customer'}</small></span>
                     <span>{statusLabel(delivery.status)}</span>
@@ -535,10 +598,12 @@ const CompanyPortal = () => {
                   </div>
                 ))}
               </div>
+              <PaginationControls page={historyPage} pageSize={historyPageSize} total={riderHistory.length} onPage={setHistoryPage} onPageSize={setHistoryPageSize} />
             </section>
           )}
         </section>
       )}
+      {editingRider ? <RiderEditModal rider={editingRider} onClose={() => setEditingRider(null)} onSaved={load} /> : null}
       {profile?.must_change_password ? (
         <ForcedDeliveryPasswordModal
           accountLabel="company manager"
@@ -594,6 +659,9 @@ const RiderPortal = () => {
   const [scope, setScope] = React.useState('active');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
 
   const load = React.useCallback(async () => {
     if (!isApiMode()) return;
@@ -624,8 +692,10 @@ const RiderPortal = () => {
     try {
       await fn();
       await load();
+      toast.success('Delivery updated.');
     } catch (err) {
       setError(err?.message || 'Action failed.');
+      toast.error(err?.message || 'Action failed.');
     }
   };
 
@@ -634,22 +704,38 @@ const RiderPortal = () => {
     window.location.href = loginPathForRole('delivery_rider');
   };
 
+  const filteredDeliveries = React.useMemo(
+    () => rankByFuzzyMatch(deliveries, search, delivery => [delivery.order_reference, delivery.customer_name, delivery.customer_phone, delivery.delivery_location, delivery.status]),
+    [deliveries, search],
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredDeliveries.length / pageSize));
+  const pagedDeliveries = filteredDeliveries.slice((page - 1) * pageSize, page * pageSize);
+  React.useEffect(() => { setPage(1); }, [scope, search, pageSize]);
+  React.useEffect(() => { setPage(current => Math.min(current, totalPages)); }, [totalPages]);
+
   return (
     <PortalShell title="Rider Portal" subtitle={rider?.name} onLogout={logout}>
       {error ? <div className="form-error delivery-alert">{error}</div> : null}
-      <section className="delivery-toolbar">
+      <section className="delivery-kpi-strip delivery-rider-kpis" aria-label="Rider delivery summary">
+        <div><span>Active</span><strong>{deliveries.filter(item => ['assigned_to_rider', 'picked_up', 'issue_reported'].includes(item.status)).length}</strong></div>
+        <div><span>Out for delivery</span><strong>{deliveries.filter(item => item.status === 'picked_up').length}</strong></div>
+        <div><span>Current view</span><strong>{scope === 'history' ? 'History' : 'Active'}</strong></div>
+      </section>
+      <section className="delivery-toolbar delivery-rider-toolbar">
         <div className="segmented">
           <button type="button" className={scope === 'active' ? 'active' : ''} onClick={() => setScope('active')}>Active</button>
           <button type="button" className={scope === 'history' ? 'active' : ''} onClick={() => setScope('history')}>History</button>
         </div>
+        <label className="delivery-search-field"><Icon name="search" size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search deliveries" /></label>
       </section>
       <section className="delivery-grid">
         {loading ? <EmptyState title="Loading deliveries" body="Fetching your assigned orders." /> : null}
-        {!loading && deliveries.length === 0 ? <EmptyState title="No deliveries here" body="Assigned orders will appear here." /> : null}
-        {deliveries.map(delivery => (
+        {!loading && filteredDeliveries.length === 0 ? <EmptyState title={search ? 'No matching deliveries' : 'No deliveries here'} body={search ? 'Try another order reference, customer, or location.' : 'Assigned orders will appear here.'} /> : null}
+        {pagedDeliveries.map(delivery => (
           <RiderDeliveryCard key={delivery.id} delivery={delivery} onAction={onAction} />
         ))}
       </section>
+      <div className="delivery-pagination-wrap"><PaginationControls page={page} pageSize={pageSize} total={filteredDeliveries.length} onPage={setPage} onPageSize={setPageSize} /></div>
       {rider?.must_change_password ? (
         <ForcedDeliveryPasswordModal
           accountLabel="rider"

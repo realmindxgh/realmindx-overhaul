@@ -8,6 +8,7 @@ import { bookMatchesBookshopSearch, findTaxonomyItem, getBookshopSeoProfile, mat
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute } from './urls.js';
+import { fuzzyMatches, rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
@@ -60,7 +61,9 @@ const matchesRatingFilters = (book, filters) => {
 };
 
 const matchesQueryFilters = (book, query) => {
-  return bookMatchesBookshopSearch(book, query);
+  if (!query) return true;
+  const searchText = [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' ');
+  return bookMatchesBookshopSearch(book, query) || fuzzyMatches(searchText, query);
 };
 
 const matchesCatalogueFilters = (book, filters, options = {}) => {
@@ -490,9 +493,9 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
       {FILTER_GROUPS.filter((group) => group.taxonomy !== hiddenTaxonomy).map((group) => {
         const items = taxonomies[group.key] || [];
         if (items.length === 0) return null;
-        const query = searchTerms[group.key].trim().toLowerCase();
+        const query = searchTerms[group.key].trim();
         const searchable = SEARCHABLE_FILTER_KEYS.has(group.key) && items.length > FILTER_PREVIEW_LIMIT;
-        const filteredItems = searchable && query ? items.filter((item) => item.label.toLowerCase().includes(query)) : items;
+        const filteredItems = searchable && query ? rankByFuzzyMatch(items, query, item => `${item.label} ${(item.aliases || []).join(' ')}`) : items;
         const visibleItems = searchable && !query ? filteredItems.slice(0, FILTER_PREVIEW_LIMIT) : filteredItems;
         const hiddenCount = searchable && !query ? Math.max(0, items.length - visibleItems.length) : 0;
         const selected = filters[group.key] || [];
@@ -689,7 +692,9 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     if (sort === 'popular') {
       return [...filtered].sort((left, right) => (right.rating * (right.reviews || 1)) - (left.rating * (left.reviews || 1)));
     }
-    return filtered;
+    return filters.query
+      ? rankByFuzzyMatch(filtered, filters.query, book => [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' '))
+      : filtered;
   }, [books, filters, sort]);
 
   React.useEffect(() => {
@@ -789,7 +794,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     [browseGroup, taxonomies],
   );
   const filteredBrowseLinks = React.useMemo(() => {
-    const query = browseQuery.trim().toLowerCase();
+    const query = browseQuery.trim();
     if (!query && initialBrowse.taxonomy === 'subject' && !hasScopedBrowse) {
       const preferred = ['english', 'mathematics', 'maths', 'science'];
       return preferred
@@ -802,22 +807,12 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
         .slice(0, 3);
     }
     if (!query) return browseLinks;
-    return browseLinks.filter((item) => {
-      const plainText = [
+    return rankByFuzzyMatch(browseLinks, browseQuery, item => [
         item.label,
         item.name,
         ...(item.aliases || []),
         ...(item.popularSearches || []),
-      ].filter(Boolean).join(' ').toLowerCase();
-      const pseudoBook = {
-        catName: item.taxonomy === 'category' ? item.label : '',
-        subject: item.taxonomy === 'subject' ? item.label : '',
-        levelName: item.taxonomy === 'level' ? item.label : '',
-        curriculumName: item.taxonomy === 'curriculum' ? item.label : '',
-        publisher: item.taxonomy === 'publisher' ? item.label : '',
-      };
-      return plainText.includes(query) || bookMatchesBookshopSearch(pseudoBook, browseQuery);
-    });
+      ].filter(Boolean).join(' '));
   }, [browseLinks, browseQuery, hasScopedBrowse, initialBrowse.taxonomy]);
   const isSubjectFinder = initialBrowse.taxonomy === 'subject' && !hasScopedBrowse;
   const selectedSubjectItems = React.useMemo(() => {

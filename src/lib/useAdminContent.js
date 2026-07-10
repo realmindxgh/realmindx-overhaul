@@ -150,7 +150,8 @@ function useApiContent() {
     const activeRequest = apiInFlightRequests.get(collection);
     if (activeRequest) return activeRequest;
 
-    apiLoadingCollections.add(collection);
+    const showLoadingState = !options.silent && !apiContentCache.has(collection);
+    if (showLoadingState) apiLoadingCollections.add(collection);
     apiErrors.delete(collection);
     publishApiState();
 
@@ -176,7 +177,7 @@ function useApiContent() {
       })
       .finally(() => {
         apiInFlightRequests.delete(collection);
-        apiLoadingCollections.delete(collection);
+        if (showLoadingState) apiLoadingCollections.delete(collection);
         publishApiState();
       });
 

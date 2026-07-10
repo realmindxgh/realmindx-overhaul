@@ -321,7 +321,7 @@ def log_delivery_event(delivery, event_type, actor_type, actor_id=None, from_sta
     return event
 
 
-def _send_delivery_update_email(to, subject, title, body, preheader):
+def _send_delivery_update_email(to, subject, title, body, preheader, cta_label="Track your order", cta_url=None):
     if not to:
         return "unavailable"
     try:
@@ -331,8 +331,8 @@ def _send_delivery_update_email(to, subject, title, body, preheader):
             html=bookshop_email_shell(
                 title,
                 body,
-                cta_label="Track your order",
-                cta_url=f"{current_app.config.get('BOOKSHOP_URL', '').rstrip('/')}/track",
+                cta_label=cta_label,
+                cta_url=cta_url or f"{current_app.config.get('BOOKSHOP_URL', '').rstrip('/')}/track",
                 eyebrow="RealMindX Bookshop Delivery",
                 preheader=preheader,
             ),
@@ -419,6 +419,8 @@ def _notify_delivery_partner(delivery):
         f"<p>RealMindX has assigned order <strong>{escape(order.order_reference)}</strong> to {escape(company.name)}.</p>"
         "<p>Sign in to the delivery company portal to accept the order and assign a rider.</p>",
         text,
+        cta_label="Open delivery company portal",
+        cta_url=f"{current_app.config.get('BASE_URL', '').rstrip('/')}/delivery-company/",
     )
     log_delivery_event(
         delivery,

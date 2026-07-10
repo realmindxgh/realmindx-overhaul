@@ -12,6 +12,7 @@ if str(SITE_ROOT) not in sys.path:
     sys.path.insert(0, str(SITE_ROOT))
 
 from backend import create_app
+from backend.api.bookshop import order_tracking_json
 from backend.config import Config
 from backend.delivery_service import (
     DeliveryError,
@@ -26,7 +27,7 @@ from backend.delivery_service import (
     verify_delivery_otp,
 )
 from backend.extensions import db
-from backend.models import Order, Role, User
+from backend.models import AuditLog, Order, Product, ProductCategory, Role, User
 from backend.security import DEFAULT_TEMPORARY_PASSWORD
 
 
@@ -224,6 +225,99 @@ class DeliveryAccountTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.get_json()["code"], "inactive_account")
+
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=False)
+    def test_tracking_uses_delivery_milestone_times(self, _sms, _email):
+        company, _ = create_company({"name": "Timeline Company"})
+        order = self._order("RMX-TEST-TIMELINE")
+        delivery = assign_order_to_company(order, company, ("admin", 1))
+        preparing_at = datetime(2026, 7, 9, 9, 15, tzinfo=timezone.utc)
+        assigned_at = datetime(2026, 7, 10, 1, 30, tzinfo=timezone.utc)
+        delivery.assigned_at = assigned_at
+        db.session.add(AuditLog(
+            action="update_order_status",
+            entity_type="order",
+            entity_id=str(order.id),
+            details={"status": "confirmed", "prev": "new"},
+            created_at=preparing_at,
+        ))
+        db.session.commit()
+
+        payload = order_tracking_json(order)
+        self.assertTrue(payload["status_times"]["preparing_at"].startswith("2026-07-09T09:15:00"))
+        self.assertTrue(payload["delivery_tracking"]["assigned_at"].startswith("2026-07-10T01:30:00"))
+
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=False)
+    def test_partner_assignment_email_uses_company_portal_cta(self, _sms, email_mock):
+        company, _ = create_company({"name": "CTA Company", "contact_email": "dispatch@example.com"})
+        order = self._order("RMX-TEST-CTA")
+        assign_order_to_company(order, company, ("admin", 1))
+
+        partner_email = next(
+            call.args[0]
+            for call in email_mock.call_args_list
+            if call.args and call.args[0].subject.startswith("New delivery assigned:")
+        )
+        self.assertIn("Open delivery company portal", partner_email.html)
+        self.assertIn("/delivery-company/", partner_email.html)
+        self.assertNotIn("Track your order", partner_email.html)
+
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=False)
+    def test_admin_can_open_company_detail_with_delivery(self, _sms, _email):
+        admin_role = Role(name="admin", description="Admin")
+        admin = User(email="detail-admin@example.com", first_name="Admin", role=admin_role, is_verified=True, is_active=True)
+        admin.set_password("AdminPassword123!")
+        db.session.add_all([admin_role, admin])
+        db.session.flush()
+        company, _ = create_company({"name": "Detail Company"})
+        order = self._order("RMX-TEST-DETAIL")
+        assign_order_to_company(order, company, ("admin", admin.id))
+        db.session.commit()
+
+        client = self.app.test_client()
+        login = client.post("/api/auth/login", json={"email": admin.email, "password": "AdminPassword123!"})
+        self.assertEqual(login.status_code, 200)
+        response = client.get(f"/api/admin/delivery-companies/{company.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["deliveries"][0]["order_reference"], order.order_reference)
+
+    def test_public_bookshop_pages_are_indexable_and_in_sitemap(self):
+        category = ProductCategory(name="Mathematics", slug="mathematics", is_active=True)
+        product = Product(
+            name="Mathematics Practice Book",
+            slug="mathematics-practice-book",
+            category=category,
+            price=45,
+            stock_status="in_stock",
+            quantity_available=10,
+            subject="Mathematics",
+            level="JHS",
+            is_active=True,
+        )
+        db.session.add_all([category, product])
+        db.session.commit()
+        client = self.app.test_client()
+
+        for path in [
+            "/products/mathematics-practice-book",
+            "/categories/mathematics",
+            "/subjects/mathematics",
+            "/track",
+            "/invoice",
+        ]:
+            response = client.get(path, headers={"Host": "bookshop.realmindxgh.com"})
+            self.assertEqual(response.status_code, 200, path)
+            self.assertIn('content="index, follow"', response.get_data(as_text=True), path)
+
+        sitemap = client.get("/sitemap.xml", headers={"Host": "bookshop.realmindxgh.com"}).get_data(as_text=True)
+        self.assertIn("/products/mathematics-practice-book", sitemap)
+        self.assertIn("/categories/mathematics", sitemap)
+        self.assertIn("/subjects/mathematics", sitemap)
+        self.assertIn("/track", sitemap)
+        self.assertIn("/invoice", sitemap)
 
     @patch("backend.api.admin._send_internal_account_access_email", return_value="sent")
     def test_admin_created_staff_gets_default_password(self, _notify):

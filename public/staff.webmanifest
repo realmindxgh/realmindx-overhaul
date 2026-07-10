@@ -1,0 +1,13 @@
+{
+  "id": "/staff/",
+  "name": "RealMindX Staff",
+  "short_name": "RMX Staff",
+  "description": "RealMindX staff workspace.",
+  "start_url": "/staff/dashboard",
+  "scope": "/staff/",
+  "display": "standalone",
+  "launch_handler": { "client_mode": "navigate-existing" },
+  "background_color": "#f5f8fc",
+  "theme_color": "#143670",
+  "icons": [{ "src": "/favicon.png", "sizes": "192x192 512x512 2048x2048", "type": "image/png", "purpose": "any maskable" }]
+}

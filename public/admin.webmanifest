@@ -1,0 +1,13 @@
+{
+  "id": "/admin/",
+  "name": "RealMindX Admin",
+  "short_name": "RMX Admin",
+  "description": "RealMindX administration workspace.",
+  "start_url": "/admin/dashboard",
+  "scope": "/admin/",
+  "display": "standalone",
+  "launch_handler": { "client_mode": "navigate-existing" },
+  "background_color": "#f5f8fc",
+  "theme_color": "#143670",
+  "icons": [{ "src": "/favicon.png", "sizes": "192x192 512x512 2048x2048", "type": "image/png", "purpose": "any maskable" }]
+}

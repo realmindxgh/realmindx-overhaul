@@ -15,6 +15,7 @@ import {
   writeCheckoutSuccess,
 } from './checkoutStorage.js';
 import { normalizeOrderStatus } from '../src/lib/orderStatus.js';
+import { rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 const PHONE_RE = /^[0-9+\s]{9,}$/;
@@ -264,21 +265,9 @@ const CheckoutPage = ({ navigate }) => {
   const customDeliveryArea = selectedZoneId === 'other';
   const zoneQuery = normaliseLocationSearch(zoneSearch);
   const filteredDeliveryZones = (zoneQuery
-    ? deliveryZones.filter(zone => deliveryLocationSearchText(zone).includes(zoneQuery))
-    : deliveryZones
-  )
-    .slice()
-    .sort((first, second) => {
-      if (zoneQuery) {
-        const firstExact = [first.name, ...deliveryLocationAliases(first)]
-          .some(value => normaliseLocationSearch(value) === zoneQuery);
-        const secondExact = [second.name, ...deliveryLocationAliases(second)]
-          .some(value => normaliseLocationSearch(value) === zoneQuery);
-        if (firstExact !== secondExact) return firstExact ? -1 : 1;
-      }
-      return String(first.name || '').localeCompare(String(second.name || ''), 'en', { sensitivity: 'base' });
-    })
-    .slice(0, 12);
+    ? rankByFuzzyMatch(deliveryZones, zoneSearch, deliveryLocationSearchText)
+    : [...deliveryZones].sort((first, second) => String(first.name || '').localeCompare(String(second.name || ''), 'en', { sensitivity: 'base' }))
+  ).slice(0, 12);
   const selectDeliveryZone = zone => {
     setSelectedZoneId(String(zone.id));
     setZoneSearch(zone.name);
@@ -949,6 +938,7 @@ const trackingTimeline = (order) => {
   const status = normalizeOrderStatus(order?.status);
   const payment = String(order?.payment_status || 'unpaid').toLowerCase();
   const deliveryTracking = order?.delivery_tracking || {};
+  const statusTimes = order?.status_times || {};
   const deliveryStatus = String(deliveryTracking.status || '').toLowerCase();
   const deliveryIssue = Boolean(deliveryTracking.issue);
   const deliveryDelivered = deliveryStatus === 'delivered';
@@ -970,25 +960,27 @@ const trackingTimeline = (order) => {
   return {
     current,
     steps: [
-      { label: awaitingPayment ? 'Payment Started' : 'Order Received', time:formatOrderDate(order?.created_at), icon: awaitingPayment ? 'lock' : 'check' },
+      { label: awaitingPayment ? 'Payment Started' : 'Order Received', time:formatOrderDate(statusTimes.received_at || order?.created_at), icon: awaitingPayment ? 'lock' : 'check' },
       {
         label: paid ? 'Payment Confirmed' : payOnDelivery ? 'Payment on Delivery' : 'Payment Pending',
-        time: paid ? formatOrderDate(order?.paid_at || order?.updated_at) : payOnDelivery ? 'Payment will be collected when the order arrives' : 'Awaiting payment confirmation',
+        time: paid ? formatOrderDate(statusTimes.payment_at || order?.paid_at) : payOnDelivery ? 'Payment will be collected when the order arrives' : 'Awaiting payment confirmation',
         icon:'lock',
       },
       {
         label:'Preparing order',
-        time: current >= 2 ? formatOrderDate(order?.updated_at || order?.created_at) : 'Pending',
+        time: current >= 2 ? formatOrderDate(statusTimes.preparing_at || statusTimes.payment_at || statusTimes.received_at || order?.created_at) : 'Pending',
         icon:'box',
       },
       {
         label: deliveryLabel,
-        time: current >= 3 ? formatOrderDate(order?.updated_at) : 'Pending',
+        time: current >= 3 ? formatOrderDate(deliveryTracking.picked_up_at || deliveryTracking.assigned_at || statusTimes.shipped_at) : 'Pending',
         icon: method === 'pickup' ? 'home' : 'truck',
       },
       {
         label: status === 'cancelled' ? 'Cancelled' : deliveryIssue ? 'Delivery issue, our team will contact you' : 'Delivered',
-        time: current >= 4 || status === 'cancelled' || deliveryIssue ? formatOrderDate(order?.updated_at) : 'Pending',
+        time: current >= 4 || status === 'cancelled' || deliveryIssue
+          ? formatOrderDate(deliveryTracking.delivered_at || deliveryTracking.issue_reported_at || deliveryTracking.failed_at || deliveryTracking.returned_at || deliveryTracking.cancelled_at || statusTimes.completed_at || statusTimes.cancelled_at)
+          : 'Pending',
         icon: status === 'cancelled' || deliveryIssue ? 'close' : 'home',
       },
     ],

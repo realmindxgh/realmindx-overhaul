@@ -11,7 +11,16 @@
     <meta name="keywords"
       content="teacher recruitment Ghana, educational services Ghana, school transformation, tutoring Accra, textbooks Ghana, RealMindX" />
     <meta name="author" content="RealMindX Education Limited" />
+    <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://realmindxgh.com/" />
+    <script>
+      if (window.location.hostname.indexOf('bookshop.') === 0) {
+        var publicBookshopPaths = ['/track', '/invoice', '/documents', '/categories', '/subjects', '/levels', '/curriculum', '/publishers', '/products'];
+        if (publicBookshopPaths.some(function (path) { return window.location.pathname === path || window.location.pathname.indexOf(path + '/') === 0; })) {
+          document.querySelector('link[rel="canonical"]').href = window.location.origin + window.location.pathname;
+        }
+      }
+    </script>
 
     <!-- Open Graph (Facebook, WhatsApp, LinkedIn) -->
     <meta property="og:type"        content="website" />
@@ -36,6 +45,37 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#143670" />
+    <script>
+      (function () {
+        var path = window.location.pathname;
+        var manifest = window.location.hostname.indexOf('bookshop.') === 0
+          ? '/bookshop.webmanifest'
+          : path.indexOf('/delivery-company') === 0
+            ? '/delivery-company.webmanifest'
+            : path.indexOf('/delivery') === 0
+              ? '/delivery.webmanifest'
+              : path.indexOf('/admin') === 0
+                ? '/admin.webmanifest'
+                : path.indexOf('/staff') === 0
+                  ? '/staff.webmanifest'
+                  : '';
+        if (manifest) {
+          var link = document.createElement('link');
+          link.rel = 'manifest';
+          link.href = manifest;
+          document.head.appendChild(link);
+        }
+        window.addEventListener('beforeinstallprompt', function (event) {
+          event.preventDefault();
+          window.__rmxInstallPrompt = event;
+          window.dispatchEvent(new CustomEvent('rmx:install-ready', { detail: event }));
+        });
+        window.addEventListener('appinstalled', function () { window.__rmxInstallPrompt = null; });
+        if ('serviceWorker' in navigator && (window.isSecureContext || window.location.hostname === 'localhost')) {
+          window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
+        }
+      }());
+    </script>
     <script>document.documentElement.classList.add('rmx-js');</script>
     <style>.rmx-js [data-seo-prerendered]{display:none!important}</style>
 

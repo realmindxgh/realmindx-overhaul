@@ -363,7 +363,10 @@ def delivery_json(delivery, include_events=False, rider_safe=False):
     if include_events:
         payload["events"] = [
             delivery_event_json(event)
-            for event in sorted(getattr(delivery, "events", []) or [], key=lambda item: item.created_at or item.id)
+            for event in sorted(
+                getattr(delivery, "events", []) or [],
+                key=lambda item: (item.created_at.isoformat() if item.created_at else "", int(item.id or 0)),
+            )
         ]
     return payload
 
@@ -380,8 +383,15 @@ def delivery_tracking_json(delivery):
         "label": DELIVERY_TRACKING_LABELS.get(delivery.status, "Preparing order"),
         "otp_required": bool(delivery.otp_required and delivery.status == "picked_up"),
         "issue": delivery.status in {"rejected_by_company", "issue_reported", "failed", "returned", "cancelled"},
+        "assigned_at": delivery.assigned_at.isoformat() if delivery.assigned_at else None,
+        "accepted_at": delivery.accepted_at.isoformat() if delivery.accepted_at else None,
+        "rejected_at": delivery.rejected_at.isoformat() if delivery.rejected_at else None,
         "picked_up_at": delivery.picked_up_at.isoformat() if delivery.picked_up_at else None,
         "delivered_at": delivery.delivered_at.isoformat() if delivery.delivered_at else None,
+        "issue_reported_at": delivery.issue_reported_at.isoformat() if delivery.issue_reported_at else None,
+        "failed_at": delivery.failed_at.isoformat() if delivery.failed_at else None,
+        "returned_at": delivery.returned_at.isoformat() if delivery.returned_at else None,
+        "cancelled_at": delivery.cancelled_at.isoformat() if delivery.cancelled_at else None,
     }
 
 

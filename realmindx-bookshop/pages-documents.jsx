@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon, LoadingState } from './shared.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
+import { rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
 
 const FALLBACK_DOCUMENTS = [
   {
@@ -110,12 +111,8 @@ const DocumentsPage = ({ navigate }) => {
   }, []);
 
   const filteredDocuments = React.useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return documents.filter((item) => {
-      const matchesFilter = filter === 'all' || item.type.key === filter;
-      const matchesQuery = !needle || `${item.title} ${item.description} ${item.source} ${item.type.label}`.toLowerCase().includes(needle);
-      return matchesFilter && matchesQuery;
-    });
+    const filteredByType = documents.filter(item => filter === 'all' || item.type.key === filter);
+    return rankByFuzzyMatch(filteredByType, query, item => `${item.title} ${item.description} ${item.source} ${item.type.label}`);
   }, [documents, filter, query]);
 
   return (

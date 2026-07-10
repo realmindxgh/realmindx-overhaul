@@ -15,6 +15,7 @@ import { TEACHING_CURRICULA } from '../../src/lib/teachingOptions.js';
 import { PRODUCT_CURRICULUM_OPTIONS, PRODUCT_LEVEL_OPTIONS, PRODUCT_SUBJECT_OPTIONS } from '../../src/lib/bookshopTaxonomy.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 import { copyTextToClipboard } from '../../src/lib/clipboard.js';
+import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
@@ -1196,12 +1197,12 @@ const ReceiptsInvoicesView = ({ content }) => {
   ), [rows]);
 
   const filteredRows = React.useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return rows.filter(row => {
+    const eligible = rows.filter(row => {
       if (typeFilter !== 'all' && row.document_type !== typeFilter) return false;
       if (statusFilter !== 'all' && row.status !== statusFilter) return false;
-      if (!needle) return true;
-      return [
+      return true;
+    });
+    return rankByFuzzyMatch(eligible, query, row => [
         row.document_id,
         row.order_reference,
         row.customer_name,
@@ -1209,8 +1210,7 @@ const ReceiptsInvoicesView = ({ content }) => {
         row.source,
         row.status,
         ...(row.recipients || []),
-      ].join(' ').toLowerCase().includes(needle);
-    });
+      ].join(' '));
   }, [query, rows, statusFilter, typeFilter]);
 
   const linkFor = (row, download = false) => {
@@ -2489,7 +2489,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     if (!hasActiveOrders) return undefined;
     const refresh = () => {
       if (document.visibilityState === 'visible') {
-        fetchCollection(config.collection, { force: true }).then(() => {});
+        fetchCollection(config.collection, { force: true, silent: true }).then(() => {});
       }
     };
     const timer = window.setInterval(refresh, 15000);
@@ -2507,16 +2507,14 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     }
   }, [content, config.collection]);
 
-  const TABLE_PAGE_SIZE = 20;
   const [tablePage, setTablePage] = React.useState(1);
+  const [tablePageSize, setTablePageSize] = React.useState(10);
 
   // Reset to page 1 when search or filter changes
-  React.useEffect(() => { setTablePage(1); }, [search, filterStatus]);
+  React.useEffect(() => { setTablePage(1); }, [search, filterStatus, tablePageSize]);
 
-  const filtered = rows.filter(row => {
-    if (filterStatus && row.status !== filterStatus) return false;
-    return !search.trim() || Object.values(row).join(' ').toLowerCase().includes(search.toLowerCase());
-  });
+  const filteredByStatus = rows.filter(row => !filterStatus || row.status === filterStatus);
+  const filtered = rankByFuzzyMatch(filteredByStatus, search, row => Object.values(row));
 
   // Column sort — clicking a header cycles asc → desc → off
   const toggleSort = (col) => {
@@ -2538,8 +2536,12 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       })
     : filtered;
 
-  const totalTablePages = Math.max(1, Math.ceil(sorted.length / TABLE_PAGE_SIZE));
-  const paginatedRows = sorted.slice((tablePage - 1) * TABLE_PAGE_SIZE, tablePage * TABLE_PAGE_SIZE);
+  const totalTablePages = Math.max(1, Math.ceil(sorted.length / tablePageSize));
+  const paginatedRows = sorted.slice((tablePage - 1) * tablePageSize, tablePage * tablePageSize);
+
+  React.useEffect(() => {
+    setTablePage(current => Math.min(current, totalTablePages));
+  }, [totalTablePages]);
 
   const handleCreate = async (payload) => {
     const result = await createItem(config.collection, payload);
@@ -3087,8 +3089,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
       <div className="admin-table-card">
         <div className="atc-header" style={{ flexWrap: 'wrap', gap: 10 }}>
-          <h3>{sorted.length} Record{sorted.length !== 1 ? 's' : ''}{sorted.length > TABLE_PAGE_SIZE ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginLeft: 'auto' }}>
+          <h3>{sorted.length} Record{sorted.length !== 1 ? 's' : ''}{sorted.length > tablePageSize ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
+          <div className="admin-table-tools">
             {/* Status filter — shown whenever rows have a status column */}
             {rows.some(r => 'status' in r) && (
               <select
@@ -3103,6 +3105,12 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               </select>
             )}
             <div className="atc-search"><span>Search</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search records" /></div>
+            <label className="admin-page-size">
+              <span>Rows</span>
+              <select value={tablePageSize} onChange={event => setTablePageSize(Number(event.target.value))}>
+                {[5, 10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
           </div>
         </div>
         {loadError ? (
@@ -3215,8 +3223,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           </AdminTableScroll>
         )}
       {/* Table pagination */}
-      {totalTablePages > 1 && (
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, padding:'18px 0 4px' }}>
+      {sorted.length > 0 && (
+        <div className="admin-table-pagination">
           <button className="btn btn-outline-navy btn-sm" disabled={tablePage === 1} onClick={() => setTablePage(p => p - 1)}>← Prev</button>
           <span style={{ fontSize:'0.82rem', color:'var(--gray-600)' }}>Page {tablePage} of {totalTablePages}</span>
           <button className="btn btn-outline-navy btn-sm" disabled={tablePage === totalTablePages} onClick={() => setTablePage(p => p + 1)}>Next →</button>
@@ -3800,8 +3808,8 @@ const TeachersView = ({ session }) => {
   // Only regular users (role === 'user') — admins/staff are filtered out server-side too,
   // but this guards against any future changes.
   const filtered = (teachers || [])
-    .filter(t => t.role === 'user' || !t.role)
-    .filter(t => !search.trim() || `${t.first_name} ${t.last_name} ${t.email}`.toLowerCase().includes(search.toLowerCase()));
+    .filter(t => t.role === 'user' || !t.role);
+  const rankedTeachers = rankByFuzzyMatch(filtered, search, t => `${t.first_name} ${t.last_name} ${t.email} ${t.phone || ''}`);
 
   const openDetail = async (t) => {
     setDetailLoading(true);
@@ -3867,7 +3875,7 @@ const TeachersView = ({ session }) => {
       </div>
       <div className="admin-table-card">
         <div className="atc-header">
-          <h3>{filtered.length} Teacher{filtered.length !== 1 ? 's' : ''}</h3>
+          <h3>{rankedTeachers.length} Teacher{rankedTeachers.length !== 1 ? 's' : ''}</h3>
           <div className="atc-search"><span>Search</span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or email" />
           </div>
@@ -3876,7 +3884,7 @@ const TeachersView = ({ session }) => {
           <EmptySection title="API mode required" body="Connect the Flask backend to see registered teachers." />
         ) : teachers === null ? (
           <EmptySection title="Loading…" body="" />
-        ) : filtered.length === 0 ? (
+        ) : rankedTeachers.length === 0 ? (
           <EmptySection title="No Registered Teachers Yet" body="Teachers who sign up on the portal will appear here." />
         ) : (
           <AdminTableScroll>
@@ -3888,7 +3896,7 @@ const TeachersView = ({ session }) => {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(t => (
+                {rankedTeachers.map(t => (
                   <tr key={t.id} style={{ opacity: t.is_active === false ? 0.55 : 1 }}>
                     <td className="td-primary">{[t.first_name, t.last_name].filter(Boolean).join(' ') || 'Unknown'}</td>
                     <td>{t.email}</td>

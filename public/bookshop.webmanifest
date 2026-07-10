@@ -1,0 +1,13 @@
+{
+  "id": "/",
+  "name": "RealMindX Bookshop",
+  "short_name": "RMX Bookshop",
+  "description": "Educational books, orders, invoices, and delivery tracking.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "launch_handler": { "client_mode": "navigate-existing" },
+  "background_color": "#ffffff",
+  "theme_color": "#143670",
+  "icons": [{ "src": "/favicon.png", "sizes": "192x192 512x512 2048x2048", "type": "image/png", "purpose": "any maskable" }]
+}

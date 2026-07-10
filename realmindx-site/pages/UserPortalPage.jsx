@@ -16,6 +16,7 @@ import {
   TEACHING_WORK_TYPES,
 } from '../../src/lib/teachingOptions.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
+import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
 
 // Splits a comma-joined multi-select value (e.g. "Mathematics, Physics, ICT")
 // into trimmed, non-empty parts. Mirrors the `.join(', ')` used whenever a
@@ -696,10 +697,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
     if (!cur.includes(val)) setForm(prev => ({ ...prev, teaching_subject: [...cur, val].join(', ') }));
     setNewSubject('');
   };
-  const filteredSubjects = (() => {
-    const q = subjectFilter.trim().toLowerCase();
-    return q ? KNOWN_SUBJECTS.filter(s => s.toLowerCase().includes(q)) : KNOWN_SUBJECTS;
-  })();
+  const filteredSubjects = rankByFuzzyMatch(KNOWN_SUBJECTS, subjectFilter);
   const KNOWN_LEVELS = TEACHING_LEVELS;
   const selectedLevels = multiValues('preferred_level');
   const customLevels = selectedLevels.filter(l => !KNOWN_LEVELS.includes(l));
@@ -751,9 +749,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
       : [...selectedLocationIds, locationId];
     setForm(prev => ({ ...prev, preferred_location_ids: next.join(', ') }));
   };
-  const filteredLocations = locationOptions.filter(location =>
-    (location.searchText || normaliseLocationSearch(location.name)).includes(normaliseLocationSearch(locationFilter)),
-  );
+  const filteredLocations = rankByFuzzyMatch(locationOptions, locationFilter, location => location.searchText || normaliseLocationSearch(location.name));
   const customCurricula = selectedCurricula.filter(c => !KNOWN_CURRICULA.includes(c));
   const [newCurriculum, setNewCurriculum] = React.useState('');
   const addCustomCurriculum = () => {
@@ -1390,9 +1386,7 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
       : [...current, value];
     setForm(prev => ({ ...prev, [field]: next.join(', ') }));
   };
-  const filteredAlertLocations = locationOptions.filter(location =>
-    (location.searchText || normaliseLocationSearch(location.name)).includes(normaliseLocationSearch(locationFilter)),
-  );
+  const filteredAlertLocations = rankByFuzzyMatch(locationOptions, locationFilter, location => location.searchText || normaliseLocationSearch(location.name));
 
   return (
     <div>

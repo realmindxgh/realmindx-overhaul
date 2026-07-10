@@ -81,6 +81,7 @@ from ..models import (
     NewsletterSubscriber,
     News,
     Order,
+    OrderDelivery,
     OrderItem,
     OrderReview,
     Permission,
@@ -2642,14 +2643,31 @@ def delivery_company_detail(company_id):
         .limit(100)
         .all()
     )
+    include_events = current_user.has_permission("delivery.audit.view")
+    serialized_deliveries = []
+    for delivery in deliveries:
+        try:
+            serialized_deliveries.append(delivery_json(delivery, include_events=include_events))
+        except Exception as exc:
+            current_app.logger.exception("Could not serialize delivery %s for company %s: %s", delivery.id, company.id, exc)
+            serialized_deliveries.append({
+                "id": delivery.id,
+                "order_id": delivery.order_id,
+                "order_reference": delivery.order.order_reference if delivery.order else None,
+                "company_id": delivery.company_id,
+                "company_name": company.name,
+                "rider_id": delivery.rider_id,
+                "rider_name": delivery.rider.name if delivery.rider else None,
+                "status": delivery.status,
+                "assigned_at": delivery.assigned_at.isoformat() if delivery.assigned_at else None,
+                "updated_at": delivery.updated_at.isoformat() if delivery.updated_at else None,
+                "serialization_warning": True,
+            })
     return jsonify(
         company=delivery_company_json(company),
         managers=[delivery_company_user_json(user) for user in company.company_users],
         riders=[delivery_rider_json(rider) for rider in company.riders],
-        deliveries=[
-            delivery_json(delivery, include_events=current_user.has_permission("delivery.audit.view"))
-            for delivery in deliveries
-        ],
+        deliveries=serialized_deliveries,
     )
 
 

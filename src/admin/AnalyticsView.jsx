@@ -3,6 +3,7 @@ import React from 'react';
 import { DatePickerField, Icon } from '../../realmindx-site/assets/components.jsx';
 import { api, isApiMode } from '../lib/apiClient.js';
 import toast from '../lib/toast.js';
+import { rankByFuzzyMatch } from '../lib/fuzzySearch.js';
 import './analytics.css';
 
 const RANGE_OPTIONS = [
@@ -835,13 +836,12 @@ const AnalyticsView = ({ session }) => {
 
   const products = payload?.products?.items || [];
   const filteredProducts = React.useMemo(() => {
-    const search = deferredSearch.trim().toLowerCase();
-    return products
-      .filter(item => lensPredicate(lens, item))
-      .filter(item => {
-        if (!search) return true;
-        return `${item.name} ${item.category} ${item.performance_status} ${item.status}`.toLowerCase().includes(search);
-      })
+    const ranked = rankByFuzzyMatch(
+      products.filter(item => lensPredicate(lens, item)),
+      deferredSearch,
+      item => `${item.name} ${item.category} ${item.performance_status} ${item.status}`,
+    );
+    return ranked
       .sort(compareBySort(sortKey));
   }, [deferredSearch, lens, products, sortKey]);
 

@@ -40,6 +40,7 @@ from ..invoices import (
     invoice_json,
 )
 from ..models import (
+    AuditLog,
     BookshopPaymentIntent,
     CartInvoice,
     CartInvoiceItem,
@@ -604,6 +605,41 @@ def order_tracking_json(order):
     payload["created_at"] = order.created_at.isoformat() if order.created_at else None
     payload["updated_at"] = order.updated_at.isoformat() if order.updated_at else None
     payload["paid_at"] = order.paid_at.isoformat() if order.paid_at else None
+    status_times = {
+        "received_at": order.created_at.isoformat() if order.created_at else None,
+        "payment_at": order.paid_at.isoformat() if order.paid_at else None,
+        "preparing_at": None,
+        "shipped_at": None,
+        "completed_at": None,
+        "cancelled_at": None,
+    }
+    logs = (
+        AuditLog.query
+        .filter_by(entity_type="order", entity_id=str(order.id))
+        .filter(AuditLog.action.in_(["order_placed", "paystack_payment_confirmed", "update_order_status"]))
+        .order_by(AuditLog.created_at.asc(), AuditLog.id.asc())
+        .all()
+    )
+    for log in logs:
+        timestamp = log.created_at.isoformat() if log.created_at else None
+        if log.action == "order_placed" and timestamp:
+            status_times["received_at"] = timestamp
+        elif log.action == "paystack_payment_confirmed" and timestamp:
+            status_times["payment_at"] = timestamp
+            status_times["preparing_at"] = status_times["preparing_at"] or timestamp
+        elif log.action == "update_order_status" and timestamp:
+            status = normalize_order_status((log.details or {}).get("status"))
+            if status == "confirmed":
+                status_times["preparing_at"] = timestamp
+            elif status == "shipped":
+                status_times["shipped_at"] = timestamp
+            elif status == "complete":
+                status_times["completed_at"] = timestamp
+            elif status == "cancelled":
+                status_times["cancelled_at"] = timestamp
+    if normalize_order_status(order.status) in {"confirmed", "shipped", "complete"}:
+        status_times["preparing_at"] = status_times["preparing_at"] or status_times["payment_at"] or status_times["received_at"]
+    payload["status_times"] = status_times
     payload["delivery_tracking"] = delivery_tracking_json(getattr(order, "delivery", None))
     return payload
 

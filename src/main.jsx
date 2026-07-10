@@ -29,6 +29,7 @@ import DonatePage from '../realmindx-site/pages/DonatePage.jsx';
 import { publicItems, useManagedContent } from './lib/managedContent.js';
 import { useIdleTimeout } from './lib/useIdleTimeout.js';
 import { IdleWarning } from './lib/IdleWarning.jsx';
+import InstallAppPrompt from './lib/InstallAppPrompt.jsx';
 import { getDemoSession } from './lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from './lib/authClient.js';
 import { loginPathForRole } from './lib/sessionRoutes.js';
@@ -1058,6 +1059,7 @@ const AppRoutes = () => {
     return (
       <>
         <FlyerFocusModal />
+        <InstallAppPrompt />
         <BookshopApp />
       </>
     );
@@ -1065,6 +1067,7 @@ const AppRoutes = () => {
   return (
   <>
     <FlyerFocusModal />
+    <InstallAppPrompt />
     <BrowserRouter>
       <RouteTitle />
       <RouteAnalyticsTracker />

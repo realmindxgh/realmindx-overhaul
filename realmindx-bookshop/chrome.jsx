@@ -11,6 +11,7 @@ import { usePublicSettings } from '../src/lib/siteContent.js';
 import globalToast from '../src/lib/toast.js';
 import { clearCheckoutDraft } from './checkoutStorage.js';
 import { bookshopPathForRoute, productHref, productPathSegment } from './urls.js';
+import { fuzzyMatches, rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
@@ -591,9 +592,11 @@ const Navbar = ({ route, navigate }) => {
   const suggestions = React.useMemo(() => {
     const t = q.trim();
     if (t.length < 2) return [];
-    return books
-      .filter((book) => bookMatchesBookshopSearch(book, t))
-      .slice(0, 6);
+    const candidates = books.filter(book => bookMatchesBookshopSearch(book, t) || fuzzyMatches(
+      [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' '),
+      t,
+    ));
+    return rankByFuzzyMatch(candidates, t, book => [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' ')).slice(0, 6);
   }, [books, q]);
 
   const quickSubjects = [

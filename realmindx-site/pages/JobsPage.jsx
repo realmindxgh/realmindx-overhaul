@@ -5,6 +5,7 @@ import { isApiMode, api } from '../../src/lib/apiClient.js';
 import { Icon } from '../assets/components.jsx';
 import { getDemoSession } from '../../src/lib/demoAccounts.js';
 import { syncSessionFromApi } from '../../src/lib/authClient.js';
+import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
 
 /* â”€â”€ Sample data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const SAMPLE_JOBS = [
@@ -509,14 +510,13 @@ const JobsPage = () => {
   };
 
   // Filter logic
-  const filtered = jobs.filter(j => {
-    const q = search.toLowerCase();
-    const matchSearch = !q || j.title.toLowerCase().includes(q) || j.school.toLowerCase().includes(q) || j.subject.toLowerCase().includes(q) || j.location.toLowerCase().includes(q);
+  const filterEligibleJobs = jobs.filter(j => {
     const matchType    = !filters.type.length    || filters.type.includes(j.type);
     const matchSubject = !filters.subject.length || filters.subject.includes(j.subject);
     const matchLevel   = !filters.level.length   || filters.level.includes(j.level);
-    return matchSearch && matchType && matchSubject && matchLevel;
+    return matchType && matchSubject && matchLevel;
   });
+  const filtered = rankByFuzzyMatch(filterEligibleJobs, search, j => `${j.title} ${j.school} ${j.subject} ${j.location} ${j.level} ${j.type}`);
 
   const toggleFilter = (group, value) => {
     setFilters(prev => ({
