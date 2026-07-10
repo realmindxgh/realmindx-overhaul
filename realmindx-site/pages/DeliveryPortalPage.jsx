@@ -2,6 +2,7 @@ import React from 'react';
 
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { signInWithPhone, signOut } from '../../src/lib/authClient.js';
+import { clearDemoSession } from '../../src/lib/demoAccounts.js';
 import { loginPathForRole } from '../../src/lib/sessionRoutes.js';
 
 const ACTIVE_POLL_MS = 15000;
@@ -114,6 +115,47 @@ const EmptyState = ({ title, body }) => (
     <p>{body}</p>
   </div>
 );
+
+const PortalAccessChecking = () => (
+  <main className="delivery-portal delivery-auth-check">
+    <div className="delivery-empty">
+      <h2>Checking secure access</h2>
+      <p>Confirming your delivery portal session.</p>
+    </div>
+  </main>
+);
+
+const PortalAccessGate = ({ role, children }) => {
+  const [verified, setVerified] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    const loginPath = loginPathForRole(role);
+    const verify = async () => {
+      if (!isApiMode()) {
+        clearDemoSession();
+        window.location.replace(loginPath);
+        return;
+      }
+      try {
+        if (role === 'delivery_company_user') {
+          await api.deliveryCompanyMe();
+        } else {
+          await api.deliveryRiderMe();
+        }
+        if (alive) setVerified(true);
+      } catch {
+        clearDemoSession();
+        if (alive) window.location.replace(loginPath);
+      }
+    };
+    verify();
+    return () => { alive = false; };
+  }, [role]);
+
+  if (!verified) return <PortalAccessChecking />;
+  return children;
+};
 
 const DeliveryMeta = ({ delivery, riderSafe = false }) => (
   <dl className="delivery-meta">
@@ -476,7 +518,11 @@ const DeliveryPortalPage = ({ role }) => {
   const path = typeof window !== 'undefined' ? window.location.pathname : '';
   const isLogin = path.endsWith('/login');
   if (isLogin) return <DeliveryLogin role={role} />;
-  return role === 'delivery_company_user' ? <CompanyPortal /> : <RiderPortal />;
+  return (
+    <PortalAccessGate role={role}>
+      {role === 'delivery_company_user' ? <CompanyPortal /> : <RiderPortal />}
+    </PortalAccessGate>
+  );
 };
 
 export default DeliveryPortalPage;
