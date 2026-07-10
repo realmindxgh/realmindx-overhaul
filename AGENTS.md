@@ -2,6 +2,8 @@
 
 ## Deployment and migration pitfalls
 
+- Do not create Git worktrees for this repository. Keep work in this single checkout so the workspace stays simple to inspect and clean.
+- Push deployable work through `main`. The GitHub Actions deployment only runs for `main`, so feature branches are not enough when the change is intended to take effect on the live site.
 - Keep Alembic `revision` values at 32 characters or fewer. Production stores `alembic_version.version_num` as `VARCHAR(32)`, so long revision IDs fail during deploy when Alembic tries to record the migration.
 - Be careful with Postgres `json` columns. Do not compare JSON directly with strings such as `sources = '[]'`; use JSON functions such as `json_array_length(sources) = 0`, or cast deliberately when a JSONB operator is required.
 - The Codex app shell on this Windows workstation may not have `git` on `PATH`. Use `C:\Program Files\Git\cmd\git.exe` explicitly.
