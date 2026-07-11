@@ -62,7 +62,7 @@
         if (manifest) {
           var link = document.createElement('link');
           link.rel = 'manifest';
-          link.href = manifest;
+          link.href = manifest + '?v=20260711';
           document.head.appendChild(link);
         }
         window.addEventListener('beforeinstallprompt', function (event) {
