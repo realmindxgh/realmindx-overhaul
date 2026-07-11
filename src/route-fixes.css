@@ -5994,6 +5994,37 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   line-height: 1.35;
 }
 
+.admin-table .admin-actions-column {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  width: 174px;
+  min-width: 174px;
+  max-width: 174px;
+  border-left: 1px solid #dbe4ef;
+  background: #fff;
+  box-shadow: -10px 0 18px -18px rgba(10, 35, 75, 0.8);
+}
+
+.admin-table th.admin-actions-column {
+  z-index: 5;
+  background: var(--gray-50);
+}
+
+.admin-table tbody tr:nth-child(even) .admin-actions-column {
+  background: #f8fbff;
+}
+
+.admin-table .admin-actions-column > div {
+  width: 100%;
+  align-items: stretch;
+}
+
+.admin-table .admin-actions-column .table-action-btn,
+.admin-table .admin-actions-column .order-status-control {
+  width: 100%;
+}
+
 .admin-table-pagination {
   display: flex;
   align-items: center;

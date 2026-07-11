@@ -1312,7 +1312,7 @@ const ReceiptsInvoicesView = ({ content }) => {
                   <th>Total</th>
                   <th>Issued</th>
                   <th>Conversion</th>
-                  <th>Actions</th>
+                  <th className="admin-actions-column">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1321,7 +1321,7 @@ const ReceiptsInvoicesView = ({ content }) => {
                   const downloadUrl = linkFor(row, true);
                   return (
                     <tr key={row.id}>
-                      <td>
+                      <td className="admin-actions-column">
                         <strong>{row.document_id || row.lookup_id}</strong>
                         <div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{row.document_label} · {row.source}</div>
                       </td>
@@ -3260,7 +3260,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                     {sortCol === 'updated_at' ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
                   </span>
                 </th>
-                {hasActions && <th>Actions</th>}
+                {hasActions && <th className="admin-actions-column">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -3273,7 +3273,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                   ))}
                   <td className="admin-activity-date">{formatActivityDate(row.updated_at || row.created_at)}</td>
                   {hasActions && (
-                    <td>
+                    <td className="admin-actions-column">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {/* Standard edit/publish */}
                         {canUpdate && <button className="table-action-btn" onClick={() => { setEditing(row); setCreating(false); }}>Edit</button>}
@@ -4029,7 +4029,7 @@ const TeachersView = ({ session }) => {
               <thead>
                 <tr>
                   <th>Name</th><th>Email</th><th>Phone</th>
-                  <th>Verified</th><th>Status</th><th>Registered</th><th>Actions</th>
+                  <th>Verified</th><th>Status</th><th>Registered</th><th className="admin-actions-column">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -4047,7 +4047,7 @@ const TeachersView = ({ session }) => {
                     <td style={{ fontSize:'0.76rem', color:'var(--gray-600)', whiteSpace:'nowrap' }}>
                       {t.created_at ? new Date(t.created_at).toLocaleDateString() : 'N/A'}
                     </td>
-                    <td>
+                    <td className="admin-actions-column">
                       <div style={{ display:'flex', gap:6 }}>
                         <button className="table-action-btn" onClick={() => openDetail(t)}>View Profile</button>
                         {canEditTeachers ? (

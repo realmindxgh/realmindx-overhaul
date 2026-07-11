@@ -2629,9 +2629,11 @@ input, textarea, select { font-family: inherit; }
 
 .portal-main {
   margin-left: 260px;
-  flex: 1;
+  flex: 0 0 auto;
+  width: calc(100% - 260px);
   padding: 32px;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .portal-main > * {
@@ -3155,8 +3157,11 @@ input, textarea, select { font-family: inherit; }
 
 .admin-main {
   margin-left: 240px;
-  flex: 1;
+  flex: 0 0 auto;
+  width: calc(100% - 240px);
+  min-width: 0;
   padding: 28px;
+  box-sizing: border-box;
 }
 
 .admin-topbar {
@@ -3265,8 +3270,10 @@ input, textarea, select { font-family: inherit; }
 
 .admin-table-scroll {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .atc-header {
@@ -3708,8 +3715,8 @@ input, textarea, select { font-family: inherit; }
 /* ── Responsive portal ─────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .portal-sidebar, .admin-sidebar { width: 220px; }
-  .portal-main { margin-left: 220px; }
-  .admin-main { margin-left: 220px; }
+  .portal-main { margin-left: 220px; width: calc(100% - 220px); }
+  .admin-main { margin-left: 220px; width: calc(100% - 220px); }
   .admin-stats-row { grid-template-columns: repeat(2, 1fr); }
   .portal-stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
@@ -3745,6 +3752,7 @@ input, textarea, select { font-family: inherit; }
   /* Main content area */
   .portal-main, .admin-main {
     margin-left: 0;
+    width: 100%;
     padding: 16px 14px 80px;
     overflow-x: hidden;
   }
