@@ -284,6 +284,8 @@ DEFAULT_PERMISSIONS = [
     "delivery.settlements.adjust",
     "delivery.settlements.mark_paid",
     "delivery.settlements.dispute_resolve",
+    "bookRequests.view",
+    "bookRequests.manage",
     *[
         f"{area}.{action}"
         for area, actions in {

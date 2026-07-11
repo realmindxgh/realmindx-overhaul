@@ -9,6 +9,8 @@ import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute } from './urls.js';
 import { fuzzyMatches, rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
+import { api } from '../src/lib/apiClient.js';
+import { getDemoSession } from '../src/lib/demoAccounts.js';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
@@ -31,6 +33,91 @@ const FILTER_GROUPS = [
 const FILTER_PREVIEW_LIMIT = 5;
 const SEARCHABLE_FILTER_KEYS = new Set(['subjects']);
 const BATCH = 40;
+
+const BookRequestModal = ({ open, onClose, initialTitle, browseContext }) => {
+  const session = getDemoSession();
+  const [form, setForm] = React.useState({ requested_title: '', customer_name: '', email: '', phone: '', author: '', publisher: '', level: '', notes: '' });
+  const [turnstileToken, setTurnstileToken] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [result, setResult] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setForm({
+      requested_title: initialTitle || '',
+      customer_name: session?.full_name || session?.name || '',
+      email: session?.email || '',
+      phone: session?.phone || '',
+      author: '', publisher: '', level: '', notes: '',
+    });
+    setTurnstileToken('');
+    setError('');
+    setResult(null);
+  }, [open, initialTitle]);
+
+  if (!open) return null;
+  const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
+  const submit = async event => {
+    event.preventDefault();
+    if (!form.email.trim() && !form.phone.trim()) {
+      setError('Enter an email address or phone number so we can contact you.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const response = await api.createBookRequest({
+        ...form,
+        search_query: initialTitle || undefined,
+        browse_context: browseContext,
+        turnstile_token: turnstileToken,
+      });
+      setResult(response.request);
+    } catch (err) {
+      setError(err?.message || 'We could not send your request. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="bs-request-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="bs-request-modal" role="dialog" aria-modal="true" aria-labelledby="book-request-title">
+        <button type="button" className="bs-request-close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
+        {result ? (
+          <div className="bs-request-success" role="status">
+            <span className="bs-request-success-icon"><Icon name="check" size={24} /></span>
+            <span className="bs-eyebrow">Request received</span>
+            <h2 id="book-request-title">We are looking for your book.</h2>
+            <p>We will contact you when it becomes available. Keep this reference for your records.</p>
+            <strong>{result.reference}</strong>
+            <button type="button" className="bs-btn bs-btn-navy" onClick={onClose}>Done</button>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <span className="bs-eyebrow">Cannot find a book?</span>
+            <h2 id="book-request-title">Request it from RealMindX</h2>
+            <p className="bs-request-intro">Tell us what you need and where to reach you. We will notify you as soon as it is available.</p>
+            <div className="bs-request-grid">
+              <label className="wide"><span>Book title or search term *</span><input value={form.requested_title} onChange={event => update('requested_title', event.target.value)} required /></label>
+              <label><span>Your name *</span><input value={form.customer_name} onChange={event => update('customer_name', event.target.value)} required /></label>
+              <label><span>Email address</span><input type="email" value={form.email} onChange={event => update('email', event.target.value)} /></label>
+              <label><span>Phone number</span><input type="tel" value={form.phone} onChange={event => update('phone', event.target.value)} /></label>
+              <label><span>Author</span><input value={form.author} onChange={event => update('author', event.target.value)} /></label>
+              <label><span>Publisher</span><input value={form.publisher} onChange={event => update('publisher', event.target.value)} /></label>
+              <label><span>Level or class</span><input value={form.level} onChange={event => update('level', event.target.value)} /></label>
+              <label className="wide"><span>Anything else?</span><textarea rows="3" value={form.notes} onChange={event => update('notes', event.target.value)} /></label>
+            </div>
+            <TurnstileField className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
+            {error && <p className="bs-request-error" role="alert">{error}</p>}
+            <button type="submit" className="bs-btn bs-btn-gold bs-btn-block" disabled={busy}>{busy ? 'Sending request...' : 'Send book request'}</button>
+          </form>
+        )}
+      </section>
+    </div>
+  );
+};
 
 const filterGroupForTaxonomy = (taxonomy) => FILTER_GROUPS.find((group) => group.taxonomy === taxonomy) || null;
 const safeCeilingValue = (value) => Math.max(2, Math.ceil(Number(value) || 0));
@@ -90,6 +177,15 @@ const selectedLabelList = (filters, taxonomies) => FILTER_GROUPS.flatMap((group)
   (filters[group.key] || [])
     .map((value) => findTaxonomyItem(taxonomies, group.taxonomy, value)?.label || value)
     .filter(Boolean)
+));
+
+const selectedFilterList = (filters, taxonomies) => FILTER_GROUPS.flatMap((group) => (
+  (filters[group.key] || []).map((value) => ({
+    key: group.key,
+    taxonomy: group.taxonomy,
+    value,
+    label: findTaxonomyItem(taxonomies, group.taxonomy, value)?.label || value,
+  }))
 ));
 
 const browseIntroHeading = (taxonomy) => {
@@ -663,6 +759,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   const [loading, setLoading] = React.useState(false);
   const [drawer, setDrawer] = React.useState(false);
   const [browseQuery, setBrowseQuery] = React.useState('');
+  const [requestOpen, setRequestOpen] = React.useState(false);
   const sentinelRef = React.useRef(null);
   const loadingRef = React.useRef(false);
   const previousCeilingRef = React.useRef(rangeCeiling);
@@ -746,6 +843,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   }, [allLoaded, visible]);
 
   const selectedLabels = React.useMemo(() => selectedLabelList(filters, taxonomies), [filters, taxonomies]);
+  const selectedFilters = React.useMemo(() => selectedFilterList(filters, taxonomies), [filters, taxonomies]);
   const searchContext = filters.query.trim()
     ? { term: filters.query.trim(), scope: 'bookshop', path: `${PREFIX}/products`, source: 'results' }
     : null;
@@ -765,6 +863,13 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     }
     return extras.length ? `${base}: ${extras.join(', ')}` : base;
   }, [filters, selectedLabels]);
+  const requestTitle = filters.query.trim() || (selectedLabels.length === 1 ? selectedLabels[0] : initialBrowse.value) || '';
+  const requestContext = {
+    taxonomy: initialBrowse.taxonomy || null,
+    taxonomy_value: initialBrowse.value || null,
+    selected_filters: selectedLabels,
+    context_label: contextLabel,
+  };
 
   const topPicks = React.useMemo(() => {
     if (activeSelectionCount(filters) === 0 && !filters.inStock && filters.ratingMin === '' && filters.ratingMax === '' && !filters.query.trim()) {
@@ -789,6 +894,9 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     : '';
   const browseIntro = React.useMemo(() => browseIntroCopy(initialBrowse.taxonomy, browseItem), [browseItem, initialBrowse.taxonomy]);
   const browseGroup = React.useMemo(() => filterGroupForTaxonomy(initialBrowse.taxonomy), [initialBrowse.taxonomy]);
+  const toolbarFilters = React.useMemo(() => selectedFilters.filter(item => !(
+    item.taxonomy === initialBrowse.taxonomy && item.value === initialBrowse.value
+  )), [initialBrowse.taxonomy, initialBrowse.value, selectedFilters]);
   const browseLinks = React.useMemo(
     () => (browseGroup ? (taxonomies[browseGroup.key] || []) : []),
     [browseGroup, taxonomies],
@@ -832,6 +940,20 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       };
     });
   }, []);
+
+  const removeToolbarFilter = React.useCallback(item => {
+    setFilters(prev => ({ ...prev, [item.key]: (prev[item.key] || []).filter(value => value !== item.value) }));
+  }, []);
+
+  const clearToolbarFilters = React.useCallback(() => {
+    setFilters(prev => {
+      const next = { ...prev };
+      FILTER_GROUPS.forEach(group => {
+        next[group.key] = group.taxonomy === initialBrowse.taxonomy && initialBrowse.value ? [initialBrowse.value] : [];
+      });
+      return next;
+    });
+  }, [initialBrowse.taxonomy, initialBrowse.value]);
 
   React.useEffect(() => {
     setBrowseQuery('');
@@ -886,6 +1008,30 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
         <div className="bs-shop-results">
           {browseIntro && !filters.query.trim() && (
             <section className={`bs-category-intro${hasScopedBrowse ? ' compact' : ''}`}>
+              {hasScopedBrowse ? (
+                <div className="bs-scoped-intro">
+                  <div className="bs-scoped-intro-copy">
+                    <span className="bs-eyebrow">{browseIntro.eyebrow}</span>
+                    <h1 className="bs-h2">{browseIntro.title.toLowerCase().includes('book') ? browseIntro.title : `${browseIntro.title} Books`}</h1>
+                    <p>{browseIntro.body}</p>
+                  </div>
+                  {browseIntro.popularSearches?.length > 0 && (
+                    <div className="bs-scoped-explore" aria-label="Popular searches">
+                      <strong>Explore popular searches</strong>
+                      <div>
+                        {browseIntro.popularSearches.slice(0, 4).map((item, index) => (
+                          <button key={item} type="button" onClick={() => setFilters(prev => ({ ...prev, query: item }))}>
+                            <span className="bs-scoped-explore-icon"><Icon name={index === 0 ? 'cap' : index === 1 ? 'book' : index === 2 ? 'files' : 'search'} size={17} /></span>
+                            <span>{item}</span>
+                            <Icon name="chevR" size={15} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
               <span className="bs-eyebrow">{browseIntro.eyebrow}</span>
               <h1 className="bs-h2">{browseIntro.title}</h1>
               <p>{browseIntro.body}</p>
@@ -1015,6 +1161,8 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
                   </button>
                 )}
               </div>
+                </>
+              )}
             </section>
           )}
           {filters.query.trim() && (
@@ -1028,7 +1176,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               </button>
             </div>
           )}
-          <div className="bs-shop-toolbar">
+          <div className={`bs-shop-toolbar${hasScopedBrowse ? ' scoped' : ''}`}>
             <div className="bs-toolbar-left">
               <button className="bs-filter-mobile-btn" onClick={() => setDrawer(true)}><Icon name="filter" size={16} /> Filter</button>
               <span className="bs-shop-count">
@@ -1036,6 +1184,16 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
                   ? <><strong>{list.length}</strong> result{list.length !== 1 ? 's' : ''}</>
                   : <>Showing <strong>{shown.length}</strong> of <strong>{list.length}</strong></>}
               </span>
+              {hasScopedBrowse && toolbarFilters.length > 0 && (
+                <div className="bs-toolbar-filters" aria-label="Applied filters">
+                  {toolbarFilters.map(item => (
+                    <button key={`${item.taxonomy}-${item.value}`} type="button" onClick={() => removeToolbarFilter(item)} aria-label={`Remove ${item.label} filter`}>
+                      <span>{browseIntroHeading(item.taxonomy)}: {item.label}</span><Icon name="close" size={11} />
+                    </button>
+                  ))}
+                  <button type="button" className="clear" onClick={clearToolbarFilters}>Clear all</button>
+                </div>
+              )}
             </div>
             <div className="bs-toolbar-right">
               <select className="bs-sort-select" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort by">
@@ -1060,9 +1218,10 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
                   ? <>Nothing matched <strong>"{filters.query.trim()}"</strong>. Try a different term, or clear your search and filters.</>
                   : 'Try a different subject, level, curriculum, publisher, item type, price range, or rating filter.'}
               </p>
-              <button className="bs-btn bs-btn-gold" onClick={() => setFilters(createFilterState(rangeCeiling, initialBrowse, ''))}>
-                Clear all filters
-              </button>
+              <div className="bs-empty-actions">
+                <button className="bs-btn bs-btn-gold" onClick={() => setRequestOpen(true)}>Request this book</button>
+                <button className="bs-btn bs-btn-outline" onClick={() => setFilters(createFilterState(rangeCeiling, initialBrowse, ''))}>Clear all filters</button>
+              </div>
             </div>
           ) : view === 'grid' ? (
             <div className="bs-product-grid">{shown.map((book, index) => <ProductCard key={book.id} book={book} idx={index} navigate={navigate} searchContext={searchContext ? { ...searchContext, position: index + 1 } : null} />)}</div>
@@ -1086,6 +1245,10 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               <div className="bs-eor-badge">
                 <Icon name="check" size={14} />
                 That's all for <strong>{contextLabel}</strong>
+              </div>
+              <div className="bs-request-prompt">
+                <div><strong>Still did not find the book you need?</strong><span>Send us the title and we will notify you when it is available.</span></div>
+                <button type="button" className="bs-btn bs-btn-gold" onClick={() => setRequestOpen(true)}>Request a book</button>
               </div>
 
               {topPicks.length >= 2 && (
@@ -1138,6 +1301,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
           Show {list.length} result{list.length !== 1 ? 's' : ''}
         </button>
       </div>
+      <BookRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} initialTitle={requestTitle} browseContext={requestContext} />
     </div>
   );
 };

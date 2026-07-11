@@ -284,6 +284,38 @@ class Product(TimestampMixin, db.Model):
     image_file = db.relationship("UploadedFile", foreign_keys=[image_file_id])
 
 
+class BookRequest(TimestampMixin, db.Model):
+    __tablename__ = "book_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    reference = db.Column(db.String(24), unique=True, nullable=False, index=True)
+    requested_title = db.Column(db.String(220), nullable=False, index=True)
+    normalized_title = db.Column(db.String(220), nullable=False, index=True)
+    search_query = db.Column(db.String(220), nullable=True)
+    browse_context = db.Column(db.JSON, default=dict, nullable=False)
+    author = db.Column(db.String(180), nullable=True)
+    publisher = db.Column(db.String(180), nullable=True)
+    level = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    customer_name = db.Column(db.String(160), nullable=False)
+    email = db.Column(db.String(255), nullable=True, index=True)
+    phone = db.Column(db.String(40), nullable=True, index=True)
+    status = db.Column(db.String(30), default="pending", nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=True, index=True)
+    product_url = db.Column(db.String(500), nullable=True)
+    acknowledgement_email_status = db.Column(db.String(30), nullable=True)
+    acknowledgement_sms_status = db.Column(db.String(30), nullable=True)
+    acknowledgement_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    available_email_status = db.Column(db.String(30), nullable=True)
+    available_sms_status = db.Column(db.String(30), nullable=True)
+    available_notified_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    available_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+
+    product = db.relationship("Product")
+    resolved_by = db.relationship("User", foreign_keys=[resolved_by_id])
+
+
 class Order(TimestampMixin, db.Model):
     __tablename__ = "orders"
 

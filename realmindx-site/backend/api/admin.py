@@ -19,6 +19,12 @@ from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
 from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
+from ..book_requests import (
+    BookRequestError,
+    mark_available,
+    request_json,
+    send_available_notification,
+)
 from ..contacts import (
     MARKETING_ACTIVE,
     TRANSACTIONAL_ONLY,
@@ -66,6 +72,7 @@ from ..sms_service import normalise_phone
 from ..models import (
     AnalyticsEvent,
     AuditLog,
+    BookRequest,
     ContactMessage,
     CartInvoice,
     DeliveryCompany,
@@ -125,6 +132,102 @@ from ..serializers import (
 from ..upload_utils import save_upload
 
 admin_bp = Blueprint("admin", __name__)
+
+
+def _book_request_error(exc):
+    db.session.rollback()
+    return jsonify(error=exc.message, code=exc.code), exc.status_code
+
+
+@admin_bp.get("/book-requests")
+@login_required
+@permission_required("bookRequests.view")
+def list_book_requests():
+    page = max(1, request.args.get("page", 1, type=int))
+    page_size = min(100, max(5, request.args.get("page_size", 10, type=int)))
+    status = (request.args.get("status") or "").strip().lower()
+    search = (request.args.get("q") or "").strip()
+    query = BookRequest.query
+    if status in {"pending", "available"}:
+        query = query.filter(BookRequest.status == status)
+    if search:
+        needle = f"%{search}%"
+        query = query.filter(or_(
+            BookRequest.reference.ilike(needle),
+            BookRequest.requested_title.ilike(needle),
+            BookRequest.customer_name.ilike(needle),
+            BookRequest.email.ilike(needle),
+            BookRequest.phone.ilike(needle),
+        ))
+    pagination = query.order_by(BookRequest.created_at.desc()).paginate(page=page, per_page=page_size, error_out=False)
+    pending_count = BookRequest.query.filter_by(status="pending").count()
+    return jsonify(
+        items=[request_json(row, include_private=True) for row in pagination.items],
+        page=pagination.page,
+        pages=pagination.pages,
+        total=pagination.total,
+        pending_count=pending_count,
+    )
+
+
+@admin_bp.get("/book-requests/<int:request_id>")
+@login_required
+@permission_required("bookRequests.view")
+def get_book_request(request_id):
+    row = db.get_or_404(BookRequest, request_id)
+    payload = request_json(row, include_private=True)
+    event_labels = {
+        "book_request_created": "Request received",
+        "book_request_duplicate_reused": "Existing request reused",
+        "book_request_acknowledgement": "Acknowledgement sent",
+        "book_request_marked_available": "Book marked available",
+        "book_request_availability_notification": "Availability notice sent",
+        "book_request_notification_retried": "Availability notice retried",
+    }
+    def request_event_label(event):
+        details = event.details or {}
+        if event.action == "book_request_acknowledgement" and "sent" not in {details.get("email"), details.get("sms")}:
+            return "Acknowledgement could not be sent"
+        if event.action in {"book_request_availability_notification", "book_request_notification_retried"} and "sent" not in {details.get("email"), details.get("sms")}:
+            return "Availability notice could not be sent"
+        return event_labels.get(event.action, event.action.replace("_", " ").capitalize())
+    events = AuditLog.query.filter_by(entity_type="book_request", entity_id=str(row.id)).order_by(AuditLog.created_at.desc()).all()
+    payload["history"] = [{
+        "id": event.id,
+        "action": request_event_label(event),
+        "details": event.details or {},
+        "created_at": event.created_at.isoformat(),
+    } for event in events]
+    return jsonify(request=payload)
+
+
+@admin_bp.post("/book-requests/<int:request_id>/available")
+@login_required
+@permission_required("bookRequests.manage")
+def make_book_request_available(request_id):
+    payload = request.get_json(silent=True) or {}
+    row = db.get_or_404(BookRequest, request_id)
+    try:
+        notification = mark_available(row, payload.get("product_url"), current_user.id)
+        db.session.commit()
+    except BookRequestError as exc:
+        return _book_request_error(exc)
+    return jsonify(request=request_json(row, include_private=True), notification=notification)
+
+
+@admin_bp.post("/book-requests/<int:request_id>/retry-notification")
+@login_required
+@permission_required("bookRequests.manage")
+def retry_book_request_notification(request_id):
+    row = db.get_or_404(BookRequest, request_id)
+    if row.status != "available":
+        return jsonify(error="Only available requests can be notified."), 409
+    try:
+        notification = send_available_notification(row, retry=True)
+        db.session.commit()
+    except BookRequestError as exc:
+        return _book_request_error(exc)
+    return jsonify(request=request_json(row, include_private=True), notification=notification)
 
 
 def slugify(value):
@@ -1693,12 +1796,75 @@ def list_audit_logs():
     rows = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(500).all()
     actor_ids = {row.actor_id for row in rows if row.actor_id}
     actors = {user.id: user for user in User.query.filter(User.id.in_(actor_ids)).all()} if actor_ids else {}
+    action_labels = {
+        "book_request_created": "Submitted a book request",
+        "book_request_duplicate_reused": "Reused an existing book request",
+        "book_request_acknowledgement": "Sent the book request confirmation",
+        "book_request_marked_available": "Marked a requested book as available",
+        "book_request_availability_notification": "Notified the client that their book is available",
+        "book_request_notification_retried": "Retried the book availability notice",
+    }
+    area_labels = {
+        "book_request": "Book requests",
+        "order": "Bookshop orders",
+        "order_delivery": "Deliveries",
+        "user": "User accounts",
+        "product": "Bookshop products",
+        "product_category": "Product categories",
+        "product_review": "Product reviews",
+        "delivery_company": "Delivery companies",
+        "delivery_company_user": "Delivery company managers",
+        "delivery_rider": "Delivery riders",
+        "delivery_settlement": "Delivery settlements",
+        "job": "Job listings",
+        "job_application": "Job applications",
+        "news": "News posts",
+        "resource": "Resources",
+        "gallery_item": "Gallery",
+        "contact_message": "Contact messages",
+        "newsletter_subscriber": "Newsletter contacts",
+        "uploaded_file": "Uploaded files",
+    }
+
+    def readable_action(row):
+        details = row.details or {}
+        if row.action == "book_request_acknowledgement" and "sent" not in {details.get("email"), details.get("sms")}:
+            return "Could not send the book request confirmation"
+        if row.action in {"book_request_availability_notification", "book_request_notification_retried"} and "sent" not in {details.get("email"), details.get("sms")}:
+            return "Could not send the book availability notice"
+        if row.action in action_labels:
+            return action_labels[row.action]
+        words = row.action.replace("_", " ").strip().split()
+        past_tense = {
+            "create": "Created", "update": "Updated", "delete": "Deleted",
+            "assign": "Assigned", "cancel": "Cancelled", "reset": "Reset",
+            "send": "Sent", "upload": "Uploaded", "reply": "Replied to",
+            "change": "Changed", "override": "Overrode", "resend": "Resent",
+            "toggle": "Changed", "bulk": "Bulk updated", "clear": "Cleared",
+        }
+        if words and words[0] in past_tense:
+            return " ".join([past_tense[words[0]], *words[1:]])
+        return " ".join(words).capitalize()
+
+    def readable_summary(row):
+        details = row.details or {}
+        label = readable_action(row)
+        subject = details.get("requested_title") or details.get("reference") or details.get("name") or details.get("title") or details.get("email")
+        if subject:
+            return f"{label}: {subject}"
+        area = area_labels.get(row.entity_type) or str(row.entity_type or "record").replace("_", " ")
+        return f"{label} in {area}"
+
     return jsonify(items=[
         {
             "id": row.id,
-            "actor": actors.get(row.actor_id).email if actors.get(row.actor_id) else "System",
-            "action": row.action,
-            "entity_type": row.entity_type,
+            "actor": actors.get(row.actor_id).full_name if actors.get(row.actor_id) else (row.details or {}).get("actor_email") or "System",
+            "actor_email": actors.get(row.actor_id).email if actors.get(row.actor_id) else (row.details or {}).get("actor_email"),
+            "actor_role": actors.get(row.actor_id).role.name.replace("_", " ").title() if actors.get(row.actor_id) and actors.get(row.actor_id).role else "System",
+            "action": readable_action(row),
+            "raw_action": row.action,
+            "summary": readable_summary(row),
+            "entity_type": area_labels.get(row.entity_type) or str(row.entity_type or "System").replace("_", " ").title(),
             "entity_id": row.entity_id,
             "details": row.details or {},
             "ip_address": row.ip_address,

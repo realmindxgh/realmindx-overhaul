@@ -102,6 +102,7 @@ export const api = {
   subscribeNewsletter: (payload) => apiFetch('/newsletter', { method: 'POST', body: payload }),
   initDonationPayment: (payload) => apiFetch('/donations/paystack/initialize', { method: 'POST', body: payload }),
   fetchProducts: (qs = '') => apiFetch(`/products${qs}`),
+  createBookRequest: (payload) => apiFetch('/bookshop/book-requests', { method: 'POST', body: payload }),
   fetchCategories: () => apiFetch('/products/categories'),
   fetchFlyers: () => apiFetch('/flyers'),
   fetchFocusFlyer: () => apiFetch('/flyers/focus'),
@@ -208,6 +209,10 @@ export const api = {
 
   // admin - read
   adminDashboard: () => apiFetch('/admin/dashboard'),
+  adminBookRequests: (params = '') => apiFetch(`/admin/book-requests${params ? `?${params}` : ''}`),
+  adminBookRequest: (requestId) => apiFetch(`/admin/book-requests/${requestId}`),
+  adminMarkBookRequestAvailable: (requestId, payload) => apiFetch(`/admin/book-requests/${requestId}/available`, { method: 'POST', body: payload }),
+  adminRetryBookRequestNotification: (requestId) => apiFetch(`/admin/book-requests/${requestId}/retry-notification`, { method: 'POST' }),
   adminAnalyticsDashboard: (params = {}) => {
     const sp = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {

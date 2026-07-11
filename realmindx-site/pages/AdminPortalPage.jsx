@@ -733,8 +733,8 @@ const CONFIG = {
     emptyTitle: 'No Audit Entries Yet',
     emptyBody: 'Admin actions will appear here automatically once changes are made.',
     fields: [],
-    columns: ['actor', 'action', 'entity_type', 'entity_id', 'ip_address'],
-    columnLabels: { entity_type: 'Area', entity_id: 'Record', ip_address: 'IP Address' },
+    columns: ['actor', 'actor_role', 'summary', 'entity_type'],
+    columnLabels: { actor_role: 'Account Type', summary: 'What Happened', entity_type: 'Area' },
   },
 };
 
@@ -2462,6 +2462,117 @@ const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
   );
 };
 
+const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) => {
+  const canManage = hasSessionPermission(session, 'bookRequests.manage');
+  const [items, setItems] = React.useState([]);
+  const [selected, setSelected] = React.useState(null);
+  const [query, setQuery] = React.useState('');
+  const [status, setStatus] = React.useState('pending');
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+  const [pages, setPages] = React.useState(1);
+  const [total, setTotal] = React.useState(0);
+  const [pendingCount, setPendingCount] = React.useState(0);
+  const [productUrl, setProductUrl] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [confirmAvailable, setConfirmAvailable] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const load = React.useCallback(async () => {
+    if (!open) return;
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+      if (status) params.set('status', status);
+      if (query.trim()) params.set('q', query.trim());
+      const response = await api.adminBookRequests(params.toString());
+      setItems(response.items || []);
+      setPages(Math.max(1, response.pages || 1));
+      setTotal(response.total || 0);
+      setPendingCount(response.pending_count || 0);
+      onPendingCount?.(response.pending_count || 0);
+    } catch (err) { setError(err?.message || 'Could not load book requests.'); }
+    finally { setLoading(false); }
+  }, [open, onPendingCount, page, pageSize, query, status]);
+
+  React.useEffect(() => { const timer = setTimeout(load, query ? 250 : 0); return () => clearTimeout(timer); }, [load, query]);
+  React.useEffect(() => { setPage(1); }, [query, status, pageSize]);
+  React.useEffect(() => { if (!open) { setSelected(null); setProductUrl(''); setError(''); setConfirmAvailable(false); } }, [open]);
+  if (!open) return null;
+
+  const openDetail = async row => {
+    setLoading(true); setError('');
+    try { setSelected((await api.adminBookRequest(row.id)).request); setProductUrl(row.product_url || ''); setConfirmAvailable(false); }
+    catch (err) { setError(err?.message || 'Could not open this request.'); }
+    finally { setLoading(false); }
+  };
+  const markAvailable = async () => {
+    if (!productUrl.trim()) { setError('Paste the published RealMindX Bookshop product link.'); return; }
+    setBusy(true); setError('');
+    try {
+      const response = await api.adminMarkBookRequestAvailable(selected.id, { product_url: productUrl.trim() });
+      setSelected((await api.adminBookRequest(response.request.id)).request);
+      setConfirmAvailable(false);
+      await load();
+      onToast({ type: 'success', message: `The client for ${response.request.reference} was notified that the book is available.` });
+    } catch (err) { setError(err?.message || 'Could not mark this request available.'); }
+    finally { setBusy(false); }
+  };
+  const retryNotification = async () => {
+    setBusy(true); setError('');
+    try {
+      const response = await api.adminRetryBookRequestNotification(selected.id);
+      setSelected((await api.adminBookRequest(response.request.id)).request);
+      onToast({ type: 'success', message: 'The failed notification channel was retried.' });
+    } catch (err) { setError(err?.message || 'Could not retry the notification.'); }
+    finally { setBusy(false); }
+  };
+  const channelLabel = value => ({ sent: 'Sent', failed: 'Failed', unavailable: 'Not supplied' }[value] || 'Pending');
+
+  return ReactDOM.createPortal(
+    <div className="admin-modal-backdrop book-requests-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="admin-modal-panel book-requests-modal" role="dialog" aria-modal="true" aria-label="Book requests">
+        <button className="admin-modal-close" type="button" onClick={onClose}><Icon name="x" size={16} /><span>Close</span></button>
+        <div className="book-requests-heading">
+          <div><p className="overline">Bookshop sourcing</p><h2>{selected ? selected.reference : 'Book Requests'}</h2><p>{selected ? selected.requested_title : 'Requests from clients who could not find a book.'}</p></div>
+          {!selected && <span className="book-request-count">{pendingCount} pending</span>}
+        </div>
+        {error && <p className="form-error book-request-admin-error">{error}</p>}
+        {selected ? (
+          <div className="book-request-detail">
+            <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => { setSelected(null); setProductUrl(''); }}>Back to requests</button>
+            <div className="book-request-facts">
+              {[['Status', selected.status], ['Client', selected.customer_name], ['Email', selected.email || 'Not supplied'], ['Phone', selected.phone || 'Not supplied'], ['Author', selected.author || 'Not supplied'], ['Publisher', selected.publisher || 'Not supplied'], ['Level / class', selected.level || 'Not supplied'], ['Requested', selected.created_at ? new Date(selected.created_at).toLocaleString() : '-']].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+            </div>
+            {selected.notes && <div className="book-request-note"><span>Client notes</span><p>{selected.notes}</p></div>}
+            <div className="book-request-notifications">
+              <h3>Notifications</h3>
+              <span>Acknowledgement email: <strong>{channelLabel(selected.acknowledgement?.email)}</strong></span>
+              <span>Acknowledgement SMS: <strong>{channelLabel(selected.acknowledgement?.sms)}</strong></span>
+              <span>Availability email: <strong>{channelLabel(selected.availability_notification?.email)}</strong></span>
+              <span>Availability SMS: <strong>{channelLabel(selected.availability_notification?.sms)}</strong></span>
+            </div>
+            {selected.history?.length > 0 && <div className="book-request-history"><h3>Request history</h3>{selected.history.map(event => <div key={event.id}><span>{event.action}</span><time>{new Date(event.created_at).toLocaleString()}</time></div>)}</div>}
+            {selected.status === 'pending' && canManage && <div className="book-request-available"><label><span>Published product link</span><input value={productUrl} onChange={event => { setProductUrl(event.target.value); setConfirmAvailable(false); }} placeholder="https://bookshop.realmindxgh.com/products/..." /></label>{confirmAvailable ? <div className="book-request-confirm"><strong>Notify this client now?</strong><span>Email and SMS will use this product link.</span><div><button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={markAvailable}>{busy ? 'Notifying...' : 'Confirm and notify'}</button><button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setConfirmAvailable(false)}>Cancel</button></div></div> : <button className="btn btn-primary" type="button" onClick={() => { if (!productUrl.trim()) setError('Paste the published RealMindX Bookshop product link.'); else { setError(''); setConfirmAvailable(true); } }}>Available Now</button>}</div>}
+            {selected.status === 'available' && canManage && ['failed'].some(value => [selected.availability_notification?.email, selected.availability_notification?.sms].includes(value)) && <button className="btn btn-primary" type="button" disabled={busy} onClick={retryNotification}>{busy ? 'Retrying...' : 'Retry failed notification'}</button>}
+          </div>
+        ) : (
+          <>
+            <div className="book-request-tools"><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search reference, title, or client" /><select value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option><option value="pending">Pending</option><option value="available">Available</option></select><label>Rows <select value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[5, 10, 20, 50, 100].map(value => <option key={value}>{value}</option>)}</select></label></div>
+            <div className="book-request-list" aria-busy={loading}>
+              {loading && items.length === 0 ? <p className="book-request-empty">Loading requests...</p> : items.map(row => <button type="button" className="book-request-row" key={row.id} onClick={() => openDetail(row)}><span><strong>{row.requested_title}</strong><small>{row.reference} · {row.customer_name}</small></span><span><strong>{row.status === 'available' ? 'Available' : 'Pending'}</strong><small>{row.created_at ? new Date(row.created_at).toLocaleDateString() : ''}</small></span></button>)}
+              {!loading && items.length === 0 && <p className="book-request-empty">No book requests match this view.</p>}
+            </div>
+            <div className="book-request-pagination"><span>{total} request{total === 1 ? '' : 's'}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</button><strong>Page {page} of {pages}</strong><button type="button" disabled={page >= pages} onClick={() => setPage(value => value + 1)}>Next</button></div></div>
+          </>
+        )}
+      </section>
+    </div>, document.body,
+  );
+};
+
 const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const { content, fetchCollection, createItem, updateItem, deleteItem, togglePublish: apiToggle, loading, errors } = useAdminContent();
   const [editing, setEditing] = React.useState(null);
@@ -2479,6 +2590,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [sortDir, setSortDir] = React.useState('asc');
   const [localRows, setLocalRows] = React.useState(null);
   const [showProductImport, setShowProductImport] = React.useState(false);
+  const [showBookRequests, setShowBookRequests] = React.useState(false);
+  const [pendingBookRequests, setPendingBookRequests] = React.useState(0);
   const [actionStatus, setActionStatus] = React.useState(null);
   const [missingImageStats, setMissingImageStats] = React.useState(null);
   const [showMissingImageConfirm, setShowMissingImageConfirm] = React.useState(false);
@@ -2512,6 +2625,13 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     }
     setActionStatus(null);
   }, [config.collection, fetchCollection]);
+
+  React.useEffect(() => {
+    if (config.collection !== 'products' || !isApiMode() || !hasSessionPermission(session, 'bookRequests.view')) return;
+    api.adminBookRequests('page=1&page_size=5&status=pending')
+      .then(response => setPendingBookRequests(response.pending_count || 0))
+      .catch(() => {});
+  }, [config.collection, session]);
 
   // In API mode the hook owns the data; in local mode the parent passes rows.
   const rows = isApiMode() ? (localRows || rowsProp || []) : (rowsProp || []);
@@ -3085,6 +3205,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {config.collection === 'products' && hasSessionPermission(session, 'bookRequests.view') && (
+            <button className="btn btn-primary btn-sm book-requests-button" type="button" onClick={() => setShowBookRequests(true)}>Book Requests{pendingBookRequests ? ` (${pendingBookRequests})` : ''}</button>
+          )}
           {EXPORTABLE_PERMISSION_KEYS.has(config.collection) && isApiMode() && (
             <>
               {config.collection === 'products' && (
@@ -3121,6 +3244,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           onClose={() => setShowProductImport(false)}
         />
       )}
+      <BookRequestsModal open={config.collection === 'products' && showBookRequests} onClose={() => setShowBookRequests(false)} session={session} onToast={setActionStatus} onPendingCount={setPendingBookRequests} />
 
       {config.collection === 'newsletters' && (
         <NewsletterComposer onSent={() => fetchCollection(config.collection)} />

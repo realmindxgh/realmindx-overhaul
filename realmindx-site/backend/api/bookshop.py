@@ -15,6 +15,7 @@ from sqlalchemy import or_
 from ..analytics import queue_analytics_event
 from ..audit import audit
 from ..bookshop_search import product_search_filter, taxonomy_filter_terms
+from ..book_requests import BookRequestError, create_request, request_json
 from ..checkout_details import upsert_checkout_detail
 from ..contacts import TRANSACTIONAL_ONLY, upsert_contact
 from ..email_service import (
@@ -77,6 +78,29 @@ def clean_email(email):
         return validate_email(email or "", check_deliverability=False).normalized.lower()
     except EmailNotValidError as exc:
         raise ValueError(str(exc)) from exc
+
+
+@bookshop_bp.post("/bookshop/book-requests")
+@bookshop_bp.post("/book-requests")
+@limiter.limit("5 per hour")
+def submit_book_request():
+    payload = request.get_json(silent=True) or {}
+    try:
+        require_turnstile(payload)
+        row, duplicate = create_request(payload)
+        db.session.commit()
+    except BookRequestError as exc:
+        db.session.rollback()
+        return jsonify(error=exc.message, code=exc.code), exc.status_code
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc)), 400
+    queue_analytics_event("book_request_submitted", metadata={
+        "reference": row.reference,
+        "duplicate": duplicate,
+        "search_query": row.search_query,
+    }, commit=True)
+    return jsonify(request=request_json(row), duplicate=duplicate), 200 if duplicate else 201
 
 
 def new_order_reference():
