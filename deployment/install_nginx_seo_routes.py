@@ -61,7 +61,7 @@ ROUTE_BLOCK = f"""{START_MARKER}
         proxy_read_timeout 60;
     }}
 
-    location ~ ^/(admin|staff|delivery-company|delivery)(/[^?#]*)?/?$ {{
+    location ~ ^/(admin|staff|delivery-company|delivery|manager|rider)(/[^?#]*)?/?$ {{
         proxy_pass         http://127.0.0.1:5002;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -202,7 +202,7 @@ def remove_legacy_main_routes(block):
         lambda header: "about|services|jobs|contact|news|gallery|resources|donate|privacy|terms" in header,
         lambda header: "/news/" in header,
         lambda header: "/services/" in header,
-        lambda header: "admin|staff|delivery-company|delivery" in header,
+        lambda header: "admin|staff|delivery-company|delivery" in header or "manager|rider" in header,
     ])
 
 

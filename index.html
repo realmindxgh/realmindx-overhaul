@@ -51,6 +51,16 @@
         var deliveryHost = window.location.hostname.indexOf('delivery.') === 0;
         var managerPath = path.indexOf('/manager') === 0 || path.indexOf('/delivery-company') === 0;
         var riderPath = path.indexOf('/rider') === 0 || path.indexOf('/delivery') === 0;
+        var privatePath = managerPath || riderPath || path.indexOf('/admin') === 0 || path.indexOf('/staff') === 0 || path.indexOf('/portal') === 0;
+        if (privatePath) {
+          var robots = document.querySelector('meta[name="robots"]');
+          if (!robots) {
+            robots = document.createElement('meta');
+            robots.name = 'robots';
+            document.head.appendChild(robots);
+          }
+          robots.content = 'noindex, nofollow';
+        }
         var manifest = window.location.hostname.indexOf('bookshop.') === 0
           ? '/bookshop.webmanifest'
           : managerPath
