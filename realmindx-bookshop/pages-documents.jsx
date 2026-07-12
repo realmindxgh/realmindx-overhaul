@@ -2,6 +2,8 @@ import React from 'react';
 import { Icon, LoadingState } from './shared.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { fuzzyScore, normaliseSearchText } from '../src/lib/fuzzySearch.js';
+import { setHeadLink, setHeadMeta } from '../src/lib/head.js';
+import { canonicalBookshopBase, resourceHref } from './urls.js';
 
 const FALLBACK_DOCUMENTS = [];
 const PAGE_SIZES = [5, 10, 20, 50, 100];
@@ -29,6 +31,7 @@ const normalizeDocument = item => ({
   copyrightStatus: item.copyright_status || '',
   originalFilename: item.original_filename || '',
   url: documentUrl(item),
+  detailUrl: item.detail_url || resourceHref(item),
 });
 
 const unique = (items, key) => [...new Set(items.map(item => item[key]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
@@ -115,7 +118,7 @@ const DocumentsPage = ({ navigate }) => {
       {hasFilterOptions ? <button className="bs-resource-mobile-filter" type="button" onClick={() => setMobileFilters(true)}><Icon name="filter" size={18} /> Filter {activeFilterCount ? `(${activeFilterCount})` : ''}</button> : null}
       <div className={`bs-resource-layout ${hasFilterOptions ? '' : 'without-filters'}`}>{hasFilterOptions ? <aside>{filterPanel}</aside> : null}<div className="bs-resource-results">
         <div className="bs-resource-results-toolbar"><strong>Showing {visible.length} of {filtered.length} resources</strong><div><select className="bs-sort-select" value={sort} onChange={event => setSort(event.target.value)} aria-label="Sort resources"><option value="newest">Newest</option><option value="az">A-Z</option><option value="updated">Recently updated</option><option value="year">Year, newest first</option><option value="featured">Featured first</option></select><button type="button" className={view === 'grid' ? 'active' : ''} onClick={() => setView('grid')} aria-label="Grid view"><Icon name="grid" size={18} /></button><button type="button" className={view === 'list' ? 'active' : ''} onClick={() => setView('list')} aria-label="List view"><Icon name="list" size={18} /></button></div></div>
-        {loading ? <LoadingState title="Loading resources" body="Fetching the latest education resources." /> : error ? <div className="bs-empty-state"><h2>Resources could not load</h2><p>{error}</p></div> : !visible.length ? <div className="bs-empty-state"><div className="bs-empty-icon"><Icon name="files" size={34} /></div><h2>No resources found</h2><p>{documents.length ? 'Try adjusting your search or filters. RealMindX is building a Ghana-focused education resource library for schools, teachers, parents, and learners.' : 'RealMindX is preparing official policies, syllabi, teacher guides, and school resources. Please check back soon.'}</p>{documents.length ? <button className="bs-btn bs-btn-outline-navy" onClick={clearFilters}>Clear Search and Filters</button> : null}</div> : <div className={`bs-resource-cards ${view === 'list' ? 'list' : ''}`}>{visible.map(item => <article className="bs-resource-card" key={item.id}><div className="bs-resource-card-icon"><Icon name="files" size={22} /></div><div className="bs-resource-card-copy"><div className="bs-resource-badges"><span>{item.category}</span>{item.featured ? <span>Featured</span> : null}{item.copyrightStatus === 'RealMindX original' ? <span>RealMindX Original</span> : null}</div><h2>{item.title}</h2>{item.description ? <p>{item.description}</p> : null}<dl>{item.level ? <div><dt>Level</dt><dd>{item.level}</dd></div> : null}{item.subject ? <div><dt>Subject</dt><dd>{item.subject}</dd></div> : null}{item.publicationYear ? <div><dt>Year</dt><dd>{item.publicationYear}</dd></div> : null}{item.source ? <div><dt>Source</dt><dd>{item.source}</dd></div> : null}</dl></div><div className="bs-resource-card-actions">{item.url ? <a className="bs-btn bs-btn-navy" href={item.url} target="_blank" rel="noopener">{item.copyrightStatus === 'Linked only' ? 'View Official Source' : 'View Resource'}</a> : null}{item.file_url && item.copyrightStatus !== 'Linked only' ? <a className="bs-btn bs-btn-outline-navy" href={item.file_url} target="_blank" rel="noopener">Download</a> : null}{item.official_source_url ? <a href={item.official_source_url} target="_blank" rel="noopener">External source</a> : null}</div></article>)}</div>}
+        {loading ? <LoadingState title="Loading resources" body="Fetching the latest education resources." /> : error ? <div className="bs-empty-state"><h2>Resources could not load</h2><p>{error}</p></div> : !visible.length ? <div className="bs-empty-state"><div className="bs-empty-icon"><Icon name="files" size={34} /></div><h2>No resources found</h2><p>{documents.length ? 'Try adjusting your search or filters. RealMindX is building a Ghana-focused education resource library for schools, teachers, parents, and learners.' : 'RealMindX is preparing official policies, syllabi, teacher guides, and school resources. Please check back soon.'}</p>{documents.length ? <button className="bs-btn bs-btn-outline-navy" onClick={clearFilters}>Clear Search and Filters</button> : null}</div> : <div className={`bs-resource-cards ${view === 'list' ? 'list' : ''}`}>{visible.map(item => <article className="bs-resource-card" key={item.id}><div className="bs-resource-card-icon"><Icon name="files" size={22} /></div><div className="bs-resource-card-copy"><div className="bs-resource-badges"><span>{item.category}</span>{item.featured ? <span>Featured</span> : null}{item.copyrightStatus === 'RealMindX original' ? <span>RealMindX Original</span> : null}</div><h2><a href={item.detailUrl} onClick={event => { event.preventDefault(); navigate('resource', { segment: item.detailUrl.split('/documents/')[1] }); }}>{item.title}</a></h2>{item.description ? <p>{item.description}</p> : null}<dl>{item.level ? <div><dt>Level</dt><dd>{item.level}</dd></div> : null}{item.subject ? <div><dt>Subject</dt><dd>{item.subject}</dd></div> : null}{item.publicationYear ? <div><dt>Year</dt><dd>{item.publicationYear}</dd></div> : null}{item.source ? <div><dt>Source</dt><dd>{item.source}</dd></div> : null}</dl></div><div className="bs-resource-card-actions"><a className="bs-btn bs-btn-navy" href={item.detailUrl} onClick={event => { event.preventDefault(); navigate('resource', { segment: item.detailUrl.split('/documents/')[1] }); }}>View Details</a>{item.file_url && item.copyrightStatus !== 'Linked only' ? <a className="bs-btn bs-btn-outline-navy" href={item.file_url} target="_blank" rel="noopener">Download</a> : null}</div></article>)}</div>}
         {!loading && filtered.length ? <div className="bs-resource-pagination"><span>Page {page} of {pages}</span><div><button type="button" disabled={page === 1} onClick={() => setPage(value => value - 1)} aria-label="Previous page"><Icon name="chevL" size={17} /></button><button type="button" disabled={page === pages} onClick={() => setPage(value => value + 1)} aria-label="Next page"><Icon name="chevR" size={17} /></button></div><label>Rows <select value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{PAGE_SIZES.map(size => <option key={size}>{size}</option>)}</select></label></div> : null}
       </div></div>
       <div className="bs-documents-foot"><span>Need books for a document or curriculum?</span><button type="button" className="bs-btn bs-btn-navy" onClick={() => navigate('shop')}>Browse Bookshop</button></div>
@@ -124,4 +127,56 @@ const DocumentsPage = ({ navigate }) => {
   </div>;
 };
 
-export { DocumentsPage };
+const ResourceDetailPage = ({ navigate, segment }) => {
+  const resourceId = String(segment || '').match(/^(\d+)(?:-|$)/)?.[1] || '';
+  const [resource, setResource] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!resourceId || !isApiMode()) {
+      setError('This resource could not be found.');
+      setLoading(false);
+      return undefined;
+    }
+    api.fetchResource(resourceId)
+      .then(data => { if (alive) setResource(normalizeDocument(data.item || {})); })
+      .catch(err => { if (alive) setError(err?.status === 404 ? 'This resource is not currently published.' : (err?.message || 'This resource could not load.')); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [resourceId]);
+
+  React.useEffect(() => {
+    if (!resource) return;
+    const canonical = `${canonicalBookshopBase}${resource.detailUrl}`;
+    document.title = `${resource.title} | RealMindX Education Resource Library`;
+    setHeadMeta('description', resource.description || `View ${resource.title} in the RealMindX Ghana Education Resource Library.`);
+    setHeadMeta('robots', 'index, follow');
+    setHeadLink('canonical', canonical);
+  }, [resource]);
+
+  if (loading) return <div className="bs-container bs-resource-detail-shell"><LoadingState title="Loading resource" body="Getting the published document ready." /></div>;
+  if (error || !resource) return <div className="bs-container bs-resource-detail-shell"><div className="bs-empty-state"><h1>Resource unavailable</h1><p>{error}</p><button type="button" className="bs-btn bs-btn-navy" onClick={() => navigate('documents')}>Back to Resource Library</button></div></div>;
+
+  const metadata = [
+    ['Category', resource.category], ['Document type', resource.documentType], ['Level', resource.level],
+    ['Subject', resource.subject], ['Curriculum', resource.curriculum], ['Audience', resource.audience],
+    ['Year', resource.publicationYear], ['Source', resource.source], ['Publication status', resource.copyrightStatus],
+  ].filter(([, value]) => value);
+  const primaryUrl = resource.copyrightStatus === 'Linked only' ? (resource.official_source_url || resource.external_url || resource.url) : (resource.file_url || resource.url);
+
+  return <div className="bs-resource-detail-page bs-fade-page">
+    <section className="bs-container bs-resource-detail-shell">
+      <nav className="bs-resource-breadcrumb" aria-label="Breadcrumb"><a href="/documents" onClick={event => { event.preventDefault(); navigate('documents'); }}>Resource Library</a><Icon name="chevR" size={15} /><span>{resource.title}</span></nav>
+      <article className="bs-resource-detail-card">
+        <div className="bs-resource-detail-icon"><Icon name="files" size={30} /></div>
+        <div className="bs-resource-detail-copy"><span className="bs-eyebrow">{resource.category}</span><h1>{resource.title}</h1>{resource.description ? <p>{resource.description}</p> : null}</div>
+        {metadata.length ? <dl className="bs-resource-detail-meta">{metadata.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl> : null}
+        <div className="bs-resource-detail-actions">{primaryUrl ? <a className="bs-btn bs-btn-gold" href={primaryUrl} target="_blank" rel="noopener">{resource.copyrightStatus === 'Linked only' ? 'View Official Source' : 'View Document'}</a> : null}{resource.file_url && resource.copyrightStatus !== 'Linked only' ? <a className="bs-btn bs-btn-outline-navy" href={resource.file_url} target="_blank" rel="noopener">Download</a> : null}{resource.official_source_url && resource.official_source_url !== primaryUrl ? <a className="bs-btn bs-btn-outline-navy" href={resource.official_source_url} target="_blank" rel="noopener">Official Source</a> : null}</div>
+      </article>
+    </section>
+  </div>;
+};
+
+export { DocumentsPage, ResourceDetailPage };

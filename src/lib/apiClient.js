@@ -117,6 +117,7 @@ export const api = {
   fetchNews: () => apiFetch('/news'),
   fetchGallery: () => apiFetch('/gallery'),
   fetchResources: () => apiFetch('/resources'),
+  fetchResource: (resourceId) => apiFetch(`/resources/${encodeURIComponent(resourceId)}`),
   fetchDeliveryZones: () => apiFetch('/delivery-zones'),
   validatePromoCode: (code, orderTotal) => apiFetch('/promo-codes/validate', { method: 'POST', body: { code, order_total: orderTotal } }),
   bulkPriceAdjust: (type, value, direction) => apiFetch('/admin/products/bulk-price-adjust', { method: 'POST', body: { type, value, direction } }),

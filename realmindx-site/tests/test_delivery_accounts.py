@@ -28,7 +28,7 @@ from backend.delivery_service import (
     verify_delivery_otp,
 )
 from backend.extensions import db
-from backend.models import AuditLog, DeliverySettlementLine, Order, PlatformTermsAcceptance, Product, ProductCategory, Role, User
+from backend.models import AuditLog, DeliverySettlementLine, Order, PlatformTermsAcceptance, Product, ProductCategory, Resource, Role, UploadedFile, User
 from backend.security import DEFAULT_TEMPORARY_PASSWORD
 
 
@@ -556,6 +556,58 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertIn("/subjects/mathematics", sitemap)
         self.assertIn("/track", sitemap)
         self.assertIn("/invoice", sitemap)
+
+    def test_only_published_public_resources_have_indexable_detail_pages(self):
+        resource_file = UploadedFile(
+            original_filename="inclusive-education-guide.pdf",
+            stored_filename="inclusive-education-guide.pdf",
+            storage_path="public/resources/inclusive-education-guide.pdf",
+            mime_type="application/pdf",
+            size_bytes=1024,
+            category="resources",
+            visibility="public",
+        )
+        published = Resource(
+            title="Inclusive Education Guide Ghana",
+            category="Inclusive Education",
+            description="A practical guide for inclusive education in Ghanaian schools.",
+            subject="General",
+            document_type="Guide",
+            copyright_status="Official public document",
+            is_published=True,
+            resource_file=resource_file,
+        )
+        private = Resource(
+            title="Internal School Notes",
+            category="School Management",
+            copyright_status="Internal/private",
+            is_published=True,
+        )
+        db.session.add_all([resource_file, published, private])
+        db.session.commit()
+        client = self.app.test_client()
+
+        public_path = f"/documents/{published.id}-inclusive-education-guide-ghana"
+        response = client.get(public_path, headers={"Host": "bookshop.realmindxgh.com"})
+        self.assertEqual(response.status_code, 200)
+        document = response.get_data(as_text=True)
+        self.assertIn("Inclusive Education Guide Ghana | RealMindX Education Resource Library", document)
+        self.assertIn('content="index, follow"', document)
+        self.assertIn(f'href="https://bookshop.realmindxgh.com{public_path}"', document)
+        self.assertIn('"@type": "DigitalDocument"', document)
+
+        detail_api = client.get(f"/api/resources/{published.id}")
+        self.assertEqual(detail_api.status_code, 200)
+        self.assertEqual(detail_api.get_json()["item"]["detail_url"], public_path)
+        self.assertEqual(client.get(f"/api/resources/{private.id}").status_code, 404)
+
+        private_page = client.get(f"/documents/{private.id}-internal-school-notes", headers={"Host": "bookshop.realmindxgh.com"})
+        self.assertEqual(private_page.status_code, 404)
+        self.assertIn('content="noindex, follow"', private_page.get_data(as_text=True))
+
+        sitemap = client.get("/sitemap.xml", headers={"Host": "bookshop.realmindxgh.com"}).get_data(as_text=True)
+        self.assertIn(public_path, sitemap)
+        self.assertNotIn(f"/documents/{private.id}-", sitemap)
 
     def test_private_portal_shells_are_noindex(self):
         client = self.app.test_client()

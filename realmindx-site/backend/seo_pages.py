@@ -13,12 +13,14 @@ from .api.public import (
     enrich_service_media,
     news_public_json,
     public_rows,
+    public_resource_query,
+    resource_path,
     setting_collection,
     slugify,
     upload_public_url,
 )
 from .extensions import db
-from .models import DeliveryZone, News, Product, ProductCategory, ProductReview
+from .models import DeliveryZone, News, Product, ProductCategory, ProductReview, Resource
 from .og_images import book_og_public_url
 
 
@@ -725,6 +727,46 @@ def bookshop_public_page(path=""):
                 "title": "Product Not Found | RealMindX Bookshop",
                 "description": "That product link does not match a currently published RealMindX Bookshop item.",
                 "intro": "That product link does not match a currently published RealMindX Bookshop item.",
+            }
+    elif clean_path.startswith("documents/"):
+        segment = clean_path.split("/", 1)[1]
+        match = re.match(r"^(\d+)(?:-|$)", segment)
+        resource = public_resource_query().filter(Resource.id == int(match.group(1))).first() if match else None
+        if resource:
+            expected_path = resource_path(resource)
+            if canonical_path != expected_path:
+                return redirect(f"{BOOKSHOP_SITE_BASE_URL}{expected_path}", code=301)
+            description = resource.description or f"View {resource.title} in the RealMindX Ghana Education Resource Library."
+            profile = {
+                "title": f"{resource.title} | RealMindX Education Resource Library",
+                "description": description,
+                "intro": description,
+            }
+            schema = {
+                "@context": "https://schema.org",
+                "@type": "DigitalDocument",
+                "name": resource.title,
+                "description": description,
+                "url": canonical,
+                "dateModified": (resource.updated_at or resource.created_at).date().isoformat(),
+                "publisher": {
+                    "@type": "Organization",
+                    "name": resource.source or "RealMindX Education Limited",
+                },
+            }
+            if resource.document_type:
+                schema["genre"] = resource.document_type
+            if resource.subject:
+                schema["about"] = resource.subject
+            if resource.audience:
+                schema["audience"] = {"@type": "Audience", "audienceType": resource.audience}
+        else:
+            status = 404
+            robots = "noindex, follow"
+            profile = {
+                "title": "Resource Not Found | RealMindX Bookshop",
+                "description": "That resource is not currently published in the RealMindX Education Resource Library.",
+                "intro": "That resource is not currently published in the RealMindX Education Resource Library.",
             }
     else:
         route_map = {

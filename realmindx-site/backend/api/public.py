@@ -114,6 +114,16 @@ def slugify(value):
     return slug or "item"
 
 
+def public_resource_query():
+    return Resource.query.filter(Resource.is_published.is_(True)).filter(
+        or_(Resource.copyright_status.is_(None), ~Resource.copyright_status.in_(["Internal/private", "Do not publish"]))
+    )
+
+
+def resource_path(row):
+    return f"/documents/{row.id}-{slugify(row.title)}"
+
+
 def upload_public_url(uploaded_file):
     if not uploaded_file:
         return None
@@ -326,6 +336,18 @@ def build_bookshop_sitemap_xml():
                 lastmod=lastmod.date().isoformat() if lastmod else None,
                 changefreq="weekly",
                 priority=0.8,
+            )
+        )
+
+    resources = public_resource_query().order_by(Resource.updated_at.desc(), Resource.created_at.desc()).all()
+    for resource in resources:
+        lastmod = resource.updated_at or resource.created_at
+        urls.append(
+            sitemap_row(
+                f"{base_url}{resource_path(resource)}",
+                lastmod=lastmod.date().isoformat() if lastmod else None,
+                changefreq="monthly",
+                priority=0.6,
             )
         )
 
@@ -768,15 +790,9 @@ def gallery():
     return jsonify(items=[{"id": row.id, "title": row.title, "description": row.description, "image_url": _img(row)} for row in rows])
 
 
-@public_bp.get("/resources")
-def resources():
-    rows = Resource.query.filter(Resource.is_published.is_(True)).filter(
-        or_(Resource.copyright_status.is_(None), ~Resource.copyright_status.in_(["Internal/private", "Do not publish"]))
-    ).order_by(Resource.featured.desc(), Resource.created_at.desc()).limit(500).all()
-    items = []
-    for row in rows:
-        file_url = upload_public_url(row.resource_file) if row.resource_file and row.resource_file.visibility == "public" else None
-        items.append({
+def resource_public_json(row):
+    file_url = upload_public_url(row.resource_file) if row.resource_file and row.resource_file.visibility == "public" else None
+    return {
             "id": row.id,
             "title": row.title,
             "description": row.description,
@@ -797,10 +813,22 @@ def resources():
             "external_url": row.external_url,
             "file_url": file_url,
             "url": row.external_url if row.copyright_status == "Linked only" else file_url or row.external_url,
+            "detail_url": resource_path(row),
             "created_at": row.created_at.isoformat(),
             "updated_at": row.updated_at.isoformat(),
-        })
-    return jsonify(items=items)
+        }
+
+
+@public_bp.get("/resources")
+def resources():
+    rows = public_resource_query().order_by(Resource.featured.desc(), Resource.created_at.desc()).limit(500).all()
+    return jsonify(items=[resource_public_json(row) for row in rows])
+
+
+@public_bp.get("/resources/<int:resource_id>")
+def resource_detail(resource_id):
+    row = public_resource_query().filter(Resource.id == resource_id).first_or_404()
+    return jsonify(item=resource_public_json(row))
 
 
 @public_bp.get("/seo/main-sitemap.xml")

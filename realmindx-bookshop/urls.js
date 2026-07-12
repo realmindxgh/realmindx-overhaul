@@ -15,6 +15,14 @@ export const productPathSegment = (book) => {
 
 export const productHref = (book) => `/products/${productPathSegment(book)}`;
 
+export const resourcePathSegment = (resource) => {
+  const id = cleanId(resource?.id);
+  const title = slugify(resource?.title || 'resource');
+  return id ? `${id}-${title}` : title;
+};
+
+export const resourceHref = (resource) => resource?.detail_url || `/documents/${resourcePathSegment(resource)}`;
+
 export const taxonomyBasePath = (taxonomy) => {
   switch (taxonomy) {
     case 'category':
@@ -77,6 +85,8 @@ export const bookshopPathForRoute = (route, params = {}) => {
       return '/invoice';
     case 'documents':
       return '/documents';
+    case 'resource':
+      return params.segment ? `/documents/${params.segment}` : '/documents';
     case 'login':
       return '/login';
     case 'signup':

@@ -4,7 +4,7 @@ import { HomePage, ShopPage } from './pages-shop.jsx';
 import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage, InvoicePage } from './pages-checkout.jsx';
 import { AuthPage, BookshopResetPasswordPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
-import { DocumentsPage } from './pages-documents.jsx';
+import { DocumentsPage, ResourceDetailPage } from './pages-documents.jsx';
 import { CatalogProvider, useCatalog } from './catalog.jsx';
 import { Icon, LoadingState, cedis } from './shared.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
@@ -136,6 +136,7 @@ const routeFromPath = () => {
   if (p === '/track' || p === '/track-order' || p === '/track-your-order') return { route: 'track', params: {} };
   if (p === '/invoice' || p === '/invoices') return { route: 'invoice', params: {} };
   if (p === '/documents' || p === '/education-documents') return { route: 'documents', params: {} };
+  if (p.startsWith('/documents/')) return { route: 'resource', params: { segment: decodeURIComponent(p.split('/documents/')[1] || '') } };
   if (p === '/login')    return { route: 'login',    params: {} };
   if (p === '/signup')   return { route: 'signup',   params: {} };
   if (p === '/reset-password') return { route: 'reset-password', params: {} };
@@ -459,6 +460,7 @@ const App = () => {
       track:    { title: 'Track Your Order | RealMindX Bookshop', desc: 'Track your RealMindX Bookshop order by reference number or email address.' },
       invoice:  { title: 'Receipt/Invoice Lookup | RealMindX Bookshop', desc: 'Find and download a RealMindX Bookshop receipt or invoice by exact ID.' },
       documents:{ title: 'Education Documents | RealMindX Bookshop', desc: 'Browse useful education documents, guides, templates, and learning resources from RealMindX Bookshop.' },
+      resource: { title: 'Education Resource | RealMindX Bookshop', desc: 'View a published document from the RealMindX Ghana Education Resource Library.' },
       login:    { title: 'Sign In | RealMindX Bookshop', desc: 'Sign in to your RealMindX account to track orders, save favourites, and check out faster.' },
       signup:   { title: 'Create Account | RealMindX Bookshop', desc: 'Join the RealMindX Bookshop to track orders, save books, and enjoy a faster checkout experience.' },
       'reset-password': { title: 'Reset Password | RealMindX Bookshop', desc: 'Create a new password for your RealMindX account.' },
@@ -613,6 +615,7 @@ const App = () => {
     case 'track':    page = <TrackPage navigate={navigate} />; break;
     case 'invoice':  page = <InvoicePage navigate={navigate} />; break;
     case 'documents': page = <DocumentsPage navigate={navigate} />; break;
+    case 'resource': page = <ResourceDetailPage navigate={navigate} segment={params.segment} key={params.segment} />; break;
     case 'login':    page = <AuthPage navigate={navigate} mode="login" key="login" />; break;
     case 'signup':   page = <AuthPage navigate={navigate} mode="signup" key="signup" />; break;
     case 'reset-password': page = <BookshopResetPasswordPage navigate={navigate} />; break;

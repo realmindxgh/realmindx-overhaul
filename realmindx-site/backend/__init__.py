@@ -130,8 +130,9 @@ def create_app(config_object=Config):
     @app.get("/invoice", strict_slashes=False)
     @app.get("/invoices", strict_slashes=False)
     @app.get("/documents", strict_slashes=False)
+    @app.get("/documents/<path:tail>", strict_slashes=False)
     @app.get("/education-documents", strict_slashes=False)
-    def bookshop_utility_page():
+    def bookshop_utility_page(tail=None):
         path = request.path.strip("/")
         if path == "invoices":
             return redirect("/invoice", code=301)
