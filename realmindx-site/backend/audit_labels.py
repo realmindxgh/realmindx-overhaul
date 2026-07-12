@@ -1,0 +1,151 @@
+"""Human-readable labels for audit records shown to staff."""
+
+ACTION_LABELS = {
+    "account_name_updated": "Changed an account name",
+    "assign_order_delivery_company": "Assigned an order to a delivery company",
+    "book_request_acknowledgement": "Sent a book request confirmation",
+    "book_request_availability_notification": "Told a client that their requested book is available",
+    "book_request_created": "Submitted a book request",
+    "book_request_duplicate_reused": "Matched a repeat book request to the existing request",
+    "book_request_marked_available": "Marked a requested book as available",
+    "book_request_notification_retried": "Retried a book availability notice",
+    "bulk_delivery_adjust": "Updated several delivery prices",
+    "bulk_order_enquiry": "Submitted a bulk order enquiry",
+    "bulk_price_adjust": "Updated several product prices",
+    "cancel_delivery_assignment": "Cancelled a delivery assignment",
+    "cart_invoice_emailed": "Emailed a cart invoice",
+    "cart_invoice_reminder_sent": "Sent a cart invoice reminder",
+    "change_password": "Changed their password",
+    "password_changed": "Changed their password",
+    "password_reset_confirmed": "Completed a password reset",
+    "clear_analytics_location_history": "Cleared saved analytics location history",
+    "contact_change_verified": "Confirmed a contact detail change",
+    "contact_message_submitted": "Sent a contact message",
+    "create_admin": "Created an administrator account",
+    "create_category": "Created a product category",
+    "create_delivery_company": "Created a delivery company",
+    "create_delivery_company_manager": "Created a delivery company manager",
+    "create_delivery_zone": "Created a delivery area",
+    "create_flyer": "Created a flyer",
+    "create_gallery_item": "Added an item to the gallery",
+    "create_job": "Created a job listing",
+    "create_news": "Created a news post",
+    "create_newsletter_contact": "Added a newsletter contact",
+    "create_product": "Created a product",
+    "create_promo_code": "Created a promotional code",
+    "create_resource": "Created a resource",
+    "create_staff": "Created a staff account",
+    "delete_admin": "Deleted an administrator account",
+    "delete_category": "Deleted a product category",
+    "delete_delivery_zone": "Deleted a delivery area",
+    "delete_flyer": "Deleted a flyer",
+    "delete_gallery_item": "Deleted a gallery item",
+    "delete_job": "Deleted a job listing",
+    "delete_message": "Deleted a contact message",
+    "delete_news": "Deleted a news post",
+    "delete_newsletter_subscriber": "Deleted a newsletter contact",
+    "delete_order": "Deleted an order",
+    "delete_order_review": "Deleted an order review",
+    "delete_product": "Deleted a product",
+    "delete_product_review": "Deleted a product review",
+    "delete_promo_code": "Deleted a promotional code",
+    "delete_resource": "Deleted a resource",
+    "delete_setting": "Deleted a site setting",
+    "delete_staff": "Deleted a staff account",
+    "delivery_company_create_rider": "Created a rider account",
+    "delivery_company_login": "Signed in to the delivery company portal",
+    "delivery_company_reset_rider_password": "Reset a rider's password",
+    "delivery_company_update_rider": "Updated a rider account",
+    "delivery_portal_logout": "Signed out of a delivery portal",
+    "delivery_rider_login": "Signed in to the rider portal",
+    "file_uploaded": "Uploaded a file",
+    "job_alert_deleted": "Deleted a job alert",
+    "job_alert_email_sent": "Sent a job alert email",
+    "job_application_submitted": "Submitted a job application",
+    "newsletter_subscription": "Subscribed to the newsletter",
+    "newsletter_unsubscribe": "Unsubscribed from the newsletter",
+    "order_payment_started": "Started an online order payment",
+    "order_placed": "Placed an order",
+    "override_delivery_otp": "Confirmed delivery without the customer's code",
+    "paystack_payment_confirmed": "Confirmed an online payment",
+    "paystack_payment_rejected": "Rejected an online payment confirmation",
+    "profile_updated": "Updated a profile",
+    "reply_contact_message": "Replied to a contact message",
+    "resend_delivery_otp": "Resent a customer's delivery code",
+    "reset_admin_password": "Reset an administrator's password",
+    "reset_delivery_company_user_password": "Reset a delivery company manager's password",
+    "reset_staff_password": "Reset a staff member's password",
+    "send_job_alerts": "Sent job alerts",
+    "send_newsletter_campaign": "Sent a newsletter campaign",
+    "settlement_exported": "Exported a delivery settlement",
+    "toggle_user_active": "Changed whether an account can sign in",
+    "two_factor_change_requested": "Requested a two-step verification change",
+    "two_factor_changed": "Changed two-step verification",
+    "update_admin": "Updated an administrator account",
+    "update_application_status": "Changed a job application's status",
+    "update_category": "Updated a product category",
+    "update_delivery_company": "Updated a delivery company",
+    "update_delivery_company_user": "Updated a delivery company manager",
+    "update_delivery_zone": "Updated a delivery area",
+    "update_flyer": "Updated a flyer",
+    "update_gallery_item": "Updated a gallery item",
+    "update_job": "Updated a job listing",
+    "update_message": "Updated a contact message",
+    "update_news": "Updated a news post",
+    "update_newsletter_subscriber": "Updated a newsletter contact",
+    "update_order_review": "Updated an order review",
+    "update_order_status": "Changed an order's status",
+    "update_product": "Updated a product",
+    "update_product_review": "Updated a product review",
+    "update_promo_code": "Updated a promotional code",
+    "update_resource": "Updated a resource",
+    "update_staff": "Updated a staff account",
+    "update_teacher_payout": "Updated a teacher's payment details",
+    "upload_admin_file": "Uploaded a file from the management portal",
+    "upsert_setting": "Updated a site setting",
+    "user_login": "Signed in",
+    "user_login_failed": "Tried to sign in with incorrect details",
+    "user_login_inactive": "Tried to sign in to an inactive account",
+    "user_login_locked": "Locked an account after repeated failed sign-ins",
+    "user_login_lockout_attempt": "Tried to sign in while the account was locked",
+    "user_login_two_factor_completed": "Completed two-step sign-in",
+    "user_login_two_factor_requested": "Requested a two-step sign-in code",
+    "user_logout": "Signed out",
+    "user_signup": "Created a customer account",
+}
+
+AREA_LABELS = {
+    "admin_user": "administrator accounts", "analytics_event": "analytics", "book_request": "book requests",
+    "bookshop_payment_intent": "online payments", "bulk_order": "bulk orders", "cart_invoice": "cart invoices",
+    "checkout_detail": "saved checkout details", "contact_message": "contact messages", "delivery_company": "delivery companies",
+    "delivery_company_user": "delivery company managers", "delivery_rider": "delivery riders", "delivery_settlement": "delivery settlements",
+    "delivery_zone": "delivery areas", "flyer": "flyers", "gallery_item": "gallery", "job": "job listings",
+    "job_alert_preference": "job alerts", "job_application": "job applications", "news": "news posts",
+    "newsletter": "newsletters", "newsletter_subscriber": "newsletter contacts", "order": "bookshop orders",
+    "order_delivery": "deliveries", "order_review": "order reviews", "product": "bookshop products",
+    "product_category": "product categories", "product_review": "product reviews", "promo_code": "promotional codes",
+    "resource": "resources", "site_setting": "site settings", "uploaded_file": "uploaded files", "user": "user accounts",
+    "user_profile": "user profiles", "management_portal": "management portal",
+}
+
+
+def readable_audit_action(action, details=None):
+    details = details or {}
+    if action == "book_request_acknowledgement" and "sent" not in {details.get("email"), details.get("sms")}:
+        return "Could not send the book request confirmation"
+    if action in {"book_request_availability_notification", "book_request_notification_retried"} and "sent" not in {details.get("email"), details.get("sms")}:
+        return "Could not send the book availability notice"
+    if action in ACTION_LABELS:
+        return ACTION_LABELS[action]
+    words = str(action or "recorded_action").replace("_", " ").strip().split()
+    verbs = {"create": "Created", "update": "Updated", "delete": "Deleted", "assign": "Assigned", "cancel": "Cancelled", "reset": "Reset", "send": "Sent", "upload": "Uploaded", "reply": "Replied to", "change": "Changed", "override": "Overrode", "resend": "Resent", "clear": "Cleared", "mark": "Marked"}
+    return " ".join([verbs.get(words[0], words[0].capitalize()), *words[1:]]) if words else "Recorded an action"
+
+
+def readable_audit_summary(action, entity_type=None, details=None):
+    details = details or {}
+    label = readable_audit_action(action, details)
+    subject = details.get("requested_title") or details.get("order_reference") or details.get("reference") or details.get("name") or details.get("title") or details.get("email")
+    if subject:
+        return f"{label}: {subject}"
+    return f"{label} in {AREA_LABELS.get(entity_type, str(entity_type or 'system records').replace('_', ' '))}"

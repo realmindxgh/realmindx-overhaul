@@ -12,13 +12,14 @@ from threading import Thread
 from types import SimpleNamespace
 from uuid import uuid4
 
-from flask import Blueprint, Response, current_app, jsonify, request, send_file
+from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from flask_login import current_user, login_required
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
 from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
+from ..audit_labels import AREA_LABELS, readable_audit_action, readable_audit_summary
 from ..book_requests import (
     BookRequestError,
     mark_available,
@@ -132,6 +133,24 @@ from ..serializers import (
 from ..upload_utils import save_upload
 
 admin_bp = Blueprint("admin", __name__)
+
+
+@admin_bp.after_request
+def capture_unlogged_management_change(response):
+    """Guarantee that successful admin/staff changes leave an audit record."""
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"} or response.status_code >= 400:
+        return response
+    if getattr(g, "audit_logged", False) or not current_user.is_authenticated:
+        return response
+    endpoint = str(request.endpoint or "management_action").split(".")[-1]
+    try:
+        from ..audit import audit as _audit
+        _audit(endpoint, "management_portal", details={"page": request.path, "method": request.method})
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Could not record the audit entry for %s", request.path)
+    return response
 
 
 def _book_request_error(exc):
@@ -1796,75 +1815,18 @@ def list_audit_logs():
     rows = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(500).all()
     actor_ids = {row.actor_id for row in rows if row.actor_id}
     actors = {user.id: user for user in User.query.filter(User.id.in_(actor_ids)).all()} if actor_ids else {}
-    action_labels = {
-        "book_request_created": "Submitted a book request",
-        "book_request_duplicate_reused": "Reused an existing book request",
-        "book_request_acknowledgement": "Sent the book request confirmation",
-        "book_request_marked_available": "Marked a requested book as available",
-        "book_request_availability_notification": "Notified the client that their book is available",
-        "book_request_notification_retried": "Retried the book availability notice",
-    }
-    area_labels = {
-        "book_request": "Book requests",
-        "order": "Bookshop orders",
-        "order_delivery": "Deliveries",
-        "user": "User accounts",
-        "product": "Bookshop products",
-        "product_category": "Product categories",
-        "product_review": "Product reviews",
-        "delivery_company": "Delivery companies",
-        "delivery_company_user": "Delivery company managers",
-        "delivery_rider": "Delivery riders",
-        "delivery_settlement": "Delivery settlements",
-        "job": "Job listings",
-        "job_application": "Job applications",
-        "news": "News posts",
-        "resource": "Resources",
-        "gallery_item": "Gallery",
-        "contact_message": "Contact messages",
-        "newsletter_subscriber": "Newsletter contacts",
-        "uploaded_file": "Uploaded files",
-    }
-
-    def readable_action(row):
-        details = row.details or {}
-        if row.action == "book_request_acknowledgement" and "sent" not in {details.get("email"), details.get("sms")}:
-            return "Could not send the book request confirmation"
-        if row.action in {"book_request_availability_notification", "book_request_notification_retried"} and "sent" not in {details.get("email"), details.get("sms")}:
-            return "Could not send the book availability notice"
-        if row.action in action_labels:
-            return action_labels[row.action]
-        words = row.action.replace("_", " ").strip().split()
-        past_tense = {
-            "create": "Created", "update": "Updated", "delete": "Deleted",
-            "assign": "Assigned", "cancel": "Cancelled", "reset": "Reset",
-            "send": "Sent", "upload": "Uploaded", "reply": "Replied to",
-            "change": "Changed", "override": "Overrode", "resend": "Resent",
-            "toggle": "Changed", "bulk": "Bulk updated", "clear": "Cleared",
-        }
-        if words and words[0] in past_tense:
-            return " ".join([past_tense[words[0]], *words[1:]])
-        return " ".join(words).capitalize()
-
-    def readable_summary(row):
-        details = row.details or {}
-        label = readable_action(row)
-        subject = details.get("requested_title") or details.get("reference") or details.get("name") or details.get("title") or details.get("email")
-        if subject:
-            return f"{label}: {subject}"
-        area = area_labels.get(row.entity_type) or str(row.entity_type or "record").replace("_", " ")
-        return f"{label} in {area}"
-
     return jsonify(items=[
         {
             "id": row.id,
             "actor": actors.get(row.actor_id).full_name if actors.get(row.actor_id) else (row.details or {}).get("actor_email") or "System",
             "actor_email": actors.get(row.actor_id).email if actors.get(row.actor_id) else (row.details or {}).get("actor_email"),
             "actor_role": actors.get(row.actor_id).role.name.replace("_", " ").title() if actors.get(row.actor_id) and actors.get(row.actor_id).role else "System",
-            "action": readable_action(row),
+            "action": readable_audit_action(row.action, row.details),
             "raw_action": row.action,
-            "summary": readable_summary(row),
-            "entity_type": area_labels.get(row.entity_type) or str(row.entity_type or "System").replace("_", " ").title(),
+            "summary": readable_audit_summary(row.action, row.entity_type, row.details),
+            "entity_type": (lambda label: label[:1].upper() + label[1:])(
+                AREA_LABELS.get(row.entity_type) or str(row.entity_type or "System").replace("_", " ")
+            ),
             "entity_id": row.entity_id,
             "details": row.details or {},
             "ip_address": row.ip_address,

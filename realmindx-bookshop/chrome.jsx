@@ -2,7 +2,7 @@
 import { Icon, Stars, cedis, CoverPlaceholder, Logo } from './shared.jsx';
 import { useCatalog } from './catalog.jsx';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
-import { bookMatchesBookshopSearch } from '../src/lib/bookshopTaxonomy.js';
+import { bookMatchesBookshopSearch, bookMatchesBookshopSearchIntent } from '../src/lib/bookshopTaxonomy.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { trackCartAction, trackSearchClick, trackWishlistAction } from '../src/lib/analytics.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
@@ -592,10 +592,10 @@ const Navbar = ({ route, navigate }) => {
   const suggestions = React.useMemo(() => {
     const t = q.trim();
     if (t.length < 2) return [];
-    const candidates = books.filter(book => bookMatchesBookshopSearch(book, t) || fuzzyMatches(
+    const candidates = books.filter(book => bookMatchesBookshopSearchIntent(book, t) && (bookMatchesBookshopSearch(book, t) || fuzzyMatches(
       [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' '),
       t,
-    ));
+    )));
     return rankByFuzzyMatch(candidates, t, book => [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' ')).slice(0, 6);
   }, [books, q]);
 

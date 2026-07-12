@@ -4,7 +4,7 @@ import { ProductCard, ListCard } from './chrome.jsx';
 import { useCatalog } from './catalog.jsx';
 import { trackSearch } from '../src/lib/analytics.js';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
-import { bookMatchesBookshopSearch, findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
+import { bookMatchesBookshopSearch, bookMatchesBookshopSearchIntent, findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
 import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute } from './urls.js';
@@ -150,7 +150,8 @@ const matchesRatingFilters = (book, filters) => {
 const matchesQueryFilters = (book, query) => {
   if (!query) return true;
   const searchText = [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' ');
-  return bookMatchesBookshopSearch(book, query) || fuzzyMatches(searchText, query);
+  return bookMatchesBookshopSearchIntent(book, query)
+    && (bookMatchesBookshopSearch(book, query) || fuzzyMatches(searchText, query));
 };
 
 const matchesCatalogueFilters = (book, filters, options = {}) => {
@@ -589,12 +590,15 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
       {FILTER_GROUPS.filter((group) => group.taxonomy !== hiddenTaxonomy).map((group) => {
         const items = taxonomies[group.key] || [];
         if (items.length === 0) return null;
+        const selected = filters[group.key] || [];
+        const orderedItems = [...items].sort((left, right) => (
+          Number(selected.includes(right.id)) - Number(selected.includes(left.id))
+        ));
         const query = searchTerms[group.key].trim();
         const searchable = SEARCHABLE_FILTER_KEYS.has(group.key) && items.length > FILTER_PREVIEW_LIMIT;
-        const filteredItems = searchable && query ? rankByFuzzyMatch(items, query, item => `${item.label} ${(item.aliases || []).join(' ')}`) : items;
+        const filteredItems = searchable && query ? rankByFuzzyMatch(orderedItems, query, item => `${item.label} ${(item.aliases || []).join(' ')}`) : orderedItems;
         const visibleItems = searchable && !query ? filteredItems.slice(0, FILTER_PREVIEW_LIMIT) : filteredItems;
         const hiddenCount = searchable && !query ? Math.max(0, items.length - visibleItems.length) : 0;
-        const selected = filters[group.key] || [];
 
         return (
           <div className={`bs-filter-sec${open[group.key] ? '' : ' collapsed'}`} key={group.key}>

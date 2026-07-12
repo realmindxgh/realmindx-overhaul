@@ -17,6 +17,7 @@ import {
   clearDemoSession,
 } from './demoAccounts.js';
 import { dashboardPathForRole } from './sessionRoutes.js';
+import { isInstalledApp } from './InstallAppPrompt.jsx';
 
 const initialsFrom = (first = '', last = '') =>
   ((first[0] || '') + (last[0] || '')).toUpperCase() || 'RX';
@@ -78,7 +79,7 @@ const invalidCredentials = (role) => {
 // role: 'admin' | 'user'
 export const signIn = async ({ email, password, role = 'user', remember = false }) => {
   if (isApiMode()) {
-    const result = await api.login({ email, password, remember });
+    const result = await api.login({ email, password, remember: remember || isInstalledApp() });
     if (result?.requires_two_factor) {
       const error = new Error(result.message || 'Enter the security code sent to your email.');
       error.code = 'requires_two_factor';
@@ -124,7 +125,7 @@ export const signInWithPhone = async ({ phone, password, role, remember = false 
       ? api.deliveryRiderLogin
       : null;
   if (!login) throw invalidCredentials(role);
-  const result = await login({ phone, password, remember });
+  const result = await login({ phone, password, remember: remember || isInstalledApp() });
   const user = result.user;
   const actualRole = user?.role?.name || user?.role;
   if (actualRole !== role) {

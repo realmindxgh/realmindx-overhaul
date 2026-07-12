@@ -151,6 +151,20 @@ const routeFromPath = () => {
 
 const pathForRoute = (route, params = {}) => prefixedPath(bookshopPathForRoute(route, params));
 
+const BookshopBackButton = ({ navigate }) => {
+  const goBack = () => {
+    if (window.history.length > 1) window.history.back();
+    else navigate('home');
+  };
+  return (
+    <div className="bs-app-back-row">
+      <button type="button" className="bs-app-back" onClick={goBack} aria-label="Go back" title="Go back">
+        <Icon name="chevL" size={21} />
+      </button>
+    </div>
+  );
+};
+
 // Paystack confirmation page: shown when user returns from Paystack payment
 const isPaidOrder = (order) => String(order?.payment_status || '').toLowerCase() === 'paid';
 
@@ -636,7 +650,10 @@ const App = () => {
   return (
     <div className="bs">
       <Navbar route={route} navigate={navigate} />
-      <main className={mainClassName}>{page}</main>
+      <main className={mainClassName}>
+        {route !== 'home' && <BookshopBackButton navigate={navigate} />}
+        {page}
+      </main>
       <Footer navigate={navigate} />
       <ScrollToTopFab route={route} />
       <WhatsAppFab route={route} />

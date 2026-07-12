@@ -8,7 +8,7 @@ current_user; for public (unauthenticated) actions pass actor_email
 so the log still has a useful identifier.
 """
 
-from flask import request
+from flask import g, request
 from flask_login import current_user
 
 from .extensions import db
@@ -62,3 +62,7 @@ def audit(
         ip_address=_get_ip(),
     )
     db.session.add(row)
+    try:
+        g.audit_logged = True
+    except RuntimeError:
+        pass

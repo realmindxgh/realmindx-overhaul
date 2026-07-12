@@ -1,4 +1,5 @@
 ﻿import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -42,6 +43,8 @@ class Config:
     SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", False)
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
+    REMEMBER_COOKIE_DURATION = timedelta(days=31)
+    REMEMBER_COOKIE_REFRESH_EACH_REQUEST = True
 
     WTF_CSRF_TIME_LIMIT = int(os.getenv("WTF_CSRF_TIME_LIMIT", "3600"))
     # REST API routes are already protected by CORS + session auth.

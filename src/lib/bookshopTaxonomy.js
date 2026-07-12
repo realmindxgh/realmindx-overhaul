@@ -464,6 +464,17 @@ const directBookSearchTextForBook = (book = {}) => uniqueClean([
   book.tags || [],
 ]).map(normalizeBookshopSearchText).join(' ');
 
+const examMarkerTextForBook = (book = {}) => uniqueClean([
+  book.title,
+  book.name,
+  book.short,
+  book.desc,
+  book.full,
+  book.category,
+  book.catName,
+  book.tags || [],
+]).map(normalizeBookshopSearchText).join(' ');
+
 const taxonomyValueForBook = (book, taxonomy) => {
   switch (taxonomy) {
     case 'category':
@@ -522,21 +533,99 @@ const gradeSearchTarget = (normalizedQuery) => {
 
 const GENERIC_SEARCH_TOKENS = new Set(['book', 'books', 'textbook', 'textbooks', 'ghana', 'school', 'schools']);
 
+const EXAM_SEARCH_INTENTS = [
+  { id: 'pearson-international-a-level', pattern: /\b(?:pearson\s+|edexcel\s+)?(?:international\s+a\s*level|ial)\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: ['pearson-edexcel-pathway'], bookPattern: /\b(?:international\s+a\s*level|ial|a\s*level)\b/, patternOptionalLevels: ['sixth-form-pre-university'] },
+  { id: 'pearson-international-gcse', pattern: /\b(?:pearson\s+|edexcel\s+)(?:international\s+gcse|igcse)\b/, levels: ['senior-high-upper-secondary'], curricula: ['pearson-edexcel-pathway'], bookPattern: /\b(?:international\s+gcse|igcse)\b/ },
+  { id: 'oxford-aqa-a-level', pattern: /\b(?:oxford\s*aqa|international\s+aqa).{0,20}(?:a\s*level|advanced\s+level)\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: ['oxford-international-curriculum', 'british-english-national-curriculum'], bookPattern: /\b(?:a\s*level|advanced\s+level)\b/, patternOptionalLevels: ['sixth-form-pre-university'] },
+  { id: 'oxford-aqa-igcse', pattern: /\b(?:oxford\s*aqa|international\s+aqa).{0,20}(?:igcse|international\s+gcse)\b/, levels: ['senior-high-upper-secondary'], curricula: ['oxford-international-curriculum', 'british-english-national-curriculum'], bookPattern: /\b(?:igcse|international\s+gcse)\b/ },
+  { id: 'cambridge-primary-checkpoint', pattern: /\b(?:cambridge\s+)?primary\s+checkpoint\b/, levels: ['upper-primary'], curricula: ['cambridge-international-curriculum'], bookPattern: /\bcheckpoint\b/ },
+  { id: 'cambridge-lower-secondary-checkpoint', pattern: /\b(?:cambridge\s+)?lower\s+secondary\s+checkpoint\b/, levels: ['junior-high-lower-secondary'], curricula: ['cambridge-international-curriculum'], bookPattern: /\bcheckpoint\b/ },
+  { id: 'common-entrance', pattern: /\b(?:common\s+entrance|primary\s+leaving\s+examination|ple)\b/, levels: ['upper-primary'], curricula: ['ges-nacca-curriculum', 'cambridge-international-curriculum', 'british-english-national-curriculum'], bookPattern: /\b(?:common\s+entrance|primary\s+leaving|ple)\b/ },
+  { id: 'bece', pattern: /\bbece\b/, levels: ['junior-high-lower-secondary'], curricula: ['ges-nacca-curriculum'] },
+  { id: 'wassce', pattern: /\b(?:wassce|wasc|waec\s+senior\s+school\s+certificate)\b/, levels: ['senior-high-upper-secondary'], curricula: ['ges-nacca-curriculum'] },
+  { id: 'waec', pattern: /\bwaec\b/, levels: ['junior-high-lower-secondary', 'senior-high-upper-secondary', 'sixth-form-pre-university'], curricula: ['ges-nacca-curriculum'] },
+  { id: 'gbce', pattern: /\bgbce\b/, levels: ['senior-high-upper-secondary', 'sixth-form-pre-university'], curricula: ['ges-nacca-curriculum'], bookPattern: /\bgbce\b/ },
+  { id: 'abce', pattern: /\babce\b/, levels: ['sixth-form-pre-university'], curricula: ['ges-nacca-curriculum'], bookPattern: /\babce\b/ },
+  { id: 'cambridge-igcse', pattern: /\b(?:cambridge\s+)?igcse\b/, levels: ['senior-high-upper-secondary'], curricula: ['cambridge-international-curriculum', 'british-english-national-curriculum', 'pearson-edexcel-pathway', 'oxford-international-curriculum'], bookPattern: /\b(?:igcse|international\s+gcse)\b/ },
+  { id: 'gcse', pattern: /\b(?:international\s+)?gcse\b/, levels: ['senior-high-upper-secondary'], curricula: ['british-english-national-curriculum', 'cambridge-international-curriculum', 'pearson-edexcel-pathway', 'oxford-international-curriculum'], bookPattern: /\b(?:international\s+gcse|gcse)\b/ },
+  { id: 'o-level', pattern: /\b(?:o\s*level|ordinary\s+level)\b/, levels: ['senior-high-upper-secondary'], curricula: ['cambridge-international-curriculum', 'british-english-national-curriculum'], bookPattern: /\b(?:o\s*level|ordinary\s+level)\b/ },
+  { id: 'a-level', pattern: /\b(?:as\s*(?:and|&|\/)?\s*a\s*level|a\s*level|advanced\s+level)\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: ['cambridge-international-curriculum', 'british-english-national-curriculum', 'pearson-edexcel-pathway', 'oxford-international-curriculum'], bookPattern: /\b(?:as\s*(?:and|&|\/)?\s*a\s*level|a\s*level|advanced\s+level)\b/, patternOptionalLevels: ['sixth-form-pre-university'] },
+  { id: 'ib-primary-years', pattern: /\b(?:ib\s+)?(?:pyp|primary\s+years\s+programme)\b/, levels: ['lower-primary', 'upper-primary'], curricula: ['international-baccalaureate-ib-curriculum'] },
+  { id: 'ib-middle-years', pattern: /\b(?:ib\s+)?(?:myp|middle\s+years\s+programme)\b/, levels: ['junior-high-lower-secondary', 'senior-high-upper-secondary'], curricula: ['international-baccalaureate-ib-curriculum'] },
+  { id: 'ib-diploma', pattern: /\b(?:ibdp|ib\s+(?:diploma|career.related)|international\s+baccalaureate\s+(?:diploma|career.related)|diploma\s+programme)\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: ['international-baccalaureate-ib-curriculum'] },
+  { id: 'btec', pattern: /\bbtec\b/, levels: ['tvet-vocational', 'sixth-form-pre-university'], curricula: ['pearson-edexcel-pathway', 'tvet-ctvet-curriculum'], bookPattern: /\bbtec\b/ },
+  { id: 'advanced-placement', pattern: /\b(?:advanced\s+placement|ap\s+(?:exam|course|books?))\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: ['american-curriculum'], bookPattern: /\b(?:advanced\s+placement|ap)\b/ },
+  { id: 'psat', pattern: /\bpsat\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: ['american-curriculum'], bookPattern: /\bpsat\b/ },
+  { id: 'sat', pattern: /\b(?:sat|scholastic\s+assessment\s+test)\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: ['american-curriculum'], bookPattern: /\b(?:sat|scholastic\s+assessment)\b/ },
+  { id: 'act', pattern: /\b(?:act|american\s+college\s+testing)\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: ['american-curriculum'], bookPattern: /\b(?:act|american\s+college\s+testing)\b/ },
+  { id: 'ctvet', pattern: /\bctvet\b/, levels: ['tvet-vocational'], curricula: ['tvet-ctvet-curriculum'], bookPattern: /\bctvet\b/ },
+  { id: 'nvti', pattern: /\bnvti\b/, levels: ['tvet-vocational'], curricula: ['tvet-ctvet-curriculum'], bookPattern: /\bnvti\b/ },
+  { id: 'nabptex', pattern: /\b(?:nabt(?:ex|e)|nabpt(?:ex|e))\b/, levels: ['tvet-vocational'], curricula: ['tvet-ctvet-curriculum'], bookPattern: /\b(?:nabt(?:ex|e)|nabpt(?:ex|e))\b/ },
+  { id: 'tvet', pattern: /\btvet\b/, levels: ['tvet-vocational'], curricula: ['tvet-ctvet-curriculum'] },
+  { id: 'neco-ssce', pattern: /\b(?:neco|ssce)\b/, levels: ['senior-high-upper-secondary'], curricula: [], bookPattern: /\b(?:neco|ssce)\b/ },
+  { id: 'jamb-utme', pattern: /\b(?:jamb|utme)\b/, levels: ['sixth-form-pre-university', 'senior-high-upper-secondary'], curricula: [], bookPattern: /\b(?:jamb|utme)\b/ },
+];
+
+const GENERIC_EXAM_CHILDREN = {
+  waec: new Set(['bece', 'wassce', 'gbce', 'abce']),
+  'cambridge-igcse': new Set(['pearson-international-gcse', 'oxford-aqa-igcse', 'gcse']),
+  gcse: new Set(['cambridge-igcse', 'pearson-international-gcse', 'oxford-aqa-igcse']),
+  'a-level': new Set(['pearson-international-a-level', 'oxford-aqa-a-level']),
+  tvet: new Set(['ctvet', 'nvti', 'nabptex']),
+};
+
+export const getBookshopExamSearchIntent = (query) => {
+  const normalizedQuery = normalizeBookshopSearchText(query);
+  if (!normalizedQuery) return null;
+  const definition = EXAM_SEARCH_INTENTS.find(intent => intent.pattern.test(normalizedQuery));
+  if (!definition) return null;
+  return {
+    ...definition,
+    remainingQuery: normalizedQuery.replace(definition.pattern, ' ').replace(/\s+/g, ' ').trim(),
+  };
+};
+
+export const bookMatchesBookshopSearchIntent = (book, query) => {
+  const intent = getBookshopExamSearchIntent(query);
+  if (!intent) return true;
+  const directText = directBookSearchTextForBook(book);
+  const markerText = examMarkerTextForBook(book);
+  const bookIntent = getBookshopExamSearchIntent(markerText);
+  const compatibleBookIntent = !bookIntent
+    || bookIntent.id === intent.id
+    || GENERIC_EXAM_CHILDREN[intent.id]?.has(bookIntent.id);
+  if (!compatibleBookIntent) return false;
+  const levelMatch = intent.levels.some(level => matchesTaxonomy(book, 'level', level));
+  const curriculumValue = taxonomyValueForBook(book, 'curriculum');
+  const hasCurriculum = Boolean(clean(curriculumValue));
+  const curriculumMatch = intent.curricula.length === 0
+    || intent.curricula.some(curriculum => matchesTaxonomy(book, 'curriculum', curriculum));
+  const patternOptional = (intent.patternOptionalLevels || []).some(level => matchesTaxonomy(book, 'level', level));
+  const textMatch = !intent.bookPattern || patternOptional || intent.bookPattern.test(markerText);
+  const missingCurriculumAllowed = intent.curricula.length === 0 || Boolean(bookIntent);
+  return levelMatch && (hasCurriculum ? curriculumMatch : missingCurriculumAllowed) && textMatch;
+};
+
 export const bookMatchesBookshopSearch = (book, query) => {
   const normalizedQuery = normalizeBookshopSearchText(query);
   if (!normalizedQuery) return true;
 
-  const gradeTarget = gradeSearchTarget(normalizedQuery);
+  const examIntent = getBookshopExamSearchIntent(normalizedQuery);
+  if (examIntent && !bookMatchesBookshopSearchIntent(book, normalizedQuery)) return false;
+  const effectiveQuery = examIntent?.remainingQuery || normalizedQuery;
+  if (!effectiveQuery || effectiveQuery.split(' ').every(token => GENERIC_SEARCH_TOKENS.has(token))) return true;
+
+  const gradeTarget = gradeSearchTarget(effectiveQuery);
   if (gradeTarget) return directBookSearchTextForBook(book).includes(gradeTarget);
 
-  const exactAliasGroups = exactAliasGroupsForQuery(normalizedQuery);
+  const exactAliasGroups = exactAliasGroupsForQuery(effectiveQuery);
   if (exactAliasGroups.length > 0) {
     return exactAliasGroups.some(match => matchesExactAliasGroup(book, match));
   }
 
   const haystack = bookshopSearchTextForBook(book);
   const haystackTokens = new Set(haystack.split(' ').filter(Boolean));
-  const tokens = normalizedQuery
+  const tokens = effectiveQuery
     .split(' ')
     .filter((token) => (token.length > 1 || /^\d+$/.test(token)) && !GENERIC_SEARCH_TOKENS.has(token));
   const matchesToken = token => (
