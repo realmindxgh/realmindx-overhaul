@@ -27,6 +27,8 @@ export const Icon = ({ name, size = 24, stroke = 1.8 }) => {
     arrowUp: <><path d="M12 19V5M6 11l6-6 6 6"/></>,
     chevL: <path d="M15 6l-6 6 6 6"/>,
     chevR: <path d="M9 6l6 6-6 6"/>,
+    chevDown: <path d="M6 9l6 6 6-6"/>,
+    chevUp: <path d="M6 15l6-6 6 6"/>,
     mapPin: <><path d="M12 21s-7-7-7-12a7 7 0 0 1 14 0c0 5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></>,
     mail: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></>,
     phone: <path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>,

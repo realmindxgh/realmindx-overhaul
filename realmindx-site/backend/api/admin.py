@@ -3900,6 +3900,19 @@ def list_resources():
             "title": r.title,
             "description": r.description,
             "source": r.source,
+            "category": r.category,
+            "level": r.level,
+            "subject": r.subject,
+            "curriculum": r.curriculum,
+            "publication_year": r.publication_year,
+            "tags": r.tags,
+            "audience": r.audience,
+            "official_source_url": r.official_source_url,
+            "featured": r.featured,
+            "last_verified_at": r.last_verified_at.isoformat() if r.last_verified_at else None,
+            "copyright_status": r.copyright_status,
+            "document_type": r.document_type,
+            "original_filename": r.original_filename or (file_payload["name"] if file_payload else ""),
             "external_url": r.external_url,
             "url": r.external_url or file_url,
             "file_url": file_url,
@@ -3908,6 +3921,7 @@ def list_resources():
             "is_published": r.is_published,
             "status": "published" if r.is_published else "draft",
             "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat(),
         })
     return jsonify(items=items)
 
@@ -3937,18 +3951,36 @@ def create_resource():
     payload = request.get_json(silent=True) or {}
     try:
         resource_file_id, has_resource_file = _resource_file_id_from_payload(payload)
+        last_verified_at = _dateish(payload.get("last_verified_at"))
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     row = Resource(
-        title=payload.get("title"),
+        title=(payload.get("title") or "").strip(),
+        category=(payload.get("category") or "").strip(),
         description=payload.get("description"),
         source=payload.get("source"),
+        level=payload.get("level") or None,
+        subject=payload.get("subject") or None,
+        curriculum=payload.get("curriculum") or None,
+        publication_year=_intish(payload.get("publication_year"), None),
+        tags=payload.get("tags") or None,
+        audience=payload.get("audience") or None,
+        official_source_url=payload.get("official_source_url") or None,
+        featured=bool(payload.get("featured")),
+        last_verified_at=last_verified_at,
+        copyright_status=payload.get("copyright_status") or None,
+        document_type=payload.get("document_type") or None,
+        original_filename=payload.get("original_filename") or None,
         external_url=payload.get("external_url") or payload.get("url"),
         resource_file_id=resource_file_id if has_resource_file else None,
         is_published=bool(payload.get("is_published", payload.get("status") == "published")),
     )
     if not row.title:
         return jsonify(error="Title is required."), 400
+    if not row.category:
+        return jsonify(error="Category is required."), 400
+    if not row.resource_file_id and not row.external_url:
+        return jsonify(error="Upload a document or enter an external URL."), 400
     db.session.add(row)
     db.session.flush()
     log_action("create_resource", "resource", row.id)
@@ -3966,15 +3998,33 @@ def update_resource(resource_id):
         resource_file_id, has_resource_file = _resource_file_id_from_payload(payload)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
-    for field in ["title", "description", "source", "external_url", "is_published"]:
+    for field in ["title", "category", "description", "source", "level", "subject", "curriculum", "tags", "audience", "official_source_url", "copyright_status", "document_type", "original_filename", "external_url", "is_published", "featured"]:
         if field in payload:
-            setattr(row, field, payload[field])
+            value = payload[field]
+            if field in {"title", "category"}:
+                value = (value or "").strip()
+            elif field in {"is_published", "featured"}:
+                value = bool(value)
+            else:
+                value = value or None
+            setattr(row, field, value)
+    if "publication_year" in payload:
+        row.publication_year = _intish(payload.get("publication_year"), None)
+    if "last_verified_at" in payload:
+        try:
+            row.last_verified_at = _dateish(payload.get("last_verified_at"))
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
     if "url" in payload:
         row.external_url = payload["url"]
     if has_resource_file:
         row.resource_file_id = resource_file_id
     if "status" in payload:
         row.is_published = payload["status"] == "published"
+    if not (row.title or "").strip() or not (row.category or "").strip():
+        return jsonify(error="Title and category are required."), 400
+    if not row.resource_file_id and not row.external_url:
+        return jsonify(error="Upload a document or enter an external URL."), 400
     log_action("update_resource", "resource", row.id)
     db.session.commit()
     return jsonify(id=row.id, title=row.title)

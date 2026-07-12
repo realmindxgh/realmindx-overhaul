@@ -595,14 +595,14 @@ const CONFIG = {
     columnLabels: { image_url: 'Image', sort_order: 'Order' },
   },
   resources: {
-    title: 'Resources',
-    description: 'Downloadable or linked resources for the public resources route.',
+    title: 'Education Resources',
+    description: 'Official policies, syllabi, guides, templates, and learning resources in the public library.',
     collection: 'resources',
     createLabel: 'Add Resource',
     fields: [
-      field('title', 'Title'),
-      field('description', 'Description', 'textarea'),
-      field('source', 'Source / Publisher', 'text', { help: 'Shown on the public education documents card.' }),
+      field('title', 'Title', 'text', { required: true }),
+      field('category', 'Category', 'select', { required: true, options: ['Official Policies', 'Curriculum and Syllabi', 'Teacher Resources', 'Inclusive Education', 'Assessment and Exams', 'School Management', 'Parents and Learners', 'Research and Reports', 'RealMindX Originals'] }),
+      field('description', 'Description (optional, recommended)', 'textarea'),
       field('resource_file_id', 'Document File', 'file', {
         category: 'resources',
         accept: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv',
@@ -610,9 +610,21 @@ const CONFIG = {
       }),
       field('url', 'External URL', 'text', { help: 'Optional. Use this only when the document must live outside RealMindX; uploaded files take priority when no external URL is supplied.' }),
       field('status', 'Status', 'select', { options: ['draft', 'published'] }),
+      field('level', 'Level', 'select', { advanced: true, options: ['', 'Early Years', 'Kindergarten', 'Lower Primary', 'Upper Primary', 'JHS', 'SHS', 'TVET', 'Tertiary', 'Teacher Education', 'Whole School', 'Parents', 'General'] }),
+      field('subject', 'Subject', 'text', { advanced: true }),
+      field('curriculum', 'Curriculum', 'text', { advanced: true }),
+      field('source', 'Source / Publisher', 'text', { advanced: true, help: 'Ministry, agency, publisher, institution, or original source of this document. Shown publicly when available.' }),
+      field('publication_year', 'Year', 'number', { advanced: true }),
+      field('tags', 'Tags', 'text', { advanced: true, help: 'Comma-separated search terms.' }),
+      field('audience', 'Audience', 'text', { advanced: true }),
+      field('official_source_url', 'Official Source URL', 'text', { advanced: true }),
+      field('copyright_status', 'Copyright / Publication Status', 'select', { advanced: true, options: ['', 'Official public document', 'Linked only', 'Uploaded with permission', 'RealMindX original', 'Open access', 'Internal/private', 'Do not publish'] }),
+      field('document_type', 'Document Type', 'select', { advanced: true, options: ['', 'Policy', 'Curriculum', 'Syllabus', 'Framework', 'Guide', 'Template', 'Checklist', 'Form', 'Report', 'Research paper', 'Lesson material', 'Scheme of work', 'Assessment tool', 'Parent guide', 'Other'] }),
+      field('featured', 'Featured Resource', 'checkbox', { advanced: true }),
+      field('last_verified_at', 'Last Verified Date', 'date', { advanced: true }),
     ],
-    columns: ['title', 'source', 'resource_file_name', 'url', 'status'],
-    columnLabels: { resource_file_name: 'File' },
+    columns: ['title', 'category', 'level', 'subject', 'source', 'publication_year', 'status'],
+    columnLabels: { publication_year: 'Year' },
   },
   messages: {
     title: 'Tickets',
@@ -927,7 +939,9 @@ const fieldPlaceholder = (itemField, config) => {
     features: 'One feature per line',
     price: 'Example: 55.00',
     old_price: 'Optional previous price',
-    source: 'Supplier, publisher contact, or where this stock came from',
+    source: config?.collection === 'resources'
+      ? 'Ministry, agency, publisher, institution, or original source'
+      : 'Supplier, publisher contact, or where this stock came from',
     curriculum: 'Example: Cambridge Primary, Montessori, IB, WAEC, GES',
     author: 'Author name, if applicable',
     publisher: 'Publisher name, if applicable',
@@ -1669,6 +1683,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
     return urls;
   });
   const [saving, setSaving] = React.useState(false);
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
   const [categoryOptions, setCategoryOptions] = React.useState([]);
   const [deliveryZoneOptions, setDeliveryZoneOptions] = React.useState([]);
   const [formError, setFormError] = React.useState('');
@@ -1733,7 +1748,14 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
         {initialItem ? `Edit ${config.title}` : config.createLabel}
       </h3>
       <div className="admin-form-grid">
+        {config.fields.some(itemField => itemField.advanced) ? (
+          <button className="resource-more-details-toggle" type="button" aria-expanded={showAdvanced} onClick={() => setShowAdvanced(current => !current)}>
+            <span><strong>More Details</strong><small>Optional metadata improves filtering and search.</small></span>
+            <Icon name={showAdvanced ? 'chevUp' : 'chevDown'} size={18} />
+          </button>
+        ) : null}
         {config.fields.map(itemField => (
+          itemField.advanced && !showAdvanced ? null :
           <div key={itemField.name} className="form-group" style={(itemField.type === 'textarea' || itemField.type === 'image' || itemField.type === 'file' || itemField.type === 'permission-list' || itemField.type === 'article-sections') ? { gridColumn: '1 / -1' } : null}>
             <label className="form-label">{itemField.label}</label>
             {itemField.type === 'image' ? (
@@ -1758,7 +1780,13 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
                 category={itemField.category || 'resources'}
                 visibility={itemField.visibility || 'public'}
                 onChange={(fileId, fileUrl, fileName) => {
-                  setForm(prev => ({ ...prev, [itemField.name]: fileId }));
+                  setForm(prev => {
+                    const next = { ...prev, [itemField.name]: fileId };
+                    if (config.collection === 'resources' && !String(prev.title || '').trim() && fileName) {
+                      next.title = fileName.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+                    }
+                    return next;
+                  });
                   setUploadMeta(prev => ({ ...prev, [itemField.name]: { url: fileUrl, name: fileName } }));
                 }}
               />
@@ -2582,6 +2610,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [replyError, setReplyError] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [filterStatus, setFilterStatus] = React.useState('');
+  const [resourceCategory, setResourceCategory] = React.useState('');
+  const [resourceLevel, setResourceLevel] = React.useState('');
+  const [resourceSubject, setResourceSubject] = React.useState('');
   const [settlementCompany, setSettlementCompany] = React.useState('');
   const [settlementPayment, setSettlementPayment] = React.useState('');
   const [settlementStart, setSettlementStart] = React.useState('');
@@ -2664,10 +2695,15 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [tablePageSize, setTablePageSize] = React.useState(10);
 
   // Reset to page 1 when search or filter changes
-  React.useEffect(() => { setTablePage(1); }, [search, filterStatus, tablePageSize, settlementCompany, settlementPayment, settlementStart, settlementEnd]);
+  React.useEffect(() => { setTablePage(1); }, [search, filterStatus, tablePageSize, settlementCompany, settlementPayment, settlementStart, settlementEnd, resourceCategory, resourceLevel, resourceSubject]);
 
   const filteredByStatus = rows.filter(row => {
     if (filterStatus && row.status !== filterStatus) return false;
+    if (config.collection === 'resources') {
+      if (resourceCategory && row.category !== resourceCategory) return false;
+      if (resourceLevel && row.level !== resourceLevel) return false;
+      if (resourceSubject && row.subject !== resourceSubject) return false;
+    }
     if (config.collection !== 'deliverySettlements') return true;
     if (settlementCompany && String(row.company_id) !== settlementCompany) return false;
     if (settlementStart && row.settlement_date < settlementStart) return false;
@@ -3309,6 +3345,11 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         <div className="atc-header" style={{ flexWrap: 'wrap', gap: 10 }}>
           <h3>{sorted.length} Record{sorted.length !== 1 ? 's' : ''}{sorted.length > tablePageSize ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
           <div className="admin-table-tools">
+            {config.collection === 'resources' && <>
+              <select value={resourceCategory} onChange={event => setResourceCategory(event.target.value)}><option value="">All categories</option>{[...new Set(rows.map(row => row.category).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select>
+              <select value={resourceLevel} onChange={event => setResourceLevel(event.target.value)}><option value="">All levels</option>{[...new Set(rows.map(row => row.level).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select>
+              <select value={resourceSubject} onChange={event => setResourceSubject(event.target.value)}><option value="">All subjects</option>{[...new Set(rows.map(row => row.subject).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select>
+            </>}
             {config.collection === 'deliverySettlements' && <>
               <select value={settlementCompany} onChange={event => setSettlementCompany(event.target.value)}>
                 <option value="">All companies</option>

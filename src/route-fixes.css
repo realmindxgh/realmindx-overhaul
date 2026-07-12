@@ -5510,6 +5510,22 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
 }
 
+.resource-more-details-toggle {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #d8e2ef;
+  border-radius: 6px;
+  background: #f7f9fc;
+  color: var(--navy);
+  text-align: left;
+}
+.resource-more-details-toggle span { display: grid; gap: 2px; }
+.resource-more-details-toggle small { color: #62748b; font-weight: 500; }
+
 .portal-browse-jobs-btn:hover {
   background: #f5f8fc;
   border-color: #f5f8fc;

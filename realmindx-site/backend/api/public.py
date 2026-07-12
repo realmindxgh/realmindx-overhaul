@@ -7,6 +7,7 @@ from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, Response, current_app, jsonify, request
 import requests
 import re
+from sqlalchemy import or_
 
 from ..default_content import (
     DEFAULT_DONATION_SLIDES,
@@ -769,7 +770,9 @@ def gallery():
 
 @public_bp.get("/resources")
 def resources():
-    rows = Resource.query.filter_by(is_published=True).order_by(Resource.created_at.desc()).limit(40).all()
+    rows = Resource.query.filter(Resource.is_published.is_(True)).filter(
+        or_(Resource.copyright_status.is_(None), ~Resource.copyright_status.in_(["Internal/private", "Do not publish"]))
+    ).order_by(Resource.featured.desc(), Resource.created_at.desc()).limit(500).all()
     items = []
     for row in rows:
         file_url = upload_public_url(row.resource_file) if row.resource_file and row.resource_file.visibility == "public" else None
@@ -778,9 +781,24 @@ def resources():
             "title": row.title,
             "description": row.description,
             "source": row.source,
+            "category": row.category,
+            "level": row.level,
+            "subject": row.subject,
+            "curriculum": row.curriculum,
+            "publication_year": row.publication_year,
+            "tags": row.tags,
+            "audience": row.audience,
+            "official_source_url": row.official_source_url,
+            "featured": row.featured,
+            "last_verified_at": row.last_verified_at.isoformat() if row.last_verified_at else None,
+            "copyright_status": row.copyright_status,
+            "document_type": row.document_type,
+            "original_filename": row.original_filename or (row.resource_file.original_filename if row.resource_file else None),
             "external_url": row.external_url,
             "file_url": file_url,
-            "url": row.external_url or file_url,
+            "url": row.external_url if row.copyright_status == "Linked only" else file_url or row.external_url,
+            "created_at": row.created_at.isoformat(),
+            "updated_at": row.updated_at.isoformat(),
         })
     return jsonify(items=items)
 
