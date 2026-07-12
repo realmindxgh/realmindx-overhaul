@@ -31,7 +31,7 @@ const NAV = [
   { key: 'deliverySettlements', label: 'Delivery Settlements', group: 'Bookshop', icon: 'money' },
   { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
   { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
-  { key: 'receiptsInvoices', label: 'Receipts & Invoices', group: 'Bookshop', icon: 'files' },
+  { key: 'receiptsInvoices', label: 'Receipts & Invoices', group: 'Bookshop', icon: 'receipt' },
   { key: 'orderReviews', label: 'Order Reviews', group: 'Bookshop', icon: 'message' },
   { key: 'services', label: 'Services', group: 'Content', icon: 'consulting' },
   { key: 'partners', label: 'Partners', group: 'Content', icon: 'users' },
@@ -2898,6 +2898,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
   // Status modal for orders
   const [statusModal, setStatusModal] = React.useState(null); // { row }
+  const [orderDetail, setOrderDetail] = React.useState(null);
   const [statusChoice, setStatusChoice] = React.useState('');
   const [cancelReason, setCancelReason] = React.useState('');
   const [statusError, setStatusError] = React.useState('');
@@ -3209,6 +3210,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     }
 
     if (config.collection === 'orders') {
+      if (column === 'order_reference') return <button className="admin-order-reference" type="button" onClick={() => setOrderDetail(row)}>{row.order_reference}</button>;
       if (column === 'delivery_company') return <span>{row.delivery?.company_name || 'Unassigned'}</span>;
       if (column === 'delivery_rider') return <span>{row.delivery?.rider_name || '-'}</span>;
       if (column === 'delivery_status') {
@@ -3500,6 +3502,25 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         </div>
       )}
       </div>
+
+      {orderDetail && (
+        <div className="admin-receipt-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setOrderDetail(null)}>
+          <article className="admin-order-receipt" role="dialog" aria-modal="true" aria-label={`Order receipt ${orderDetail.order_reference}`}>
+            <button className="admin-modal-close" type="button" onClick={() => setOrderDetail(null)} aria-label="Close"><Icon name="x" size={17} /></button>
+            <header><div className="admin-order-receipt-brand"><Icon name="receipt" size={26} /><div><span>RealMindX Bookshop</span><h2>Order Receipt</h2></div></div><div><strong>{orderDetail.order_reference}</strong><span>{orderDetail.created_at ? new Date(orderDetail.created_at).toLocaleString() : '-'}</span></div></header>
+            <section className="admin-order-receipt-summary">
+              <div><span>Order status</span><strong>{statusLabel(orderDetail.status)}</strong></div>
+              <div><span>Payment</span><strong>{statusLabel(orderDetail.payment_status || 'unknown')}</strong></div>
+              <div><span>Fulfilment</span><strong>{statusLabel(orderDetail.delivery_method || 'pickup')}</strong></div>
+              <div><span>Total</span><strong>GHS {Number(orderDetail.total_amount || 0).toFixed(2)}</strong></div>
+            </section>
+            <section className="admin-order-receipt-parties"><div><h3>Customer</h3><p><strong>{orderDetail.customer_name || '-'}</strong></p>{orderDetail.phone ? <p>{orderDetail.phone}</p> : null}{orderDetail.email ? <p>{orderDetail.email}</p> : null}{orderDetail.customer_sex ? <p>{statusLabel(orderDetail.customer_sex)} | {statusLabel(orderDetail.customer_age_range)}</p> : null}</div><div><h3>Fulfilment Details</h3><p><strong>{statusLabel(orderDetail.delivery_method || 'pickup')}</strong></p>{orderDetail.delivery_zone_name ? <p>{orderDetail.delivery_zone_name}</p> : null}{orderDetail.location ? <p>{orderDetail.location}</p> : null}{orderDetail.delivery_region ? <p>{orderDetail.delivery_region}</p> : null}{orderDetail.delivery?.company_name ? <p>{orderDetail.delivery.company_name}{orderDetail.delivery.rider_name ? ` | ${orderDetail.delivery.rider_name}` : ''}</p> : null}</div></section>
+            <section><h3>Items</h3><div className="admin-order-receipt-items"><div className="head"><span>Item</span><span>Qty</span><span>Price</span><span>Amount</span></div>{(orderDetail.items || []).map((item, index) => <div key={`${item.product_id || index}-${item.product_name}`}><span>{item.product_name}</span><span>{item.quantity}</span><span>GHS {Number(item.unit_price || 0).toFixed(2)}</span><strong>GHS {(Number(item.unit_price || 0) * Number(item.quantity || 0)).toFixed(2)}</strong></div>)}</div></section>
+            <section className="admin-order-receipt-bottom"><div><h3>Payment Details</h3><p>Method: <strong>{statusLabel(orderDetail.payment_method || 'unknown')}</strong></p>{orderDetail.payment_provider ? <p>Provider: <strong>{statusLabel(orderDetail.payment_provider)}</strong></p> : null}{orderDetail.payment_reference ? <p>Reference: <strong>{orderDetail.payment_reference}</strong></p> : null}{orderDetail.invoice_id ? <p>Invoice: <strong>{orderDetail.invoice_id}</strong></p> : null}</div><dl><div><dt>Subtotal</dt><dd>GHS {Number(orderDetail.subtotal_amount != null ? orderDetail.subtotal_amount : Number(orderDetail.total_amount || 0) - Number(orderDetail.delivery_fee || 0)).toFixed(2)}</dd></div>{Number(orderDetail.bulk_discount_amount || 0) ? <div><dt>Bulk discount</dt><dd>- GHS {Number(orderDetail.bulk_discount_amount).toFixed(2)}</dd></div> : null}{Number(orderDetail.promo_discount_amount || 0) ? <div><dt>Promo {orderDetail.promo_code ? `(${orderDetail.promo_code})` : ''}</dt><dd>- GHS {Number(orderDetail.promo_discount_amount).toFixed(2)}</dd></div> : null}<div><dt>Delivery</dt><dd>GHS {Number(orderDetail.delivery_fee || 0).toFixed(2)}</dd></div><div className="total"><dt>Total</dt><dd>GHS {Number(orderDetail.total_amount || 0).toFixed(2)}</dd></div></dl></section>
+            <footer><span>Last activity: {orderDetail.updated_at ? new Date(orderDetail.updated_at).toLocaleString() : '-'}</span><button className="btn btn-outline-navy" type="button" onClick={() => setOrderDetail(null)}>Close</button></footer>
+          </article>
+        </div>
+      )}
 
       {/* Order status modal */}
       {statusModal && (

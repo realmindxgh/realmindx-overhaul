@@ -5526,6 +5526,19 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 .resource-more-details-toggle span { display: grid; gap: 2px; }
 .resource-more-details-toggle small { color: #62748b; font-weight: 500; }
 
+.admin-order-reference { border: 0; padding: 0; background: transparent; color: var(--navy); font: inherit; font-weight: 800; text-decoration: underline; text-decoration-color: #ffcc01; text-underline-offset: 4px; cursor: pointer; }
+.admin-receipt-backdrop { position: fixed; inset: 0; z-index: 700; padding: 24px; display: grid; place-items: center; background: rgba(5,23,50,.58); }
+.admin-order-receipt { position: relative; width: min(880px,100%); max-height: 92vh; overflow: auto; padding: 30px; border-radius: 8px; background: #fff; box-shadow: 0 24px 70px rgba(0,0,0,.3); color: #17263b; }
+.admin-order-receipt > header { padding: 0 48px 22px 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; border-bottom: 3px solid #ffcc01; }
+.admin-order-receipt > header > div:last-child { display: grid; gap: 5px; text-align: right; }.admin-order-receipt > header > div:last-child strong { color: #143670; font-size: 1.05rem; }.admin-order-receipt > header > div:last-child span { color: #64748b; font-size: .78rem; }
+.admin-order-receipt-brand { display: flex; align-items: center; gap: 12px; color: #143670; }.admin-order-receipt-brand span { color: #a97700; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }.admin-order-receipt-brand h2 { margin: 3px 0 0; color: #143670; }
+.admin-order-receipt-summary { margin: 20px 0; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }.admin-order-receipt-summary > div { padding: 12px; display: grid; gap: 5px; border: 1px solid #dbe5f1; background: #f7f9fc; }.admin-order-receipt-summary span, .admin-order-receipt h3 { color: #64748b; font-size: .7rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.admin-order-receipt-summary strong { color: #143670; }
+.admin-order-receipt-parties, .admin-order-receipt-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; padding: 18px 0; border-bottom: 1px solid #dbe5f1; }.admin-order-receipt h3 { margin: 0 0 10px; }.admin-order-receipt p { margin: 4px 0; font-size: .83rem; }
+.admin-order-receipt-items { border: 1px solid #dbe5f1; }.admin-order-receipt-items > div { padding: 10px 12px; display: grid; grid-template-columns: minmax(0,1fr) 55px 110px 110px; gap: 10px; border-bottom: 1px solid #e6edf5; font-size: .8rem; }.admin-order-receipt-items > div:last-child { border-bottom: 0; }.admin-order-receipt-items .head { background: #143670; color: #fff; font-weight: 800; }.admin-order-receipt-items > div > :not(:first-child) { text-align: right; }
+.admin-order-receipt > section > h3 { margin-top: 18px; }.admin-order-receipt-bottom dl { margin: 0; }.admin-order-receipt-bottom dl > div { padding: 5px 0; display: flex; justify-content: space-between; gap: 20px; }.admin-order-receipt-bottom dt { color: #64748b; }.admin-order-receipt-bottom dd { margin: 0; font-weight: 700; }.admin-order-receipt-bottom .total { margin-top: 8px; padding-top: 12px; border-top: 2px solid #143670; color: #143670; font-size: 1.05rem; font-weight: 900; }
+.admin-order-receipt > footer { padding-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #64748b; font-size: .75rem; }
+@media (max-width: 700px) { .admin-receipt-backdrop { padding: 0; align-items: end; }.admin-order-receipt { max-height: 95vh; padding: 22px 16px; border-radius: 8px 8px 0 0; }.admin-order-receipt > header, .admin-order-receipt-parties, .admin-order-receipt-bottom { grid-template-columns: 1fr; flex-direction: column; }.admin-order-receipt > header > div:last-child { text-align: left; }.admin-order-receipt-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }.admin-order-receipt-items { overflow-x: auto; }.admin-order-receipt-items > div { min-width: 620px; }.admin-order-receipt > footer { align-items: stretch; flex-direction: column; } }
+
 .portal-browse-jobs-btn:hover {
   background: #f5f8fc;
   border-color: #f5f8fc;
@@ -5823,7 +5836,7 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 .delivery-rider-table-head,
 .delivery-rider-row {
   display: grid;
-  grid-template-columns: minmax(210px, 1.4fr) 100px 80px 90px minmax(330px, auto);
+  grid-template-columns: minmax(190px, 1.4fr) 90px 110px 80px 85px minmax(300px, auto);
   gap: 14px;
   align-items: center;
 }

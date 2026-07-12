@@ -724,7 +724,7 @@ const CompanyPortal = () => {
           <div className="delivery-list-toolbar">
             <label className="delivery-search-field"><Icon name="search" size={18} /><input value={riderSearch} onChange={event => setRiderSearch(event.target.value)} placeholder="Search riders by name, phone, or status" /></label>
           </div>
-          <div className="delivery-rider-table-head" aria-hidden="true"><span>Rider</span><span>Status</span><span>Active</span><span>Delivered</span><span>Actions</span></div>
+          <div className="delivery-rider-table-head" aria-hidden="true"><span>Rider</span><span>Account</span><span>Terms</span><span>Active Jobs</span><span>Delivered</span><span>Actions</span></div>
           <div className="delivery-rider-list">
             {filteredRiders.length === 0 ? <EmptyState title={riderSearch ? 'No matching riders' : 'No riders yet'} body={riderSearch ? 'Try a different spelling or fewer characters.' : 'Create the first rider account for this company.'} /> : null}
             {pagedRiders.map(rider => (
