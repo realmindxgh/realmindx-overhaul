@@ -69,6 +69,8 @@ ACTION_LABELS = {
     "override_delivery_otp": "Confirmed delivery without the customer's code",
     "paystack_payment_confirmed": "Confirmed an online payment",
     "paystack_payment_rejected": "Rejected an online payment confirmation",
+    "platform_terms_accepted": "Accepted the current platform terms",
+    "platform_terms_viewed": "Viewed the current platform terms",
     "profile_updated": "Updated a profile",
     "reply_contact_message": "Replied to a contact message",
     "resend_delivery_otp": "Resent a customer's delivery code",
@@ -126,6 +128,7 @@ AREA_LABELS = {
     "product_category": "product categories", "product_review": "product reviews", "promo_code": "promotional codes",
     "resource": "resources", "site_setting": "site settings", "uploaded_file": "uploaded files", "user": "user accounts",
     "user_profile": "user profiles", "management_portal": "management portal",
+    "platform_terms": "platform terms", "platform_terms_acceptance": "platform terms",
 }
 
 

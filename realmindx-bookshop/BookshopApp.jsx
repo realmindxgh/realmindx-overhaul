@@ -161,6 +161,9 @@ const BookshopBackButton = ({ navigate }) => {
       <button type="button" className="bs-app-back" onClick={goBack} aria-label="Go back" title="Go back">
         <Icon name="chevL" size={21} />
       </button>
+      <button type="button" className="bs-app-back" onClick={() => window.history.forward()} aria-label="Go forward" title="Go forward">
+        <Icon name="chevR" size={21} />
+      </button>
     </div>
   );
 };

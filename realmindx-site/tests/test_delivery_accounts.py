@@ -28,7 +28,7 @@ from backend.delivery_service import (
     verify_delivery_otp,
 )
 from backend.extensions import db
-from backend.models import AuditLog, DeliverySettlementLine, Order, Product, ProductCategory, Role, User
+from backend.models import AuditLog, DeliverySettlementLine, Order, PlatformTermsAcceptance, Product, ProductCategory, Role, User
 from backend.security import DEFAULT_TEMPORARY_PASSWORD
 
 
@@ -85,6 +85,38 @@ class DeliveryAccountTests(unittest.TestCase):
         active_otp(delivery).token_hash = generate_password_hash(otp_value)
         complete_delivery_with_otp(delivery, otp_value, ("rider", rider.user_id))
         return delivery
+
+    def _accept_company_terms(self, client, current_password=DEFAULT_TEMPORARY_PASSWORD):
+        changed = client.post("/api/auth/change-password", json={
+            "current_password": current_password,
+            "new_password": "ChangedPassword123!",
+        })
+        self.assertEqual(changed.status_code, 200)
+        terms = client.get("/api/delivery/company/terms/current")
+        self.assertEqual(terms.status_code, 200)
+        payload = terms.get_json()["terms"]
+        accepted = client.post("/api/delivery/company/terms/accept", json={
+            "version": payload["version"],
+            "hash": payload["hash"],
+        })
+        self.assertEqual(accepted.status_code, 200)
+        return accepted.get_json()
+
+    def _accept_rider_terms(self, client, current_password=DEFAULT_TEMPORARY_PASSWORD):
+        changed = client.post("/api/auth/change-password", json={
+            "current_password": current_password,
+            "new_password": "ChangedRiderPassword123!",
+        })
+        self.assertEqual(changed.status_code, 200)
+        terms = client.get("/api/delivery/rider/terms/current")
+        self.assertEqual(terms.status_code, 200)
+        payload = terms.get_json()["terms"]
+        accepted = client.post("/api/delivery/rider/terms/accept", json={
+            "version": payload["version"],
+            "hash": payload["hash"],
+        })
+        self.assertEqual(accepted.status_code, 200)
+        return accepted.get_json()
 
     @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
     @patch("backend.delivery_service.send_sms", return_value=True)
@@ -188,6 +220,8 @@ class DeliveryAccountTests(unittest.TestCase):
         client = self.app.test_client()
         login = client.post("/api/delivery/company/login", json={"phone": manager_two.phone, "password": DEFAULT_TEMPORARY_PASSWORD})
         self.assertEqual(login.status_code, 200)
+        self.assertEqual(client.get("/api/delivery/company/settlements").status_code, 428)
+        self._accept_company_terms(client)
         listing = client.get("/api/delivery/company/settlements")
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(listing.get_json()["items"], [])
@@ -248,6 +282,7 @@ class DeliveryAccountTests(unittest.TestCase):
 
         otp = active_otp(delivery)
         self.assertIsNotNone(otp)
+        self.assertGreaterEqual(otp.expires_at - otp.created_at, timedelta(hours=47, minutes=59))
         self.assertEqual(otp.send_status, "sent")
         self.assertEqual(otp.send_channel, "sms+email")
         self.assertTrue(any(event.event_type == "otp_sent" for event in delivery.events))
@@ -271,18 +306,15 @@ class DeliveryAccountTests(unittest.TestCase):
             "password": DEFAULT_TEMPORARY_PASSWORD,
         })
         self.assertEqual(login.status_code, 200)
-        self.assertEqual(client.get(f"/api/delivery/company/riders/{rider_one.id}").status_code, 200)
-        self.assertEqual(client.get(f"/api/delivery/company/riders/{rider_two.id}").status_code, 404)
-
         blocked = client.post("/api/delivery/company/riders", json={"name": "Blocked Rider", "phone": "0247777777"})
         self.assertEqual(blocked.status_code, 428)
-        self.assertEqual(blocked.get_json()["code"], "password_change_required")
+        self.assertEqual(blocked.get_json()["code"], "terms_acceptance_required")
 
-        changed = client.post("/api/auth/change-password", json={
-            "current_password": DEFAULT_TEMPORARY_PASSWORD,
-            "new_password": "ChangedPassword123!",
-        })
-        self.assertEqual(changed.status_code, 200)
+        accepted = self._accept_company_terms(client)
+        self.assertTrue(accepted["terms"]["accepted"])
+        self.assertEqual(PlatformTermsAcceptance.query.filter_by(user_id=manager_one.user_id).count(), 1)
+        self.assertEqual(client.get(f"/api/delivery/company/riders/{rider_one.id}").status_code, 200)
+        self.assertEqual(client.get(f"/api/delivery/company/riders/{rider_two.id}").status_code, 404)
         created = client.post("/api/delivery/company/riders", json={"name": "New Rider", "phone": "0247777777"})
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.get_json()["temporary_password"], DEFAULT_TEMPORARY_PASSWORD)
@@ -363,6 +395,40 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.get_json()["code"], "inactive_account")
 
+    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
+    @patch("backend.delivery_service.send_sms", return_value=True)
+    def test_rider_terms_gate_scope_and_otp_resend(self, _sms, _email):
+        company, _ = create_company({"name": "Rider Terms Company"})
+        rider = create_rider(company, {"name": "Terms Rider", "phone": "0207654321"})
+        other_rider = create_rider(company, {"name": "Other Rider", "phone": "0207654322"})
+        delivery = assign_order_to_company(self._order("RMX-RIDER-TERMS"), company, ("admin", 1))
+        company_accept_delivery(delivery, ("company_user", 2))
+        assign_rider(delivery, rider, ("company_user", 2))
+        mark_picked_up(delivery, ("rider", rider.user_id))
+        other_delivery = assign_order_to_company(self._order("RMX-RIDER-OTHER"), company, ("admin", 1))
+        company_accept_delivery(other_delivery, ("company_user", 2))
+        assign_rider(other_delivery, other_rider, ("company_user", 2))
+        db.session.commit()
+
+        client = self.app.test_client()
+        login = client.post("/api/delivery/rider/login", json={"phone": rider.phone, "password": DEFAULT_TEMPORARY_PASSWORD})
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(client.get("/api/delivery/rider/deliveries").status_code, 428)
+        self.assertEqual(client.post("/api/delivery/company/terms/accept", json={}).status_code, 403)
+        accepted = self._accept_rider_terms(client)
+        self.assertTrue(accepted["terms"]["accepted"])
+        items = client.get("/api/delivery/rider/deliveries").get_json()["items"]
+        self.assertEqual([item["id"] for item in items], [delivery.id])
+
+        old_otp = active_otp(delivery)
+        old_otp.last_sent_at = datetime.now(timezone.utc) - timedelta(minutes=3)
+        db.session.commit()
+        resent = client.post(f"/api/delivery/rider/deliveries/{delivery.id}/resend-otp")
+        self.assertEqual(resent.status_code, 200)
+        self.assertIsNotNone(old_otp.replaced_at)
+        self.assertEqual(active_otp(delivery).resend_count, 1)
+        self.assertEqual(client.post(f"/api/delivery/rider/deliveries/{other_delivery.id}/resend-otp").status_code, 404)
+
     @patch("backend.cli.send_email", return_value={"status": "sent"})
     def test_annual_teacher_reminder_includes_never_reminded_accounts(self, email_mock):
         role = Role(name="user", description="Teacher")
@@ -431,7 +497,7 @@ class DeliveryAccountTests(unittest.TestCase):
             if call.args and call.args[0].subject.startswith("New delivery assigned:")
         )
         self.assertIn("Open delivery company portal", partner_email.html)
-        self.assertIn("/delivery-company/", partner_email.html)
+        self.assertIn("https://delivery.realmindxgh.com/manager/", partner_email.html)
         self.assertNotIn("Track your order", partner_email.html)
 
     @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
@@ -493,7 +559,7 @@ class DeliveryAccountTests(unittest.TestCase):
 
     def test_private_portal_shells_are_noindex(self):
         client = self.app.test_client()
-        for path in ["/admin/dashboard", "/staff/dashboard", "/delivery-company/", "/delivery/"]:
+        for path in ["/admin/dashboard", "/staff/dashboard", "/delivery-company/", "/delivery/", "/manager/", "/rider/"]:
             response = client.get(path, headers={"Host": "realmindxgh.com"})
             self.assertEqual(response.status_code, 200, path)
             self.assertIsNone(response.headers.get("Location"), path)

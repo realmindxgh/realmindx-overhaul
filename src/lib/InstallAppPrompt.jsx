@@ -4,8 +4,8 @@ import { Icon } from '../../realmindx-site/assets/components.jsx';
 const surfaceForLocation = () => {
   const path = window.location.pathname;
   if (window.location.hostname.startsWith('bookshop.')) return { id: 'bookshop', name: 'RealMindX Bookshop' };
-  if (path.startsWith('/delivery-company')) return { id: 'delivery-company', name: 'Delivery Company Portal' };
-  if (path.startsWith('/delivery')) return { id: 'delivery', name: 'Rider Portal' };
+  if (path.startsWith('/delivery-company') || path.startsWith('/manager')) return { id: 'delivery-company', name: 'Delivery Company Portal' };
+  if (path.startsWith('/delivery') || path.startsWith('/rider')) return { id: 'delivery', name: 'Rider Portal' };
   if (path.startsWith('/admin')) return { id: 'admin', name: 'RealMindX Admin' };
   if (path.startsWith('/staff')) return { id: 'staff', name: 'RealMindX Staff' };
   return null;

@@ -26,6 +26,7 @@ class Config:
 
     BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:5173")
     BOOKSHOP_URL = os.getenv("BOOKSHOP_URL", f"{BASE_URL}/bookshop")
+    DELIVERY_URL = os.getenv("DELIVERY_URL", "https://delivery.realmindxgh.com")
     API_URL = os.getenv("API_URL", "http://127.0.0.1:5000/api")
     FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", str(BASE_DIR.parent / "dist"))
     GEOIP_DATABASE_PATH = os.getenv(
@@ -54,6 +55,7 @@ class Config:
         "https://realmindxgh.com",
         "https://www.realmindxgh.com",
         "https://bookshop.realmindxgh.com",
+        "https://delivery.realmindxgh.com",
         "https://new.realmindxgh.com",
     ]
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")

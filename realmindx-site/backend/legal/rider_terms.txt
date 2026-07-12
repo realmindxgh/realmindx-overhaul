@@ -1,0 +1,329 @@
+RealMindX Rider Platform Terms
+
+Effective Date
+
+July 12, 2026
+
+These Rider Platform Terms apply to every rider who accesses or uses the RealMindX Rider Platform.
+
+By signing in to use the RealMindX Rider Platform, you confirm that you have read, understood, and agreed to these Terms.
+
+If you do not agree to these Terms, you must not use the platform.
+
+1. Parties
+
+These Terms are between RealMindX Education Ltd, referred to as RealMindX, we, us, or our, and the rider using the RealMindX Rider Platform, referred to as Rider, you, or your.
+
+You may be using the platform as a rider working under a delivery company. Your delivery company remains responsible for managing you, supervising you, and assigning deliveries to you.
+
+2. Purpose of the Rider Platform
+
+The RealMindX Rider Platform allows riders to view assigned deliveries, confirm pickup, update delivery progress, enter customer OTP, report delivery issues, and view their own delivery history.
+
+The platform must be used only for RealMindX delivery work assigned to you.
+
+You must not use the platform for personal business, unrelated delivery work, advertising, customer collection, or any unauthorised purpose.
+
+3. Relationship With RealMindX
+
+Using the RealMindX Rider Platform does not make you an employee of RealMindX.
+
+You remain a rider of your delivery company, unless RealMindX has separately agreed something different in writing.
+
+RealMindX does not control your employment, salary, working hours, discipline, vehicle, tools, or employment benefits. These remain matters between you and your delivery company.
+
+4. Account Access
+
+You must keep your login details private and secure.
+
+You must not share your account with another rider or any other person.
+
+You must not allow another person to update deliveries using your account.
+
+You are responsible for actions taken through your rider account.
+
+If you think someone else has accessed your account, you must report it to your delivery company or RealMindX immediately.
+
+5. First Login and Password Change
+
+If you are given a temporary password, you must change it when the platform asks you to do so.
+
+You must choose a password that is not easy to guess.
+
+You must not use your phone number, name, 12345678, or any weak password after your first login.
+
+You must not give your password to your delivery company manager, another rider, customer, friend, or any other person.
+
+6. Assigned Deliveries Only
+
+You may only view and act on deliveries assigned to you through the platform.
+
+You must not try to access another rider’s deliveries.
+
+You must not pick up, deliver, update, or interfere with an order that has not been assigned to you.
+
+If you receive a delivery by mistake, you must report it immediately through the platform or to your delivery company.
+
+7. Pickup Responsibility
+
+When you collect a RealMindX package, you must confirm pickup through the platform.
+
+After pickup, you are responsible for handling the package carefully until it is delivered, returned, or handed over according to approved instructions.
+
+You must protect the package from loss, theft, damage, water, tampering, careless handling, or unauthorised opening.
+
+You must not open, use, sell, exchange, keep, or damage any package.
+
+8. Delivery Conduct
+
+You must behave professionally and respectfully when dealing with customers.
+
+You must not insult, threaten, harass, deceive, pressure, or disturb customers.
+
+You must not contact customers for personal reasons.
+
+You must not contact customers after delivery for friendship, marketing, begging, dating, advertising, or any purpose unrelated to the assigned delivery.
+
+You must not ask customers for extra money unless the platform or RealMindX clearly shows that payment is required.
+
+9. Customer Data and Privacy
+
+You may see customer information such as name, phone number, delivery location, delivery notes, and order reference.
+
+You must use this information only to complete the assigned delivery.
+
+You must not save customer numbers for personal use.
+
+You must not share customer phone numbers, addresses, order details, screenshots, or delivery notes on WhatsApp, social media, personal chats, or with unauthorised persons.
+
+You must not use customer information for marketing, personal contact, resale, advertising, threats, jokes, or any unrelated purpose.
+
+If customer information is wrongly shared, lost, copied, or misused, you must report it immediately.
+
+10. OTP and Proof of Delivery
+
+Some deliveries require customer OTP confirmation before they can be marked as delivered.
+
+You must only ask for the OTP when you are physically delivering the package to the customer or to a person authorised by the customer.
+
+You must not ask the customer to send the OTP before you arrive.
+
+You must not guess, fake, force, buy, sell, reuse, or misuse an OTP.
+
+You must not mark a package as delivered unless the package has truly been delivered and the OTP has been correctly verified through the platform.
+
+If the customer cannot provide the OTP, you must report the issue through the platform or contact your delivery company for instructions.
+
+11. Pay-on-Delivery Orders
+
+Some orders may require the customer to pay at the time of delivery.
+
+You may collect money from the customer only if the platform or your delivery company has clearly authorised it for that order.
+
+You must collect only the amount shown or approved.
+
+You must not increase the price.
+
+You must not add your own charge.
+
+You must not keep book money or customer payment that belongs to RealMindX or your delivery company.
+
+All collected money must be handled according to the instructions of RealMindX and your delivery company.
+
+12. Online-Paid Orders
+
+For online-paid orders, the customer has already paid RealMindX.
+
+You must not collect additional money from the customer unless the platform clearly shows an approved amount to collect.
+
+If a customer offers money for an online-paid order because of confusion, you must not take it unless it is clearly authorised.
+
+13. Delivery Status Updates
+
+You must update delivery status honestly and promptly.
+
+Status updates may include picked up, delivered, issue reported, failed, returned, or any other status used by the platform.
+
+You must not enter false updates.
+
+You must not mark an order as picked up if you have not collected it.
+
+You must not mark an order as delivered if delivery has not been completed.
+
+You must not mark a failed delivery as delivered.
+
+Every status update you make may be recorded by RealMindX.
+
+14. Failed Delivery and Delivery Issues
+
+If you cannot complete a delivery, you must report the correct issue through the platform.
+
+Issue reasons may include:
+
+Customer unavailable.
+
+Wrong address.
+
+Customer unreachable.
+
+Customer refused delivery.
+
+Package damaged.
+
+Vehicle or route delay.
+
+Payment issue.
+
+Returned to office.
+
+Other.
+
+You must add clear notes where necessary.
+
+You must not hide failed delivery.
+
+You must not pretend that a package was delivered when it was not.
+
+You must follow your delivery company’s instruction or RealMindX’s instruction on whether to retry, return, or wait.
+
+15. Returned Packages
+
+If a package cannot be delivered, you must return it to your delivery company, RealMindX, or another approved location as instructed.
+
+You must not keep the package.
+
+You must not give the package to an unauthorised person.
+
+You must not delay returning the package without a valid reason.
+
+Returned packages must be handled carefully.
+
+16. Prohibited Conduct
+
+You must not:
+
+Share your login details.
+
+Use another rider’s account.
+
+Access another rider’s deliveries.
+
+Enter false delivery updates.
+
+Mark delivery without OTP where OTP is required.
+
+Ask customers for OTP before arrival.
+
+Collect unauthorised money.
+
+Keep customer payment.
+
+Misuse customer phone numbers or addresses.
+
+Harass, insult, threaten, deceive, or pressure customers.
+
+Open, damage, steal, sell, exchange, or keep packages.
+
+Share screenshots of customer details.
+
+Use RealMindX orders for personal business.
+
+Use RealMindX branding without permission.
+
+Bypass platform security.
+
+Hide delivery problems.
+
+Delay reporting failed deliveries.
+
+17. Audit Records
+
+RealMindX may keep records of your platform activity.
+
+These records may include login time, assigned deliveries, pickup time, delivery time, OTP attempts, wrong OTP attempts, issue reports, failed deliveries, returned packages, and delivery notes.
+
+These records may be used to investigate complaints, confirm delivery, settle disputes, review rider performance, confirm payment issues, and protect customers.
+
+18. Notifications
+
+RealMindX may send you notifications by SMS, email, platform alert, or another approved channel.
+
+You must keep your phone number and contact details accurate through your delivery company.
+
+Failure to see a notification does not excuse false updates, delayed delivery, or misuse of customer information.
+
+19. Suspension or Restriction
+
+RealMindX may suspend or restrict your access to the Rider Platform if:
+
+You breach these Terms.
+
+You misuse customer data.
+
+You enter false delivery updates.
+
+You misuse OTP.
+
+You collect unauthorised money.
+
+You fail to account for a package.
+
+You are linked to customer complaints.
+
+Your delivery company deactivates your account.
+
+Your account creates a security risk.
+
+RealMindX believes suspension is needed to protect customers, packages, the platform, or RealMindX’s business.
+
+Your delivery company may also suspend or deactivate your rider access.
+
+20. Complaints and Investigations
+
+If a customer complains about a delivery, you must cooperate with your delivery company and RealMindX.
+
+You may be asked to explain what happened, provide delivery notes, confirm payment collected, confirm package return, or provide other reasonable information.
+
+You must not threaten, contact, or pressure a customer because of a complaint.
+
+21. Loss, Damage, Theft, or Wrong Delivery
+
+If a package is lost, damaged, stolen, wrongly delivered, tampered with, or not properly accounted for after pickup, RealMindX and your delivery company may investigate.
+
+If the issue was caused by your misconduct, dishonesty, carelessness, false update, or failure to follow instructions, your delivery company may take action against you according to its own rules and applicable law.
+
+RealMindX may also restrict your platform access.
+
+22. No Misuse of RealMindX Name
+
+You must not use the RealMindX name, logo, customer list, platform, order information, or delivery records for personal promotion, social media content, advertising, or unrelated business.
+
+You must not pretend to represent RealMindX outside your assigned delivery work.
+
+23. Platform Availability
+
+The platform may sometimes be unavailable because of network issues, updates, maintenance, or technical problems.
+
+If the platform is not working, you must report the issue to your delivery company or RealMindX through the approved channel.
+
+A technical issue does not allow you to fake delivery, keep packages, misuse customer data, or collect unauthorised money.
+
+24. Updates to These Terms
+
+RealMindX may update these Terms from time to time.
+
+If the Terms are updated, you may be required to accept the new version before continuing to use the platform.
+
+Continuing to use the platform after updated Terms are shown means you accept the updated Terms.
+
+25. Governing Law
+
+These Terms shall be governed by the laws of the Republic of Ghana.
+
+Any issue arising from use of the Rider Platform may be handled through RealMindX, your delivery company, and any lawful process available in Ghana.
+
+26. Acceptance
+
+By signing in, ticking an acceptance box, accepting assigned deliveries, marking pickup, entering OTP, reporting an issue, or continuing to use the RealMindX Rider Platform, you confirm that you agree to these Terms.
+
+You also confirm that you understand your duty to protect customer information, handle packages carefully, update delivery status truthfully, and follow the OTP process.

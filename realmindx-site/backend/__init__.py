@@ -93,6 +93,18 @@ def create_app(config_object=Config):
     def rider_portal_page(tail):
         return private_app_page(request.path)
 
+    @app.get("/manager", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/manager/", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/manager/<path:tail>", strict_slashes=False)
+    def delivery_manager_subdomain_page(tail):
+        return private_app_page(request.path)
+
+    @app.get("/rider", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/rider/", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/rider/<path:tail>", strict_slashes=False)
+    def delivery_rider_subdomain_page(tail):
+        return private_app_page(request.path)
+
     @app.get("/admin", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/admin/<path:tail>", strict_slashes=False)
     def admin_portal_page(tail):

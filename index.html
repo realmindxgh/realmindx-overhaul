@@ -48,11 +48,14 @@
     <script>
       (function () {
         var path = window.location.pathname;
+        var deliveryHost = window.location.hostname.indexOf('delivery.') === 0;
+        var managerPath = path.indexOf('/manager') === 0 || path.indexOf('/delivery-company') === 0;
+        var riderPath = path.indexOf('/rider') === 0 || path.indexOf('/delivery') === 0;
         var manifest = window.location.hostname.indexOf('bookshop.') === 0
           ? '/bookshop.webmanifest'
-          : path.indexOf('/delivery-company') === 0
+          : managerPath
             ? '/delivery-company.webmanifest'
-            : path.indexOf('/delivery') === 0
+            : riderPath
               ? '/delivery.webmanifest'
               : path.indexOf('/admin') === 0
                 ? '/admin.webmanifest'
@@ -62,8 +65,12 @@
         if (manifest) {
           var link = document.createElement('link');
           link.rel = 'manifest';
-          link.href = manifest + '?v=20260711';
+          link.href = manifest + '?v=20260712';
           document.head.appendChild(link);
+        }
+        if (deliveryHost && (managerPath || riderPath)) {
+          var icon = managerPath ? '/delivery-assets/delivery-company-icon.png' : '/delivery-assets/rider-icon.png';
+          document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(function (item) { item.href = icon; });
         }
         window.addEventListener('beforeinstallprompt', function (event) {
           event.preventDefault();

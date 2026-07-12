@@ -1,0 +1,281 @@
+RealMindX Delivery Company Platform Terms
+
+Effective Date
+
+July 12, 2026
+
+These Delivery Company Platform Terms apply to every delivery company, company manager, dispatcher, representative, employee, agent, rider, or other person who accesses or uses the RealMindX Delivery Company Platform.
+
+By signing in to use the RealMindX Delivery Company Platform, you confirm that you have read, understood, and agreed to these Terms. You also confirm that you are authorised to use the platform on behalf of your delivery company.
+
+If you do not agree to these Terms, you must not use the platform.
+
+1. Parties
+
+These Terms are between RealMindX Education Ltd, referred to as “RealMindX”, “we”, “us”, or “our”, and the delivery company using the RealMindX Delivery Company Platform, referred to as “Delivery Company”, “you”, or “your”.
+
+Where a company manager, dispatcher, or other representative uses the platform, that person acts on behalf of the Delivery Company. The Delivery Company is responsible for all actions taken through its account.
+
+2. Purpose of the Platform
+
+The RealMindX Delivery Company Platform allows delivery companies to receive delivery assignments from RealMindX, manage riders, assign orders to riders, monitor delivery progress, report delivery issues, and view delivery settlement records.
+
+The platform is provided only for handling RealMindX bookshop and related delivery assignments. It must not be used for any unrelated business activity.
+
+3. Relationship Between RealMindX and the Delivery Company
+
+The Delivery Company operates as an independent service provider.
+
+Nothing in these Terms creates an employment relationship, partnership, agency relationship, joint venture, or branch relationship between RealMindX and the Delivery Company.
+
+Riders, dispatchers, managers, and workers of the Delivery Company remain the responsibility of the Delivery Company. They are not employees of RealMindX.
+
+4. Signed Delivery Partner Agreement
+
+Before a Delivery Company may receive real customer delivery assignments, RealMindX may require the Delivery Company to sign a separate Delivery Partner Agreement.
+
+The signed Delivery Partner Agreement may cover pricing, payment timelines, liability, service standards, insurance where applicable, dispute handling, contract duration, and termination.
+
+If there is a conflict between these Platform Terms and the signed Delivery Partner Agreement, the signed Delivery Partner Agreement will apply to the extent of the conflict, unless RealMindX states otherwise in writing.
+
+5. Company Account Access
+
+RealMindX may create or approve a company manager account for the Delivery Company.
+
+The Delivery Company is responsible for keeping its login details secure. The Delivery Company must not share platform access with unauthorised persons.
+
+If the Delivery Company suspects that an account has been accessed without permission, it must notify RealMindX immediately.
+
+RealMindX may suspend or restrict access if there is suspected misuse, fraud, security risk, breach of these Terms, customer complaint, or legal concern.
+
+6. Rider Account Management
+
+The Delivery Company is responsible for creating, managing, supervising, and deactivating rider accounts under its company profile.
+
+The Delivery Company must ensure that only trusted and properly supervised riders are given access to the RealMindX Rider Platform.
+
+The Delivery Company must deactivate any rider who leaves the company, is suspended, is no longer trusted to handle customer orders, or should no longer access RealMindX delivery data.
+
+The Delivery Company is responsible for all delivery actions taken by its riders on the platform.
+
+7. Delivery Assignment Process
+
+RealMindX may assign ready or packaged orders to the Delivery Company through the platform.
+
+The Delivery Company must review assigned orders and assign them to appropriate riders within a reasonable time.
+
+Where the platform allows the Delivery Company to accept or reject an order, rejection must include a valid reason.
+
+The Delivery Company must not assign a RealMindX order to any person who does not have an approved rider account under the Delivery Company.
+
+The Delivery Company must not transfer or subcontract RealMindX deliveries to another delivery provider without written approval from RealMindX.
+
+8. Rider Conduct
+
+The Delivery Company must ensure that its riders act professionally and respectfully when handling RealMindX orders.
+
+Riders must not insult, harass, threaten, disturb, or take advantage of customers.
+
+Riders must not contact customers for any reason unrelated to delivery.
+
+Riders must not request unauthorised payments from customers.
+
+Riders must not mark an order as delivered unless the delivery has truly been completed and the required OTP process has been followed.
+
+Riders must not misuse customer phone numbers, delivery locations, or order information.
+
+9. Customer Data and Privacy
+
+The Delivery Company will have access to customer information only for the purpose of completing assigned deliveries.
+
+This may include customer name, phone number, delivery location, delivery notes, order reference, and delivery status.
+
+The Delivery Company must protect all customer data and must not use it for marketing, personal contact, resale, sharing, advertising, or any unrelated purpose.
+
+The Delivery Company must not take unnecessary screenshots, copy customer data into personal records, or share customer details on WhatsApp groups or other platforms unless it is strictly required for the assigned delivery and properly controlled.
+
+The Delivery Company must ensure that riders and company users understand and follow these privacy duties.
+
+RealMindX may investigate and act on any suspected misuse of customer data.
+
+10. OTP and Proof of Delivery
+
+RealMindX may require customer OTP confirmation before an order can be marked as delivered.
+
+A rider must only request the OTP when the rider is physically delivering the order to the customer or to a person authorised by the customer to receive the order.
+
+A rider must not ask a customer to send the OTP before arrival.
+
+A rider must not guess, force, fake, bypass, or misuse the OTP.
+
+A delivery is not considered properly completed until the correct OTP has been verified through the platform or RealMindX has approved a manual override.
+
+If there is an OTP problem, the rider or Delivery Company must report the issue through the platform or contact RealMindX through the approved channel.
+
+11. Package Handover and Responsibility
+
+When a RealMindX package is handed over to the Delivery Company, its rider, or its authorised representative, the Delivery Company becomes responsible for the safe handling of that package until it is delivered, returned, or otherwise accounted for.
+
+The Delivery Company must handle all packages carefully and protect them from loss, theft, damage, tampering, water damage, or careless handling.
+
+If a package is lost, damaged, stolen, wrongly delivered, or not properly accounted for due to the fault, negligence, misconduct, or poor supervision of the Delivery Company or its rider, the Delivery Company may be responsible for replacement cost, refund cost, delivery cost, or other reasonable loss suffered by RealMindX.
+
+12. Delivery Status Updates
+
+The Delivery Company and its riders must update delivery status honestly and promptly.
+
+Status updates may include accepted, assigned to rider, picked up, out for delivery, delivered, failed, issue reported, returned, or any other status used by the platform.
+
+The Delivery Company must not enter false delivery updates.
+
+If a delivery cannot be completed, the rider or Delivery Company must report the issue with the correct reason and any necessary notes.
+
+13. Failed Delivery and Returned Orders
+
+If a delivery fails, the Delivery Company must record the correct reason through the platform.
+
+Reasons may include customer unavailable, wrong address, customer unreachable, customer refused delivery, package damaged, vehicle or route delay, payment issue, returned to office, or other valid reason.
+
+The Delivery Company must return undelivered packages to RealMindX or follow RealMindX’s instructions.
+
+A failed delivery must not be marked as delivered.
+
+14. Payments and Delivery Settlements
+
+RealMindX and the Delivery Company may agree on delivery charges, settlement timelines, and payment rules in a signed Delivery Partner Agreement or approved pricing schedule.
+
+For online-paid orders, RealMindX may collect the customer’s payment, including any delivery amount charged to the customer. After successful delivery, RealMindX will settle the agreed delivery company amount according to the settlement records.
+
+For pay-on-delivery orders, the rider or Delivery Company may collect customer payment only where RealMindX has allowed it. The Delivery Company must account for and transfer any book or product amount due to RealMindX according to the settlement records.
+
+Where promotions, free delivery, discounted delivery, failed delivery fees, refunds, penalties, adjustments, or disputes affect payment, the final amount due will be determined from RealMindX’s delivery settlement records and any approved adjustment.
+
+The Delivery Company must review its settlement breakdowns and raise any dispute within the period agreed with RealMindX. If no dispute is raised within that period, RealMindX may treat the settlement record as accepted.
+
+15. Prohibited Conduct
+
+The Delivery Company, its users, and its riders must not:
+
+Use the platform for any purpose outside RealMindX delivery work.
+
+Access or attempt to access another company’s orders.
+
+Share login details with unauthorised persons.
+
+Assign orders to unregistered riders.
+
+Falsify pickup, delivery, OTP, return, issue, or settlement information.
+
+Collect unauthorised money from customers.
+
+Misuse customer information.
+
+Harass, threaten, insult, deceive, or pressure customers.
+
+Tamper with packages.
+
+Keep packages without authorisation.
+
+Delay reporting failed or disputed deliveries.
+
+Attempt to bypass platform security or permission rules.
+
+Use RealMindX branding without permission.
+
+16. Audit Records
+
+RealMindX may keep records of platform activity, including login records, company actions, rider actions, order assignments, status changes, OTP events, issue reports, settlement records, disputes, and payment confirmations.
+
+These records may be used to investigate complaints, settle disputes, confirm payments, review performance, detect misuse, and protect customers.
+
+The Delivery Company agrees that platform records may be relied on as evidence of actions taken through the Delivery Company’s account.
+
+17. Notifications
+
+RealMindX may send notifications to customers, company managers, riders, and staff by SMS, email, platform alert, or other approved communication channel.
+
+The Delivery Company must ensure that its company users and riders provide accurate contact information.
+
+A failure to receive a notification does not excuse the Delivery Company from checking the platform and fulfilling assigned responsibilities.
+
+18. Service Standards
+
+The Delivery Company must make reasonable effort to complete deliveries promptly, safely, and professionally.
+
+The Delivery Company must keep rider information accurate and up to date.
+
+The Delivery Company must respond to RealMindX’s delivery questions, customer complaints, settlement issues, and investigation requests within a reasonable time.
+
+Repeated delays, poor communication, false updates, unresolved complaints, or failed deliveries may lead to suspension, penalties, non-payment, or termination, depending on the signed agreement and the seriousness of the issue.
+
+19. Complaints and Investigations
+
+If RealMindX receives a complaint about a delivery, rider, package, payment, customer contact, or delivery update, the Delivery Company must cooperate with the investigation.
+
+The Delivery Company may be required to provide rider details, delivery explanation, call records where lawful and appropriate, payment confirmation, package return evidence, or other reasonable information.
+
+RealMindX may temporarily withhold settlement or suspend delivery assignments while investigating serious complaints.
+
+20. Suspension and Restriction
+
+RealMindX may suspend or restrict the Delivery Company’s access to the platform if:
+
+The Delivery Company breaches these Terms.
+
+A rider misuses customer data.
+
+There is suspected fraud or false delivery reporting.
+
+A package is lost, stolen, damaged, or not accounted for.
+
+There are repeated customer complaints.
+
+Settlement amounts are not transferred when due.
+
+There is a data security concern.
+
+The Delivery Company no longer has an active signed agreement where one is required.
+
+RealMindX believes suspension is necessary to protect customers, the platform, or RealMindX’s business.
+
+21. Termination
+
+RealMindX may terminate or deactivate the Delivery Company’s platform access according to the signed Delivery Partner Agreement or where there is a serious breach of these Terms.
+
+The Delivery Company may request termination of access by written notice to RealMindX.
+
+Termination does not remove obligations already incurred before termination, including payment obligations, confidentiality duties, return of packages, dispute cooperation, and data protection duties.
+
+22. Confidentiality
+
+The Delivery Company must keep confidential all non-public information received from RealMindX.
+
+This includes customer data, order information, business processes, pricing arrangements, settlement records, platform access details, and internal instructions.
+
+The Delivery Company must not disclose confidential information except where required for completing assigned deliveries or where required by law.
+
+23. Platform Availability and Changes
+
+RealMindX may update, modify, suspend, or improve the platform from time to time.
+
+RealMindX will make reasonable efforts to keep the platform working, but does not guarantee that it will always be available without interruption.
+
+The Delivery Company must report technical issues promptly and must not use a technical issue as an excuse to hide, delay, or falsify delivery information.
+
+24. Updates to These Terms
+
+RealMindX may update these Terms from time to time.
+
+Where the Terms are updated, the Delivery Company may be required to accept the updated version before continuing to use the platform.
+
+Continued use of the platform after updated Terms become effective means the Delivery Company accepts the updated Terms.
+
+25. Governing Law
+
+These Terms shall be governed by the laws of the Republic of Ghana.
+
+Any dispute arising from these Terms shall first be addressed through good faith discussion between RealMindX and the Delivery Company. If the dispute cannot be resolved, it may be handled according to the dispute resolution process in the signed Delivery Partner Agreement or under the applicable laws of Ghana.
+
+26. Acceptance
+
+By signing in, ticking an acceptance box, creating rider accounts, assigning deliveries, accepting assigned orders, or continuing to use the RealMindX Delivery Company Platform, the Delivery Company confirms that it agrees to these Terms and accepts responsibility for its company users and riders.

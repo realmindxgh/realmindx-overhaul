@@ -57,7 +57,7 @@ OTP_OVERRIDE_REASONS = {
     "other": "Other",
 }
 
-OTP_EXPIRY_HOURS = 24
+OTP_EXPIRY_HOURS = 48
 OTP_MAX_ATTEMPTS = 5
 OTP_RESEND_COOLDOWN_SECONDS = 120
 
@@ -253,8 +253,8 @@ def send_portal_access_notification(profile, account_kind, temporary_password=DE
     phone = getattr(profile, "phone", None)
     name = getattr(profile, "name", None) or "Delivery portal user"
     is_rider = account_kind == "rider"
-    portal_path = "/delivery/login" if is_rider else "/delivery-company/login"
-    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}{portal_path}"
+    portal_path = "/rider/login" if is_rider else "/manager/login"
+    portal_url = f"{current_app.config['DELIVERY_URL'].rstrip('/')}{portal_path}"
     label = "rider" if is_rider else "company manager"
     sms_text = (
         f"Your RealMindX {label} account is ready. Login: {phone}. "
@@ -421,7 +421,7 @@ def _notify_delivery_partner(delivery):
         "<p>Sign in to the delivery company portal to accept the order and assign a rider.</p>",
         text,
         cta_label="Open delivery company portal",
-        cta_url=f"{current_app.config.get('BASE_URL', '').rstrip('/')}/delivery-company/",
+        cta_url=f"{current_app.config['DELIVERY_URL'].rstrip('/')}/manager/",
     )
     log_delivery_event(
         delivery,

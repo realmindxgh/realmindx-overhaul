@@ -18,12 +18,14 @@ from ..delivery_service import (
     create_rider,
     mark_picked_up,
     report_delivery_issue,
+    resend_delivery_otp,
     reset_portal_password,
     send_portal_access_notification,
 )
 from ..extensions import db, limiter
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..models import DeliveryCompanyUser, DeliveryRider, DeliverySettlementBatch, OrderDelivery
+from ..platform_terms import accept_current_terms, has_accepted_current_terms, terms_payload
 from ..settlement_service import SettlementError, batch_json, line_json, log_settlement_event, raise_dispute
 from ..security import DEFAULT_TEMPORARY_PASSWORD
 from ..serializers import delivery_company_user_json, delivery_json, delivery_rider_json, user_json
@@ -49,7 +51,7 @@ def _role_name(user):
     return getattr(getattr(user, "role", None), "name", None)
 
 
-def _company_profile():
+def _company_profile(require_terms=True):
     if not current_user.is_authenticated or _role_name(current_user) != "delivery_company_user":
         raise DeliveryError("Company portal access required.", 403, "company_access_required")
     profile = DeliveryCompanyUser.query.filter_by(user_id=current_user.id).first()
@@ -57,10 +59,12 @@ def _company_profile():
         raise DeliveryError("This company portal account is inactive.", 403, "inactive_account")
     if not profile.company or not profile.company.is_active:
         raise DeliveryError("This delivery company is inactive.", 403, "company_inactive")
+    if require_terms and not has_accepted_current_terms(current_user.id, "delivery_company_terms"):
+        raise DeliveryError("Accept the current Delivery Company Platform Terms to continue.", 428, "terms_acceptance_required")
     return profile
 
 
-def _rider_profile():
+def _rider_profile(require_terms=True):
     if not current_user.is_authenticated or _role_name(current_user) != "delivery_rider":
         raise DeliveryError("Rider portal access required.", 403, "rider_access_required")
     profile = DeliveryRider.query.filter_by(user_id=current_user.id).first()
@@ -68,7 +72,17 @@ def _rider_profile():
         raise DeliveryError("This rider account is inactive.", 403, "inactive_account")
     if not profile.company or not profile.company.is_active:
         raise DeliveryError("This delivery company is inactive.", 403, "company_inactive")
+    if require_terms and not has_accepted_current_terms(current_user.id, "rider_terms"):
+        raise DeliveryError("Accept the current Rider Platform Terms to continue.", 428, "terms_acceptance_required")
     return profile
+
+
+def _client_ip():
+    for header in ("X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"):
+        value = request.headers.get(header)
+        if value:
+            return value.split(",")[0].strip()
+    return request.remote_addr or None
 
 
 def _company_delivery_or_404(delivery_id, profile):
@@ -124,6 +138,56 @@ def rider_login():
     return jsonify(user=user_json(user), rider=delivery_rider_json(profile))
 
 
+@delivery_bp.get("/company/terms/current")
+def company_terms_current():
+    user_id = current_user.id if current_user.is_authenticated and _role_name(current_user) == "delivery_company_user" else None
+    if user_id:
+        audit("platform_terms_viewed", "platform_terms", "delivery_company_terms", {"version": terms_payload("delivery_company_terms")["version"]})
+        db.session.commit()
+    return jsonify(terms=terms_payload("delivery_company_terms", user_id))
+
+
+@delivery_bp.post("/company/terms/accept")
+@login_required
+def company_terms_accept():
+    payload = request.get_json(silent=True) or {}
+    try:
+        profile = _company_profile(require_terms=False)
+        _require_password_changed()
+        accept_current_terms(current_user, profile, "delivery_company_terms", payload.get("version"), payload.get("hash"), _client_ip(), request.headers.get("User-Agent"))
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    except ValueError as exc:
+        return jsonify(error=str(exc), code="terms_version_mismatch"), 409
+    db.session.commit()
+    return jsonify(terms=terms_payload("delivery_company_terms", current_user.id), company_user=delivery_company_user_json(profile))
+
+
+@delivery_bp.get("/rider/terms/current")
+def rider_terms_current():
+    user_id = current_user.id if current_user.is_authenticated and _role_name(current_user) == "delivery_rider" else None
+    if user_id:
+        audit("platform_terms_viewed", "platform_terms", "rider_terms", {"version": terms_payload("rider_terms")["version"]})
+        db.session.commit()
+    return jsonify(terms=terms_payload("rider_terms", user_id))
+
+
+@delivery_bp.post("/rider/terms/accept")
+@login_required
+def rider_terms_accept():
+    payload = request.get_json(silent=True) or {}
+    try:
+        profile = _rider_profile(require_terms=False)
+        _require_password_changed()
+        accept_current_terms(current_user, profile, "rider_terms", payload.get("version"), payload.get("hash"), _client_ip(), request.headers.get("User-Agent"))
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    except ValueError as exc:
+        return jsonify(error=str(exc), code="terms_version_mismatch"), 409
+    db.session.commit()
+    return jsonify(terms=terms_payload("rider_terms", current_user.id), rider=delivery_rider_json(profile))
+
+
 @delivery_bp.post("/logout")
 @login_required
 def delivery_logout():
@@ -138,7 +202,7 @@ def delivery_logout():
 @login_required
 def company_me():
     try:
-        profile = _company_profile()
+        profile = _company_profile(require_terms=False)
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     company_user = delivery_company_user_json(profile)
@@ -342,6 +406,21 @@ def company_report_issue(delivery_id):
     return jsonify(delivery=delivery_json(delivery, include_events=True, rider_safe=True))
 
 
+@delivery_bp.post("/company/deliveries/<int:delivery_id>/resend-otp")
+@login_required
+def company_resend_otp(delivery_id):
+    try:
+        profile = _company_profile()
+        _require_password_changed()
+        delivery = _company_delivery_or_404(delivery_id, profile)
+        otp = resend_delivery_otp(delivery, actor_from_user(current_user))
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    audit("delivery_company_resend_otp", "order_delivery", delivery.id, {"otp_id": otp.id, "company_id": profile.company_id})
+    db.session.commit()
+    return jsonify(delivery=delivery_json(delivery, include_events=True, rider_safe=True), message="A fresh OTP was sent to the customer.")
+
+
 @delivery_bp.get("/company/settlements")
 @login_required
 def company_settlements():
@@ -444,7 +523,7 @@ def company_settlement_export(batch_id, export_format):
 @login_required
 def rider_me():
     try:
-        rider = _rider_profile()
+        rider = _rider_profile(require_terms=False)
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     return jsonify(user=user_json(current_user), rider=delivery_rider_json(rider))
@@ -479,6 +558,21 @@ def rider_pickup(delivery_id):
         return _delivery_error_response(exc)
     db.session.commit()
     return jsonify(delivery=delivery_json(delivery, rider_safe=True))
+
+
+@delivery_bp.post("/rider/deliveries/<int:delivery_id>/resend-otp")
+@login_required
+def rider_resend_otp(delivery_id):
+    try:
+        rider = _rider_profile()
+        _require_password_changed()
+        delivery = _rider_delivery_or_404(delivery_id, rider)
+        otp = resend_delivery_otp(delivery, actor_from_user(current_user))
+    except DeliveryError as exc:
+        return _delivery_error_response(exc)
+    audit("delivery_rider_resend_otp", "order_delivery", delivery.id, {"otp_id": otp.id})
+    db.session.commit()
+    return jsonify(delivery=delivery_json(delivery, rider_safe=True), message="A fresh OTP was sent to the customer.")
 
 
 @delivery_bp.post("/rider/deliveries/<int:delivery_id>/deliver")

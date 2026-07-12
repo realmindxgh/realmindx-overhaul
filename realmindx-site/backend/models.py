@@ -451,6 +451,29 @@ class DeliveryRider(TimestampMixin, db.Model):
     user = db.relationship("User", backref=db.backref("delivery_rider_profile", uselist=False, cascade="all, delete-orphan"))
 
 
+class PlatformTermsAcceptance(TimestampMixin, db.Model):
+    __tablename__ = "platform_terms_acceptances"
+    __table_args__ = (
+        UniqueConstraint("user_id", "terms_type", "terms_version", "terms_hash", name="uq_platform_terms_acceptance"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    actor_type = db.Column(db.String(40), nullable=False, index=True)
+    delivery_company_id = db.Column(db.Integer, db.ForeignKey("delivery_companies.id"), nullable=True, index=True)
+    rider_id = db.Column(db.Integer, db.ForeignKey("delivery_riders.id"), nullable=True, index=True)
+    terms_type = db.Column(db.String(60), nullable=False, index=True)
+    terms_version = db.Column(db.String(80), nullable=False, index=True)
+    terms_hash = db.Column(db.String(64), nullable=False, index=True)
+    accepted_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(500), nullable=True)
+
+    user = db.relationship("User", backref="platform_terms_acceptances")
+    delivery_company = db.relationship("DeliveryCompany", backref="platform_terms_acceptances")
+    rider = db.relationship("DeliveryRider", backref="platform_terms_acceptances")
+
+
 class OrderDelivery(TimestampMixin, db.Model):
     __tablename__ = "order_deliveries"
 

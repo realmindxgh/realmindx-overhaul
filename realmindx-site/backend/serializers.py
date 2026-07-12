@@ -251,7 +251,8 @@ def delivery_company_json(company):
 def delivery_company_user_json(company_user):
     if not company_user:
         return None
-    return {
+    from .platform_terms import acceptance_status
+    result = {
         "id": company_user.id,
         "company_id": company_user.company_id,
         "user_id": company_user.user_id,
@@ -263,6 +264,8 @@ def delivery_company_user_json(company_user):
         "must_change_password": bool(getattr(company_user.user, "must_change_password", False)),
         "created_at": company_user.created_at.isoformat() if company_user.created_at else None,
     }
+    result["terms"] = acceptance_status(company_user.user_id, "delivery_company_terms")
+    return result
 
 
 def delivery_rider_json(rider):
@@ -274,7 +277,8 @@ def delivery_rider_json(rider):
         if delivery.status in {"assigned_to_rider", "picked_up", "issue_reported"}
     ]
     completed = [delivery for delivery in (getattr(rider, "deliveries", []) or []) if delivery.status == "delivered"]
-    return {
+    from .platform_terms import acceptance_status
+    result = {
         "id": rider.id,
         "company_id": rider.company_id,
         "user_id": rider.user_id,
@@ -288,6 +292,8 @@ def delivery_rider_json(rider):
         "must_change_password": bool(getattr(rider.user, "must_change_password", False)),
         "created_at": rider.created_at.isoformat() if rider.created_at else None,
     }
+    result["terms"] = acceptance_status(rider.user_id, "rider_terms")
+    return result
 
 
 def delivery_event_json(event):

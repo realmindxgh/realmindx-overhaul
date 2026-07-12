@@ -3530,6 +3530,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                 ['Email', companyDetail.company?.contact_email || '-'],
                 ['Active Deliveries', companyDetail.company?.active_deliveries ?? 0],
                 ['Delivered', companyDetail.company?.completed_deliveries ?? 0],
+                ['Company Terms', (companyDetail.managers || []).some(manager => manager.terms?.accepted) ? 'Accepted' : 'Pending'],
+                ['Terms Version', (companyDetail.managers || []).find(manager => manager.terms?.accepted)?.terms?.version || '-'],
               ].map(([label, value]) => (
                 <div key={label}><span>{label}</span><strong>{value}</strong></div>
               ))}
@@ -3544,6 +3546,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
             {companyDetailTab === 'overview' && (
               <div className="delivery-company-overview">
+                {!(companyDetail.managers || []).some(manager => manager.terms?.accepted) ? (
+                  <p className="form-warning">No active company manager has accepted the current Delivery Company Platform Terms. Confirm acceptance before assigning live orders.</p>
+                ) : null}
                 <h4>Company Notes</h4>
                 <p>{companyDetail.company?.notes || 'No internal notes have been added.'}</p>
                 <h4>Operational Summary</h4>
@@ -3565,7 +3570,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                   {(companyDetail.managers || []).length === 0 ? <p>No company managers yet.</p> : null}
                   {(companyDetail.managers || []).map(manager => (
                     <div className="delivery-company-person-row" key={manager.id}>
-                      <div><strong>{manager.name}</strong><span>{manager.phone} | {manager.is_active ? 'Active' : 'Inactive'}{manager.must_change_password ? ' | Password change required' : ''}</span></div>
+                      <div><strong>{manager.name}</strong><span>{manager.phone} | {manager.is_active ? 'Active' : 'Inactive'}{manager.must_change_password ? ' | Password change required' : ''} | Terms {manager.terms?.accepted ? `accepted ${manager.terms.accepted_at ? new Date(manager.terms.accepted_at).toLocaleString() : ''}` : 'pending'}</span></div>
                       {canManageDeliveryCompanies && <button className="btn btn-outline-navy btn-sm" type="button" disabled={companyDetailBusy} onClick={() => resetCompanyManagerPassword(manager.id)}>Reset to 12345678</button>}
                     </div>
                   ))}
@@ -3578,7 +3583,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                 {(companyDetail.riders || []).length === 0 ? <p>Riders are created by the company manager in the company portal.</p> : null}
                 {(companyDetail.riders || []).map(rider => (
                   <button className="delivery-company-rider-row" type="button" key={rider.id} onClick={() => openCompanyRiderDetail(rider)}>
-                    <span><strong>{rider.name}</strong><small>{rider.phone} | {rider.is_active ? 'Active' : 'Inactive'}</small></span>
+                    <span><strong>{rider.name}</strong><small>{rider.phone} | {rider.is_active ? 'Active' : 'Inactive'} | Terms {rider.terms?.accepted ? 'accepted' : 'pending'}</small></span>
                     <span>{rider.active_deliveries || 0} active</span>
                     <span>{rider.completed_deliveries || 0} delivered</span>
                     <Icon name="chevR" size={16} />
@@ -3604,7 +3609,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             {companyRiderDetail && (
               <section className="delivery-company-rider-detail">
                 <div className="delivery-company-rider-detail-head">
-                  <div><span>Rider Details</span><h4>{companyRiderDetail.rider?.name}</h4><p>{companyRiderDetail.rider?.phone} | {companyRiderDetail.rider?.is_active ? 'Active' : 'Inactive'}</p></div>
+                  <div><span>Rider Details</span><h4>{companyRiderDetail.rider?.name}</h4><p>{companyRiderDetail.rider?.phone} | {companyRiderDetail.rider?.is_active ? 'Active' : 'Inactive'} | Terms {companyRiderDetail.rider?.terms?.accepted ? `accepted (${companyRiderDetail.rider.terms.version})${companyRiderDetail.rider.terms.accepted_at ? ` on ${new Date(companyRiderDetail.rider.terms.accepted_at).toLocaleString()}` : ''}` : 'pending'}</p></div>
                   <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setCompanyRiderDetail(null)}>Back to Riders</button>
                 </div>
                 {companyRiderDetailBusy ? <p>Loading rider history...</p> : (

@@ -345,7 +345,10 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
       toast.success('Email verified! You can now sign in.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       setTimeout(() => {
+        setSuccess('');
+        setError('');
         setMode('login');
+        window.history.replaceState({}, '', '/login?verified=1');
         toast.info('Sign in with the email and password you just chose.');
       }, 1200);
     } catch (err) {

@@ -459,6 +459,7 @@ const JobsPage = () => {
   const managedJobs = publicItems(useManagedCollection('jobs'));
   const [apiJobs, setApiJobs] = React.useState(null);
   const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
+  const [sessionResolved, setSessionResolved] = React.useState(() => !isApiMode());
 
   React.useEffect(() => {
     if (!isApiMode()) return;
@@ -475,9 +476,13 @@ const JobsPage = () => {
     const refresh = () => setSession(getDemoSession());
     window.addEventListener('rmx-session-sync', refresh);
     window.addEventListener('storage', refresh);
-    syncSessionFromApi().then(freshSession => {
-      if (alive) setSession(freshSession);
-    });
+    syncSessionFromApi()
+      .then(freshSession => {
+        if (alive) setSession(freshSession);
+      })
+      .finally(() => {
+        if (alive) setSessionResolved(true);
+      });
     return () => {
       alive = false;
       window.removeEventListener('rmx-session-sync', refresh);
@@ -764,7 +769,7 @@ const JobsPage = () => {
       )}
 
       {/* "Never Miss a Job" one-time alert modal */}
-      {showAlertModal && !selectedJob && !showFilterModal && (
+      {sessionResolved && showAlertModal && !session && !selectedJob && !showFilterModal && (
         <JobAlertModal isLoggedIn={isTeacherLoggedIn} onDismiss={dismissAlertModal} />
       )}
     </>

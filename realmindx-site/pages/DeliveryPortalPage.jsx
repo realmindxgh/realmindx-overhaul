@@ -4,7 +4,7 @@ import { Icon } from '../assets/components.jsx';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
 import { signInWithPhone, signOut } from '../../src/lib/authClient.js';
 import { clearDemoSession } from '../../src/lib/demoAccounts.js';
-import { loginPathForRole } from '../../src/lib/sessionRoutes.js';
+import { dashboardPathForRole, loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 import { copyTextToClipboard } from '../../src/lib/clipboard.js';
 import toast from '../../src/lib/toast.js';
@@ -79,6 +79,7 @@ const DeliveryLogin = ({ role }) => {
   const [form, setForm] = React.useState({ phone: '', password: '', remember: true });
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const [showTerms, setShowTerms] = React.useState(false);
   const set = key => event => {
     const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
     setForm(prev => ({ ...prev, [key]: value }));
@@ -94,7 +95,7 @@ const DeliveryLogin = ({ role }) => {
     setBusy(true);
     try {
       await signInWithPhone({ ...form, role });
-      window.location.href = isCompany ? '/delivery-company/' : '/delivery/';
+      window.location.href = dashboardPathForRole(role);
     } catch (err) {
       setError(err?.message || 'Could not sign in.');
     } finally {
@@ -120,7 +121,12 @@ const DeliveryLogin = ({ role }) => {
           <span>Keep me signed in</span>
         </label>
         <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Signing in...' : 'Sign In'}</button>
+        <p className="delivery-login-terms">
+          By signing in to use the {isCompany ? 'RealMindX Delivery Company Platform' : 'RealMindX Rider Platform'}, you agree to the{' '}
+          <button type="button" onClick={() => setShowTerms(true)}>{isCompany ? 'RealMindX Delivery Company Platform Terms' : 'RealMindX Rider Platform Terms'}</button>.
+        </p>
       </form>
+      {showTerms ? <DeliveryTermsModal role={role} onClose={() => setShowTerms(false)} /> : null}
     </PortalShell>
   );
 };
@@ -290,6 +296,59 @@ const ForcedDeliveryPasswordModal = ({ accountLabel, onChanged, onSignOut }) => 
   );
 };
 
+const DeliveryTermsModal = ({ role, required = false, onClose, onAccepted, onSignOut }) => {
+  const isCompany = role === 'delivery_company_user';
+  const [terms, setTerms] = React.useState(null);
+  const [agreed, setAgreed] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    let alive = true;
+    (isCompany ? api.deliveryCompanyTerms() : api.deliveryRiderTerms())
+      .then(result => { if (alive) setTerms(result.terms); })
+      .catch(err => { if (alive) setError(err?.message || 'Could not load the platform terms.'); });
+    return () => { alive = false; };
+  }, [isCompany]);
+
+  const accept = async () => {
+    if (!terms || !agreed) return;
+    setBusy(true); setError('');
+    try {
+      const result = await (isCompany ? api.deliveryCompanyAcceptTerms : api.deliveryRiderAcceptTerms)({ version: terms.version, hash: terms.hash });
+      toast.success('Platform Terms accepted.');
+      onAccepted?.(result.terms);
+    } catch (err) {
+      setError(err?.message || 'Could not record your acceptance.');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="delivery-password-modal-backdrop delivery-terms-backdrop" role="presentation" onMouseDown={event => { if (!required && event.target === event.currentTarget) onClose?.(); }}>
+      <section className="delivery-password-modal delivery-terms-modal" role="dialog" aria-modal="true" aria-label={terms?.title || 'Platform Terms'}>
+        <div className="delivery-password-modal-head">
+          <div><span>Platform Terms</span><h2>{terms?.title || 'Loading terms...'}</h2>{terms ? <p>Effective {terms.effective_date} | Version {terms.version}</p> : null}</div>
+          {!required ? <button className="delivery-icon-button" type="button" onClick={onClose} aria-label="Close"><Icon name="x" size={20} /></button> : null}
+        </div>
+        {error ? <p className="form-error">{error}</p> : null}
+        {!terms && !error ? <EmptyState title="Loading Terms" body="Preparing the current legal terms." /> : null}
+        {terms ? <div className="delivery-terms-content" tabIndex="0">
+          {(terms.intro || []).map((paragraph, index) => <p key={`intro-${index}`}>{paragraph}</p>)}
+          {(terms.sections || []).map(section => <section key={section.heading}><h3>{section.heading}</h3>{section.paragraphs.map((paragraph, index) => <p key={`${section.heading}-${index}`}>{paragraph}</p>)}</section>)}
+        </div> : null}
+        {terms ? <div className="delivery-terms-footer">
+          <a href={terms.download_url} target="_blank" rel="noreferrer" className="btn btn-outline-navy btn-sm">Download DOCX</a>
+          {required ? <label className="delivery-check delivery-terms-check"><input type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} /><span>{terms.checkbox_wording}</span></label> : null}
+          <div className="delivery-modal-actions">
+            {required ? <button className="btn btn-outline-navy" type="button" onClick={onSignOut}>Sign Out</button> : <button className="btn btn-outline-navy" type="button" onClick={onClose}>Close</button>}
+            {required ? <button className="btn btn-primary" type="button" disabled={!agreed || busy} onClick={accept}>{busy ? 'Recording Acceptance...' : 'I Agree and Continue'}</button> : null}
+          </div>
+        </div> : null}
+      </section>
+    </div>
+  );
+};
+
 const DeliveryMeta = ({ delivery, riderSafe = false }) => (
   <dl className="delivery-meta">
     <div><dt>Order</dt><dd>{delivery.order_reference}</dd></div>
@@ -359,6 +418,7 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
             </button>
           </>
         ) : null}
+        {delivery.status === 'picked_up' ? <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryCompanyResendOtp(delivery.id))}>Resend Customer OTP</button> : null}
       </div>
       {!['delivered', 'cancelled', 'returned', 'failed'].includes(delivery.status) ? (
         <div className="delivery-issue-row">
@@ -441,6 +501,7 @@ const RiderManagementRow = ({ rider, onChanged, onEdit, onSelect }) => {
         <span>{rider.phone}</span>
       </div>
       <span className={`delivery-status-pill ${rider.is_active ? 'active' : 'inactive'}`}>{rider.is_active ? 'Active' : 'Inactive'}</span>
+      <span className={`delivery-status-pill ${rider.terms?.accepted ? 'active' : 'inactive'}`}>{rider.terms?.accepted ? 'Terms accepted' : 'Terms pending'}</span>
       <span className="delivery-rider-count"><strong>{rider.active_deliveries || 0}</strong> active</span>
       <span className="delivery-rider-count"><strong>{rider.completed_deliveries || 0}</strong> delivered</span>
       <div className="delivery-row-actions">
@@ -535,11 +596,16 @@ const CompanyPortal = () => {
     if (!isApiMode()) return;
     try {
       const me = await api.deliveryCompanyMe();
+      const nextProfile = { ...me.company_user, must_change_password: Boolean(me.user?.must_change_password) };
+      setProfile(nextProfile);
+      if (nextProfile.must_change_password || !nextProfile.terms?.accepted) {
+        setError('');
+        return;
+      }
       const [deliveryData, riderData] = await Promise.all([
         api.deliveryCompanyDeliveries('all'),
         api.deliveryCompanyRiders(),
       ]);
-      setProfile({ ...me.company_user, must_change_password: Boolean(me.user?.must_change_password) });
       setDeliveries(deliveryData.items || []);
       setRiders(riderData.items || []);
       setError('');
@@ -700,6 +766,14 @@ const CompanyPortal = () => {
           onSignOut={logout}
         />
       ) : null}
+      {profile && !profile.must_change_password && !profile.terms?.accepted ? (
+        <DeliveryTermsModal
+          role="delivery_company_user"
+          required
+          onAccepted={terms => { setProfile(current => ({ ...current, terms })); load(); }}
+          onSignOut={logout}
+        />
+      ) : null}
     </PortalShell>
   );
 };
@@ -733,8 +807,10 @@ const RiderDeliveryCard = ({ delivery, onAction }) => {
         ) : null}
         {delivery.status === 'picked_up' ? (
           <>
+            <p className="delivery-otp-warning">Enter the OTP only when you are physically delivering the package to the customer or an authorised receiver.</p>
             <input value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Customer OTP" inputMode="numeric" />
             <button className="btn btn-primary btn-sm" type="button" onClick={() => onAction(() => api.deliveryRiderDeliver(delivery.id, otp))}>Mark Delivered</button>
+            <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryRiderResendOtp(delivery.id))}>Resend OTP</button>
           </>
         ) : null}
       </div>
@@ -765,11 +841,14 @@ const RiderPortal = () => {
   const load = React.useCallback(async () => {
     if (!isApiMode()) return;
     try {
-      const [me, deliveryData] = await Promise.all([
-        api.deliveryRiderMe(),
-        api.deliveryRiderDeliveries('all'),
-      ]);
-      setRider({ ...me.rider, must_change_password: Boolean(me.user?.must_change_password) });
+      const me = await api.deliveryRiderMe();
+      const nextRider = { ...me.rider, must_change_password: Boolean(me.user?.must_change_password) };
+      setRider(nextRider);
+      if (nextRider.must_change_password || !nextRider.terms?.accepted) {
+        setError('');
+        return;
+      }
+      const deliveryData = await api.deliveryRiderDeliveries('all');
       setDeliveries(deliveryData.items || []);
       setError('');
     } catch (err) {
@@ -841,6 +920,14 @@ const RiderPortal = () => {
         <ForcedDeliveryPasswordModal
           accountLabel="rider"
           onChanged={() => { setRider(current => ({ ...current, must_change_password: false })); load(); }}
+          onSignOut={logout}
+        />
+      ) : null}
+      {rider && !rider.must_change_password && !rider.terms?.accepted ? (
+        <DeliveryTermsModal
+          role="delivery_rider"
+          required
+          onAccepted={terms => { setRider(current => ({ ...current, terms })); load(); }}
           onSignOut={logout}
         />
       ) : null}

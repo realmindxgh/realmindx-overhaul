@@ -3095,7 +3095,7 @@ def admin_mark_delivery_settlement_paid(batch_id):
     db.session.commit()
     company_email = (batch.company.contact_email or "").strip() if batch.company else ""
     if company_email:
-        portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/delivery-company/"
+        portal_url = f"{current_app.config['DELIVERY_URL'].rstrip('/')}/manager/"
         try:
             send_email(OutboundEmail(
                 to=company_email,

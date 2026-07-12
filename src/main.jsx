@@ -704,6 +704,8 @@ const shouldNoIndexPath = (path) => (
   || path.startsWith('/admin')
   || path.startsWith('/staff')
   || path.startsWith('/delivery-company')
+  || path.startsWith('/manager')
+  || path.startsWith('/rider')
   || path.startsWith('/delivery')
 );
 
@@ -737,9 +739,9 @@ const RouteTitle = () => {
       meta = { title: 'RealMindX Admin - RealMindX Education', desc: 'Secure RealMindX administration portal.' };
     } else if (path.startsWith('/staff')) {
       meta = { title: 'RealMindX Staff - RealMindX Education', desc: 'Secure RealMindX staff portal.' };
-    } else if (path.startsWith('/delivery-company')) {
+    } else if (path.startsWith('/delivery-company') || path.startsWith('/manager')) {
       meta = { title: 'RealMindX Delivery Company Portal', desc: 'Secure dispatch portal for RealMindX delivery partners.' };
-    } else if (path.startsWith('/delivery')) {
+    } else if (path.startsWith('/delivery') || path.startsWith('/rider')) {
       meta = { title: 'RealMindX Rider Portal - RealMindX Education', desc: 'Secure delivery workspace for assigned RealMindX riders.' };
     } else if (path.startsWith('/portal')) {
       meta = { title: 'My RealMindX Profile - RealMindX Education', desc: 'Secure RealMindX teacher account portal.' };
@@ -829,7 +831,12 @@ const RouteTitle = () => {
     setHeadMeta('twitter:title', meta.title);
     setHeadMeta('twitter:description', meta.desc);
     setHeadMeta('twitter:image', image);
-    setFavicons({ icon: '/favicon.png', appleTouchIcon: '/apple-touch-icon.png' });
+    const portalIcon = path.startsWith('/manager') || path.startsWith('/delivery-company')
+      ? '/delivery-assets/delivery-company-icon.png'
+      : path.startsWith('/rider') || path.startsWith('/delivery')
+        ? '/delivery-assets/rider-icon.png'
+        : '/favicon.png';
+    setFavicons({ icon: portalIcon, appleTouchIcon: portalIcon === '/favicon.png' ? '/apple-touch-icon.png' : portalIcon });
     setHeadLink('canonical', url);
     setStructuredData('route-seo', structuredData);
   }, [location.pathname, newsState.failed, newsState.items, newsState.loading, services, servicesState.loading]);
@@ -865,6 +872,8 @@ const IdleGuard = () => {
     || location.pathname.startsWith('/admin')
     || location.pathname.startsWith('/staff')
     || location.pathname.startsWith('/delivery-company')
+    || location.pathname.startsWith('/manager')
+    || location.pathname.startsWith('/rider')
     || location.pathname.startsWith('/delivery');
 
   React.useEffect(() => {
@@ -911,6 +920,8 @@ const SessionBridge = () => {
       || location.pathname.startsWith('/staff')
       || location.pathname.startsWith('/portal')
       || location.pathname.startsWith('/delivery-company')
+      || location.pathname.startsWith('/manager')
+      || location.pathname.startsWith('/rider')
       || location.pathname.startsWith('/delivery')
     ) {
       return undefined;
@@ -937,6 +948,8 @@ const RouteAnalyticsTracker = () => {
       || path.startsWith('/staff')
       || path.startsWith('/portal')
       || path.startsWith('/delivery-company')
+      || path.startsWith('/manager')
+      || path.startsWith('/rider')
       || path.startsWith('/delivery')
     ) return;
 
@@ -984,6 +997,9 @@ const RouteAnalyticsTracker = () => {
 const isBookshopSubdomain =
   typeof window !== 'undefined' &&
   window.location.hostname.startsWith('bookshop.');
+const isDeliverySubdomain =
+  typeof window !== 'undefined' &&
+  window.location.hostname.startsWith('delivery.');
 
 const FOCUS_FLYER_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const FOCUS_FLYER_SEEN_KEY = 'rmx-focus-flyer-seen-at-v2';
@@ -1002,6 +1018,8 @@ const InstalledSurfaceLinkGuard = () => {
     const path = window.location.pathname;
     const host = window.location.hostname;
     const scope = host.startsWith('bookshop.') ? '/'
+      : path.startsWith('/manager') ? '/manager/'
+      : path.startsWith('/rider') ? '/rider/'
       : path.startsWith('/delivery-company') ? '/delivery-company/'
       : path.startsWith('/delivery') ? '/delivery/'
       : path.startsWith('/admin') ? '/admin/'
@@ -1096,7 +1114,10 @@ const FlyerFocusModal = () => {
 
 const AppRoutes = () => {
   const deliveryPortalPath = typeof window !== 'undefined'
-    && (window.location.pathname.startsWith('/delivery-company') || window.location.pathname.startsWith('/delivery'));
+    && (window.location.pathname.startsWith('/delivery-company')
+      || window.location.pathname.startsWith('/delivery')
+      || window.location.pathname.startsWith('/manager')
+      || window.location.pathname.startsWith('/rider'));
   if (isBookshopSubdomain && !deliveryPortalPath) {
     return (
       <>
@@ -1119,7 +1140,7 @@ const AppRoutes = () => {
       <IdleGuard />
       <HashScroll>
         <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={isDeliverySubdomain ? <Navigate to="/manager/login" replace /> : <HomePage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/services/:serviceSlug" element={<ServiceDetailPage />} />
@@ -1149,6 +1170,10 @@ const AppRoutes = () => {
         <Route path="/delivery-company/*" element={<DeliveryPortalPage role="delivery_company_user" />} />
         <Route path="/delivery/login" element={<DeliveryPortalPage role="delivery_rider" />} />
         <Route path="/delivery/*" element={<DeliveryPortalPage role="delivery_rider" />} />
+        <Route path="/manager/login" element={<DeliveryPortalPage role="delivery_company_user" />} />
+        <Route path="/manager/*" element={<DeliveryPortalPage role="delivery_company_user" />} />
+        <Route path="/rider/login" element={<DeliveryPortalPage role="delivery_rider" />} />
+        <Route path="/rider/*" element={<DeliveryPortalPage role="delivery_rider" />} />
 
         <Route path="/bookshop/*" element={<BookshopApp />} />
 

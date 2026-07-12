@@ -69,7 +69,7 @@
 .bs-container { max-width: 1240px; margin: 0 auto; padding: 0 28px; width: 100%; }
 .bs-container-narrow { max-width: 920px; margin: 0 auto; padding: 0 28px; width: 100%; }
 .bs-page { padding-top: var(--bs-nav-h); min-height: 100vh; }
-.bs-app-back-row { width: min(100%, 1320px); margin: 0 auto; padding: 16px 28px 0; min-height: 60px; display: flex; align-items: center; }
+.bs-app-back-row { width: min(100%, 1320px); margin: 0 auto; padding: 16px 28px 0; min-height: 60px; display: flex; align-items: center; gap: 10px; }
 .bs-app-back { width: 42px; height: 42px; border: 1px solid var(--bs-border) !important; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #fff !important; color: var(--bs-navy) !important; box-shadow: var(--bs-shadow-sm); transition: border-color .2s, background .2s, transform .2s; }
 .bs-app-back:hover { border-color: var(--bs-navy) !important; background: var(--bs-off-white) !important; transform: translateX(-2px); }
 @media (max-width: 768px) { body.bs-has-bottomnav .bs-page { padding-bottom: var(--bs-bottomnav-h); } }
