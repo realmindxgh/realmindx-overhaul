@@ -9,6 +9,14 @@ BOOKSHOP_START_MARKER = "    # BEGIN REALMINDX MANAGED BOOKSHOP SEO ROUTES"
 BOOKSHOP_END_MARKER = "    # END REALMINDX MANAGED BOOKSHOP SEO ROUTES"
 UPLOAD_LIMIT = "100M"
 ROUTE_BLOCK = f"""{START_MARKER}
+    location ~ ^/delivery-company(?<delivery_company_tail>/.*)?$ {{
+        return 301 https://delivery.realmindxgh.com/manager$delivery_company_tail$is_args$args;
+    }}
+
+    location ~ ^/delivery(?<delivery_rider_tail>/.*)?$ {{
+        return 301 https://delivery.realmindxgh.com/rider$delivery_rider_tail$is_args$args;
+    }}
+
     location = /sitemap.xml {{
         proxy_pass         http://127.0.0.1:5002/sitemap.xml;
         proxy_set_header   Host              $host;
@@ -203,6 +211,7 @@ def remove_legacy_main_routes(block):
         lambda header: "/news/" in header,
         lambda header: "/services/" in header,
         lambda header: "admin|staff|delivery-company|delivery" in header or "manager|rider" in header,
+        lambda header: "delivery_company_tail" in header or "delivery_rider_tail" in header,
     ])
 
 

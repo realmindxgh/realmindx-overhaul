@@ -130,6 +130,30 @@ jobs:
             echo "Bookshop nginx site file not found at $BOOKSHOP_NGINX_SITE; skipping bookshop SEO route installation."
           fi
 
+          echo "Installing delivery portal nginx site"
+          DELIVERY_NGINX_SITE="/etc/nginx/sites-available/delivery.realmindxgh.com"
+          DELIVERY_NGINX_ENABLED="/etc/nginx/sites-enabled/delivery.realmindxgh.com"
+          DELIVERY_NGINX_BACKUP=""
+          if [ -f "$DELIVERY_NGINX_SITE" ]; then
+            DELIVERY_NGINX_BACKUP="$DELIVERY_NGINX_SITE.realmindx-backup"
+            cp "$DELIVERY_NGINX_SITE" "$DELIVERY_NGINX_BACKUP"
+          fi
+          cp deployment/delivery.realmindxgh.com.conf "$DELIVERY_NGINX_SITE"
+          ln -sfn "$DELIVERY_NGINX_SITE" "$DELIVERY_NGINX_ENABLED"
+          if ! nginx -t; then
+            if [ -n "$DELIVERY_NGINX_BACKUP" ]; then
+              mv "$DELIVERY_NGINX_BACKUP" "$DELIVERY_NGINX_SITE"
+            else
+              rm -f "$DELIVERY_NGINX_SITE" "$DELIVERY_NGINX_ENABLED"
+            fi
+            nginx -t
+            echo "Delivery nginx site update failed; restored the previous configuration."
+            exit 1
+          fi
+          if [ -n "$DELIVERY_NGINX_BACKUP" ]; then
+            rm -f "$DELIVERY_NGINX_BACKUP"
+          fi
+
           echo "── Reloading nginx ──"
           systemctl reload nginx
 
