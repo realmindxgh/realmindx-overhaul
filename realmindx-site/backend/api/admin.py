@@ -4751,12 +4751,48 @@ def delete_site_copy_content(copy_id):
     return _delete_admin_collection_item("site_copy", DEFAULT_SITE_COPY, copy_id, "site_copy")
 
 
+SETTING_SCOPES = {"all", "main", "bookshop"}
+
+
+def _split_setting_key(storage_key):
+    for scope in ("main", "bookshop"):
+        prefix = f"{scope}__"
+        if storage_key.startswith(prefix):
+            return scope, storage_key[len(prefix):]
+    return "all", storage_key
+
+
+def _storage_setting_key(key, scope):
+    clean_key = (key or "").strip()
+    clean_scope = (scope or "all").strip().lower()
+    if not clean_key:
+        raise ValueError("Detail Name is required.")
+    if "__" in clean_key:
+        raise ValueError("Detail Name cannot contain double underscores.")
+    if clean_scope not in SETTING_SCOPES:
+        raise ValueError("Choose Both sites, Main website only, or Bookshop only.")
+    return clean_key if clean_scope == "all" else f"{clean_scope}__{clean_key}"
+
+
 @admin_bp.get("/settings")
 @login_required
 @permission_required("settings.view")
 def list_settings():
     rows = SiteSetting.query.order_by(SiteSetting.key.asc()).all()
-    return jsonify(items=[{"id": r.id, "key": r.key, "value": r.value, "public": r.public} for r in rows])
+    items = []
+    for row in rows:
+        scope, display_key = _split_setting_key(row.key)
+        items.append({
+            "id": row.key,
+            "database_id": row.id,
+            "key": display_key,
+            "site_scope": scope,
+            "value": row.value,
+            "public": row.public,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        })
+    return jsonify(items=items)
 
 
 @admin_bp.get("/flyers")
@@ -5054,14 +5090,29 @@ def bulk_delivery_adjust():
 def upsert_setting(key):
     payload = request.get_json(silent=True) or {}
     row = SiteSetting.query.filter_by(key=key).first()
+    display_key = payload.get("key")
+    if display_key is None:
+        _, display_key = _split_setting_key(key)
+    scope = payload.get("site_scope")
+    if scope is None:
+        scope, _ = _split_setting_key(key)
+    try:
+        storage_key = _storage_setting_key(display_key, scope)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    conflict = SiteSetting.query.filter_by(key=storage_key).first()
+    if conflict is not None and conflict is not row:
+        return jsonify(error="That detail already exists for the selected website."), 409
     if not row:
-        row = SiteSetting(key=key)
+        row = SiteSetting(key=storage_key)
         db.session.add(row)
+    else:
+        row.key = storage_key
     row.value = payload.get("value")
     row.public = bool(payload.get("public", row.public))
-    log_action("upsert_setting", "site_setting", key)
+    log_action("upsert_setting", "site_setting", storage_key, {"scope": scope, "detail": display_key})
     db.session.commit()
-    return jsonify(key=row.key, value=row.value, public=row.public)
+    return jsonify(id=row.key, key=display_key, site_scope=scope, value=row.value, public=row.public)
 
 
 @admin_bp.delete("/settings/<string:key>")

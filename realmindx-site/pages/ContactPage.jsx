@@ -285,15 +285,15 @@ const ContactPage = () => {
               We Are Right<br />Here for You
             </h2>
 
-            <div className="contact-info-item">
+            {settings.contact_address && <div className="contact-info-item">
               <div className="cii-icon"><Icon name="mapPin" size={21} stroke={1.8} /></div>
               <div>
                 <p className="cii-label">Our Address</p>
                 <p className="cii-value">{settings.contact_address}</p>
               </div>
-            </div>
+            </div>}
 
-            <div className="contact-info-item">
+            {settings.contact_email && <div className="contact-info-item">
               <div className="cii-icon"><Icon name="mail" size={21} stroke={1.8} /></div>
               <div>
                 <p className="cii-label">Email Us</p>
@@ -303,7 +303,7 @@ const ContactPage = () => {
                   </a>
                 </p>
               </div>
-            </div>
+            </div>}
 
             {phones.length > 0 && (
               <div className="contact-info-item">
@@ -323,14 +323,14 @@ const ContactPage = () => {
               </div>
             )}
 
-            <div className="contact-info-item">
+            {(settings.working_hours_weekday || settings.working_hours_saturday) && <div className="contact-info-item">
               <div className="cii-icon"><Icon name="clock" size={21} stroke={1.8} /></div>
               <div>
                 <p className="cii-label">Working Hours</p>
                 {settings.working_hours_weekday && <p className="cii-value">{settings.working_hours_weekday}</p>}
                 {settings.working_hours_saturday && <p className="cii-value">{settings.working_hours_saturday}</p>}
               </div>
-            </div>
+            </div>}
 
             <div className="contact-divider" />
 

@@ -16,6 +16,7 @@ import {
 } from './checkoutStorage.js';
 import { normalizeOrderStatus } from '../src/lib/orderStatus.js';
 import { rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
+import { usePublicSettings } from '../src/lib/siteContent.js';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 const PHONE_RE = /^[0-9+\s]{9,}$/;
@@ -156,6 +157,8 @@ const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, bulk
 );
 
 const CheckoutPage = ({ navigate }) => {
+  const settings = usePublicSettings('bookshop');
+  const pickupAddress = settings.contact_address || 'the RealMindX Bookshop';
   const {
     selectedDetailed: detailed,
     selectedSubtotal: subtotal,
@@ -467,7 +470,7 @@ const CheckoutPage = ({ navigate }) => {
       delivery_method: method,
       location: method === 'delivery'
         ? [customDeliveryArea ? form.city : selectedZone?.name, form.address, form.region].filter(Boolean).join(', ')
-        : 'Dome Pillar 2, Accra',
+        : pickupAddress,
       delivery_address: method === 'delivery' ? form.address : '',
       delivery_city: method === 'delivery' ? (customDeliveryArea ? form.city : selectedZone?.name || form.city) : '',
       delivery_zone_id: selectedZone?.id || null,
@@ -642,7 +645,7 @@ const CheckoutPage = ({ navigate }) => {
             <span>{cedis(confirmedTotal)}</span>
           </div>
           <div className="bs-secure-note" style={{ justifyContent:'flex-start', marginTop:14 }}>
-            <Icon name="truck" size={16} /> {method === 'delivery' ? 'Estimated delivery: within 48 hours' : 'Ready for pickup at Dome Pillar 2 tomorrow'}
+            <Icon name="truck" size={16} /> {method === 'delivery' ? 'Estimated delivery: within 48 hours' : `Ready for pickup at ${pickupAddress} tomorrow`}
           </div>
         </div>
         <div className="bs-confirm-actions">
@@ -712,7 +715,7 @@ const CheckoutPage = ({ navigate }) => {
                 <span className="bs-rc-price">{selectedZone ? cedis(Number(selectedZone.fee)) : ''}</span>
               </div>
               <div className={`bs-radio-card${method==='pickup'?' sel':''}`} onClick={() => setMethod('pickup')}>
-                <span className="bs-radio-dot" /><div><div className="bs-rc-title">Pickup at Dome Pillar 2</div><div className="bs-rc-sub">Ready next working day</div></div><span className="bs-rc-price">Free</span>
+                <span className="bs-radio-dot" /><div><div className="bs-rc-title">Pickup at {pickupAddress}</div><div className="bs-rc-sub">Ready next working day</div></div><span className="bs-rc-price">Free</span>
               </div>
 
               {method === 'delivery' && <>
@@ -816,7 +819,7 @@ const CheckoutPage = ({ navigate }) => {
                   <span className="bs-muted">Name</span><span style={{ fontWeight:600 }}>{form.name}</span>
                   <span className="bs-muted">Phone</span><span style={{ fontWeight:600 }}>{form.phone}</span>
                   <span className="bs-muted">Email</span><span style={{ fontWeight:600 }}>{form.email}</span>
-                  <span className="bs-muted">{method==='delivery'?'Deliver to':'Pickup'}</span><span style={{ fontWeight:600 }}>{method==='delivery'? ([form.address, customDeliveryArea ? form.city : selectedZone?.name, form.region].filter(Boolean).join(', ')) : 'Dome Pillar 2, Accra'}</span>
+                  <span className="bs-muted">{method==='delivery'?'Deliver to':'Pickup'}</span><span style={{ fontWeight:600 }}>{method==='delivery'? ([form.address, customDeliveryArea ? form.city : selectedZone?.name, form.region].filter(Boolean).join(', ')) : pickupAddress}</span>
                 </div>
               </div>
               <div className="bs-payment-choice-grid">
@@ -1121,7 +1124,7 @@ const TrackPage = ({ navigate }) => {
                 <Icon name="truck" size={22} className="bs-ci" style={{ color:'var(--bs-navy)' }} />
                 <div>
                   <div style={{ fontFamily:'Montserrat', fontWeight:700, fontSize:14, color:'var(--bs-navy)' }}>
-                    {order.delivery_tracking?.label || (order.delivery_method === 'pickup' ? 'Pickup at Dome Pillar 2, Accra' : order.location || order.delivery_zone_name || 'Delivery details on file')}
+                    {order.delivery_tracking?.label || (order.delivery_method === 'pickup' ? `Pickup at ${order.location || 'the RealMindX Bookshop'}` : order.location || order.delivery_zone_name || 'Delivery details on file')}
                   </div>
                   <div className="bs-muted" style={{ fontSize:13 }}>
                     {order.delivery_tracking?.otp_required ? 'Have your delivery OTP ready when the rider arrives. ' : ''}

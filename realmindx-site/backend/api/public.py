@@ -697,7 +697,11 @@ def focus_flyer():
 @public_bp.get("/settings")
 def settings():
     rows = SiteSetting.query.filter_by(public=True).all()
-    return jsonify(settings={row.key: row.value for row in rows})
+    response = jsonify(settings={row.key: row.value for row in rows})
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @public_bp.get("/services")

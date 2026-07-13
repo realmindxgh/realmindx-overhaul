@@ -361,7 +361,7 @@ export const api = {
     },
   ),
   // admin - settings (key-based)
-  adminUpsertSetting: (key, value, isPublic) => apiFetch(`/admin/settings/${key}`, { method: 'PUT', body: { value, public: isPublic } }),
+  adminUpsertSetting: (storageKey, payload) => apiFetch(`/admin/settings/${encodeURIComponent(storageKey)}`, { method: 'PUT', body: payload }),
   adminAssignDeliveryCompany: (orderId, payload) => apiFetch(`/admin/orders/${orderId}/delivery/assign`, { method: 'POST', body: payload }),
   adminDeliveryCompanyDetail: (companyId) => apiFetch(`/admin/delivery-companies/${companyId}`),
   adminCreateDeliveryCompanyManager: (companyId, payload) => apiFetch(`/admin/delivery-companies/${companyId}/managers`, { method: 'POST', body: payload }),

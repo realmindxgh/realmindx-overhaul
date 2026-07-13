@@ -5520,6 +5520,13 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
 }
 
+.portal-my-applications-btn {
+  background: #fff;
+  border-color: #fff;
+  color: #143670;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
+}
+
 .resource-more-details-toggle {
   grid-column: 1 / -1;
   width: 100%;
@@ -5554,6 +5561,12 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   border-color: #f5f8fc;
   color: #0d2550;
   transform: translateY(-2px);
+}
+
+.portal-my-applications-btn:hover {
+  background: #f5f8fc;
+  border-color: #f5f8fc;
+  color: #0d2550;
 }
 
 .delivery-login-terms { margin: 4px 0 0; color: #526987; font-size: .83rem; line-height: 1.55; text-align: center; }

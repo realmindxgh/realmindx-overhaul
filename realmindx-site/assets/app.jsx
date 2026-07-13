@@ -1310,18 +1310,18 @@ export const Footer = () => {
         <div>
           <h4>Contact</h4>
           <div className="footer-contact">
-            <span style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            {settings.contact_address ? <span style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <Icon name="mapPin" size={18} />
               {settings.contact_address}
-            </span>
-            <a href={`mailto:${settings.contact_email}`} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            </span> : null}
+            {settings.contact_email ? <a href={`mailto:${settings.contact_email}`} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <Icon name="mail" size={18} /> {settings.contact_email}
-            </a>
-            <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            </a> : null}
+            {settings.contact_phone_1 ? <a href={`tel:${String(settings.contact_phone_1).replace(/\s+/g, '')}`} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <Icon name="phone" size={18} /> {settings.contact_phone_1}
-            </span>
+            </a> : null}
             {extraPhones.map(phone => (
-              <span key={phone} style={{ marginLeft: 28, fontSize: 14 }}>{phone}</span>
+              <a key={phone} href={`tel:${String(phone).replace(/\s+/g, '')}`} style={{ marginLeft: 28, fontSize: 14 }}>{phone}</a>
             ))}
           </div>
         </div>

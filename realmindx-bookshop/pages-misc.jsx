@@ -594,7 +594,8 @@ const BookshopResetPasswordPage = ({ navigate }) => {
 };
 
 const ContactPage = ({ navigate }) => {
-  const settings = usePublicSettings();
+  const settings = usePublicSettings('bookshop');
+  const phones = [settings.contact_phone_1, settings.contact_phone_2, settings.contact_phone_3].filter(Boolean);
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const onSubmit = async (event) => {
     event.preventDefault();
@@ -645,13 +646,13 @@ const ContactPage = ({ navigate }) => {
 
         <div className="bs-contact-info-card">
           <h3 className="bs-h3">Visit and reach us</h3>
-          <div className="bs-contact-row"><Icon name="pin" size={20} className="bs-ci" /><div><div className="bs-cr-label">Address</div><div className="bs-cr-val">Dome Pillar 2, Accra, Ghana</div></div></div>
-          <div className="bs-contact-row"><Icon name="phone" size={20} className="bs-ci" /><div><div className="bs-cr-label">Call us</div><div className="bs-cr-val">+233 55 803 9190 / +233 55 452 9493</div></div></div>
-          <div className="bs-contact-row"><Icon name="mail" size={20} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">info@realmindxgh.com</div></div></div>
+          {settings.contact_address ? <div className="bs-contact-row"><Icon name="pin" size={20} className="bs-ci" /><div><div className="bs-cr-label">Address</div><div className="bs-cr-val">{settings.contact_address}</div></div></div> : null}
+          {phones.length ? <div className="bs-contact-row"><Icon name="phone" size={20} className="bs-ci" /><div><div className="bs-cr-label">Call us</div><div className="bs-cr-val">{phones.join(' / ')}</div></div></div> : null}
+          {settings.contact_email ? <div className="bs-contact-row"><Icon name="mail" size={20} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">{settings.contact_email}</div></div></div> : null}
           <a className="bs-contact-row" href="https://wa.link/q5rjtp" style={{ textDecoration: 'none' }}><Icon name="wa" size={20} className="bs-ci" /><div><div className="bs-cr-label">WhatsApp</div><div className="bs-cr-val">Chat with us instantly</div></div></a>
           {settings.contact_map_embed ? (
             <iframe
-              title="RealMindX Bookshop – Dome Pillar 2, Accra"
+              title={`${settings.contact_address || 'RealMindX Bookshop'} map`}
               src={settings.contact_map_embed}
               loading="lazy"
               allowFullScreen
@@ -659,15 +660,14 @@ const ContactPage = ({ navigate }) => {
               style={{ width: '100%', height: 260, border: 'none', borderRadius: 8, marginTop: 16, display: 'block' }}
             />
           ) : null}
-          <div className="bs-table-scroll">
+          {(settings.working_hours_weekday || settings.working_hours_saturday) ? <div className="bs-table-scroll">
             <table className="bs-hours-table" style={{ marginTop: 20 }}>
               <tbody>
-                <tr><td>Monday - Friday</td><td>8:00 - 18:00</td></tr>
-                <tr><td>Saturday</td><td>9:00 - 16:00</td></tr>
-                <tr><td>Sunday</td><td>Closed</td></tr>
+                {settings.working_hours_weekday ? <tr><td colSpan="2">{settings.working_hours_weekday}</td></tr> : null}
+                {settings.working_hours_saturday ? <tr><td colSpan="2">{settings.working_hours_saturday}</td></tr> : null}
               </tbody>
             </table>
-          </div>
+          </div> : null}
         </div>
       </div>
     </div>
@@ -685,7 +685,7 @@ const CopyParagraphs = ({ value }) => String(value || '')
   .map((paragraph, index) => <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>);
 
 const InfoPage = ({ navigate }) => {
-  const settings = usePublicSettings();
+  const settings = usePublicSettings('bookshop');
   const { copy: siteCopy, loading: copyLoading } = useSiteCopyState({ waitForApi: true });
   const allowLocalFallback = canUseLocalFallback();
   const copyValue = (key, fallback, empty = 'This information is currently unavailable.') =>
@@ -731,18 +731,18 @@ const InfoPage = ({ navigate }) => {
 
           <aside className="bs-info-sidebar">
             <h4>Quick Contact</h4>
-            <div className="bs-contact-row"><Icon name="pin" size={18} className="bs-ci" /><div><div className="bs-cr-label">Address</div><div className="bs-cr-val">{settings.contact_address}</div></div></div>
-            <div className="bs-contact-row"><Icon name="phone" size={18} className="bs-ci" /><div><div className="bs-cr-label">Phone</div><div className="bs-cr-val">{settings.contact_phone_1}</div></div></div>
-            <div className="bs-contact-row"><Icon name="mail" size={18} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">{settings.contact_email}</div></div></div>
-            <h4 style={{ marginTop: 24 }}>Opening Hours</h4>
+            {settings.contact_address ? <div className="bs-contact-row"><Icon name="pin" size={18} className="bs-ci" /><div><div className="bs-cr-label">Address</div><div className="bs-cr-val">{settings.contact_address}</div></div></div> : null}
+            {settings.contact_phone_1 ? <div className="bs-contact-row"><Icon name="phone" size={18} className="bs-ci" /><div><div className="bs-cr-label">Phone</div><div className="bs-cr-val">{settings.contact_phone_1}</div></div></div> : null}
+            {settings.contact_email ? <div className="bs-contact-row"><Icon name="mail" size={18} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">{settings.contact_email}</div></div></div> : null}
+            {(settings.working_hours_weekday || settings.working_hours_saturday) ? <><h4 style={{ marginTop: 24 }}>Opening Hours</h4>
             <div className="bs-table-scroll">
               <table className="bs-hours-table" style={{ color: 'var(--bs-text)' }}>
                 <tbody>
-                  <tr><td colSpan="2">{settings.working_hours_weekday}</td></tr>
-                  <tr><td colSpan="2">{settings.working_hours_saturday}</td></tr>
+                  {settings.working_hours_weekday ? <tr><td colSpan="2">{settings.working_hours_weekday}</td></tr> : null}
+                  {settings.working_hours_saturday ? <tr><td colSpan="2">{settings.working_hours_saturday}</td></tr> : null}
                 </tbody>
               </table>
-            </div>
+            </div></> : null}
           </aside>
         </div>
       </div>
@@ -783,9 +783,33 @@ const BOOKSHOP_TERMS_SECTIONS = [
 ];
 
 const BookshopLegalPage = ({ type = 'privacy' }) => {
+  const settings = usePublicSettings('bookshop');
   const privacy = type === 'privacy';
   const title = privacy ? 'Bookshop Privacy Policy' : 'Bookshop Terms and Conditions';
-  const sections = privacy ? BOOKSHOP_PRIVACY_SECTIONS : BOOKSHOP_TERMS_SECTIONS;
+  const sections = React.useMemo(() => {
+    const source = privacy ? BOOKSHOP_PRIVACY_SECTIONS : BOOKSHOP_TERMS_SECTIONS;
+    const email = settings.contact_email || 'the email shown on our Contact page';
+    const phone = settings.contact_phone_1 || 'the phone number shown on our Contact page';
+    const address = settings.contact_address || 'the pickup address shown on our Contact page';
+    const contactLines = [
+      'RealMindX Bookshop',
+      'RealMindX Education Limited',
+      settings.contact_email,
+      settings.contact_phone_1,
+      settings.contact_phone_2,
+      settings.contact_phone_3,
+      settings.contact_address,
+      settings.working_hours_weekday,
+      settings.working_hours_saturday,
+    ].filter(Boolean).join('\n');
+    return source.map(([heading, text]) => {
+      if (heading === 'Contact') return [heading, contactLines];
+      return [heading, text
+        .replaceAll('info@realmindxgh.com', email)
+        .replaceAll('+233 55 803 9190', phone)
+        .replaceAll('Dome Pillar 2, Accra', address)];
+    });
+  }, [privacy, settings]);
   const [active, setActive] = React.useState('');
 
   React.useEffect(() => {

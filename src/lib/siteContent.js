@@ -485,7 +485,18 @@ const CONTACT_DEFAULTS = {
   contact_map_embed: 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3970.4149449183387!2d-0.21959702603021514!3d5.652959532669197!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xfdf9d0d971fa545%3A0xb6793ef61afc720f!2sDome%20pillar%202!5e0!3m2!1sen!2sgh!4v1780224663665!5m2!1sen!2sgh',
 };
 
-export const usePublicSettings = () => {
+export const resolvePublicSettings = (settings, scope = 'main') => {
+  const shared = {};
+  const scoped = {};
+  Object.entries(settings || {}).forEach(([key, value]) => {
+    const prefix = `${scope}__`;
+    if (key.startsWith(prefix)) scoped[key.slice(prefix.length)] = value;
+    else if (!key.includes('__')) shared[key] = value;
+  });
+  return { ...shared, ...scoped };
+};
+
+export const usePublicSettings = (scope = 'main') => {
   const [apiSettings, setApiSettings] = React.useState(null);
 
   React.useEffect(() => {
@@ -497,11 +508,12 @@ export const usePublicSettings = () => {
     return () => { alive = false; };
   }, []);
 
-  // Merge: defaults first, then any live API values on top.
-  // While loading (null) or in non-API mode, only defaults are used —
-  // no blank flash because the defaults ARE the correct production values.
-  const live = isApiMode() && apiSettings !== null ? apiSettings : {};
-  return { ...CONTACT_DEFAULTS, ...live };
+  // Local preview mode may use defaults. API-backed environments render only
+  // settings confirmed by the server so deleted values cannot reappear.
+  if (!isApiMode()) return CONTACT_DEFAULTS;
+  if (!apiSettings) return {};
+
+  return resolvePublicSettings(apiSettings, scope);
 };
 
 export const useSiteCopyState = ({ waitForApi = false } = {}) => {

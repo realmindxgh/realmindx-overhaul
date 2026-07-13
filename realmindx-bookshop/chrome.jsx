@@ -859,7 +859,7 @@ const Navbar = ({ route, navigate }) => {
 
 // ---------- Footer ----------
 const Footer = ({ navigate }) => {
-  const settings = usePublicSettings();
+  const settings = usePublicSettings('bookshop');
   const phones = [
     settings.contact_phone_1,
     settings.contact_phone_2,
@@ -895,8 +895,8 @@ const Footer = ({ navigate }) => {
           <div>
             <h4>Contact</h4>
             <div className="bs-footer-contact">
-              <span><Icon name="pin" size={17} className="bs-ci" /> {settings.contact_address}</span>
-              <a href={`mailto:${settings.contact_email}`}><Icon name="mail" size={17} className="bs-ci" /> {settings.contact_email}</a>
+              {settings.contact_address ? <span><Icon name="pin" size={17} className="bs-ci" /> {settings.contact_address}</span> : null}
+              {settings.contact_email ? <a href={`mailto:${settings.contact_email}`}><Icon name="mail" size={17} className="bs-ci" /> {settings.contact_email}</a> : null}
               {phones.map((phone, index) => (
                 <a
                   key={phone}

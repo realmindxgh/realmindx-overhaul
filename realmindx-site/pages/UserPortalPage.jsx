@@ -401,7 +401,7 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
             ? <><button className="btn btn-primary" onClick={() => setActive('profile')}>Complete Profile</button>
                 <a href="/jobs" className="btn portal-browse-jobs-btn">Browse Jobs</a></>
             : <><a href="/jobs" className="btn btn-primary">Find New Jobs</a>
-                <button className="btn btn-outline" onClick={() => setActive('applications')}>My Applications</button></>
+                <button className="btn btn-outline portal-my-applications-btn" onClick={() => setActive('applications')}>My Applications</button></>
           }
         </div>
       </div>

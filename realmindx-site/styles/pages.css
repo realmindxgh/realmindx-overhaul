@@ -3754,7 +3754,7 @@ input, textarea, select { font-family: inherit; }
     margin-left: 0;
     width: 100%;
     padding: 16px 14px 80px;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   .portal-loading-screen {
@@ -3770,7 +3770,8 @@ input, textarea, select { font-family: inherit; }
   .portal-setting-row { align-items: flex-start; flex-direction: column; gap: 10px; }
 
   /* ── Topbar ─────────────────────────────────────────── */
-  .portal-topbar {
+  .portal-topbar,
+  .admin-topbar {
     position: sticky;
     top: 0;
     z-index: 60;
@@ -3786,6 +3787,12 @@ input, textarea, select { font-family: inherit; }
   }
   .admin-topbar { margin-bottom: 20px; gap: 10px; }
 
+  /* Portal-only mobile type scale. Public website typography is unchanged. */
+  .portal-layout,
+  .admin-portal-layout {
+    font-size: 0.92rem;
+  }
+
   /* Left flex container: give it flex:1 + overflow so the title can truncate */
   .portal-topbar-left, .admin-topbar-left {
     min-width: 0;
@@ -3798,7 +3805,7 @@ input, textarea, select { font-family: inherit; }
 
   /* Page titles: single line, truncate if still too long */
   .portal-page-title {
-    font-size: 1.15rem;
+    font-size: 1.05rem;
     white-space: nowrap;
     overflow: visible;
     text-overflow: clip;
@@ -3807,7 +3814,7 @@ input, textarea, select { font-family: inherit; }
   /* Admin topbar title: shown only on mobile */
   .admin-topbar-title {
     display: block !important;
-    font-size: 1.1rem;
+    font-size: 1rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3850,18 +3857,24 @@ input, textarea, select { font-family: inherit; }
   .welcome-content { padding: 28px 22px 24px; order: 1; }
   .welcome-greeting,
   .welcome-content h2 { padding-right: 92px; }
-  .welcome-content h2 { font-size: 1.55rem; }
-  .welcome-content p { color: rgba(255,255,255,0.72); line-height: 1.65; }
+  .welcome-content h2 { font-size: 1.35rem; }
+  .welcome-content p { color: rgba(255,255,255,0.72); font-size: 0.88rem; line-height: 1.55; }
 
   /* Welcome CTAs: stack vertically, equal width, centered */
   .welcome-actions {
     flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
     gap: 10px;
   }
   .welcome-actions .btn {
+    width: min(100%, 230px);
     text-align: center;
     justify-content: center;
+  }
+  .welcome-actions .portal-my-applications-btn {
+    color: var(--navy);
+    background: var(--white);
+    border-color: var(--white);
   }
 
   /* View page headers (e.g. "My Applications" + CTA button): stack on mobile */
@@ -3884,9 +3897,17 @@ input, textarea, select { font-family: inherit; }
   /* Tighter admin stat cards so the 2x3 grid fits phone widths */
   .admin-stat { padding: 16px 14px; }
   /* Tighter stat cards on mobile — prevent label wrapping that causes unequal heights */
-  .portal-stat-card { padding: 19px 16px; }
+  .portal-stat-card { padding: 17px 14px; }
   .psc-label { font-size: 0.64rem; letter-spacing: 0.06em; line-height: 1.35; }
-  .psc-value { font-size: 1.75rem; }
+  .psc-value { font-size: 1.55rem; }
+  .psc-sub { font-size: 0.78rem; }
+
+  .profile-section-card,
+  .application-card,
+  .portal-alert-card,
+  .admin-table-card {
+    font-size: 0.9rem;
+  }
 
   /* Profile header card: stack on mobile */
   .profile-header-card {

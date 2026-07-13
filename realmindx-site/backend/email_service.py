@@ -45,7 +45,7 @@ def _url_origin(url):
     return ""
 
 
-def _email_contact_settings():
+def _email_contact_settings(scope="main"):
     defaults = {
         "contact_email": "info@realmindxgh.com",
         "contact_phone_1": "+233 55 803 9190",
@@ -58,26 +58,29 @@ def _email_contact_settings():
     try:
         from .models import SiteSetting
 
-        rows = SiteSetting.query.filter(
-            SiteSetting.key.in_(list(defaults.keys()))
-        ).all()
-        values = {row.key: row.value for row in rows}
+        scoped_keys = [f"{scope}__{key}" for key in defaults]
+        rows = SiteSetting.query.filter(SiteSetting.key.in_([*defaults.keys(), *scoped_keys])).all()
+        stored = {row.key: row.value for row in rows}
+        values = {
+            key: stored[f"{scope}__{key}"] if f"{scope}__{key}" in stored else stored.get(key)
+            for key in defaults
+        }
     except Exception:
-        values = {}
+        values = defaults
 
-    contact_email = str(values.get("contact_email") or defaults["contact_email"]).strip()
+    contact_email = str(values.get("contact_email") or "").strip()
     contact_phone = str(
         values.get("contact_phone_1")
         or values.get("primary_phone")
-        or defaults["contact_phone_1"]
+        or ""
     ).strip()
     contact_address = str(
         values.get("contact_address")
         or values.get("address")
-        or defaults["contact_address"]
+        or ""
     ).strip()
-    weekday_hours = str(values.get("working_hours_weekday") or defaults["working_hours_weekday"]).strip()
-    saturday_hours = str(values.get("working_hours_saturday") or defaults["working_hours_saturday"]).strip()
+    weekday_hours = str(values.get("working_hours_weekday") or "").strip()
+    saturday_hours = str(values.get("working_hours_saturday") or "").strip()
     return {
         "email": contact_email,
         "phone": contact_phone,
@@ -199,7 +202,7 @@ def app_email_shell(
     bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop").rstrip("/")
     site_origin = _url_origin(base_url) or base_url
     logo_url = f"{site_origin}/logo-white.png"
-    contact = _email_contact_settings()
+    contact = _email_contact_settings("main")
 
     if cta_url and not cta_url.startswith(("http://", "https://")):
         cta_url = f"{base_url}/{cta_url.lstrip('/')}"
@@ -395,7 +398,7 @@ def bookshop_email_shell(
     bookshop_origin = _url_origin(bookshop_url) or _url_origin(base_url) or bookshop_url
     logo_url = f"{bookshop_origin}/bookshop-logo.png"
     email_icon_base = f"{bookshop_origin}/email-icons"
-    contact = _email_contact_settings()
+    contact = _email_contact_settings("bookshop")
 
     if cta_url and not cta_url.startswith(("http://", "https://")):
         cta_url = f"{bookshop_url}/{cta_url.lstrip('/')}"

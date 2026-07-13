@@ -201,7 +201,9 @@ function useApiContent() {
     const endpoint = COLLECTION_TO_ENDPOINT[collection];
     if (!endpoint) return;
     if (collection === 'settings') {
-      await api.adminUpsertSetting(payload.key, payload.value, payload.public);
+      const scope = payload.site_scope || 'all';
+      const storageKey = scope === 'all' ? payload.key : `${scope}__${payload.key}`;
+      await api.adminUpsertSetting(storageKey, payload);
       await fetchCollection(collection, { force: true });
       return;
     }
@@ -215,7 +217,7 @@ function useApiContent() {
     if (!endpoint) return;
     // Settings use PUT /admin/settings/{key} - id is the key string
     if (collection === 'settings') {
-      await api.adminUpsertSetting(id, payload.value, payload.public);
+      await api.adminUpsertSetting(id, payload);
     } else if (STATUS_ENDPOINT_COLLECTIONS.has(collection) && payload && typeof payload === 'object' && 'status' in payload) {
       await api.adminUpdateStatus(endpoint, id, payload);
     } else {

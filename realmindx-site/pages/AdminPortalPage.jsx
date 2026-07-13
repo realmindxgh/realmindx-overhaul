@@ -693,17 +693,22 @@ const CONFIG = {
   },
   settings: {
     title: 'Contact & Site Details',
-    description: 'Edit contact email, phone numbers, address, and basic details used across the public website.',
+    description: 'Manage contact details and opening hours for both public sites together or for either site separately.',
     collection: 'settings',
-    createLabel: 'Add Contact Detail',
-    idField: 'key',   // use the key string as the update/delete identifier
+    createLabel: 'Add Site Detail',
+    idField: 'id',
     fields: [
-      field('key', 'Detail Name', 'text', { help: 'Example: contact_email, main_phone, office_address.' }),
-      field('value', 'Value', 'textarea'),
+      field('key', 'Detail Name', 'text', { help: 'Examples: contact_phone_1, contact_email, contact_address, working_hours_weekday, or working_hours_saturday.' }),
+      field('site_scope', 'Applies To', 'select', { options: [
+        { value: 'all', label: 'Both sites' },
+        { value: 'main', label: 'Main website only' },
+        { value: 'bookshop', label: 'Bookshop only' },
+      ] }),
+      field('value', 'Website Value', 'textarea', { help: 'A site-specific value overrides the shared value only on that site.' }),
       field('public', 'Show on website', 'checkbox'),
     ],
-    columns: ['key', 'value', 'public'],
-    columnLabels: { key: 'Detail', public: 'Visible' },
+    columns: ['key', 'site_scope', 'value', 'public'],
+    columnLabels: { key: 'Detail', site_scope: 'Applies To', public: 'Visible' },
   },
   staff: {
     title: 'Staff Accounts',
@@ -766,6 +771,23 @@ const optionLabel = option => (typeof option === 'object' ? option.label : statu
 const columnLabel = (config, column) =>
   config.columnLabels?.[column]
   || column.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+
+const SITE_SETTING_LABELS = {
+  contact_address: 'Office address',
+  contact_email: 'Contact email',
+  contact_map_embed: 'Map embed link',
+  contact_phone_1: 'Primary phone',
+  contact_phone_2: 'Secondary phone',
+  contact_phone_3: 'Third phone',
+  working_hours_weekday: 'Weekday opening hours',
+  working_hours_saturday: 'Saturday opening hours',
+};
+
+const SITE_SCOPE_LABELS = {
+  all: 'Both sites',
+  main: 'Main website only',
+  bookshop: 'Bookshop only',
+};
 
 const adminAssetUrl = value => {
   if (!value || !String(value).startsWith('/uploads/')) return value;
@@ -3177,6 +3199,12 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   }, [creating, editing]);
 
   const renderCell = (row, column, isPrimary) => {
+    if (config.collection === 'settings' && column === 'key') {
+      return <span className={isPrimary ? 'td-primary' : ''}>{SITE_SETTING_LABELS[row.key] || readableCellValue(row.key)}</span>;
+    }
+    if (config.collection === 'settings' && column === 'site_scope') {
+      return <span>{SITE_SCOPE_LABELS[row.site_scope] || 'Both sites'}</span>;
+    }
     if (config.collection === 'applications') {
       if (column === 'name') {
         return <span className={isPrimary ? 'td-primary' : ''}>{row.user?.full_name || row.user?.email || 'Unknown applicant'}</span>;
