@@ -113,11 +113,20 @@ const WishlistProvider = ({ children }) => {
     setItems(prev => prev.filter(item => String(item) !== id));
     trackWishlistAction('remove', { productId: id });
   };
+  const removeMany = (bookIds) => {
+    const ids = new Set((bookIds || []).map(id => String(id)));
+    const removedIds = itemsRef.current
+      .map(item => String(item))
+      .filter(id => ids.has(id));
+    if (!removedIds.length) return;
+    setItems(prev => prev.filter(item => !ids.has(String(item))));
+    removedIds.forEach(id => trackWishlistAction('remove', { productId: id }));
+  };
   const has    = (bookId) => items.map(item => String(item)).includes(String(bookId));
   const count  = catalogLoading ? 0 : items.filter(id => validIds.has(String(id))).length;
 
   return (
-    <WishlistCtx.Provider value={{ items, count, toggle, add, remove, has }}>
+    <WishlistCtx.Provider value={{ items, count, toggle, add, remove, removeMany, has }}>
       {children}
     </WishlistCtx.Provider>
   );
@@ -238,6 +247,25 @@ const CartProviderInner = ({ children, navigate }) => {
     globalToast.success(`Added "${b ? b.title : 'item'}" to cart`);
     trackCartAction('add', { productId: id, quantity: safeQty });
   };
+  const addMany = (bookIds, qty = 1) => {
+    const safeQty = Math.max(1, Number(qty) || 1);
+    const ids = [...new Set((bookIds || []).map(id => String(id)).filter(Boolean))];
+    if (!ids.length) return 0;
+    setItems(prev => {
+      const next = [...prev];
+      ids.forEach(id => {
+        const index = next.findIndex(item => String(item.id) === id);
+        if (index >= 0) {
+          next[index] = { ...next[index], qty: next[index].qty + safeQty, selected: true };
+        } else {
+          next.push({ id, qty: safeQty, selected: true });
+        }
+      });
+      return next;
+    });
+    ids.forEach(id => trackCartAction('add', { productId: id, quantity: safeQty }));
+    return ids.length;
+  };
   const buyNow = (bookId, qty = 1) => {
     const safeQty = Math.max(1, Number(qty) || 1);
     const id = String(bookId);
@@ -296,6 +324,7 @@ const CartProviderInner = ({ children, navigate }) => {
     .filter(Boolean);
   const selectedDetailed = detailed.filter(item => item.selected && item.stock);
   const count = catalogLoading ? 0 : detailed.reduce((s, item) => s + item.qty, 0);
+  const productCount = catalogLoading ? 0 : detailed.length;
   const selectedCount = selectedDetailed.reduce((s, item) => s + item.qty, 0);
   const subtotal = detailed.reduce((s, b) => s + b.price * b.qty, 0);
   const selectedSubtotal = selectedDetailed.reduce((s, b) => s + b.price * b.qty, 0);
@@ -335,6 +364,7 @@ const CartProviderInner = ({ children, navigate }) => {
       detailed,
       selectedDetailed,
       count,
+      productCount,
       selectedCount,
       subtotal,
       selectedSubtotal,
@@ -343,6 +373,7 @@ const CartProviderInner = ({ children, navigate }) => {
       selectedBulkDiscounts,
       selectedBulkSaving,
       add,
+      addMany,
       buyNow,
       setQty,
       remove,
@@ -476,7 +507,7 @@ const SearchSuggestionList = ({ suggestions, query, onSelect, onSubmit, classNam
 
 // ---------- Navbar ----------
 const Navbar = ({ route, navigate }) => {
-  const { count } = useCart();
+  const { productCount } = useCart();
   const { count: wishlistCount } = useWishlist();
   const { books, taxonomies } = useCatalog();
   const [catsOpen, setCatsOpen] = React.useState(false);
@@ -753,9 +784,9 @@ const Navbar = ({ route, navigate }) => {
               <Icon name="heart" size={20} />
               {wishlistCount > 0 && <span className="bs-cart-badge">{wishlistCount}</span>}
             </button>
-            <button className="bs-icon-btn" aria-label={`Cart, ${count} items`} onClick={() => navigate('cart')}>
+            <button className="bs-icon-btn" aria-label={`Cart, ${productCount} products`} onClick={() => navigate('cart')}>
               <Icon name="cart" size={21} />
-              {count > 0 && <span className="bs-cart-badge">{count}</span>}
+              {productCount > 0 && <span className="bs-cart-badge">{productCount}</span>}
             </button>
             <div className="bs-more-nav" ref={moreRef}>
               <button

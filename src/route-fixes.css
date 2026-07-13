@@ -460,9 +460,10 @@ html {
 }
 
 .admin-modal-close {
-  position: sticky;
-  top: 0;
-  margin: -12px 0 -26px auto;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  margin: 0;
   z-index: 5;
   width: 38px;
   height: 38px;
@@ -475,6 +476,15 @@ html {
   color: var(--navy);
   padding: 0;
   cursor: pointer;
+}
+
+.admin-modal-panel > h1,
+.admin-modal-panel > h2,
+.admin-modal-panel > h3,
+.admin-modal-panel > .admin-modal-heading,
+.admin-modal-panel > .admin-modal-header,
+.admin-modal-panel > .book-requests-heading {
+  padding-right: 52px;
 }
 
 .admin-modal-close span {

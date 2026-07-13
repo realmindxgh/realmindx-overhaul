@@ -29,6 +29,21 @@ const Accordion = ({ title, children, defaultOpen = false }) => {
 };
 
 const QtyStepper = ({ qty, setQty, sm = false, onMinimumDecrease }) => {
+  const [draft, setDraft] = React.useState(String(qty));
+
+  React.useEffect(() => {
+    setDraft(String(qty));
+  }, [qty]);
+
+  const commitDraft = () => {
+    const value = Number.parseInt(draft, 10);
+    if (!Number.isFinite(value) || value < 1) {
+      setDraft(String(qty));
+      return;
+    }
+    setQty(value);
+  };
+
   const decrease = () => {
     if (qty <= 1 && onMinimumDecrease) {
       onMinimumDecrease();
@@ -41,15 +56,21 @@ const QtyStepper = ({ qty, setQty, sm = false, onMinimumDecrease }) => {
     <div className={`bs-qty-stepper${sm ? ' sm' : ''}`}>
       <button onClick={decrease} aria-label={qty <= 1 && onMinimumDecrease ? 'Remove item' : 'Decrease quantity'}><Icon name="minus" size={16} /></button>
       <input
-        value={qty}
+        value={draft}
+        inputMode="numeric"
+        pattern="[0-9]*"
         onChange={e => {
-          const value = parseInt(e.target.value, 10);
-          if (Number.isNaN(value)) return;
-          if (value < 1 && onMinimumDecrease) {
-            onMinimumDecrease();
-            return;
+          const value = e.target.value;
+          if (/^\d*$/.test(value)) setDraft(value);
+        }}
+        onBlur={commitDraft}
+        onFocus={e => e.currentTarget.select()}
+        onKeyDown={e => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          if (e.key === 'Escape') {
+            setDraft(String(qty));
+            e.currentTarget.blur();
           }
-          setQty(Math.max(1, value));
         }}
         aria-label="Quantity"
       />
@@ -856,7 +877,7 @@ const CartPage = ({ navigate }) => {
 /* ─── WISHLIST PAGE ──────────────────────────────────── */
 const WishlistPage = ({ navigate }) => {
   const wishlist = useWishlist();
-  const { add: addToCart } = useCart();
+  const { add: addToCart, addMany: addManyToCart } = useCart();
   const { books, loading: catalogLoading } = useCatalog();
 
   const wishlisted = books.filter(b => wishlist?.has(b.id));
@@ -874,6 +895,18 @@ const WishlistPage = ({ navigate }) => {
     addToCart(book.id, 1);
     wishlist?.remove(book.id);
     globalToast.success(`"${book.title}" moved to cart`);
+  };
+
+  const moveAllToCart = () => {
+    const available = wishlisted.filter(book => book.stock);
+    const ids = available.map(book => book.id);
+    const movedCount = addManyToCart(ids, 1);
+    if (!movedCount) {
+      globalToast.error('None of your saved products are currently in stock.');
+      return;
+    }
+    wishlist?.removeMany(ids);
+    globalToast.success(`${movedCount} saved product${movedCount === 1 ? '' : 's'} moved to cart`);
   };
 
   if (!wishlisted.length) return (
@@ -894,11 +927,19 @@ const WishlistPage = ({ navigate }) => {
         <span className="bs-sep">/</span>
         <span className="bs-cur">Wishlist</span>
       </div>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12, marginBottom:24 }}>
+      <div className="bs-wishlist-head">
         <div>
           <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:28, margin:0 }}>My Wishlist</h1>
           <p className="bs-muted" style={{ marginTop:4 }}>{wishlisted.length} saved item{wishlisted.length !== 1 ? 's' : ''}</p>
         </div>
+        <button
+          type="button"
+          className="bs-btn bs-btn-gold bs-wishlist-move-all"
+          onClick={moveAllToCart}
+          disabled={!wishlisted.some(book => book.stock)}
+        >
+          <Icon name="cart" size={16} /> Move all to cart
+        </button>
       </div>
 
       <div className="bs-wishlist-grid">
