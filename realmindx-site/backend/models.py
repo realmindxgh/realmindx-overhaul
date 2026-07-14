@@ -195,7 +195,7 @@ class JobApplication(TimestampMixin, db.Model):
     cv_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
     certificate_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
 
-    user = db.relationship("User", backref="job_applications")
+    user = db.relationship("User", backref=db.backref("job_applications", cascade="all, delete-orphan"))
     job = db.relationship("Job", backref="applications")
 
 

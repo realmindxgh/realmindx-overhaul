@@ -9,7 +9,7 @@ if str(SITE_ROOT) not in sys.path:
 from backend import create_app
 from backend.config import Config
 from backend.extensions import db
-from backend.models import Role, User, UserProfile
+from backend.models import Job, JobApplication, Role, User, UserProfile
 
 
 class AdminTeacherManagementTestConfig(Config):
@@ -44,6 +44,12 @@ class AdminTeacherManagementTests(unittest.TestCase):
             UserProfile(user_id=inactive_teacher.id),
         ])
         db.session.commit()
+        # Ensure the active teacher has a job application to reproduce the delete crash.
+        job = Job(title="Test Job", organisation="Test Org", location="Test", description="Test description", status="pending")
+        db.session.add(job)
+        db.session.flush()
+        db.session.add(JobApplication(user_id=active_teacher.id, job_id=job.id))
+        db.session.commit()
 
         self.admin = admin
         self.active_teacher = active_teacher
@@ -68,6 +74,7 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json().get("message"), "Teacher account deleted.")
         self.assertIsNone(User.query.filter_by(id=self.active_teacher.id).first())
+        self.assertEqual(JobApplication.query.filter_by(user_id=self.active_teacher.id).count(), 0)
         users_response = self.client.get("/api/admin/users")
         self.assertEqual(users_response.status_code, 200)
         user_ids = [item["id"] for item in users_response.get_json().get("items", [])]
