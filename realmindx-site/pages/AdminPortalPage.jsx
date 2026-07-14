@@ -2809,20 +2809,24 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     return () => clearTimeout(t);
   }, [actionStatus]);
 
-  const [confirmModal, setConfirmModal] = React.useState(null); // { row }
+  const [confirmModal, setConfirmModal] = React.useState(null); // { row, onConfirm }
 
-  const handleDelete = (row) => {
-    setConfirmModal({ row });
+  const handleDelete = (row, onConfirm) => {
+    setConfirmModal({ row, onConfirm });
   };
 
   const executeDelete = async () => {
     if (!confirmModal) return;
-    const row = confirmModal.row;
+    const { row, onConfirm } = confirmModal;
     const label = labelForRow(row);
     setConfirmModal(null);
     setActionStatus(null);
     try {
-      await deleteItem(config.collection, getItemId(row));
+      if (onConfirm) {
+        await onConfirm();
+      } else {
+        await deleteItem(config.collection, getItemId(row));
+      }
       setActionStatus({ type: 'success', message: `Deleted ${label}.` });
     } catch (err) {
       setActionStatus({ type: 'error', message: err?.message || `Could not delete ${label}.` });
@@ -4140,6 +4144,7 @@ const TeachersView = ({ session }) => {
   const [payoutSaving, setPayoutSaving] = React.useState(false);
   const [payoutError, setPayoutError] = React.useState('');
   const [deleting, setDeleting] = React.useState(null);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(null);
   const canEditTeachers = hasSessionPermission(session, 'teachers.edit');
   const canDeleteTeachers = hasSessionPermission(session, 'teachers.delete');
   const canExportTeachers = hasSessionPermission(session, 'teachers.export');
@@ -4192,7 +4197,13 @@ const TeachersView = ({ session }) => {
   };
 
   const deleteTeacher = async (t) => {
-    if (!window.confirm(`Delete ${t.email}? This action cannot be undone.`)) return;
+    setDeleteConfirm({ teacher: t });
+  };
+
+  const executeDeleteTeacher = async () => {
+    if (!deleteConfirm) return;
+    const { teacher: t } = deleteConfirm;
+    setDeleteConfirm(null);
     setDeleting(t.id);
     try {
       await api.adminDelete('users', t.id);
@@ -4315,6 +4326,29 @@ const TeachersView = ({ session }) => {
           </AdminTableScroll>
         )}
       </div>
+
+      {deleteConfirm && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-label="Confirm permanent deletion" style={{ position:'relative', background:'#fff', borderRadius:16, padding:'36px 32px', width:'100%', maxWidth:420, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setDeleteConfirm(null)} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
+            <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2', border:'2px solid #fca5a5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', fontSize:26, color:'#dc2626' }}>⚠</div>
+            <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', textAlign:'center', marginBottom:10, fontSize:'1.1rem' }}>
+              Permanently delete?
+            </h3>
+            <p style={{ fontSize:'0.875rem', color:'var(--gray-600)', textAlign:'center', marginBottom:28, lineHeight:1.6 }}>
+              <strong style={{ color:'var(--navy)' }}>{deleteConfirm.teacher.email || 'This teacher account'}</strong> will be removed and cannot be recovered.
+            </p>
+            <div style={{ display:'flex', gap:12 }}>
+              <button className="btn btn-outline-navy" style={{ flex:1 }} onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex:1, background:'#dc2626', borderColor:'#dc2626' }} onClick={executeDeleteTeacher}>
+                {deleting === deleteConfirm.teacher.id ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Teacher detail modal */}
       {detail && (
