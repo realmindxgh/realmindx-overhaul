@@ -315,7 +315,7 @@ DEFAULT_PERMISSIONS = [
             "settings": ["view", "create", "edit", "delete"],
             "admins": ["view", "create", "edit", "delete"],
             "staff": ["view", "create", "edit", "delete"],
-            "teachers": ["view", "edit", "export"],
+            "teachers": ["view", "edit", "export", "delete"],
             "auditLogs": ["view"],
             "uploads": ["create"],
         }.items()

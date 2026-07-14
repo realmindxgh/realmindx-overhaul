@@ -1047,7 +1047,7 @@ def dashboard():
         teacher_count = db.session.scalar(
             db.select(func.count(User.id))
             .join(Role, User.role_id == Role.id)
-            .where(Role.name.in_(("user", "teacher")))
+            .where(Role.name.in_(("user", "teacher")), User.is_active.is_(True))
         )
     return jsonify(
         summary={
@@ -1493,6 +1493,19 @@ def update_user(user_id):
     return jsonify(user_json(user))
 
 
+@admin_bp.delete("/users/<int:user_id>")
+@login_required
+@permission_required("teachers.delete")
+def delete_user(user_id):
+    user = db.get_or_404(User, user_id)
+    if user.role and user.role.name in ("admin", "staff"):
+        return jsonify(error="Cannot delete admin or staff accounts via this endpoint."), 403
+    log_action("delete_user", "user", user.id, {"email": user.email})
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify(message="Teacher account deleted.")
+
+
 @admin_bp.get("/users/<int:user_id>")
 @login_required
 @permission_required("teachers.view")
@@ -1518,6 +1531,8 @@ def get_user(user_id):
 
         data["profile"] = {
             "location": profile.location,
+            "preferred_locations": profile.preferred_locations,
+            "preferred_location_ids": profile.preferred_location_ids,
             "teaching_subject": profile.teaching_subject,
             "preferred_level": profile.preferred_level,
             "preferred_employment_type": profile.preferred_employment_type,

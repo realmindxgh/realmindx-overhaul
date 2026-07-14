@@ -14,3 +14,23 @@
 - Avoid launching visible helper terminals while working from Codex. If a long-running local server is needed, prefer the hidden launch scripts in `scripts/` or use `Start-Process -WindowStyle Hidden`.
 - Use `scripts/start-api-hidden.ps1` for the Flask API, `scripts/start-frontend-hidden.ps1` for Vite, or `scripts/start-dev-hidden.ps1` for both. They write logs under `logs/` and avoid popping up extra console windows.
 - Do not use bare `Start-Process`, `cmd /c start`, or double-click-oriented `.cmd` launchers for background work unless the user explicitly wants a visible interactive terminal.
+
+## Local dev login and seed guidance
+
+- For local development in `realmindx-site`, use the SQLite fallback database at `realmindx_local.db` rather than the production PostgreSQL credentials in `.env`.
+- Local UI runs on Vite at `http://127.0.0.1:5173`; backend runs on Flask at `http://127.0.0.1:5000`.
+- Admin login path is `http://127.0.0.1:5173/admin/login`.
+- Admin credentials from the local `.env` are:
+  - Email: `admin@realmindxgh.com`
+  - Password: `Admin@12345`
+- A seeded teacher account is available for admin testing:
+  - Email: `teacher@realmindxgh.local`
+  - Password: `Teacher@123`
+- If the engine cannot resolve `backend` imports from `realmindx-site`, add the repo root to `sys.path` in temporary Python seed scripts.
+- Prefer running seed scripts from `realmindx-site` with the local virtualenv:
+  - `cd "e:\VS Code Projects\realmindx-overhaul\realmindx-site"`
+  - `$env:DATABASE_URL = "sqlite:///$PWD/realmindx_local.db"`
+  - `$env:FLASK_APP = "backend:create_app"`
+  - `$env:FLASK_ENV = "development"`
+  - `& .venv\Scripts\python.exe scripts\seed_teacher_account.py`
+- Store any future local account seeds or login changes in `AGENTS.md` so follow-up agents can reuse the same local setup and avoid repeated debugging.

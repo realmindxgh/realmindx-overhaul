@@ -49,7 +49,7 @@ const NAV = [
   { key: 'settings', label: 'Contact & Site Details', group: 'System', icon: 'settings' },
   { key: 'admins', label: 'Admin Accounts', group: 'System', icon: 'shield' },
   { key: 'staff', label: 'Staff Accounts', group: 'System', icon: 'shield' },
-  { key: 'teachers', label: 'Registered Teachers', group: 'System', icon: 'teacher' },
+  { key: 'teachers', label: 'Active Teachers', group: 'System', icon: 'teacher' },
   { key: 'auditLogs', label: 'Audit Log', group: 'System', icon: 'clipboard' },
   { key: 'account', label: 'My Account', group: 'System', icon: 'user' },
 ];
@@ -1081,14 +1081,14 @@ const DashboardView = ({ content, setActive, session }) => {
   // In API mode use the live summary; in local mode derive from content arrays.
   const s = liveData?.summary || {};
   const stats = (isApiMode() ? [
-    { label: 'Registered Teachers', value: s.total_users ?? 0, note: 'teacher accounts', icon: 'users', target: 'teachers', permission: 'teachers.view' },
+    { label: 'Active Teachers', value: s.total_users ?? 0, note: 'currently active teacher accounts', icon: 'users', target: 'teachers', permission: 'teachers.view' },
     { label: 'Job Applications', value: s.total_job_applications ?? 0, note: `${s.pending_applications ?? 0} pending`, icon: 'clipboard', target: 'applications', permission: 'applications.view' },
     { label: 'New Orders', value: s.new_orders ?? 0, note: 'awaiting confirmation', icon: 'package', target: 'orders', permission: 'orders.view' },
     { label: 'New Tickets', value: s.new_contact_messages ?? 0, note: 'need attention', icon: 'message', target: 'messages', permission: 'messages.view' },
     { label: 'Products', value: s.total_products ?? 0, note: 'in the bookshop', icon: 'book', target: 'products', permission: 'products.view' },
     { label: 'Newsletter Subscribers', value: s.newsletter_subscribers ?? 0, note: 'active subscriptions', icon: 'mail', target: 'newsletters', permission: 'newsletters.view' },
   ] : [
-    { label: 'Registered Teachers', value: 142, note: 'seeded teacher accounts', icon: 'users', target: 'teachers', permission: 'teachers.view' },
+    { label: 'Active Teachers', value: 142, note: 'seeded active teacher accounts', icon: 'users', target: 'teachers', permission: 'teachers.view' },
     { label: 'Job Applications', value: 38, note: `${(content.jobs || []).length} active job records`, icon: 'clipboard', target: 'applications', permission: 'applications.view' },
     { label: 'New Orders', value: (content.orders || []).filter(o => o.status === 'new').length, note: 'from bookshop', icon: 'package', target: 'orders', permission: 'orders.view' },
     { label: 'New Tickets', value: (content.messages || []).filter(m => m.status === 'new').length, note: 'need attention', icon: 'message', target: 'messages', permission: 'messages.view' },
@@ -4139,7 +4139,9 @@ const TeachersView = ({ session }) => {
   const [payoutForm, setPayoutForm] = React.useState(emptyPayoutForm);
   const [payoutSaving, setPayoutSaving] = React.useState(false);
   const [payoutError, setPayoutError] = React.useState('');
+  const [deleting, setDeleting] = React.useState(null);
   const canEditTeachers = hasSessionPermission(session, 'teachers.edit');
+  const canDeleteTeachers = hasSessionPermission(session, 'teachers.delete');
   const canExportTeachers = hasSessionPermission(session, 'teachers.export');
 
   const reload = React.useCallback(() => {
@@ -4189,6 +4191,21 @@ const TeachersView = ({ session }) => {
     finally { setToggling(null); }
   };
 
+  const deleteTeacher = async (t) => {
+    if (!window.confirm(`Delete ${t.email}? This action cannot be undone.`)) return;
+    setDeleting(t.id);
+    try {
+      await api.adminDelete('users', t.id);
+      setTeachers(prev => prev.filter(u => u.id !== t.id));
+      if (detail?.id === t.id) setDetail(null);
+    } catch (err) {
+      console.error(err);
+      window.alert(err?.message || 'Could not delete teacher account.');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   const updatePayoutField = (fieldName) => (event) => {
     setPayoutForm(form => ({ ...form, [fieldName]: event.target.value }));
   };
@@ -4217,7 +4234,7 @@ const TeachersView = ({ session }) => {
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, marginBottom:24, flexWrap:'wrap' }}>
         <div>
-          <h2 className="admin-page-title">Registered Teachers</h2>
+          <h2 className="admin-page-title">Active Teachers</h2>
           <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginTop:4 }}>
             Only teacher accounts are shown. Admin and staff accounts are excluded. Use the export buttons for records.
           </p>
@@ -4241,7 +4258,7 @@ const TeachersView = ({ session }) => {
         ) : teachers === null ? (
           <EmptySection title="Loading…" body="" />
         ) : rankedTeachers.length === 0 ? (
-          <EmptySection title="No Registered Teachers Yet" body="Teachers who sign up on the portal will appear here." />
+          <EmptySection title="No Active Teachers Yet" body="Teacher accounts will appear here after registration and activation." />
         ) : (
           <AdminTableScroll>
             <table className="admin-table">
@@ -4267,7 +4284,7 @@ const TeachersView = ({ session }) => {
                       {t.created_at ? new Date(t.created_at).toLocaleDateString() : 'N/A'}
                     </td>
                     <td className="admin-actions-column">
-                      <div style={{ display:'flex', gap:6 }}>
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                         <button className="table-action-btn" onClick={() => openDetail(t)}>View Profile</button>
                         {canEditTeachers ? (
                           <button
@@ -4277,6 +4294,16 @@ const TeachersView = ({ session }) => {
                             onClick={() => toggleActive(t)}
                           >
                             {toggling === t.id ? '…' : t.is_active !== false ? 'Disable' : 'Enable'}
+                          </button>
+                        ) : null}
+                        {canDeleteTeachers ? (
+                          <button
+                            className="table-action-btn"
+                            style={{ background: '#fee2e2', color: '#991b1b' }}
+                            disabled={deleting === t.id}
+                            onClick={() => deleteTeacher(t)}
+                          >
+                            {deleting === t.id ? 'Deleting…' : 'Delete'}
                           </button>
                         ) : null}
                       </div>
@@ -4348,6 +4375,7 @@ const TeachersView = ({ session }) => {
                           ['Employment Type', detail.profile.preferred_employment_type],
                           ['Available From', detail.profile.available_from],
                           ['Location', detail.profile.location],
+                          ['Preferred Locations', detail.profile.preferred_locations],
                           ['Curriculum Experience', detail.profile.curriculum_experience],
                           ['Teaching Experience', detail.profile.years_of_experience !== null && detail.profile.years_of_experience !== undefined ? (() => { const v = detail.profile.years_of_experience; if (v === 0) return 'Less than 1 year'; if (v <= 2) return '1 – 2 years'; if (v <= 5) return '3 – 5 years'; if (v <= 10) return '6 – 10 years'; if (v <= 15) return '11 – 15 years'; if (v <= 20) return '16 – 20 years'; return 'More than 20 years'; })() : null],
                           ['Age', detail.profile.age != null ? `${detail.profile.age} years old` : null],
@@ -4486,6 +4514,15 @@ const TeachersView = ({ session }) => {
 
             {/* Modal footer */}
             <div style={{ padding:'16px 28px', borderTop:'1px solid var(--border)', display:'flex', gap:10, justifyContent:'flex-end', flexWrap:'wrap' }}>
+              {canDeleteTeachers ? (
+                <button
+                  className="btn btn-danger btn-sm"
+                  disabled={deleting === detail.id}
+                  onClick={() => deleteTeacher(detail)}
+                >
+                  {deleting === detail.id ? 'Deleting…' : 'Delete Account'}
+                </button>
+              ) : null}
               {canEditTeachers ? (
                 <button
                   className="btn btn-outline-navy btn-sm"
