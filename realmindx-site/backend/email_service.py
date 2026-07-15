@@ -200,8 +200,8 @@ def app_email_shell(
     """
     base_url = current_app.config["BASE_URL"].rstrip("/")
     bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop").rstrip("/")
-    site_origin = _url_origin(base_url) or base_url
-    logo_url = f"{site_origin}/logo-white.png"
+    asset_origin = current_app.config.get("EMAIL_ASSET_BASE_URL", "https://realmindxgh.com").rstrip("/")
+    logo_url = f"{asset_origin}/logo-white.png"
     contact = _email_contact_settings("main")
 
     if cta_url and not cta_url.startswith(("http://", "https://")):
@@ -395,7 +395,10 @@ def bookshop_email_shell(
     """
     base_url = current_app.config["BASE_URL"].rstrip("/")
     bookshop_url = current_app.config.get("BOOKSHOP_URL", f"{base_url}/bookshop").rstrip("/")
-    bookshop_origin = _url_origin(bookshop_url) or _url_origin(base_url) or bookshop_url
+    bookshop_origin = current_app.config.get(
+        "BOOKSHOP_EMAIL_ASSET_BASE_URL",
+        "https://bookshop.realmindxgh.com",
+    ).rstrip("/")
     logo_url = f"{bookshop_origin}/bookshop-logo.png"
     email_icon_base = f"{bookshop_origin}/email-icons"
     contact = _email_contact_settings("bookshop")

@@ -586,7 +586,7 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
 
   return (
     <>
-      <h3 className="bs-h3">Filter Books</h3>
+      <h3 className="bs-h3">Filter Products</h3>
       {FILTER_GROUPS.filter((group) => group.taxonomy !== hiddenTaxonomy).map((group) => {
         const items = taxonomies[group.key] || [];
         if (items.length === 0) return null;
@@ -1016,7 +1016,11 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
                 <div className="bs-scoped-intro">
                   <div className="bs-scoped-intro-copy">
                     <span className="bs-eyebrow">{browseIntro.eyebrow}</span>
-                    <h1 className="bs-h2">{browseIntro.title.toLowerCase().includes('book') ? browseIntro.title : `${browseIntro.title} Books`}</h1>
+                    <h1 className="bs-h2">
+                      {initialBrowse.taxonomy === 'category' || browseIntro.title.toLowerCase().includes('book')
+                        ? browseIntro.title
+                        : `${browseIntro.title} Books`}
+                    </h1>
                     <p>{browseIntro.body}</p>
                   </div>
                   {browseIntro.popularSearches?.length > 0 && (

@@ -3208,6 +3208,7 @@ html {
 
 .bs-pcard-title {
   min-height: 36px;
+  height: 2.56em;
 }
 
 .bs-pcard-desc,
@@ -4284,6 +4285,7 @@ html {
     font-size: 0.78rem !important;
     line-height: 1.25 !important;
     min-height: 0 !important;
+    height: 2.5em !important;
     display: -webkit-box !important;
     -webkit-line-clamp: 2 !important;
     -webkit-box-orient: vertical !important;
@@ -4680,7 +4682,7 @@ html {
 
   .bs .bs-pcard {
     flex-direction: column !important;
-    height: auto !important;
+    height: 100% !important;
     min-width: 0 !important;
     max-width: none !important;
     border-radius: 7px !important;
@@ -4736,6 +4738,7 @@ html {
 
   .bs .bs-pcard-title {
     min-height: 0 !important;
+    height: 3.45em !important;
     font-size: clamp(0.62rem, 2.6vw, 0.72rem) !important;
     line-height: 1.15 !important;
     letter-spacing: 0 !important;

@@ -10,7 +10,7 @@ if str(SITE_ROOT) not in sys.path:
 from backend import create_app
 from backend.config import Config
 from backend.extensions import db
-from backend.email_service import _email_contact_settings
+from backend.email_service import _email_contact_settings, app_email_shell, bookshop_email_shell
 from backend.models import Role, SiteSetting, User
 
 
@@ -111,6 +111,14 @@ class SiteSettingsTests(unittest.TestCase):
         SiteSetting.query.filter_by(key="contact_email").delete()
         db.session.commit()
         self.assertEqual(_email_contact_settings("bookshop")["email"], "")
+
+    def test_email_shells_use_public_logo_assets_in_local_environments(self):
+        main_html = app_email_shell("Main test", "<p>Body</p>")
+        bookshop_html = bookshop_email_shell("Shop test", "<p>Body</p>")
+
+        self.assertIn('src="https://realmindxgh.com/logo-white.png"', main_html)
+        self.assertIn('src="https://bookshop.realmindxgh.com/bookshop-logo.png"', bookshop_html)
+        self.assertNotIn('src="http://localhost/logo-white.png"', main_html)
 
 
 if __name__ == "__main__":

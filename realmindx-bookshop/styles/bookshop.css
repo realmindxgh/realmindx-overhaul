@@ -468,6 +468,7 @@
 .bs-see-all:hover { gap: 11px; }
 /* Full-width pages (home, no sidebar): 5 cols */
 .bs-product-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 18px; }
+.bs-product-grid > * { display: flex; min-width: 0; }
 /* Shop page always has a 268px filter sidebar — 4 cols fit cleanly */
 .bs-shop-layout .bs-product-grid { grid-template-columns: repeat(4,1fr); gap: 16px; }
 /* ≤1024px: sidebar becomes a drawer, shop grid narrows; home drops to 3 */
@@ -477,7 +478,7 @@
 @media (max-width: 768px)  { .bs-home-new-grid > *:nth-child(n+5) { display: none; } }
 
 /* ---------- Product card ---------- */
-.bs-pcard { background: #fff; border-radius: var(--bs-radius-md); overflow: hidden; box-shadow: var(--bs-shadow-sm); border: 1px solid var(--bs-border); display: flex; flex-direction: column; transition: transform .28s, box-shadow .28s; position: relative; }
+.bs-pcard { background: #fff; border-radius: var(--bs-radius-md); overflow: hidden; box-shadow: var(--bs-shadow-sm); border: 1px solid var(--bs-border); display: flex; flex-direction: column; height: 100%; width: 100%; transition: transform .28s, box-shadow .28s; position: relative; }
 .bs-pcard:hover { transform: translateY(-4px); box-shadow: var(--bs-shadow-md); }
 .bs-pcard.bs-oos { opacity: .82; }
 /* Cover: slightly compressed portrait for tighter 5-col layout */
@@ -491,7 +492,7 @@
 .bs-dot.out { background: var(--bs-error); }
 .bs-stock-in { color: var(--bs-success); }
 .bs-stock-out { color: var(--bs-error); }
-.bs-pcard-title { font-family:'Montserrat',sans-serif; font-weight: 600; font-size: 12.5px; color: var(--bs-navy); line-height: 1.28; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bs-pcard-title { font-family:'Montserrat',sans-serif; font-weight: 600; font-size: 12.5px; color: var(--bs-navy); line-height: 1.28; height: 2.56em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .bs-pcard-desc { font-size: 11px; color: var(--bs-muted); line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-pcard-meta { font-size: 10.5px; color: var(--bs-text); opacity: .72; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-pcard-price { font-family:'Montserrat',sans-serif; font-weight: 800; font-size: 14px; color: var(--bs-gold-dark); }
@@ -697,6 +698,7 @@
 
   .bs-pcard-title {
     min-height: 0;
+    height: 3.42em;
     font-size: 11px;
     line-height: 1.14;
     -webkit-line-clamp: 3;

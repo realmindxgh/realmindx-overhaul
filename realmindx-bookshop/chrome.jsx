@@ -1093,9 +1093,6 @@ const ProductCard = ({ book, idx = 0, navigate, searchContext = null }) => {
           {book.title}
         </a>
         <div className="bs-pcard-desc">{book.desc}</div>
-        {(book.publisher || book.author) && (
-          <div className="bs-pcard-meta">{book.publisher || book.author}</div>
-        )}
         <div className="bs-pcard-price">{cedis(book.price)}</div>
         <div className="bs-pcard-foot">
           <RatingLine book={book} size={13} />

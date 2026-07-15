@@ -94,6 +94,11 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(self.active_teacher.email, response.get_json()["message"])
         self.assertEqual(send_email_mock.call_count, 1)
+        message = send_email_mock.call_args.args[0]
+        self.assertIn("almost ready", message.subject)
+        self.assertIn("almost there", message.html)
+        self.assertIn("Finish My Profile", message.html)
+        self.assertIn("https://realmindxgh.com/logo-white.png", message.html)
 
     def test_teacher_with_placement_history_must_be_disabled_instead(self):
         application = JobApplication.query.filter_by(user_id=self.active_teacher.id).one()

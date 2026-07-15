@@ -110,7 +110,12 @@ class JobAlertMatchingTests(unittest.TestCase):
 
         self.assertEqual(sent, 1)
         self.assertEqual(send_email_mock.call_count, 1)
-        self.assertEqual(send_email_mock.call_args.args[0].to, "skgasante@gmail.com")
+        message = send_email_mock.call_args.args[0]
+        self.assertEqual(message.to, "skgasante@gmail.com")
+        self.assertIn("A teaching opportunity matches your preferences", message.subject)
+        self.assertIn("Good news", message.html)
+        self.assertIn("View Job &amp; Apply", message.html)
+        self.assertIn("https://realmindxgh.com/logo-white.png", message.html)
 
     @patch("backend.api.admin.send_email", return_value={"provider": "disabled", "status": "skipped"})
     def test_skipped_delivery_is_not_counted_as_sent(self, send_email_mock):

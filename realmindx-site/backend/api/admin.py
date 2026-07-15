@@ -1017,12 +1017,16 @@ def dispatch_job_alerts(job):
                 OutboundEmail(
                     to=user.email,
                     from_email=current_app.config["JOBS_FROM_EMAIL"],
-                    subject=f"New matching teaching role: {job.title}",
+                    subject=f"A teaching opportunity matches your preferences: {job.title}",
                     html=app_email_shell(
-                        "A new job matches your RealMindX alerts",
-                        f"<p><strong>{job.title}</strong> in {job.location} matches every criterion in your saved job preferences.</p>",
-                        "View Job",
+                        "Good news — a teaching opportunity matches you",
+                        f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+                        "<p>We found a teaching opportunity that matches all of your saved preferences.</p>"
+                        f"<p><strong>{escape(job.title)}</strong><br>{escape(job.location)}</p>"
+                        "<p>Take a look at the role and apply if it feels like the right next step for you. We are rooting for you!</p>",
+                        "View Job & Apply",
                         job_url,
+                        preheader=f"{job.title} matches your saved teaching preferences.",
                     ),
                 )
             )
@@ -1457,16 +1461,17 @@ def send_profile_reminder(user_id):
     missing_html = "".join(f"<li>{escape(item)}</li>" for item in missing)
     result = send_email(OutboundEmail(
         to=user.email,
-        subject="Complete your RealMindX teaching profile to receive tailored jobs",
+        subject="You are almost ready for better-matched teaching opportunities",
         html=app_email_shell(
-            "Your teaching profile is not yet complete",
+            "Complete your profile and unlock better job matches",
             f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-            "<p>Your RealMindX profile needs to be completed before we can send jobs that match all of your qualifications and preferences.</p>"
-            f"<p><strong>Still needed:</strong></p><ul>{missing_html}</ul>"
-            "<p>Complete these details so future job alerts are accurately tailored to you.</p>",
-            "Complete My Profile",
+            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
+            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
+            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
+            "<p>Finishing your profile only takes a moment and gives you a better chance of seeing the right roles.</p>",
+            "Finish My Profile",
             portal_url,
-            preheader="Complete your profile to receive accurately matched teaching jobs.",
+            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
         ),
         text=f"Complete your RealMindX teaching profile to receive tailored jobs: {portal_url}",
     ))
