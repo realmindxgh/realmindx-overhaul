@@ -698,10 +698,10 @@
 
   .bs-pcard-title {
     min-height: 0;
-    height: 3.42em;
+    height: 2.28em;
     font-size: 11px;
     line-height: 1.14;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
     letter-spacing: 0;
   }
 

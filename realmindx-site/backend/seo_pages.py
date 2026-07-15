@@ -404,9 +404,9 @@ BOOKSHOP_LANDING_PROFILES = {
         "intro": "Track the status of a RealMindX Bookshop order using the order reference or checkout email address.",
     },
     "invoice": {
-        "title": "Receipt/Invoice Lookup | RealMindX Bookshop",
-        "description": "Look up a RealMindX Bookshop receipt or invoice by exact ID and view the branded PDF online.",
-        "intro": "Look up a RealMindX Bookshop receipt or invoice by exact ID, view the PDF online, and download a copy.",
+        "title": "Receipt/Invoice Verification | RealMindX Bookshop",
+        "description": "Verify a RealMindX Bookshop receipt or invoice by exact ID and view the branded PDF online.",
+        "intro": "Verify a RealMindX Bookshop receipt or invoice by exact ID, view the PDF online, and download a copy.",
     },
     "documents": {
         "title": "Education Documents | RealMindX Bookshop",

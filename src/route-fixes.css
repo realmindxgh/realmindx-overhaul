@@ -4738,12 +4738,12 @@ html {
 
   .bs .bs-pcard-title {
     min-height: 0 !important;
-    height: 3.45em !important;
+    height: 2.3em !important;
     font-size: clamp(0.62rem, 2.6vw, 0.72rem) !important;
     line-height: 1.15 !important;
     letter-spacing: 0 !important;
     display: -webkit-box !important;
-    -webkit-line-clamp: 3 !important;
+    -webkit-line-clamp: 2 !important;
     -webkit-box-orient: vertical !important;
     overflow: hidden !important;
   }

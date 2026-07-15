@@ -646,7 +646,7 @@ const Navbar = ({ route, navigate }) => {
     { title: 'Item Type', allLabel: 'Item Types', taxonomy: 'category', icon: 'box', items: taxonomies.categories || [] },
   ];
   const utilityLinks = [
-    { route: 'invoice', label: 'Receipt/Invoice Lookup', icon: 'files', description: 'Find receipts and PDF invoices' },
+    { route: 'invoice', label: 'Receipt/Invoice Verification', icon: 'files', description: 'Verify receipts and PDF invoices' },
     { route: 'documents', label: 'Education Documents', icon: 'book', description: 'Browse useful education files' },
   ];
 
@@ -846,7 +846,7 @@ const Navbar = ({ route, navigate }) => {
       {/* Note: no redundant close button here — the hamburger in the navbar already animates to X */}
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
         <nav className="bs-mm-links">
-          {[['home','Home'],['shop','Shop'],['track','Track Order'],['invoice','Receipt/Invoice Lookup'],['documents','Education Documents'],['contact','Contact'],['about','About']].map(([r,l]) => (
+          {[['home','Home'],['shop','Shop'],['track','Track Order'],['invoice','Receipt/Invoice Verification'],['documents','Education Documents'],['contact','Contact'],['about','About']].map(([r,l]) => (
             <a key={r} href={hrefForRoute(r)} className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
               {l}
             </a>
@@ -886,7 +886,7 @@ const Footer = ({ navigate }) => {
               <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
               <a href={hrefForBrowse('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { taxonomy: 'curriculum' });}}>All Curricula</a>
               <a href={hrefForRoute('track')} onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
-              <a href={hrefForRoute('invoice')} onClick={(e)=>{e.preventDefault();navigate('invoice');}}>Receipt/Invoice Lookup</a>
+              <a href={hrefForRoute('invoice')} onClick={(e)=>{e.preventDefault();navigate('invoice');}}>Receipt/Invoice Verification</a>
               <a href={hrefForRoute('documents')} onClick={(e)=>{e.preventDefault();navigate('documents');}}>Education Documents</a>
               <a href={hrefForRoute('about')} onClick={(e)=>{e.preventDefault();navigate('about');}}>About Us</a>
               <a href={hrefForRoute('contact')} onClick={(e)=>{e.preventDefault();navigate('contact');}}>Contact</a>

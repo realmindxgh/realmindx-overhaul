@@ -802,7 +802,7 @@ def _send_cart_invoice_email(invoice, recipient, *, reminder=False):
       </div>
       {bookshop_order_summary_table(invoice)}
       <p style="margin:18px 0 0;">
-        You can <a href="{escape(lookup_url, quote=True)}" style="color:#143670;font-weight:800;">view this invoice online</a>,
+        You can <a href="{escape(lookup_url, quote=True)}" style="color:#143670;font-weight:800;">verify and view this invoice online</a>,
         <a href="{escape(cart_url, quote=True)}" style="color:#143670;font-weight:800;">add the items back to cart</a>,
         or continue to checkout when you are ready.
       </p>
@@ -817,7 +817,7 @@ def _send_cart_invoice_email(invoice, recipient, *, reminder=False):
         html=bookshop_email_shell(
             title,
             body_html,
-            "Review Invoice" if reminder else "Continue to Checkout",
+            "Verify Invoice" if reminder else "Continue to Checkout",
             lookup_url if reminder else checkout_url,
             eyebrow="RealMindX Bookshop Reminder" if reminder else "RealMindX Bookshop Invoice",
             preheader=f"Invoice {invoice.invoice_id} for GH₵{float(invoice.total_amount or 0):,.2f}.",

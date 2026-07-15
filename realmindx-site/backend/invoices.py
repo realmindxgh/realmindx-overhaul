@@ -552,7 +552,7 @@ def build_invoice_pdf(order):
         ],
         "items": _order_items(order),
         "totals": _order_totals(order),
-        "footer": "Thank you for shopping with RealMindX Bookshop. Search the invoice ID on the public receipt/invoice lookup page to verify this document.",
+        "footer": "Thank you for shopping with RealMindX Bookshop. Enter the invoice ID on the public Receipt/Invoice Verification page to verify this document.",
     })
 
 
@@ -572,7 +572,7 @@ def build_receipt_pdf(order):
         ],
         "items": _order_items(order),
         "totals": _order_totals(order),
-        "footer": "This receipt confirms the order record shown above. Search the receipt/order reference on the public receipt/invoice lookup page to verify it.",
+        "footer": "This receipt confirms the order record shown above. Enter the receipt/order reference on the public Receipt/Invoice Verification page to verify it.",
     })
 
 

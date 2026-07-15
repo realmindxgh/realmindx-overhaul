@@ -1,7 +1,7 @@
 {
   "id": "/",
   "name": "RealMindX Bookshop",
-  "short_name": "RMX Bookshop",
+  "short_name": "Bookshop",
   "description": "Educational books, orders, invoices, and delivery tracking.",
   "start_url": "/",
   "scope": "/",

@@ -1208,7 +1208,7 @@ const InvoicePage = ({ navigate }) => {
       return;
     }
     if (!isApiMode()) {
-      setError('Live invoice lookup is available on the deployed bookshop.');
+      setError('Live receipt/invoice verification is available on the deployed bookshop.');
       return;
     }
     setLoading(true);
@@ -1266,14 +1266,14 @@ const InvoicePage = ({ navigate }) => {
     <div className="bs-container bs-fade-page">
       <div className="bs-track-search bs-invoice-search">
         <div className="bs-text-center">
-          <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Receipt/Invoice Lookup</span>
-          <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Find a receipt or invoice</h1>
-          <p className="bs-muted" style={{ marginTop:10 }}>Enter the exact receipt/order reference or invoice ID from your RealMindX Bookshop document.</p>
+          <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Receipt/Invoice Verification</span>
+          <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Verify a receipt or invoice</h1>
+          <p className="bs-muted" style={{ marginTop:10 }}>Enter the exact receipt/order reference or invoice ID to confirm that your RealMindX Bookshop document is genuine.</p>
         </div>
         <form className="bs-track-input-row" onSubmit={submit}>
           <input ref={inputRef} placeholder="e.g. RMX-INV-9F2A7C4B11 or RMX-ORDER-..." value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
           <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading}>
-            {loading ? 'Searching...' : 'Search'}
+            {loading ? 'Verifying...' : 'Verify'}
           </button>
         </form>
         {error && <p className="bs-track-error">{error}</p>}

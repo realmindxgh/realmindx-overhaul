@@ -458,7 +458,7 @@ const App = () => {
       wishlist: { title: 'My Wishlist | RealMindX Bookshop', desc: 'Your saved books and learning materials at the RealMindX Bookshop.' },
       checkout: { title: 'Checkout | RealMindX Bookshop', desc: '' },
       track:    { title: 'Track Your Order | RealMindX Bookshop', desc: 'Track your RealMindX Bookshop order by reference number or email address.' },
-      invoice:  { title: 'Receipt/Invoice Lookup | RealMindX Bookshop', desc: 'Find and download a RealMindX Bookshop receipt or invoice by exact ID.' },
+      invoice:  { title: 'Receipt/Invoice Verification | RealMindX Bookshop', desc: 'Verify and download a RealMindX Bookshop receipt or invoice by exact ID.' },
       documents:{ title: 'Education Documents | RealMindX Bookshop', desc: 'Browse useful education documents, guides, templates, and learning resources from RealMindX Bookshop.' },
       resource: { title: 'Education Resource | RealMindX Bookshop', desc: 'View a published document from the RealMindX Ghana Education Resource Library.' },
       login:    { title: 'Sign In | RealMindX Bookshop', desc: 'Sign in to your RealMindX account to track orders, save favourites, and check out faster.' },
