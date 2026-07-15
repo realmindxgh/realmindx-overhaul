@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { API_BASE, isApiMode, api } from '../src/lib/apiClient.js';
 import { useManagedContent, publicItems } from '../src/lib/managedContent.js';
 import { buildBookshopTaxonomies, normalizeBookshopTaxonomyValue } from '../src/lib/bookshopTaxonomy.js';
@@ -90,7 +90,7 @@ const fromApiProduct = (p) => {
     levelName,
     price: Number(p.price) || 0,
     old: p.old_price ? Number(p.old_price) : undefined,
-    desc: [curriculumName, levelName, subject].filter(Boolean).join(' - ') || p.short_description || 'Available in store',
+    desc: [p.category || 'General', curriculumName, levelName, subject].filter((v, i, a) => v && a.indexOf(v) === i).join(' - ') || p.short_description || 'Available in store',
     short: p.short_description || '',
     full: p.full_description || p.short_description || '',
     rating: Number(p.rating_average) || 0,
@@ -174,7 +174,7 @@ const mapProducts = (products, cats) => {
       curriculum, curriculumName,
       price: Number(p.price) || 0,
       old: p.oldPrice ? Number(p.oldPrice) : undefined,
-      desc: [curriculumName, levelName, subject].filter(Boolean).join(' - ') || p.author || 'Available in store',
+      desc: [catInfo.name || 'General', curriculumName, levelName, subject].filter((v, i, a) => v && a.indexOf(v) === i).join(' - ') || p.author || 'Available in store',
       short: p.shortDescription || p.short_description || '',
       full: p.fullDescription || p.full_description || p.description || '',
       rating: Number(p.rating_average || p.rating) || 0, reviews: Number(p.rating_count || p.reviews) || 0,

@@ -458,7 +458,7 @@ def list_products():
         query = query.filter(or_(*(Product.curriculum.ilike(term) for term in taxonomy_filter_terms("curriculum", curriculum))))
     if publisher:
         query = query.filter(Product.publisher == publisher)
-    products = query.order_by(Product.featured.desc(), Product.created_at.desc()).limit(100).all()
+    products = query.order_by(Product.featured.desc(), Product.created_at.desc()).all()
     return jsonify(items=[product_json(product) for product in products])
 
 

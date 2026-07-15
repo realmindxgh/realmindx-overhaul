@@ -1,5 +1,6 @@
 import csv
 import io
+import zipfile
 from datetime import date
 from html import escape
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
@@ -488,8 +489,8 @@ def company_settlement_export(batch_id, export_format):
     for row in rows:
         row.update(payment_reference=batch.payment_reference, dispute_status=batch.dispute_status)
     headers = ["settlement_date", "order_reference", "rider_name", "delivery_location", "payment_method", "book_subtotal", "customer_delivery_fee", "company_payable", "amount_due_realmindx", "amount_due_company", "net_balance", "status", "delivered_at", "payment_reference", "dispute_status"]
-    if export_format not in {"csv", "xlsx", "pdf"}:
-        return jsonify(error="Use csv, xlsx, or pdf."), 400
+    if export_format not in {"csv", "xlsx", "pdf", "zip"}:
+        return jsonify(error="Use csv, xlsx, pdf, or zip."), 400
     log_settlement_event(batch, "settlement_exported", actor_from_user(current_user), details={"format": export_format})
     db.session.commit()
     if export_format == "csv":
@@ -516,7 +517,31 @@ def company_settlement_export(batch_id, export_format):
             pdf.drawString(36, y, f"{row['order_reference']} | {row['rider_name'] or '-'} | {row['payment_method']} | Due RMX {row['amount_due_realmindx']:.2f} | Due Company {row['amount_due_company']:.2f} | Net {row['net_balance']:.2f}")
         pdf.save(); stream.seek(0)
         return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name=f"{batch.reference}.pdf")
-    return jsonify(error="Use csv, xlsx, or pdf."), 400
+    if export_format == "zip":
+        try: from openpyxl import Workbook
+        except ImportError: return jsonify(error="ZIP export requires openpyxl."), 501
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas as rl_canvas
+        except ImportError: return jsonify(error="ZIP export requires reportlab."), 501
+        zip_stream = io.BytesIO()
+        with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
+            output = io.StringIO(); writer = csv.DictWriter(output, fieldnames=headers); writer.writeheader(); writer.writerows([{key: row.get(key) for key in headers} for row in rows])
+            zf.writestr(f"{batch.reference}.csv", output.getvalue())
+            workbook = Workbook(); sheet = workbook.active; sheet.title = "Settlement"; sheet.append(headers)
+            for row in rows: sheet.append([row.get(key) for key in headers])
+            xlsx_stream = io.BytesIO(); workbook.save(xlsx_stream); xlsx_stream.seek(0); zf.writestr(f"{batch.reference}.xlsx", xlsx_stream.getvalue())
+            pdf_stream = io.BytesIO(); pdf = rl_canvas.Canvas(pdf_stream, pagesize=A4); _, height = A4; y = height - 42
+            pdf.setFont("Helvetica-Bold", 15); pdf.drawString(36, y, "RealMindX Delivery Settlement")
+            y -= 20; pdf.setFont("Helvetica", 9); pdf.drawString(36, y, f"{batch.reference} | {batch.company.name} | {batch.settlement_date} | {batch.status}")
+            for row in rows:
+                y -= 16
+                if y < 40: pdf.showPage(); y = height - 42; pdf.setFont("Helvetica", 8)
+                pdf.drawString(36, y, f"{row['order_reference']} | {row['rider_name'] or '-'} | {row['payment_method']} | Due RMX {row['amount_due_realmindx']:.2f} | Due Company {row['amount_due_company']:.2f} | Net {row['net_balance']:.2f}")
+            pdf.save(); pdf_stream.seek(0); zf.writestr(f"{batch.reference}.pdf", pdf_stream.getvalue())
+        zip_stream.seek(0)
+        return send_file(zip_stream, mimetype="application/zip", as_attachment=True, download_name=f"{batch.reference}.zip")
+    return jsonify(error="Use csv, xlsx, pdf, or zip."), 400
 
 
 @delivery_bp.get("/rider/me")

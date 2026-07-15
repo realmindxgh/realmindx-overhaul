@@ -1982,12 +1982,14 @@ const ProductImportPanel = ({ onImported, onClose }) => {
   const [progress, setProgress] = React.useState(null);
   const [previewing, setPreviewing] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
+  const [overwriteSlugs, setOverwriteSlugs] = React.useState(new Set());
 
   const reviewCatalog = async file => {
     setCatalogFile(file);
     setPreview(null);
     setMapping({});
     setProgress(null);
+    setOverwriteSlugs(new Set());
     if (!file) {
       setStatus(null);
       return;
@@ -2031,6 +2033,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
         catalogFile,
         imagesZip,
         columnMapping: mapping,
+        overwriteSlugs: Array.from(overwriteSlugs),
         onProgress: nextProgress => setProgress(nextProgress),
       });
       const details = [
@@ -2184,6 +2187,51 @@ const ProductImportPanel = ({ onImported, onClose }) => {
           {preview.warnings?.map(warning => (
             <p className="product-import-warning" key={warning}>{warning}</p>
           ))}
+
+          {preview.conflicts?.length > 0 ? (
+            <div className="product-import-preview" style={{ marginTop: 20 }}>
+              <div>
+                <p className="overline">Conflicts Detected</p>
+                <h4>{preview.conflicts.length} products already exist with the same name and category.</h4>
+              </div>
+              <p style={{ fontSize: '0.86rem', color: 'var(--gray-600)', marginBottom: 10 }}>
+                Select the products below to overwrite their details and images with the new upload. Unselected products will be skipped.
+              </p>
+              <div className="product-import-preview-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40 }}>Overwrite</th>
+                      <th>Import Name</th>
+                      <th>Existing Match</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.conflicts.map(conflict => (
+                      <tr key={conflict.slug}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={overwriteSlugs.has(conflict.slug)}
+                            onChange={(e) => {
+                              setOverwriteSlugs(prev => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(conflict.slug);
+                                else next.delete(conflict.slug);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        <td>{conflict.import_name}</td>
+                        <td>{conflict.existing_name} <small>({conflict.existing_category})</small></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -3295,11 +3343,17 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                   )}
                 </>
               )}
-              {['csv', 'xlsx', 'pdf'].map(format => (
-                <a className="btn btn-outline-navy btn-sm" key={format} href={api.adminExportUrl(config.collection, format)}>
-                  Export {format.toUpperCase()}
+              {config.collection === 'products' ? (
+                <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl(config.collection, 'zip')}>
+                  Export ZIP
                 </a>
-              ))}
+              ) : (
+                ['csv', 'xlsx', 'pdf'].map(format => (
+                  <a className="btn btn-outline-navy btn-sm" key={format} href={api.adminExportUrl(config.collection, format)}>
+                    Export {format.toUpperCase()}
+                  </a>
+                ))
+              )}
             </>
           )}
           {canCreate && (

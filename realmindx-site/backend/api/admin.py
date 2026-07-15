@@ -1,4 +1,4 @@
-﻿import csv
+import csv
 import io
 import json
 import mimetypes
@@ -1267,7 +1267,7 @@ def analytics_export():
 @login_required
 @permission_required("jobs.view")
 def list_jobs():
-    rows = Job.query.order_by(Job.created_at.desc()).limit(200).all()
+    rows = Job.query.order_by(Job.created_at.desc()).all()
     return jsonify(items=[job_json(row) for row in rows])
 
 
@@ -1351,7 +1351,7 @@ def delete_job(job_id):
 @login_required
 @permission_required("applications.view")
 def applications():
-    rows = JobApplication.query.order_by(JobApplication.created_at.desc()).limit(200).all()
+    rows = JobApplication.query.order_by(JobApplication.created_at.desc()).all()
     return jsonify(
         items=[
             {
@@ -1438,7 +1438,6 @@ def users():
         .join(User.role)
         .filter(Role.name == "user")
         .order_by(User.created_at.desc())
-        .limit(500)
         .all()
     )
     return jsonify(items=[user_json(user) for user in rows])
@@ -1930,7 +1929,7 @@ def list_audit_logs():
 @login_required
 @permission_required("products.view")
 def list_products():
-    rows = Product.query.order_by(Product.featured.desc(), Product.created_at.desc()).limit(200).all()
+    rows = Product.query.order_by(Product.featured.desc(), Product.created_at.desc()).all()
     return jsonify(items=[product_json(row, include_private=True) for row in rows])
 
 
@@ -2210,6 +2209,7 @@ def import_products():
         rows = _read_catalog_rows(request.files.get("catalog_file"))
         headers = _import_headers(rows)
         mapping = _parse_import_mapping(request.form.get("column_mapping"), headers)
+        overwrite_slugs = set(json.loads(request.form.get("overwrite_slugs") or "[]"))
         if mapping and not mapping.get("name"):
             raise ValueError("Map a catalogue column to Product name before importing.")
         image_ids, saved_paths = _save_imported_images(request.files.get("images_zip"), current_user.id)
@@ -2230,7 +2230,18 @@ def import_products():
                 skipped.append({"row": index, "reason": "Missing product name"})
                 continue
             category = _ensure_category(row["category"])
+            category_slug = slugify(row["category"]) if row.get("category") else None
             product = Product.query.filter_by(slug=row["slug"]).first()
+            if not product and category_slug:
+                product = Product.query.filter(
+                    Product.name.ilike(row["name"]),
+                    Product.category.has(ProductCategory.slug == category_slug)
+                ).first()
+            
+            if product and row["slug"] not in overwrite_slugs:
+                skipped.append({"row": index, "reason": f"Conflict with existing product '{product.name}' not marked for overwrite"})
+                continue
+
             if not product:
                 product = Product(name=row["name"], slug=_unique_product_slug(row["slug"]), price=row["price"])
                 db.session.add(product)
@@ -2314,6 +2325,29 @@ def preview_product_import():
     elif blank_names:
         warnings.append(f"{blank_names} row(s) have no product name and will be skipped.")
 
+    conflicts = []
+    if name_source:
+        for index, raw_row in enumerate(rows, start=2):
+            row = _normalise_import_row(_apply_import_mapping(raw_row, mapping))
+            if not row:
+                continue
+            category_slug = slugify(row["category"]) if row.get("category") else None
+            product = Product.query.filter_by(slug=row["slug"]).first()
+            if not product and category_slug:
+                product = Product.query.filter(
+                    Product.name.ilike(row["name"]),
+                    Product.category.has(ProductCategory.slug == category_slug)
+                ).first()
+            if product:
+                conflicts.append({
+                    "row": index,
+                    "slug": row["slug"],
+                    "existing_id": product.id,
+                    "existing_name": product.name,
+                    "existing_category": product.category.name if product.category else "",
+                    "import_name": row["name"],
+                })
+
     sample_rows = [
         {key: _json_safe_import_value(value) for key, value in row.items()}
         for row in rows[:8]
@@ -2333,6 +2367,7 @@ def preview_product_import():
         fields=fields,
         sample_rows=sample_rows,
         warnings=warnings,
+        conflicts=conflicts,
     )
 
 
@@ -2340,11 +2375,13 @@ def preview_product_import():
 @login_required
 @permission_required("products.export")
 def export_products():
-    export_format = (request.args.get("format") or "csv").lower()
+    export_format = request.args.get("format", "zip").lower()
+    
     rows = Product.query.order_by(Product.created_at.desc()).all()
     headers = [
         "id", "name", "category", "price", "old_price", "stock_status", "quantity_available",
         "subject", "level", "curriculum", "author", "publisher", "product_type", "source", "featured", "is_active", "tags",
+        "image_filename",
     ]
     data_rows = [
         {
@@ -2365,69 +2402,60 @@ def export_products():
             "featured": product.featured,
             "is_active": product.is_active,
             "tags": ", ".join(product.tags or []),
+            "image_filename": getattr(product.image_file, "original_filename", "") if getattr(product, "image_file", None) else "",
         }
         for product in rows
     ]
 
     if export_format == "csv":
-        out = io.StringIO()
-        writer = csv.DictWriter(out, fieldnames=headers)
-        writer.writeheader()
-        writer.writerows(data_rows)
-        return Response(
-            out.getvalue(),
-            mimetype="text/csv",
-            headers={"Content-Disposition": "attachment; filename=realmindx-products.csv"},
-        )
-
+        csv_out = io.StringIO(); writer = csv.DictWriter(csv_out, fieldnames=headers); writer.writeheader(); writer.writerows(data_rows)
+        return Response(csv_out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=products.csv"})
     if export_format == "xlsx":
-        try:
-            from openpyxl import Workbook
-        except ImportError as exc:
-            return jsonify(error="XLSX export requires openpyxl. Install backend requirements first."), 501
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.title = "Products"
-        sheet.append(headers)
-        for row in data_rows:
-            sheet.append([row[header] for header in headers])
-        stream = io.BytesIO()
-        workbook.save(stream)
-        stream.seek(0)
-        return send_file(
-            stream,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name="realmindx-products.xlsx",
-        )
-
+        try: from openpyxl import Workbook
+        except ImportError: return jsonify(error="XLSX export requires openpyxl."), 501
+        workbook = Workbook(); sheet = workbook.active; sheet.title = "Products"; sheet.append(headers)
+        for row in data_rows: sheet.append([row.get(key) for key in headers])
+        stream = io.BytesIO(); workbook.save(stream); stream.seek(0)
+        return send_file(stream, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name="products.xlsx")
     if export_format == "pdf":
         try:
+            from reportlab.pdfgen import canvas as rl_canvas
             from reportlab.lib.pagesizes import A4
-            from reportlab.pdfgen import canvas
-        except ImportError:
-            return jsonify(error="PDF export requires reportlab. Install backend requirements first."), 501
-        stream = io.BytesIO()
-        pdf = canvas.Canvas(stream, pagesize=A4)
-        width, height = A4
-        y = height - 48
-        pdf.setFont("Helvetica-Bold", 14)
-        pdf.drawString(40, y, "RealMindX Bookshop Products")
-        y -= 28
-        pdf.setFont("Helvetica", 8)
-        for product in rows:
-            line = f"{product.id}. {product.name} | {product.category.name if product.category else ''} | GHS {float(product.price or 0):.2f} | {product.stock_status} | {product.source or ''}"
-            pdf.drawString(40, y, line[:135])
-            y -= 14
-            if y < 44:
-                pdf.showPage()
-                y = height - 48
-                pdf.setFont("Helvetica", 8)
-        pdf.save()
-        stream.seek(0)
-        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name="realmindx-products.pdf")
-
-    return jsonify(error="Unsupported export format. Use csv, xlsx, or pdf."), 400
+        except ImportError: return jsonify(error="PDF export requires reportlab."), 501
+        pdf_stream = io.BytesIO(); pdf = rl_canvas.Canvas(pdf_stream, pagesize=A4); width, height = A4; y = height - 40
+        pdf.setFont("Helvetica-Bold", 14); pdf.drawString(40, y, "RealMindX Bookshop Products")
+        y -= 20; pdf.setFont("Helvetica", 8)
+        for row in data_rows:
+            line = f"{row['id']} | {row['name']} | {row['category']} | GHS {row['price']} | {row['stock_status']}"
+            pdf.drawString(40, y, line[:135]); y -= 12
+            if y < 40: pdf.showPage(); y = height - 40; pdf.setFont("Helvetica", 8)
+        pdf.save(); pdf_stream.seek(0)
+        return send_file(pdf_stream, mimetype="application/pdf", as_attachment=True, download_name="products.pdf")
+    if export_format == "zip":
+        zip_stream = io.BytesIO()
+        with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
+            csv_out = io.StringIO(); writer = csv.DictWriter(csv_out, fieldnames=headers); writer.writeheader(); writer.writerows(data_rows)
+            zf.writestr("products.csv", csv_out.getvalue())
+            try:
+                from reportlab.pdfgen import canvas as rl_canvas
+                from reportlab.lib.pagesizes import A4
+                pdf_stream = io.BytesIO(); pdf = rl_canvas.Canvas(pdf_stream, pagesize=A4); width, height = A4; y = height - 40
+                pdf.setFont("Helvetica-Bold", 14); pdf.drawString(40, y, "RealMindX Bookshop Products")
+                y -= 20; pdf.setFont("Helvetica", 8)
+                for row in data_rows:
+                    line = f"{row['id']} | {row['name']} | {row['category']} | GHS {row['price']} | {row['stock_status']}"
+                    pdf.drawString(40, y, line[:135]); y -= 12
+                    if y < 40: pdf.showPage(); y = height - 40; pdf.setFont("Helvetica", 8)
+                pdf.save(); pdf_stream.seek(0); zf.writestr("products.pdf", pdf_stream.getvalue())
+            except ImportError: zf.writestr("products.pdf", b"PDF export requires reportlab.")
+            for product in rows:
+                if getattr(product, "image_file", None) and product.image_file.storage_path:
+                    try:
+                        with open(product.image_file.storage_path, "rb") as f: zf.writestr(f"images/{product.image_file.original_filename}", f.read())
+                    except Exception: pass
+        zip_stream.seek(0)
+        return send_file(zip_stream, mimetype="application/zip", as_attachment=True, download_name="realmindx-products-export.zip")
+    return jsonify(error="Use csv, xlsx, pdf, or zip."), 400
 
 
 @admin_bp.get("/users/export")
@@ -3246,7 +3274,35 @@ def _settlement_export_response(batch, export_format):
             pdf.drawString(35, y, text[:180])
         pdf.save(); stream.seek(0)
         return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name=f"{batch.reference}.pdf")
-    return jsonify(error="Use csv, xlsx, or pdf."), 400
+    if export_format == "zip":
+        try: from openpyxl import Workbook
+        except ImportError: return jsonify(error="ZIP export requires openpyxl."), 501
+        try:
+            from reportlab.lib.pagesizes import landscape, A4
+            from reportlab.pdfgen import canvas as rl_canvas
+        except ImportError: return jsonify(error="ZIP export requires reportlab."), 501
+        zip_stream = io.BytesIO()
+        with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
+            output = io.StringIO(); writer = csv.DictWriter(output, fieldnames=headers); writer.writeheader(); writer.writerows([{key: row.get(key) for key in headers} for row in rows])
+            zf.writestr(f"{batch.reference}.csv", output.getvalue())
+            workbook = Workbook(); sheet = workbook.active; sheet.title = "Settlement"; sheet.append(headers)
+            for row in rows: sheet.append([row.get(key) for key in headers])
+            xlsx_stream = io.BytesIO(); workbook.save(xlsx_stream); xlsx_stream.seek(0); zf.writestr(f"{batch.reference}.xlsx", xlsx_stream.getvalue())
+            pdf_stream = io.BytesIO(); pdf = rl_canvas.Canvas(pdf_stream, pagesize=landscape(A4)); width, height = landscape(A4)
+            totals = batch_json(batch); y = height - 40; pdf.setFont("Helvetica-Bold", 16); pdf.drawString(35, y, "RealMindX Delivery Settlement")
+            y -= 20; pdf.setFont("Helvetica", 9); pdf.drawString(35, y, f"{batch.reference} | {batch.company.name} | {batch.settlement_date} | {batch.status}")
+            y -= 18; pdf.drawString(35, y, f"Deliveries: {totals['delivery_count']} | Book value: GHS {totals['book_subtotal']:.2f} | Company payable: GHS {totals['company_payable']:.2f} | Net: GHS {totals['net_balance']:.2f}")
+            y -= 24; pdf.setFont("Helvetica-Bold", 7); pdf.drawString(35, y, "Order | Rider | Location | Payment | Book | Delivery | Payable | Due RMX | Due Company | Net")
+            pdf.setFont("Helvetica", 7)
+            for row in rows:
+                y -= 14
+                if y < 35: pdf.showPage(); y = height - 40; pdf.setFont("Helvetica", 7)
+                text = f"{row['order_reference']} | {row['rider_name'] or '-'} | {row['delivery_location'] or '-'} | {row['payment_method']} | {row['book_subtotal']:.2f} | {row['customer_delivery_fee']:.2f} | {row['company_payable']:.2f} | {row['amount_due_realmindx']:.2f} | {row['amount_due_company']:.2f} | {row['net_balance']:.2f}"
+                pdf.drawString(35, y, text[:180])
+            pdf.save(); pdf_stream.seek(0); zf.writestr(f"{batch.reference}.pdf", pdf_stream.getvalue())
+        zip_stream.seek(0)
+        return send_file(zip_stream, mimetype="application/zip", as_attachment=True, download_name=f"{batch.reference}.zip")
+    return jsonify(error="Use csv, xlsx, pdf, or zip."), 400
 
 
 @admin_bp.get("/delivery-settlements/<int:batch_id>/export/<string:export_format>")
@@ -3263,7 +3319,7 @@ def admin_export_delivery_settlement(batch_id, export_format):
 @login_required
 @permission_required("orders.view")
 def orders():
-    rows = placed_order_query().order_by(Order.created_at.desc()).limit(200).all()
+    rows = placed_order_query().order_by(Order.created_at.desc()).all()
     return jsonify(items=[order_json(order) for order in rows])
 
 
@@ -3855,7 +3911,7 @@ def _news_json(row):
 @login_required
 @permission_required("news.view")
 def list_news():
-    rows = News.query.order_by(News.created_at.desc()).limit(200).all()
+    rows = News.query.order_by(News.created_at.desc()).all()
     return jsonify(items=[_news_json(r) for r in rows])
 
 
@@ -3979,7 +4035,7 @@ def delete_gallery_item(item_id):
 @login_required
 @permission_required("resources.view")
 def list_resources():
-    rows = Resource.query.order_by(Resource.created_at.desc()).limit(200).all()
+    rows = Resource.query.order_by(Resource.created_at.desc()).all()
     items = []
     for r in rows:
         file_payload = _uploaded_file_payload(r.resource_file)

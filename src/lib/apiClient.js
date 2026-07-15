@@ -284,6 +284,7 @@ export const api = {
     catalogFile,
     imagesZip,
     columnMapping = {},
+    overwriteSlugs = [],
     onProgress,
   }) => {
     const csrf = await getCsrf();
@@ -291,6 +292,7 @@ export const api = {
     if (catalogFile) fd.append('catalog_file', catalogFile);
     if (imagesZip) fd.append('images_zip', imagesZip);
     fd.append('column_mapping', JSON.stringify(columnMapping));
+    fd.append('overwrite_slugs', JSON.stringify(overwriteSlugs));
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
