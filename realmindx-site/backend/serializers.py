@@ -4,6 +4,7 @@ from .extensions import db
 from .models import DeliveryOtp, UploadedFile
 from .order_status import normalize_order_status
 from .delivery_locations import delivery_zone_aliases
+from .profile_completion import teacher_profile_completion
 
 
 def user_json(user):
@@ -11,6 +12,7 @@ def user_json(user):
     role_permissions = sorted({permission.key for permission in user.role.permissions}) if user.role else []
     profile = getattr(user, "profile", None)
     picture = db.session.get(UploadedFile, profile.profile_picture_file_id) if profile and profile.profile_picture_file_id else None
+    profile_completion, profile_missing_fields = teacher_profile_completion(user)
     return {
         "id": user.id,
         "email": user.email,
@@ -30,6 +32,8 @@ def user_json(user):
         "must_change_password": user.must_change_password,
         "two_factor_enabled": user.two_factor_enabled,
         "created_at": user.created_at.isoformat() if user.created_at else None,
+        "profile_completion": profile_completion,
+        "profile_missing_fields": profile_missing_fields,
     }
 
 

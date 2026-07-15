@@ -9,7 +9,9 @@ if str(SITE_ROOT) not in sys.path:
 from backend import create_app
 from backend.config import Config
 from backend.extensions import db
-from backend.models import Job, JobApplication, Role, User, UserProfile
+from unittest.mock import patch
+
+from backend.models import Job, JobAlertPreference, JobApplication, Role, TeacherPlacement, User, UserProfile
 
 
 class AdminTeacherManagementTestConfig(Config):
@@ -28,6 +30,7 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.context = self.app.app_context()
         self.context.push()
         db.create_all()
+        db.session.execute(db.text("PRAGMA foreign_keys = ON"))
 
         admin_role = Role(name="admin", description="Admin")
         teacher_role = Role(name="user", description="Teacher")
@@ -59,6 +62,8 @@ class AdminTeacherManagementTests(unittest.TestCase):
 
     def tearDown(self):
         db.session.remove()
+        db.session.execute(db.text("PRAGMA foreign_keys = OFF"))
+        db.session.commit()
         db.drop_all()
         self.context.pop()
 
@@ -70,15 +75,41 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertEqual(data["summary"]["total_users"], 1)
 
     def test_delete_teacher_account(self):
+        db.session.add(JobAlertPreference(user_id=self.active_teacher.id, subject="Mathematics", location="Test"))
+        db.session.commit()
         response = self.client.delete(f"/api/admin/users/{self.active_teacher.id}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json().get("message"), "Teacher account deleted.")
         self.assertIsNone(User.query.filter_by(id=self.active_teacher.id).first())
         self.assertEqual(JobApplication.query.filter_by(user_id=self.active_teacher.id).count(), 0)
+        self.assertEqual(JobAlertPreference.query.filter_by(user_id=self.active_teacher.id).count(), 0)
         users_response = self.client.get("/api/admin/users")
         self.assertEqual(users_response.status_code, 200)
         user_ids = [item["id"] for item in users_response.get_json().get("items", [])]
         self.assertNotIn(self.active_teacher.id, user_ids)
+
+    @patch("backend.api.admin.send_email", return_value={"provider": "test", "status": "sent"})
+    def test_send_incomplete_profile_reminder(self, send_email_mock):
+        response = self.client.post(f"/api/admin/users/{self.active_teacher.id}/profile-reminder", json={})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self.active_teacher.email, response.get_json()["message"])
+        self.assertEqual(send_email_mock.call_count, 1)
+
+    def test_teacher_with_placement_history_must_be_disabled_instead(self):
+        application = JobApplication.query.filter_by(user_id=self.active_teacher.id).one()
+        db.session.add(TeacherPlacement(
+            user_id=self.active_teacher.id,
+            application_id=application.id,
+            job_id=application.job_id,
+            school_name="History Test School",
+            job_title="Placed Teacher",
+        ))
+        db.session.commit()
+
+        response = self.client.delete(f"/api/admin/users/{self.active_teacher.id}")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIsNotNone(User.query.filter_by(id=self.active_teacher.id).first())
 
 
 if __name__ == "__main__":

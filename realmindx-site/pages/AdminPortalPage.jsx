@@ -4144,6 +4144,7 @@ const TeachersView = ({ session }) => {
   const [payoutSaving, setPayoutSaving] = React.useState(false);
   const [payoutError, setPayoutError] = React.useState('');
   const [deleting, setDeleting] = React.useState(null);
+  const [reminding, setReminding] = React.useState(null);
   const [deleteConfirm, setDeleteConfirm] = React.useState(null);
   const canEditTeachers = hasSessionPermission(session, 'teachers.edit');
   const canDeleteTeachers = hasSessionPermission(session, 'teachers.delete');
@@ -4217,6 +4218,18 @@ const TeachersView = ({ session }) => {
     }
   };
 
+  const sendProfileReminder = async (t) => {
+    setReminding(t.id);
+    try {
+      const result = await api.adminCreate(`users/${t.id}/profile-reminder`, {});
+      window.alert(result?.message || `Profile reminder sent to ${t.email}.`);
+    } catch (err) {
+      window.alert(err?.message || 'Could not send the profile reminder.');
+    } finally {
+      setReminding(null);
+    }
+  };
+
   const updatePayoutField = (fieldName) => (event) => {
     setPayoutForm(form => ({ ...form, [fieldName]: event.target.value }));
   };
@@ -4276,7 +4289,7 @@ const TeachersView = ({ session }) => {
               <thead>
                 <tr>
                   <th>Name</th><th>Email</th><th>Phone</th>
-                  <th>Verified</th><th>Status</th><th>Registered</th><th className="admin-actions-column">Actions</th>
+                  <th>Verified</th><th>Profile</th><th>Status</th><th>Registered</th><th className="admin-actions-column">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -4286,6 +4299,7 @@ const TeachersView = ({ session }) => {
                     <td>{t.email}</td>
                     <td>{t.phone || 'N/A'}</td>
                     <td><span className={`badge ${t.is_verified ? 'badge-success' : 'badge-navy'}`}>{t.is_verified ? 'Verified' : 'Pending'}</span></td>
+                    <td><span className={`badge ${t.profile_completion === 100 ? 'badge-success' : 'badge-navy'}`}>{t.profile_completion ?? 0}%</span></td>
                     <td>
                       <span className={`badge ${t.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
                         {t.is_active !== false ? 'Active' : 'Disabled'}
@@ -4305,6 +4319,17 @@ const TeachersView = ({ session }) => {
                             onClick={() => toggleActive(t)}
                           >
                             {toggling === t.id ? '…' : t.is_active !== false ? 'Disable' : 'Enable'}
+                          </button>
+                        ) : null}
+                        {canEditTeachers && t.profile_completion < 100 ? (
+                          <button
+                            className="table-action-btn"
+                            style={{ background:'#e8f1ff', color:'var(--navy)' }}
+                            disabled={reminding === t.id || t.is_active === false}
+                            onClick={() => sendProfileReminder(t)}
+                            title={t.is_active === false ? 'Enable this account before sending a reminder' : `Missing: ${(t.profile_missing_fields || []).join(', ')}`}
+                          >
+                            {reminding === t.id ? 'Sending…' : 'Send Profile Reminder'}
                           </button>
                         ) : null}
                         {canDeleteTeachers ? (

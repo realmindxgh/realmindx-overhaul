@@ -69,6 +69,7 @@ from ..delivery_service import (
 )
 from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
+from ..profile_completion import teacher_profile_completion
 from ..sms_service import normalise_phone
 from ..models import (
     AnalyticsEvent,
@@ -961,30 +962,22 @@ def _matches_job_alert(job, preference, user=None):
 
     pref_subjects = {aliases(item) for item in values(preference.subject)}
     job_subject = aliases(job.subject)
-    subject_match = not pref_subjects or (
-        job_subject and job_subject in pref_subjects
-    )
+    subject_match = not job_subject or job_subject in pref_subjects
     pref_location_ids = set(parse_location_ids(preference.location_ids))
     if pref_location_ids:
-        location_match = job.delivery_zone_id in pref_location_ids
+        location_match = bool(job.delivery_zone_id and job.delivery_zone_id in pref_location_ids)
     else:
         pref_locations = values(preference.location)
-        location_match = not pref_locations or aliases(job.location) in {aliases(item) for item in pref_locations}
+        location_match = bool(pref_locations and aliases(job.location) in {aliases(item) for item in pref_locations})
     pref_levels = {aliases(item) for item in values(preference.preferred_level)}
     job_level = aliases(job.level)
-    level_match = not pref_levels or (
-        job_level and job_level in pref_levels
-    )
+    level_match = not job_level or job_level in pref_levels
     pref_curricula = {aliases(item) for item in values(preference.curriculum)}
     job_curriculum = aliases(job.curriculum)
-    curriculum_match = not pref_curricula or (
-        job_curriculum and job_curriculum in pref_curricula
-    )
+    curriculum_match = not job_curriculum or job_curriculum in pref_curricula
     pref_types = {aliases(item) for item in values(preference.employment_type)}
     job_type = aliases(job.employment_type)
-    type_match = not pref_types or (
-        job_type and job_type in pref_types
-    )
+    type_match = not job_type or job_type in pref_types
     required_sex = (job.preferred_sex or "any").strip().lower()
     required_age = (job.preferred_age_range or "any").strip().lower()
     sex_match = required_sex == "any" or (user and (user.sex or "").lower() == required_sex)
@@ -1007,24 +1000,38 @@ def dispatch_job_alerts(job):
         .all()
     )
     sent = 0
+    processed_user_ids = set()
     for preference in preferences:
         user = db.session.get(User, preference.user_id)
-        if not user or not _matches_job_alert(job, preference, user):
+        if (
+            not user
+            or user.id in processed_user_ids
+            or teacher_profile_completion(user)[0] < 100
+            or not _matches_job_alert(job, preference, user)
+        ):
             continue
+        processed_user_ids.add(user.id)
         job_url = f"{current_app.config['BASE_URL'].rstrip('/')}/jobs#{job.id}"
-        send_email(
-            OutboundEmail(
-                to=user.email,
-                from_email=current_app.config["JOBS_FROM_EMAIL"],
-                subject=f"New matching teaching role: {job.title}",
-                html=app_email_shell(
-                    "A new job matches your RealMindX alerts",
-                    f"<p><strong>{job.title}</strong> in {job.location} matches your saved job preferences.</p>",
-                    "View Job",
-                    job_url,
-                ),
+        try:
+            result = send_email(
+                OutboundEmail(
+                    to=user.email,
+                    from_email=current_app.config["JOBS_FROM_EMAIL"],
+                    subject=f"New matching teaching role: {job.title}",
+                    html=app_email_shell(
+                        "A new job matches your RealMindX alerts",
+                        f"<p><strong>{job.title}</strong> in {job.location} matches every criterion in your saved job preferences.</p>",
+                        "View Job",
+                        job_url,
+                    ),
+                )
             )
-        )
+        except Exception:
+            current_app.logger.exception("Job alert delivery failed for user %s and job %s", user.id, job.id)
+            continue
+        if result.get("status") != "sent":
+            current_app.logger.warning("Job alert was not sent for user %s and job %s: %s", user.id, job.id, result)
+            continue
         preference.last_sent_at = datetime.now(timezone.utc)
         log_action("job_alert_email_sent", "job_alert_preference", preference.id, {
             "job_id": job.id,
@@ -1433,6 +1440,47 @@ def users():
     return jsonify(items=[user_json(user) for user in rows])
 
 
+@admin_bp.post("/users/<int:user_id>/profile-reminder")
+@login_required
+@permission_required("teachers.edit")
+def send_profile_reminder(user_id):
+    user = db.get_or_404(User, user_id)
+    if user.role and user.role.name in ("admin", "staff"):
+        return jsonify(error="Profile reminders can only be sent to teacher accounts."), 403
+    if not user.is_active:
+        return jsonify(error="Enable this teacher account before sending a profile reminder."), 409
+    completion, missing = teacher_profile_completion(user)
+    if completion >= 100:
+        return jsonify(error="This teacher's profile is already complete."), 409
+
+    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
+    missing_html = "".join(f"<li>{escape(item)}</li>" for item in missing)
+    result = send_email(OutboundEmail(
+        to=user.email,
+        subject="Complete your RealMindX teaching profile to receive tailored jobs",
+        html=app_email_shell(
+            "Your teaching profile is not yet complete",
+            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+            "<p>Your RealMindX profile needs to be completed before we can send jobs that match all of your qualifications and preferences.</p>"
+            f"<p><strong>Still needed:</strong></p><ul>{missing_html}</ul>"
+            "<p>Complete these details so future job alerts are accurately tailored to you.</p>",
+            "Complete My Profile",
+            portal_url,
+            preheader="Complete your profile to receive accurately matched teaching jobs.",
+        ),
+        text=f"Complete your RealMindX teaching profile to receive tailored jobs: {portal_url}",
+    ))
+    if result.get("status") != "sent":
+        return jsonify(error="The reminder could not be delivered. Check the email service and try again."), 502
+    log_action("send_teacher_profile_reminder", "user", user.id, {
+        "email": user.email,
+        "profile_completion": completion,
+        "missing_fields": missing,
+    })
+    db.session.commit()
+    return jsonify(message=f"Profile reminder sent to {user.email}.", profile_completion=completion)
+
+
 PAYOUT_FIELDS = [
     "payout_method",
     "payout_momo_network",
@@ -1500,7 +1548,28 @@ def delete_user(user_id):
     user = db.get_or_404(User, user_id)
     if user.role and user.role.name in ("admin", "staff"):
         return jsonify(error="Cannot delete admin or staff accounts via this endpoint."), 403
+    if TeacherPlacement.query.filter_by(user_id=user.id).first():
+        return jsonify(error="This teacher has placement history and cannot be permanently deleted. Disable the account instead."), 409
+
     log_action("delete_user", "user", user.id, {"email": user.email})
+    # Clean every direct users.id foreign key consistently. Required account-
+    # owned rows are deleted; nullable historical references are anonymised.
+    # This also covers authentication tokens and alert preferences that do not
+    # have ORM cascade relationships and previously caused production 500s.
+    users_table = User.__table__
+    for table in db.metadata.tables.values():
+        if table is users_table or table.name == "teacher_placements":
+            continue
+        for foreign_key in table.foreign_keys:
+            if foreign_key.column.table is not users_table:
+                continue
+            column = foreign_key.parent
+            predicate = column == user.id
+            if column.nullable:
+                db.session.execute(table.update().where(predicate).values({column.name: None}))
+            else:
+                db.session.execute(table.delete().where(predicate))
+    db.session.expire(user)
     db.session.delete(user)
     db.session.commit()
     return jsonify(message="Teacher account deleted.")

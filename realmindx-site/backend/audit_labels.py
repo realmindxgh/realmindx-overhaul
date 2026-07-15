@@ -78,6 +78,7 @@ ACTION_LABELS = {
     "reset_delivery_company_user_password": "Reset a delivery company manager's password",
     "reset_staff_password": "Reset a staff member's password",
     "send_job_alerts": "Sent job alerts",
+    "send_teacher_profile_reminder": "Sent a teacher profile reminder",
     "send_newsletter_campaign": "Sent a newsletter campaign",
     "settlement_exported": "Exported a delivery settlement",
     "toggle_user_active": "Changed whether an account can sign in",
