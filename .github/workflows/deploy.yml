@@ -42,6 +42,9 @@ jobs:
 
       # ── 5. Update backend code, migrate DB, restart services ──────────
       - name: Deploy backend & restart
+        env:
+          WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
+          WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET }}
         run: |
           set -e
           cd /var/www/realmindx
@@ -79,6 +82,41 @@ jobs:
           fi
           ACTIVE_GEOIP_FILE="$(basename "$(readlink -f "$GEOIP_DIR/dbip-city-lite.mmdb")")"
           find "$GEOIP_DIR" -maxdepth 1 -type f -name 'dbip-city-lite-*.mmdb' ! -name "$ACTIVE_GEOIP_FILE" -mtime +70 -delete
+
+          echo "Applying WhatsApp environment settings"
+          ENV_FILE="/var/www/realmindx/realmindx-site/.env"
+          upsert_env_var() {
+            local key="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              return 0
+            fi
+            python3 - "$ENV_FILE" "$key" "$value" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+key = sys.argv[2]
+value = sys.argv[3]
+line = f"{key}={value}"
+text = path.read_text() if path.exists() else ""
+lines = text.splitlines()
+updated = False
+for index, existing in enumerate(lines):
+    if existing.startswith(f"{key}="):
+        lines[index] = line
+        updated = True
+        break
+if not updated:
+    lines.append(line)
+path.write_text("\n".join(lines) + "\n")
+PY
+          }
+          upsert_env_var "WHATSAPP_BUSINESS_PHONE_E164" "+233201166122"
+          upsert_env_var "WHATSAPP_INBOUND_CHALLENGE_ENABLED" "true"
+          upsert_env_var "WHATSAPP_CHALLENGE_PREFIX" "RMX VERIFY"
+          upsert_env_var "WHATSAPP_WEBHOOK_VERIFY_TOKEN" "$WHATSAPP_WEBHOOK_VERIFY_TOKEN"
+          upsert_env_var "WHATSAPP_APP_SECRET" "$WHATSAPP_APP_SECRET"
 
           echo "── Running database migrations ──"
           cd realmindx-site
