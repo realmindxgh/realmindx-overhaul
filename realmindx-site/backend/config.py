@@ -97,6 +97,7 @@ class Config:
     ARKESEL_SENDER_ID = os.getenv("ARKESEL_SENDER_ID", "RealMindX")
 
     # Meta WhatsApp Cloud API — authentication template with a Copy Code button
+    WHATSAPP_APP_ID = os.getenv("WHATSAPP_APP_ID", "")
     WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
     WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
     WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "")
