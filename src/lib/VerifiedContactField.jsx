@@ -108,13 +108,18 @@ export default function VerifiedContactField({
             }
           : { challenge_id: 'local', destination: nextValue, channel });
         setWaitSeconds(45);
-        setMessage(`Local ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} preview code: 123456`);
+        setMessage(channel === 'whatsapp'
+          ? 'Local WhatsApp preview: waiting automatically for RMX VERIFY 123456.'
+          : 'Local SMS preview code: 123456');
         return;
       }
       const result = await api.requestContactChange({ field, value: nextValue.trim(), channel });
       setChallenge(result);
       setWaitSeconds(result.next_request_in_seconds || 45);
-      setMessage(result.message || 'Verification code sent.');
+      const isWhatsAppResult = result.verification_mode === 'whatsapp_inbound' || result.delivery_channel === 'whatsapp_inbound';
+      setMessage(isWhatsAppResult
+        ? 'Waiting for the WhatsApp message. We are checking automatically every few seconds; no need to press anything after sending.'
+        : (result.message || 'Verification code sent.'));
     } catch (requestError) {
       if (requestError.data?.retry_after_seconds) {
         setWaitSeconds(requestError.data.retry_after_seconds);
@@ -154,7 +159,7 @@ export default function VerifiedContactField({
       } else if (status?.status === 'expired') {
         setError(status.message || 'This WhatsApp challenge has expired. Send a fresh one.');
       } else if (!silent) {
-        setMessage(status?.message || 'Still waiting for the WhatsApp message.');
+        setMessage(status?.message || 'Still waiting for the WhatsApp message. We are checking automatically every few seconds.');
       }
     } catch (statusError) {
       if (!silent) setError(statusError.message || 'Could not check the WhatsApp challenge yet.');
@@ -167,7 +172,7 @@ export default function VerifiedContactField({
     if (!isWhatsAppInbound || !challenge?.challenge_id || !isApiMode()) return undefined;
     const timer = window.setInterval(() => {
       checkWhatsAppStatus({ silent: true });
-    }, 4000);
+    }, 5000);
     return () => window.clearInterval(timer);
   }, [challenge?.challenge_id, checkWhatsAppStatus, isWhatsAppInbound]);
 
@@ -287,7 +292,7 @@ export default function VerifiedContactField({
           {whatsAppChallenge}
           <div className="verified-contact-form-actions">
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={() => checkWhatsAppStatus()} disabled={checking}>
-              {checking ? 'Checking...' : "I've sent it, check status"}
+              {checking ? 'Checking...' : 'Check now'}
             </button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={changeNumber}>Change number</button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={reset}>Cancel</button>
@@ -371,7 +376,7 @@ export default function VerifiedContactField({
             <div className="verified-contact-modal-body">
               <p className="verified-contact-modal-intro">
                 {isWhatsAppInbound
-                  ? `Send the challenge from ${challenge.destination} to ${challenge.whatsapp_number}.`
+                  ? `Send the challenge from ${challenge.destination} to ${challenge.whatsapp_number}. This window checks automatically every few seconds.`
                   : challenge
                   ? `Enter the 6 digit code sent to ${challenge.destination}.`
                   : `We will verify the new ${meta.title.toLowerCase()} before updating your shared RealMindX account.`}
@@ -438,7 +443,7 @@ export default function VerifiedContactField({
               )}
               <button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy || checking}>
                 {isWhatsAppInbound
-                  ? (checking ? 'Checking...' : 'Check status')
+                  ? (checking ? 'Checking...' : 'Check now')
                   : busy ? (challenge ? 'Verifying...' : 'Sending...') : (challenge ? 'Verify and update' : 'Send verification code')}
               </button>
             </div>

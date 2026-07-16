@@ -162,7 +162,7 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
             teacher_service_enabled=session.get("oauth_surface", "main") != "bookshop",
             bookshop_service_enabled=session.get("oauth_surface", "main") == "bookshop",
         )
-        user.set_password(secrets.token_urlsafe(48))
+        user.set_password(secrets.token_urlsafe(48), enable_login=False)
         db.session.add(user)
         db.session.flush()
         db.session.add(UserProfile(user_id=user.id))

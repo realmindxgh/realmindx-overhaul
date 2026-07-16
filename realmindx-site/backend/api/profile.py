@@ -490,9 +490,17 @@ def contact_change_status(challenge_id):
         wrong_number=wrong_number,
         wrong_message=wrong_message,
         last_attempt_from=_mask_destination("phone", challenge.last_whatsapp_attempt_from or "") if challenge.last_whatsapp_attempt_from else None,
+        last_attempt_status=challenge.last_whatsapp_attempt_status,
+        last_attempt_at=challenge.last_whatsapp_attempt_at.isoformat() if challenge.last_whatsapp_attempt_at else None,
         expires_at=challenge.expires_at.isoformat() if challenge.expires_at else None,
         used_at=challenge.used_at.isoformat() if challenge.used_at else None,
-        message="Phone verified." if verified else wrong_number_message if wrong_number else wrong_message_message if wrong_message else "Challenge expired. Send a fresh one." if expired else "Waiting for the WhatsApp message.",
+        message=(
+            "Phone verified."
+            if verified else wrong_number_message
+            if wrong_number else wrong_message_message
+            if wrong_message else "Challenge expired. Send a fresh one."
+            if expired else "Waiting for the WhatsApp message. If you already sent it and this stays pending, Meta has not delivered the WhatsApp webhook to RealMindX yet."
+        ),
     )
 
 

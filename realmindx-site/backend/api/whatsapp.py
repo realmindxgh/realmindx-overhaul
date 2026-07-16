@@ -4,11 +4,12 @@ import re
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request
+from flask_login import current_user, login_required
 from werkzeug.security import check_password_hash
 
 from ..audit import audit
 from ..extensions import db
-from ..models import ContactChangeToken, User
+from ..models import ContactChangeToken, User, WhatsAppWebhookEvent
 from ..sms_service import normalise_phone
 
 
@@ -92,6 +93,8 @@ def process_whatsapp_webhook_payload(payload):
         result = {
             "message_id": message["message_id"],
             "from": sender,
+            "phone_number_id": message.get("phone_number_id"),
+            "text_preview": (message.get("text") or "")[:160],
             "status": "ignored",
         }
         if not sender:
@@ -181,6 +184,24 @@ def process_whatsapp_webhook_payload(payload):
     return results
 
 
+def _record_whatsapp_webhook_events(results):
+    for result in results:
+        db.session.add(WhatsAppWebhookEvent(
+            message_id=result.get("message_id"),
+            sender=result.get("from"),
+            phone_number_id=result.get("phone_number_id"),
+            text_preview=result.get("text_preview"),
+            status=result.get("status") or "unknown",
+            challenge_id=result.get("challenge_id"),
+            user_id=result.get("user_id"),
+        ))
+
+
+def _can_view_whatsapp_diagnostics():
+    role_name = current_user.role.name if current_user.is_authenticated and current_user.role else ""
+    return role_name in {"admin", "staff"}
+
+
 @whatsapp_bp.get("/webhooks/whatsapp")
 def verify_whatsapp_webhook():
     verify_token = current_app.config.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")
@@ -199,4 +220,34 @@ def receive_whatsapp_webhook():
         return jsonify(error="Invalid signature."), 403
     payload = request.get_json(silent=True) or {}
     results = process_whatsapp_webhook_payload(payload)
+    if results:
+        _record_whatsapp_webhook_events(results)
+        db.session.commit()
     return jsonify(status="ok", results=results)
+
+
+@whatsapp_bp.get("/admin/whatsapp-webhook-events")
+@login_required
+def recent_whatsapp_webhook_events():
+    if not _can_view_whatsapp_diagnostics():
+        return jsonify(error="You do not have permission to view WhatsApp diagnostics."), 403
+    events = (
+        WhatsAppWebhookEvent.query
+        .order_by(WhatsAppWebhookEvent.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return jsonify(events=[
+        {
+            "id": event.id,
+            "created_at": event.created_at.isoformat() if event.created_at else None,
+            "message_id": event.message_id,
+            "sender": event.sender,
+            "phone_number_id": event.phone_number_id,
+            "text_preview": event.text_preview,
+            "status": event.status,
+            "challenge_id": event.challenge_id,
+            "user_id": event.user_id,
+        }
+        for event in events
+    ])

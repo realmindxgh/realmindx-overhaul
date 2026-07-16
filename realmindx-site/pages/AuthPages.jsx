@@ -228,6 +228,8 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
   const [turnstileKey, setTurnstileKey] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [socialLoginHelp, setSocialLoginHelp] = useState(null);
+  const [passwordLinkLoading, setPasswordLinkLoading] = useState(false);
   const firstNameRef = React.useRef(null);
   const emailRef = React.useRef(null);
   const passwordRef = React.useRef(null);
@@ -279,6 +281,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    setSocialLoginHelp(null);
     if (!email || !password) { const m = 'Please enter your email and password.'; setError(m); toast.error(m); return; }
     setLoading(true);
     try {
@@ -288,6 +291,17 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
       if (err?.data?.requires_verification) {
         setPendingVerificationEmail(err.data.email || email);
         setSuccess('Enter the verification code sent to your email before signing in.');
+        return;
+      }
+      if (err?.data?.code === 'social_login_required') {
+        const help = {
+          email: err.data.email || email,
+          message: err.data.error || err.message,
+          providers: Array.isArray(err.data.providers) && err.data.providers.length ? err.data.providers : [],
+          providerLabels: Array.isArray(err.data.provider_labels) ? err.data.provider_labels : [],
+        };
+        setSocialLoginHelp(help);
+        setError('');
         return;
       }
       const msg = err?.message || 'Incorrect email or password. Please try again.';
@@ -398,7 +412,48 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
     }
   };
 
-  const switchMode = (m) => { setMode(m); setError(''); setSuccess(''); setFieldErrors({}); setPendingVerificationEmail(''); setOtp(''); };
+  const providerLabel = (provider) => ({
+    apple: 'Apple',
+    facebook: 'Facebook',
+    google: 'Google',
+    microsoft: 'Microsoft',
+  }[provider] || String(provider || 'Social').replace(/^\w/, char => char.toUpperCase()));
+
+  const continueWithProvider = (provider) => {
+    if (!provider) return;
+    window.location.href = `/api/auth/${provider}?intent=login&next=/portal`;
+  };
+
+  const sendPasswordSetupLink = async () => {
+    if (!socialLoginHelp?.email) return;
+    setPasswordLinkLoading(true);
+    setError('');
+    try {
+      await requestPasswordReset(socialLoginHelp.email, { surface: 'main', purpose: 'setup_password' });
+      setSocialLoginHelp(prev => ({
+        ...prev,
+        sent: true,
+        message: `A secure password creation link has been sent to ${prev.email}. It expires in one hour.`,
+      }));
+      toast.success('Secure password link sent.');
+    } catch (err) {
+      const msg = err?.message || 'Could not send the secure link. Please try again.';
+      setSocialLoginHelp(prev => ({ ...prev, error: msg }));
+      toast.error(msg);
+    } finally {
+      setPasswordLinkLoading(false);
+    }
+  };
+
+  const switchMode = (m) => {
+    setMode(m);
+    setError('');
+    setSuccess('');
+    setFieldErrors({});
+    setPendingVerificationEmail('');
+    setOtp('');
+    setSocialLoginHelp(null);
+  };
 
   return (
     <>
@@ -728,6 +783,57 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
         </div>
       </div>
       </div>
+      {socialLoginHelp && (
+        <div className="auth-choice-modal-scrim" onClick={event => { if (event.target === event.currentTarget) setSocialLoginHelp(null); }}>
+          <div className="auth-choice-modal-card" role="dialog" aria-modal="true" aria-label="Choose how to sign in">
+            <div className="auth-choice-modal-head">
+              <div>
+                <span className="auth-choice-modal-kicker">Account found</span>
+                <h2>Choose the easiest way in</h2>
+              </div>
+              <button type="button" className="auth-choice-modal-close" onClick={() => setSocialLoginHelp(null)} aria-label="Close">
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <div className="auth-choice-modal-body">
+              <p>{socialLoginHelp.message}</p>
+              {socialLoginHelp.error && <p className="auth-choice-modal-error" role="alert">{socialLoginHelp.error}</p>}
+              <div className="auth-choice-options">
+                <div className="auth-choice-option">
+                  <span className="auth-choice-option-label">Fastest</span>
+                  <h3>Continue with your original login</h3>
+                  <p>No password needed. Use the same provider that is already attached to this RealMindX account.</p>
+                  <div className="auth-choice-provider-row">
+                    {(socialLoginHelp.providers.length ? socialLoginHelp.providers : ['google']).map(provider => (
+                      <button
+                        key={provider}
+                        type="button"
+                        className={`social-login-btn ${provider}`}
+                        onClick={() => continueWithProvider(provider)}
+                      >
+                        <span>{providerLabel(provider)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="auth-choice-option">
+                  <span className="auth-choice-option-label">Optional</span>
+                  <h3>Create a password securely</h3>
+                  <p>We will email a one-hour secure link to {socialLoginHelp.email}. Use it to create a password for future email sign-ins.</p>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm auth-choice-action"
+                    onClick={sendPasswordSetupLink}
+                    disabled={passwordLinkLoading || socialLoginHelp.sent}
+                  >
+                    {passwordLinkLoading ? 'Sending...' : socialLoginHelp.sent ? 'Link sent' : 'Send secure link'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <Footer />
     </>
   );

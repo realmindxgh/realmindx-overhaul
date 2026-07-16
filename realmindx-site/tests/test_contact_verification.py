@@ -11,7 +11,7 @@ if str(SITE_ROOT) not in sys.path:
 from backend import create_app
 from backend.config import Config
 from backend.extensions import db
-from backend.models import Role, User
+from backend.models import Role, User, WhatsAppWebhookEvent
 from backend.profile_completion import teacher_profile_completion
 from backend.whatsapp_service import send_whatsapp_otp
 
@@ -116,6 +116,9 @@ class ContactVerificationTests(unittest.TestCase):
         webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.get_json()["results"][0]["status"], "verified")
+        event = WhatsAppWebhookEvent.query.filter_by(message_id="wamid.correct").one()
+        self.assertEqual(event.status, "verified")
+        self.assertEqual(event.phone_number_id, "123456789")
         status = self.client.get(f"/api/me/contact-change/{challenge['challenge_id']}/status")
         self.assertTrue(status.get_json()["verified"])
         db.session.expire_all()

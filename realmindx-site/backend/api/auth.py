@@ -14,7 +14,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
-from ..models import AccountSecurityCode, EmailVerificationToken, Role, User, UserProfile
+from ..models import AccountSecurityCode, AuthIdentity, EmailVerificationToken, Role, User, UserProfile
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
 from ..sms_service import normalise_phone
@@ -32,6 +32,58 @@ def _clean_email(email):
 def _public_account_requires_verification(user):
     role_name = user.role.name if user.role else ""
     return role_name == "user" and not user.is_verified
+
+
+PROVIDER_LABELS = {
+    "apple": "Apple",
+    "facebook": "Facebook",
+    "google": "Google",
+    "microsoft": "Microsoft",
+}
+
+
+def _social_login_providers(user):
+    if not user:
+        return []
+    providers = [
+        identity.provider
+        for identity in AuthIdentity.query.filter_by(user_id=user.id).order_by(AuthIdentity.created_at.asc()).all()
+        if identity.provider
+    ]
+    # Preserve order while avoiding duplicate links.
+    return list(dict.fromkeys(providers))
+
+
+def _social_login_hint_response(user, email, *, reason="social_password_unavailable"):
+    providers = _social_login_providers(user)
+    if not providers:
+        return None
+    labels = [PROVIDER_LABELS.get(provider, provider.title()) for provider in providers]
+    if len(labels) == 1:
+        provider_phrase = labels[0]
+    elif len(labels) == 2:
+        provider_phrase = f"{labels[0]} or {labels[1]}"
+    else:
+        provider_phrase = f"{', '.join(labels[:-1])}, or {labels[-1]}"
+    if reason == "password_not_set":
+        message = (
+            f"This RealMindX account is connected with {provider_phrase} and does not have a RealMindX password yet. "
+            f"Continue with {provider_phrase}, or request a secure email link to create one."
+        )
+    else:
+        message = (
+            f"This RealMindX account is also connected with {provider_phrase}. "
+            f"You can continue with {provider_phrase}, or request a secure email link to reset or create a password."
+        )
+    return jsonify(
+        error=message,
+        code="social_login_required",
+        reason=reason,
+        email=email,
+        providers=providers,
+        provider_labels=labels,
+        password_setup_available=True,
+    ), 401
 
 
 def _send_verification_otp(user):
@@ -210,7 +262,34 @@ def login():
             error=f"Too many failed attempts. Try again in {wait_minutes} minute{'s' if wait_minutes != 1 else ''}.",
         ), 429
 
-    if not user or not user.check_password(payload.get("password") or ""):
+    supplied_password = payload.get("password") or ""
+    password_matches = bool(user and user.check_password(supplied_password))
+    if user and not password_matches:
+        if not getattr(user, "password_login_enabled", True):
+            hint = _social_login_hint_response(user, email, reason="password_not_set")
+            if hint:
+                audit(
+                    "user_login_social_password_hint",
+                    "user",
+                    user.id,
+                    {"email": user.email, "reason": "password_not_set"},
+                    actor_email=email,
+                )
+                db.session.commit()
+                return hint
+        hint = _social_login_hint_response(user, email, reason="password_login_failed_social_account")
+        if hint:
+            audit(
+                "user_login_social_password_hint",
+                "user",
+                user.id,
+                {"email": user.email, "reason": "password_login_failed_social_account"},
+                actor_email=email,
+            )
+            db.session.commit()
+            return hint
+
+    if not user or not password_matches:
         audit(
             "user_login_failed",
             "user",
@@ -488,6 +567,7 @@ def request_password_reset():
         return jsonify(message="If the email exists, reset instructions have been sent.")
     user = User.query.filter_by(email=email).first()
     if user:
+        setup_password = str(payload.get("purpose") or "").strip().lower() == "setup_password"
         password_fingerprint = sha256((user.password_hash or "").encode("utf-8")).hexdigest()
         token = make_token(
             {"user_id": user.id, "password_fingerprint": password_fingerprint},
@@ -502,21 +582,21 @@ def request_password_reset():
         first_name = user.first_name or "there"
         send_email(OutboundEmail(
             to=user.email,
-            subject="Reset your RealMindX password",
+            subject="Create your RealMindX password" if setup_password else "Reset your RealMindX password",
             html=app_email_shell(
-                "Password reset request",
+                "Create your password" if setup_password else "Password reset request",
                 (
                     f"<p>Hello {escape(first_name)},</p>"
-                    "<p>We received a request to reset the password for your RealMindX account. "
-                    "If this was you, click the button below to create a new password. "
+                    f"<p>We received a request to {'create' if setup_password else 'reset'} the password for your RealMindX account. "
+                    "If this was you, click the button below to set a secure password. "
                     "The link is valid for <strong>one hour</strong>.</p>"
-                    "<p>If you did not request a password reset, you can safely ignore this email. "
+                    f"<p>If you did not request this password {'creation' if setup_password else 'reset'}, you can safely ignore this email. "
                     "Your account remains secure and no changes have been made.</p>"
                 ),
-                "Reset My Password",
+                "Create My Password" if setup_password else "Reset My Password",
                 reset_url,
                 eyebrow="RealMindX Account Security",
-                preheader="Reset your password. This link expires in one hour.",
+                preheader="Create your password. This link expires in one hour." if setup_password else "Reset your password. This link expires in one hour.",
             ),
         ))
     return jsonify(message="If the email exists, reset instructions have been sent.")

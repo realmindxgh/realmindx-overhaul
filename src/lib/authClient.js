@@ -186,8 +186,8 @@ export const resendVerificationOtp = async (email) => {
   return { message: 'A fresh local demo verification code has been sent.' };
 };
 
-export const requestPasswordReset = async (email, { surface = 'main' } = {}) => {
-  if (isApiMode()) return api.requestPasswordReset({ email, surface });
+export const requestPasswordReset = async (email, { surface = 'main', purpose = '' } = {}) => {
+  if (isApiMode()) return api.requestPasswordReset({ email, surface, purpose });
   return { message: 'If an account exists for that email, you will receive a reset link shortly.' };
 };
 

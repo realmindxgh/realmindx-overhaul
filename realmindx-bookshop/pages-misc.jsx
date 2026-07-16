@@ -104,6 +104,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
   const [loading, setLoading] = React.useState(false);
   const [forgotMode, setForgotMode] = React.useState(false);
   const [resetRequested, setResetRequested] = React.useState(false);
+  const [socialLoginHelp, setSocialLoginHelp] = React.useState(null);
+  const [passwordLinkLoading, setPasswordLinkLoading] = React.useState(false);
   const termsRef = React.useRef(null);
   const fullNameRef = React.useRef(null);
   const passwordRef = React.useRef(null);
@@ -174,6 +176,34 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     window.location.href = `${API_BASE || '/api'}/auth/${provider}?${query.toString()}`;
   };
 
+  const providerLabel = provider => ({
+    apple: 'Apple',
+    facebook: 'Facebook',
+    google: 'Google',
+    microsoft: 'Microsoft',
+  }[provider] || String(provider || 'Social').replace(/^\w/, char => char.toUpperCase()));
+
+  const requestPasswordSetupLink = async () => {
+    if (!socialLoginHelp?.email) return;
+    setPasswordLinkLoading(true);
+    setError('');
+    try {
+      await requestPasswordReset(socialLoginHelp.email, { surface: 'bookshop', purpose: 'setup_password' });
+      setSocialLoginHelp(prev => ({
+        ...prev,
+        sent: true,
+        message: `A secure password creation link has been sent to ${prev.email}. It expires in one hour.`,
+      }));
+      globalToast.success('Secure password link sent.');
+    } catch (err) {
+      const msg = err?.message || 'Could not send the secure link.';
+      setSocialLoginHelp(prev => ({ ...prev, error: msg }));
+      globalToast.error(msg);
+    } finally {
+      setPasswordLinkLoading(false);
+    }
+  };
+
   const requestReset = async event => {
     event.preventDefault();
     setError('');
@@ -195,6 +225,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
   const submit = async (event) => {
     event.preventDefault();
     setError('');
+    setSocialLoginHelp(null);
     setLoading(true);
     try {
       if (isLogin) {
@@ -247,6 +278,17 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
       if (err?.data?.requires_verification) {
         setPendingVerificationEmail(err.data.email || form.email);
         globalToast.info('Enter the code we sent to your email before signing in.');
+        return;
+      }
+      if (isLogin && err?.data?.code === 'social_login_required') {
+        setSocialLoginHelp({
+          email: err.data.email || form.email,
+          message: err.data.error || err.message,
+          providers: Array.isArray(err.data.providers) && err.data.providers.length ? err.data.providers : [],
+          error: '',
+          sent: false,
+        });
+        setError('');
         return;
       }
       // Email already exists — switch to sign-in with helpful message
@@ -590,6 +632,46 @@ const BookshopResetPasswordPage = ({ navigate }) => {
           )}
         </div>
       </div>
+      {socialLoginHelp && (
+        <div className="bs-modal-scrim" onMouseDown={event => { if (event.target === event.currentTarget) setSocialLoginHelp(null); }}>
+          <section className="bs-modal-box bs-auth-choice-modal" role="dialog" aria-modal="true" aria-label="Choose how to sign in">
+            <div className="bs-modal-head">
+              <div>
+                <span className="bs-account-ref-modal-kicker">Account found</span>
+                <h2>Choose the easiest way in</h2>
+              </div>
+              <button className="bs-modal-close" type="button" onClick={() => setSocialLoginHelp(null)} aria-label="Close"><span>×</span></button>
+            </div>
+            <div className="bs-modal-body">
+              <p className="bs-auth-choice-intro">{socialLoginHelp.message}</p>
+              {socialLoginHelp.error && <p className="bs-auth-error" role="alert">{socialLoginHelp.error}</p>}
+              <div className="bs-auth-choice-grid">
+                <article className="bs-auth-choice-card">
+                  <span>Fastest</span>
+                  <h3>Continue with your connected login</h3>
+                  <p>No password needed. Use the provider already attached to this RealMindX account.</p>
+                  <div className="bs-auth-choice-providers">
+                    {(socialLoginHelp.providers.length ? socialLoginHelp.providers : ['google']).map(provider => (
+                      <button key={provider} type="button" className="bs-auth-social-btn" onClick={() => startSocialAuth(provider)}>
+                        {provider === 'google' ? <GoogleLogo /> : provider === 'facebook' ? <FacebookLogo /> : null}
+                        <span>{providerLabel(provider)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </article>
+                <article className="bs-auth-choice-card">
+                  <span>Optional</span>
+                  <h3>Create a password securely</h3>
+                  <p>We will email a one-hour secure link to {socialLoginHelp.email}. Use it to create a password for future email sign-ins.</p>
+                  <button className="bs-btn bs-btn-gold bs-btn-block" type="button" onClick={requestPasswordSetupLink} disabled={passwordLinkLoading || socialLoginHelp.sent}>
+                    {passwordLinkLoading ? 'Sending...' : socialLoginHelp.sent ? 'Link sent' : 'Send secure link'}
+                  </button>
+                </article>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

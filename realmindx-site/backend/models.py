@@ -53,6 +53,7 @@ class User(UserMixin, TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
+    password_login_enabled = db.Column(db.Boolean, default=True, nullable=False)
     first_name = db.Column(db.String(120), nullable=False)
     last_name = db.Column(db.String(120), nullable=True)
     phone = db.Column(db.String(40), nullable=True)
@@ -75,11 +76,12 @@ class User(UserMixin, TimestampMixin, db.Model):
     profile = db.relationship("UserProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     direct_permissions = db.relationship("Permission", secondary=staff_permissions)
 
-    def set_password(self, password):
+    def set_password(self, password, enable_login=True):
         self.password_hash = generate_password_hash(password)
+        self.password_login_enabled = bool(enable_login)
 
     def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        return bool(self.password_hash) and check_password_hash(self.password_hash, password)
 
     @property
     def full_name(self):
@@ -992,6 +994,19 @@ class ContactChangeToken(TimestampMixin, db.Model):
     token_hash = db.Column(db.String(255), nullable=False)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     used_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+
+class WhatsAppWebhookEvent(TimestampMixin, db.Model):
+    __tablename__ = "whatsapp_webhook_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.String(255), nullable=True, index=True)
+    sender = db.Column(db.String(40), nullable=True, index=True)
+    phone_number_id = db.Column(db.String(80), nullable=True, index=True)
+    text_preview = db.Column(db.String(180), nullable=True)
+    status = db.Column(db.String(40), nullable=False, index=True)
+    challenge_id = db.Column(db.Integer, db.ForeignKey("contact_change_tokens.id"), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
 
 
 class PasswordResetToken(TimestampMixin, db.Model):
