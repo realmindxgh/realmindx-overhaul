@@ -92,25 +92,25 @@ jobs:
               return 0
             fi
             python3 - "$ENV_FILE" "$key" "$value" <<'PY'
-import sys
-from pathlib import Path
+          import sys
+          from pathlib import Path
 
-path = Path(sys.argv[1])
-key = sys.argv[2]
-value = sys.argv[3]
-line = f"{key}={value}"
-text = path.read_text() if path.exists() else ""
-lines = text.splitlines()
-updated = False
-for index, existing in enumerate(lines):
-    if existing.startswith(f"{key}="):
-        lines[index] = line
-        updated = True
-        break
-if not updated:
-    lines.append(line)
-path.write_text("\n".join(lines) + "\n")
-PY
+          path = Path(sys.argv[1])
+          key = sys.argv[2]
+          value = sys.argv[3]
+          line = f"{key}={value}"
+          text = path.read_text() if path.exists() else ""
+          lines = text.splitlines()
+          updated = False
+          for index, existing in enumerate(lines):
+              if existing.startswith(f"{key}="):
+                  lines[index] = line
+                  updated = True
+                  break
+          if not updated:
+              lines.append(line)
+          path.write_text("\n".join(lines) + "\n")
+          PY
           }
           upsert_env_var "WHATSAPP_BUSINESS_PHONE_E164" "+233201166122"
           upsert_env_var "WHATSAPP_INBOUND_CHALLENGE_ENABLED" "true"
