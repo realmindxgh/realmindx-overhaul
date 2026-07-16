@@ -45,6 +45,12 @@ jobs:
         env:
           WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
           WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET }}
+          WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_BUSINESS_ACCOUNT_ID: ${{ secrets.WHATSAPP_BUSINESS_ACCOUNT_ID }}
+          WHATSAPP_OTP_TEMPLATE_NAME: ${{ vars.WHATSAPP_OTP_TEMPLATE_NAME }}
+          WHATSAPP_OTP_TEMPLATE_LANGUAGE: ${{ vars.WHATSAPP_OTP_TEMPLATE_LANGUAGE }}
+          WHATSAPP_GRAPH_API_VERSION: ${{ vars.WHATSAPP_GRAPH_API_VERSION }}
         run: |
           set -e
           cd /var/www/realmindx
@@ -117,6 +123,12 @@ jobs:
           upsert_env_var "WHATSAPP_CHALLENGE_PREFIX" "RMX VERIFY"
           upsert_env_var "WHATSAPP_WEBHOOK_VERIFY_TOKEN" "$WHATSAPP_WEBHOOK_VERIFY_TOKEN"
           upsert_env_var "WHATSAPP_APP_SECRET" "$WHATSAPP_APP_SECRET"
+          upsert_env_var "WHATSAPP_ACCESS_TOKEN" "$WHATSAPP_ACCESS_TOKEN"
+          upsert_env_var "WHATSAPP_PHONE_NUMBER_ID" "$WHATSAPP_PHONE_NUMBER_ID"
+          upsert_env_var "WHATSAPP_BUSINESS_ACCOUNT_ID" "$WHATSAPP_BUSINESS_ACCOUNT_ID"
+          upsert_env_var "WHATSAPP_OTP_TEMPLATE_NAME" "$WHATSAPP_OTP_TEMPLATE_NAME"
+          upsert_env_var "WHATSAPP_OTP_TEMPLATE_LANGUAGE" "$WHATSAPP_OTP_TEMPLATE_LANGUAGE"
+          upsert_env_var "WHATSAPP_GRAPH_API_VERSION" "$WHATSAPP_GRAPH_API_VERSION"
 
           echo "── Running database migrations ──"
           cd realmindx-site
