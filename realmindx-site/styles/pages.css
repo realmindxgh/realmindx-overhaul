@@ -4344,7 +4344,7 @@ input, textarea, select { font-family: inherit; }
   .admin-topbar {
     position: sticky;
     top: 0;
-    z-index: 60;
+    z-index: 90;
     width: auto;
     max-width: none;
     margin: -16px -14px 18px;
@@ -4594,8 +4594,12 @@ input, textarea, select { font-family: inherit; }
   .footer-grid { grid-template-columns: 1fr; }
 
   /* ── Global overflow guard ───────────────────────────── */
-  .portal-layout, .portal-main, .admin-portal-layout {
-    overflow-x: hidden;
+  .portal-layout, .portal-main, .admin-portal-layout, .admin-main {
+    /* Clip horizontal overflow without creating a scroll container.
+       Mobile browsers can stop sticky topbars from sticking when an ancestor
+       uses overflow-x: hidden. */
+    overflow-x: clip;
+    overflow-y: visible;
     max-width: 100vw;
   }
 }
