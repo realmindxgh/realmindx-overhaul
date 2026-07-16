@@ -4,10 +4,29 @@
 
 - Do not create Git worktrees for this repository. Keep work in this single checkout so the workspace stays simple to inspect and clean.
 - Push deployable work through `main`. The GitHub Actions deployment only runs for `main`, so feature branches are not enough when the change is intended to take effect on the live site.
+- Never edit, patch, git pull, restart, or deploy code directly on the Hostinger VPS as a substitute for the GitHub workflow. VPS access is for read-only diagnostics by default (logs, service status, environment presence checks). Any production code/config change must be committed locally, pushed to `main`, and deployed by GitHub Actions unless the user gives explicit emergency instructions.
 - Keep Alembic `revision` values at 32 characters or fewer. Production stores `alembic_version.version_num` as `VARCHAR(32)`, so long revision IDs fail during deploy when Alembic tries to record the migration.
 - Be careful with Postgres `json` columns. Do not compare JSON directly with strings such as `sources = '[]'`; use JSON functions such as `json_array_length(sources) = 0`, or cast deliberately when a JSONB operator is required.
 - The Codex app shell on this Windows workstation may not have `git` on `PATH`. Use `C:\Program Files\Git\cmd\git.exe` explicitly.
 - If the local Git index or remote-tracking ref cannot be updated, use an alternate `GIT_INDEX_FILE` for scoped commits and verify GitHub state with `git ls-remote origin refs/heads/main` after pushing.
+
+## Hostinger VPS diagnostic access
+
+- Production VPS host: `72.60.143.104` (`srv1026353`).
+- Diagnostic SSH user: `codexdiag`.
+- Local diagnostic private key path on this workstation: `C:\Users\skgas\.ssh\codex_realmindx_vps_ed25519`.
+- Public key comment: `codex-realmindx-vps-diagnostics`.
+- SSH command: `ssh -i C:\Users\skgas\.ssh\codex_realmindx_vps_ed25519 codexdiag@72.60.143.104`.
+- `codexdiag` is in `adm` and `systemd-journal` so agents can read service and nginx logs. Treat this as read-only diagnostic access unless the user explicitly authorizes an emergency operational change.
+- Useful read-only commands:
+  - `systemctl status realmindx-api --no-pager`
+  - `systemctl status nginx --no-pager`
+  - `journalctl -u realmindx-api --since "2 hours ago" --no-pager`
+  - `grep -h "webhooks/whatsapp" /var/log/nginx/realmindxgh_access.log /var/log/nginx/realmindxgh_access.log.1`
+  - `grep -h "contact-change" /var/log/realmindx/api-access.log /var/log/realmindx/api-access.log.1`
+  - `git -c safe.directory=/var/www/realmindx -C /var/www/realmindx log -1 --pretty="%h %ci %s"`
+- Do not print production secrets from `/var/www/realmindx/realmindx-site/.env`. If checking configuration, print only variable names or boolean presence.
+- WhatsApp webhook incident note, July 16, 2026: the callback URL verified successfully, but Meta had no active app-level `whatsapp_business_account` subscription, so incoming messages never POSTed to `/api/webhooks/whatsapp`. Fixed by creating the Meta app subscription for `object=whatsapp_business_account`, `fields=messages`; verification hit nginx at `2026-07-16 09:44 UTC`, and Graph reported `active=True`.
 
 ## Windows shell behavior
 

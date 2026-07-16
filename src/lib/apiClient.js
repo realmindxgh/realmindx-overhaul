@@ -211,6 +211,7 @@ export const api = {
 
   // admin - read
   adminDashboard: () => apiFetch('/admin/dashboard'),
+  adminWhatsAppWebhookEvents: () => apiFetch('/admin/whatsapp-webhook-events'),
   adminBookRequests: (params = '') => apiFetch(`/admin/book-requests${params ? `?${params}` : ''}`),
   adminBookRequest: (requestId) => apiFetch(`/admin/book-requests/${requestId}`),
   adminMarkBookRequestAvailable: (requestId, payload) => apiFetch(`/admin/book-requests/${requestId}/available`, { method: 'POST', body: payload }),

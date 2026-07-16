@@ -51,6 +51,7 @@ const NAV = [
   { key: 'admins', label: 'Admin Accounts', group: 'System', icon: 'shield' },
   { key: 'staff', label: 'Staff Accounts', group: 'System', icon: 'shield' },
   { key: 'teachers', label: 'Active Teachers', group: 'System', icon: 'teacher' },
+  { key: 'whatsappDiagnostics', label: 'WhatsApp Logs', group: 'System', icon: 'whatsapp' },
   { key: 'auditLogs', label: 'Audit Log', group: 'System', icon: 'clipboard' },
   { key: 'account', label: 'My Account', group: 'System', icon: 'user' },
 ];
@@ -114,6 +115,8 @@ const NAV_PERMISSION_GROUPS = NAV
           ? ['view']
         : item.key === 'staff'
           ? ['view', 'create', 'edit', 'delete']
+          : item.key === 'whatsappDiagnostics'
+            ? ['view']
           : item.key === 'teachers'
             ? ['view', 'edit', 'export']
             : item.key === 'priceAdjustment'
@@ -1158,6 +1161,182 @@ const DashboardView = ({ content, setActive, session }) => {
             <MiniTable rows={recentOrders} columns={['order_reference', 'customer_name', 'status']} />
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+};
+
+const whatsappStatusMeta = {
+  verified: {
+    label: 'Verified',
+    className: 'badge-success',
+    help: 'Correct prepared message came from the phone number being verified.',
+  },
+  wrong_number: {
+    label: 'Wrong number',
+    className: 'badge-danger',
+    help: 'The challenge code was correct, but it came from a different WhatsApp number.',
+  },
+  wrong_message: {
+    label: 'Wrong message',
+    className: 'badge-warning',
+    help: 'The sender matched, but the message was edited or did not match the prepared challenge.',
+  },
+  no_matching_challenge: {
+    label: 'No active challenge',
+    className: 'badge-warning',
+    help: 'Meta delivered a message, but RealMindX could not match it to a live challenge.',
+  },
+  ignored: {
+    label: 'Ignored',
+    className: 'badge-navy',
+    help: 'The webhook arrived, but it had no usable text message or sender.',
+  },
+  user_missing: {
+    label: 'User missing',
+    className: 'badge-danger',
+    help: 'The challenge matched, but the linked user account no longer exists.',
+  },
+};
+
+const whatsappEventMeta = status => whatsappStatusMeta[status] || {
+  label: statusLabel(status || 'unknown'),
+  className: 'badge-info',
+  help: 'The backend recorded this event with an uncommon status.',
+};
+
+const formatWhatsAppEventTime = value => {
+  if (!value) return 'Not recorded';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not recorded';
+  return date.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const maskWhatsAppSender = value => {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Not provided';
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length <= 4) return raw;
+  const prefix = raw.startsWith('+') ? `+${digits.slice(0, Math.min(3, digits.length - 4))}` : digits.slice(0, Math.min(3, digits.length - 4));
+  return `${prefix} *** ${digits.slice(-4)}`;
+};
+
+const WhatsAppDiagnosticsView = () => {
+  const [events, setEvents] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState('');
+  const [loadedAt, setLoadedAt] = React.useState(null);
+
+  const loadEvents = React.useCallback(() => {
+    setLoading(true);
+    setError('');
+    return api.adminWhatsAppWebhookEvents()
+      .then(data => {
+        setEvents(Array.isArray(data.events) ? data.events : []);
+        setLoadedAt(new Date());
+      })
+      .catch(err => {
+        setError(err.message || 'Could not load WhatsApp webhook logs.');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  React.useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+
+  const latest = events[0];
+
+  return (
+    <div className="whatsapp-diagnostics-page">
+      <div className="admin-table-card whatsapp-diagnostics-hero">
+        <div className="whatsapp-diagnostics-hero-icon" aria-hidden="true">
+          <Icon name="whatsapp" size={24} stroke={2} />
+        </div>
+        <div>
+          <p className="overline">WhatsApp Verification</p>
+          <h2 className="admin-page-title">Webhook Diagnostics</h2>
+          <p className="whatsapp-diagnostics-copy">
+            Use this when a phone verification challenge keeps waiting. If the table is empty after a user sends the WhatsApp challenge, Meta did not deliver a webhook to RealMindX. If a row appears, the status explains exactly what the backend saw.
+          </p>
+        </div>
+        <button type="button" className="btn btn-outline-navy btn-sm" onClick={loadEvents} disabled={loading}>
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
+
+      <div className="whatsapp-diagnostics-grid">
+        <div className="admin-table-card whatsapp-diagnostics-card">
+          <span className="whatsapp-diagnostics-label">Latest event</span>
+          <strong>{latest ? formatWhatsAppEventTime(latest.created_at) : 'No webhook events yet'}</strong>
+          <p>{latest ? whatsappEventMeta(latest.status).help : 'Try sending a new challenge, wait a few seconds, then refresh this view.'}</p>
+        </div>
+        <div className="admin-table-card whatsapp-diagnostics-card">
+          <span className="whatsapp-diagnostics-label">Rows shown</span>
+          <strong>{events.length}</strong>
+          <p>RealMindX keeps the latest 50 WhatsApp webhook events for quick troubleshooting.</p>
+        </div>
+        <div className="admin-table-card whatsapp-diagnostics-card">
+          <span className="whatsapp-diagnostics-label">Last refreshed</span>
+          <strong>{loadedAt ? loadedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not yet'}</strong>
+          <p>Refresh immediately after testing if you want to catch the newest Meta delivery.</p>
+        </div>
+      </div>
+
+      {error && <p className="admin-error" role="alert">{error}</p>}
+
+      <div className="admin-table-card">
+        <div className="atc-header">
+          <div>
+            <h3>Recent WhatsApp webhooks</h3>
+            <p className="whatsapp-diagnostics-copy is-compact">Statuses are created by the backend after reading Meta’s incoming WhatsApp message payload.</p>
+          </div>
+        </div>
+        <AdminTableScroll>
+          <table className="admin-table whatsapp-diagnostics-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Status</th>
+                <th>Sender</th>
+                <th>Message preview</th>
+                <th>Challenge</th>
+                <th>Phone number ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && !events.length ? (
+                <tr><td colSpan={6}>Loading WhatsApp webhook events...</td></tr>
+              ) : events.length ? events.map(event => {
+                const meta = whatsappEventMeta(event.status);
+                return (
+                  <tr key={event.id}>
+                    <td>{formatWhatsAppEventTime(event.created_at)}</td>
+                    <td>
+                      <span className={`badge ${meta.className}`} title={meta.help}>{meta.label}</span>
+                    </td>
+                    <td>{maskWhatsAppSender(event.sender)}</td>
+                    <td>{event.text_preview || 'No text captured'}</td>
+                    <td>{event.challenge_id || 'None'}</td>
+                    <td>{event.phone_number_id || 'Not provided'}</td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={6}>
+                    No WhatsApp webhooks have reached RealMindX yet. If you have just sent a challenge and this stays empty, check Meta webhook delivery, app publish status, subscribed fields, and the callback URL/token.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </AdminTableScroll>
       </div>
     </div>
   );
@@ -5114,6 +5293,8 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
           ? <TeachersView session={session} />
           : activeView === 'bookshopCustomers'
           ? <BookshopCustomersView />
+          : activeView === 'whatsappDiagnostics'
+          ? <WhatsAppDiagnosticsView />
           : activeView === 'account'
           ? <AccountView session={session} onPasswordChanged={clearPasswordRotationFlag} />
           : CONFIG[activeView]

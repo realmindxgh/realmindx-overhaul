@@ -52,7 +52,7 @@ def _incoming_text_messages(payload):
 
 
 def _verify_signature(raw_body):
-    app_secret = current_app.config.get("WHATSAPP_APP_SECRET", "")
+    app_secret = current_app.config.get("WHATSAPP_APP_SECRET") or current_app.config.get("FACEBOOK_APP_SECRET", "")
     if not app_secret:
         return True
     header = request.headers.get("X-Hub-Signature-256", "")

@@ -27,6 +27,8 @@ class ContactVerificationTestConfig(Config):
     WHATSAPP_OTP_TEMPLATE_NAME = "realmindx_verification_code"
     WHATSAPP_OTP_TEMPLATE_LANGUAGE = "en_US"
     WHATSAPP_GRAPH_API_VERSION = "v23.0"
+    WHATSAPP_APP_SECRET = ""
+    FACEBOOK_APP_SECRET = ""
 
 
 class ContactVerificationTests(unittest.TestCase):

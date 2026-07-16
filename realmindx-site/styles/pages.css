@@ -1819,6 +1819,7 @@ input, textarea, select { font-family: inherit; }
 .auth-choice-action {
   width: 100%;
   justify-content: center;
+  gap: 8px;
 }
 
 .auth-footer-link {
@@ -3638,6 +3639,85 @@ input, textarea, select { font-family: inherit; }
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+}
+
+.whatsapp-diagnostics-page {
+  display: grid;
+  gap: 18px;
+}
+
+.whatsapp-diagnostics-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px;
+}
+
+.whatsapp-diagnostics-hero-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: #dcfce7;
+  color: #16a34a;
+  flex: 0 0 52px;
+}
+
+.whatsapp-diagnostics-hero > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+
+.whatsapp-diagnostics-copy {
+  margin: 8px 0 0;
+  color: var(--gray-600);
+  font-size: .88rem;
+  line-height: 1.65;
+}
+
+.whatsapp-diagnostics-copy.is-compact {
+  margin-top: 4px;
+  font-size: .78rem;
+}
+
+.whatsapp-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.whatsapp-diagnostics-card {
+  padding: 18px;
+}
+
+.whatsapp-diagnostics-card strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--navy);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.05rem;
+}
+
+.whatsapp-diagnostics-card p {
+  margin: 8px 0 0;
+  color: var(--gray-600);
+  font-size: .78rem;
+  line-height: 1.55;
+}
+
+.whatsapp-diagnostics-label {
+  color: var(--yellow-dark);
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.whatsapp-diagnostics-table td {
+  max-width: 260px;
+  white-space: normal;
 }
 
 .atc-header {
