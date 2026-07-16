@@ -3,7 +3,7 @@ import io
 import zipfile
 from datetime import date
 from html import escape
-from flask import Blueprint, Response, current_app, jsonify, request, send_file
+from flask import Blueprint, Response, current_app, jsonify, request, send_file, session
 from flask_login import current_user, login_required, login_user, logout_user
 
 from ..audit import audit
@@ -117,7 +117,9 @@ def company_login():
         user, profile = authenticate_phone_user(payload.get("phone"), payload.get("password"), "delivery_company_user")
     except DeliveryError as exc:
         return _delivery_error_response(exc)
-    login_user(user, remember=bool(payload.get("remember")))
+    remember = bool(payload.get("remember"))
+    session.permanent = remember
+    login_user(user, remember=remember)
     audit("delivery_company_login", "delivery_company_user", profile.id, {"company_id": profile.company_id})
     db.session.commit()
     company_user = delivery_company_user_json(profile)
@@ -133,7 +135,9 @@ def rider_login():
         user, profile = authenticate_phone_user(payload.get("phone"), payload.get("password"), "delivery_rider")
     except DeliveryError as exc:
         return _delivery_error_response(exc)
-    login_user(user, remember=bool(payload.get("remember")))
+    remember = bool(payload.get("remember"))
+    session.permanent = remember
+    login_user(user, remember=remember)
     audit("delivery_rider_login", "delivery_rider", profile.id, {"company_id": profile.company_id})
     db.session.commit()
     return jsonify(user=user_json(user), rider=delivery_rider_json(profile))

@@ -77,9 +77,9 @@ const invalidCredentials = (role) => {
 };
 
 // role: 'admin' | 'user'
-export const signIn = async ({ email, password, role = 'user', remember = false }) => {
+export const signIn = async ({ email, password, role = 'user', remember = false, surface = '' }) => {
   if (isApiMode()) {
-    const result = await api.login({ email, password, remember: remember || isInstalledApp() });
+    const result = await api.login({ email, password, remember: remember || isInstalledApp(), surface });
     if (result?.requires_two_factor) {
       const error = new Error(result.message || 'Enter the security code sent to your email.');
       error.code = 'requires_two_factor';
@@ -152,7 +152,7 @@ export const completeTwoFactorLogin = async ({ otp, role = 'user' }) => {
   return session;
 };
 
-export const signUp = async ({ email, phone = '', password, firstName, lastName, sex = '', ageRange = '', acceptedTerms = false, turnstileToken = '' }) => {
+export const signUp = async ({ email, phone = '', password, firstName, lastName, sex = '', ageRange = '', acceptedTerms = false, turnstileToken = '', surface = 'teacher' }) => {
   if (isApiMode()) {
     const result = await api.signup({
       email,
@@ -164,6 +164,7 @@ export const signUp = async ({ email, phone = '', password, firstName, lastName,
       age_range: ageRange,
       accepted_terms: acceptedTerms,
       turnstile_token: turnstileToken,
+      surface,
     });
     return {
       ...result,

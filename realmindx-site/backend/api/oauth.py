@@ -159,6 +159,8 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
             last_name=last_name or "",
             role=role,
             is_verified=True,   # social login implies verified email
+            teacher_service_enabled=session.get("oauth_surface", "main") != "bookshop",
+            bookshop_service_enabled=session.get("oauth_surface", "main") == "bookshop",
         )
         user.set_password(secrets.token_urlsafe(48))
         db.session.add(user)
@@ -181,6 +183,12 @@ def _login_and_redirect(user, frontend_path=None):
     surface = session.pop("oauth_surface", "main")
     session.pop("oauth_intent", None)
     session.pop("oauth_terms_accepted", None)
+    if user.role and user.role.name == "user":
+        if surface == "bookshop":
+            user.bookshop_service_enabled = True
+        else:
+            user.teacher_service_enabled = True
+    session.permanent = True
     login_user(user, remember=True)
     user.last_login_at = datetime.now(timezone.utc)
     db.session.commit()

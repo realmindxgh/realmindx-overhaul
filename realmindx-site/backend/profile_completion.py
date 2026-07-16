@@ -3,7 +3,6 @@
 
 PROFILE_COMPLETION_FIELDS = (
     ("email", "Email address"),
-    ("verified_phone", "Verified phone number"),
     ("location", "Current location"),
     ("teaching_subject", "Teaching subject"),
     ("preferred_level", "Preferred teaching level"),
@@ -19,7 +18,6 @@ def teacher_profile_completion(user):
     profile = getattr(user, "profile", None)
     values = {
         "email": getattr(user, "email", None) or getattr(user, "first_name", None),
-        "verified_phone": bool(getattr(user, "phone", None) and getattr(user, "phone_verified", False)),
         "location": getattr(profile, "location", None),
         "teaching_subject": getattr(profile, "teaching_subject", None),
         "preferred_level": getattr(profile, "preferred_level", None),

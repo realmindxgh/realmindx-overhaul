@@ -282,7 +282,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
     if (!email || !password) { const m = 'Please enter your email and password.'; setError(m); toast.error(m); return; }
     setLoading(true);
     try {
-      await signIn({ email, password, role: 'user' });
+      await signIn({ email, password, role: 'user', surface: 'teacher' });
       window.location.href = '/portal';
     } catch (err) {
       if (err?.data?.requires_verification) {

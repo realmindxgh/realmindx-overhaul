@@ -21,6 +21,8 @@ def user_json(user):
         "full_name": user.full_name,
         "phone": user.phone,
         "phone_verified": user.phone_verified,
+        "teacher_service_enabled": user.teacher_service_enabled,
+        "bookshop_service_enabled": user.bookshop_service_enabled,
         "sex": user.sex,
         "age_range": user.age_range,
         "role": user.role.name if user.role else None,
@@ -31,7 +33,9 @@ def user_json(user):
         "is_active": user.is_active,
         "must_change_password": user.must_change_password,
         "two_factor_enabled": user.two_factor_enabled,
+        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
         "created_at": user.created_at.isoformat() if user.created_at else None,
+        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         "profile_completion": profile_completion,
         "profile_missing_fields": profile_missing_fields,
     }

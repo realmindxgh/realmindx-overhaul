@@ -11,7 +11,11 @@ const surfaceForLocation = () => {
   return null;
 };
 
-export const isInstalledApp = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+export const isInstalledApp = () => (
+  ['standalone', 'fullscreen', 'minimal-ui'].some(mode => window.matchMedia?.(`(display-mode: ${mode})`).matches)
+  || window.navigator.standalone === true
+  || document.referrer.startsWith('android-app://')
+);
 
 const InstallAppPrompt = () => {
   const surface = React.useMemo(surfaceForLocation, []);

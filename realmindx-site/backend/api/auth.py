@@ -167,6 +167,8 @@ def signup():
         sex=(payload.get("sex") or "").strip() or None,
         age_range=(payload.get("age_range") or "").strip() or None,
         role=role,
+        teacher_service_enabled=str(payload.get("surface") or "teacher").strip().lower() != "bookshop",
+        bookshop_service_enabled=str(payload.get("surface") or "teacher").strip().lower() == "bookshop",
     )
     user.set_password(password)
     db.session.add(user)
@@ -191,6 +193,7 @@ LOGIN_LOCKOUT_MINUTES = 15
 @limiter.limit("10/minute")
 def login():
     payload = request.get_json(silent=True) or {}
+    surface = str(payload.get("surface") or "").strip().lower()
     try:
         email = _clean_email(payload.get("email"))
     except ValueError:
@@ -243,6 +246,7 @@ def login():
         session["pending_two_factor_login"] = {
             "user_id": user.id,
             "remember": bool(payload.get("remember")),
+            "surface": surface,
         }
         audit("user_login_two_factor_requested", "user", user.id, {"email": user.email})
         db.session.commit()
@@ -255,9 +259,16 @@ def login():
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = now
+    if user.role and user.role.name == "user":
+        if surface == "bookshop":
+            user.bookshop_service_enabled = True
+        elif surface == "teacher":
+            user.teacher_service_enabled = True
     audit("user_login", "user", user.id, {"email": user.email, "role": user.role.name if user.role else None})
     db.session.commit()
-    login_user(user, remember=bool(payload.get("remember")))
+    remember = bool(payload.get("remember"))
+    session.permanent = remember
+    login_user(user, remember=remember)
     return jsonify(user=user_json(user))
 
 
@@ -275,10 +286,18 @@ def complete_two_factor_login():
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = now
+    surface = str(pending.get("surface") or "").strip().lower()
+    if user.role and user.role.name == "user":
+        if surface == "bookshop":
+            user.bookshop_service_enabled = True
+        elif surface == "teacher":
+            user.teacher_service_enabled = True
     session.pop("pending_two_factor_login", None)
     audit("user_login_two_factor_completed", "user", user.id, {"email": user.email})
     db.session.commit()
-    login_user(user, remember=bool(pending.get("remember")))
+    remember = bool(pending.get("remember"))
+    session.permanent = remember
+    login_user(user, remember=remember)
     return jsonify(user=user_json(user))
 
 

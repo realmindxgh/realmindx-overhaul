@@ -1436,11 +1436,32 @@ def users():
     rows = (
         User.query
         .join(User.role)
-        .filter(Role.name == "user")
+        .filter(Role.name == "user", User.teacher_service_enabled.is_(True))
         .order_by(User.created_at.desc())
         .all()
     )
     return jsonify(items=[user_json(user) for user in rows])
+
+
+@admin_bp.get("/bookshop-accounts")
+@login_required
+@permission_required("orders.view")
+def bookshop_accounts():
+    rows = (
+        db.session.query(User, func.count(Order.id).label("order_count"))
+        .join(User.role)
+        .outerjoin(Order, Order.user_id == User.id)
+        .filter(Role.name == "user", User.bookshop_service_enabled.is_(True))
+        .group_by(User.id)
+        .order_by(User.created_at.desc())
+        .all()
+    )
+    items = []
+    for user, order_count in rows:
+        item = user_json(user)
+        item["order_count"] = int(order_count or 0)
+        items.append(item)
+    return jsonify(items=items)
 
 
 @admin_bp.post("/users/<int:user_id>/profile-reminder")
@@ -1588,19 +1609,24 @@ def get_user(user_id):
     data = user_json(user)
     profile = getattr(user, "profile", None)
     if profile:
-        def _file_url(file_id):
+        def _file_payload(file_id):
             if not file_id:
-                return None
+                return {"url": None, "filename": None}
             f = db.session.get(UploadedFile, file_id)
             if not f:
-                return None
-            return f"/uploads/{f.visibility}/{f.category}/{f.stored_filename}"
+                return {"url": None, "filename": None}
+            return {
+                "url": f"/uploads/{f.visibility}/{f.category}/{f.stored_filename}",
+                "filename": f.original_filename,
+            }
 
         age = None
         if profile.date_of_birth:
             today = date.today()
             d = profile.date_of_birth
             age = today.year - d.year - ((today.month, today.day) < (d.month, d.day))
+        cv_file = _file_payload(profile.cv_file_id)
+        certificate_file = _file_payload(profile.certificate_file_id)
 
         data["profile"] = {
             "location": profile.location,
@@ -1612,8 +1638,11 @@ def get_user(user_id):
             "available_from": profile.available_from,
             "curriculum_experience": profile.curriculum_experience,
             "bio": profile.bio,
-            "cv_url": _file_url(profile.cv_file_id),
-            "certificate_url": _file_url(profile.certificate_file_id),
+            "profile_picture_url": data.get("profile_picture_url"),
+            "cv_url": cv_file["url"],
+            "cv_filename": cv_file["filename"],
+            "certificate_url": certificate_file["url"],
+            "certificate_filename": certificate_file["filename"],
             "next_of_kin_name": profile.next_of_kin_name,
             "next_of_kin_phone": profile.next_of_kin_phone,
             "next_of_kin_relationship": profile.next_of_kin_relationship,
@@ -1625,6 +1654,37 @@ def get_user(user_id):
         }
     else:
         data["profile"] = None
+    preferences = (
+        JobAlertPreference.query
+        .filter_by(user_id=user.id)
+        .order_by(JobAlertPreference.is_default.desc(), JobAlertPreference.updated_at.desc())
+        .all()
+    )
+    data["job_alert_preferences"] = [_job_alert_admin_json(preference, user) for preference in preferences]
+    applications = (
+        JobApplication.query
+        .options(joinedload(JobApplication.job))
+        .filter_by(user_id=user.id)
+        .order_by(JobApplication.updated_at.desc(), JobApplication.created_at.desc())
+        .all()
+    )
+    data["applications"] = [
+        {
+            "id": application.id,
+            "job_id": application.job_id,
+            "status": application.status,
+            "cover_note": application.cover_note,
+            "created_at": application.created_at.isoformat() if application.created_at else None,
+            "updated_at": application.updated_at.isoformat() if application.updated_at else None,
+            "job_title": application.job.title if application.job else None,
+            "organisation": application.job.organisation if application.job else None,
+            "location": application.job.location if application.job else None,
+            "subject": application.job.subject if application.job else None,
+            "level": application.job.level if application.job else None,
+            "employment_type": application.job.employment_type if application.job else None,
+        }
+        for application in applications
+    ]
     placements = (
         TeacherPlacement.query
         .filter_by(user_id=user.id)

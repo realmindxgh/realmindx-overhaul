@@ -198,7 +198,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
     setLoading(true);
     try {
       if (isLogin) {
-        await signIn({ email: form.email, password: form.password, role: 'user', remember: form.remember });
+        await signIn({ email: form.email, password: form.password, role: 'user', remember: form.remember, surface: 'bookshop' });
         globalToast.success('Signed in to the bookshop.');
         navigate(consumeBookshopAuthReturn('account'));
         return;
@@ -230,6 +230,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
         ageRange: form.ageRange,
         acceptedTerms: form.acceptedTerms,
         turnstileToken,
+        surface: 'bookshop',
       });
       setPendingVerificationEmail(form.email);
       setOtp('');

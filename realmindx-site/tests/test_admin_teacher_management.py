@@ -88,6 +88,30 @@ class AdminTeacherManagementTests(unittest.TestCase):
         user_ids = [item["id"] for item in users_response.get_json().get("items", [])]
         self.assertNotIn(self.active_teacher.id, user_ids)
 
+    def test_bookshop_customer_uses_shared_user_but_not_teacher_view(self):
+        customer = User(
+            email="customer@example.com",
+            first_name="Bookshop",
+            last_name="Customer",
+            role=Role.query.filter_by(name="user").one(),
+            is_active=True,
+            is_verified=True,
+            teacher_service_enabled=False,
+            bookshop_service_enabled=True,
+        )
+        customer.set_password("CustomerPassword1")
+        db.session.add(customer)
+        db.session.commit()
+
+        teachers_response = self.client.get("/api/admin/users")
+        teacher_ids = [item["id"] for item in teachers_response.get_json()["items"]]
+        self.assertNotIn(customer.id, teacher_ids)
+
+        customers_response = self.client.get("/api/admin/bookshop-accounts")
+        self.assertEqual(customers_response.status_code, 200)
+        customer_rows = customers_response.get_json()["items"]
+        self.assertIn(customer.id, [item["id"] for item in customer_rows])
+
     @patch("backend.api.admin.send_email", return_value={"provider": "test", "status": "sent"})
     def test_send_incomplete_profile_reminder(self, send_email_mock):
         response = self.client.post(f"/api/admin/users/{self.active_teacher.id}/profile-reminder", json={})

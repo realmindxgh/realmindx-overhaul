@@ -217,7 +217,6 @@ const normaliseAlert = pref => {
 const completionFromProfile = profile => {
   const checks = [
     profile?.email || profile?.first_name,
-    profile?.phone && profile?.phone_verified,
     profile?.location,
     profile?.teaching_subject,
     profile?.preferred_level,
@@ -233,7 +232,6 @@ const completionFromProfile = profile => {
 const ProfileChecklist = ({ user, setActive, onAction, hasJobAlert = false }) => {
   const steps = [
     { label: 'Email verified',            done: user.emailVerified, view: null,          icon: 'mail',  action: null            },
-    { label: user.phone ? 'Verify your phone number' : 'Add your phone number', done: !!user.phone && user.phoneVerified, view: 'profile', icon: 'phone', action: null },
     { label: 'Set teaching subject',      done: !!user.subject,     view: 'profile',     icon: 'book',  action: 'edit-teaching' },
     { label: 'Upload your CV',            done: user.hasCV,         view: 'documents',   icon: 'file',  action: 'highlight-cv'  },
     { label: 'Add certificates',          done: user.hasCerts,      view: 'documents',   icon: 'award', action: 'highlight-cert'},
@@ -520,43 +518,32 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
 
 /* â”€â”€ PROFILE VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* ── Profile picture card with crop ─────────────────────── */
-const ProfilePictureCard = ({ user, onPreviewAvatar, onUploadAvatar, avatarUploading, uploadError }) => {
+const ProfileAvatarUpload = ({ user, onUploadAvatar, avatarUploading }) => {
   const { inputProps, cropModal } = useCropUpload({
     aspectRatio: 1,
     title: 'Crop Profile Picture',
-    onFile: (file) => onUploadAvatar?.(file),
+    onFile: file => onUploadAvatar?.(file),
   });
   return (
-    <div className="profile-section-card">
+    <div className="profile-avatar-wrapper">
       {cropModal}
-      <h3>Profile Picture</h3>
-      <div style={{ textAlign: 'center', padding: '24px 0' }}>
-        <button className="avatar-preview-button" type="button" onClick={onPreviewAvatar} aria-label="View profile picture"
-          style={{ width: 100, height: 100, borderRadius: '50%', background: 'var(--yellow)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: '2rem', color: 'var(--navy)', border: 0 }}>
-          {user.avatarUrl ? <img src={user.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} /> : user.initials}
-        </button>
-        <label className="document-upload-zone portal-upload-zone" style={{ marginTop: 0 }}>
-          <div style={{ fontSize: '1.5rem', marginBottom: 6, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="camera" size={26} stroke={1.8} /></div>
-          <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)' }}>{avatarUploading ? 'Uploading photo...' : 'Click to upload a photo'}</p>
-          <p style={{ fontSize: '0.72rem', color: 'var(--gray-600)', marginTop: 4 }}>JPG, PNG · Crop after selecting</p>
-          <input type="file" accept="image/png,image/jpeg,image/webp" hidden {...inputProps} />
-        </label>
-        {uploadError && <p className="form-error" style={{ marginTop: 10 }}>{uploadError}</p>}
-      </div>
+      <label className="profile-avatar avatar-preview-button" aria-label="Upload or replace profile picture" title="Upload or replace profile picture">
+        {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user.initials}
+        <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={avatarUploading} {...inputProps} />
+      </label>
+      <label className="profile-avatar-edit" title="Change photo" aria-label="Change profile picture">
+        <Icon name={avatarUploading ? 'clock' : 'camera'} size={15} stroke={2} />
+        <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={avatarUploading} {...inputProps} />
+      </label>
     </div>
   );
 };
 
-const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, onContactUpdated, avatarUploading, uploadError }) => (
+const ProfileView = ({ user, onUploadAvatar, onEditProfile, onContactUpdated, avatarUploading, uploadError }) => (
   <div>
     {/* Profile header */}
     <div className="profile-header-card">
-      <div className="profile-avatar-wrapper">
-        <button className="profile-avatar avatar-preview-button" type="button" onClick={onPreviewAvatar} aria-label="View profile picture">
-          {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user.initials}
-        </button>
-        <button className="profile-avatar-edit" type="button" title="Change photo" onClick={onPreviewAvatar}><Icon name="camera" size={15} stroke={2} /></button>
-      </div>
+      <ProfileAvatarUpload user={user} onUploadAvatar={onUploadAvatar} avatarUploading={avatarUploading} />
       <div className="profile-header-info">
         <h2>{user.firstName} {user.lastName}</h2>
         <p>{user.email}</p>
@@ -657,8 +644,6 @@ const ProfileView = ({ user, onPreviewAvatar, onUploadAvatar, onEditProfile, onC
         )) : <div className="profile-field-empty">No school placement has been recorded yet.</div>}
       </div>
 
-      {/* Profile picture slot */}
-      <ProfilePictureCard user={user} onPreviewAvatar={onPreviewAvatar} onUploadAvatar={onUploadAvatar} avatarUploading={avatarUploading} uploadError={uploadError} />
     </div>
   </div>
 );
@@ -1650,6 +1635,7 @@ const UserPortalPage = () => {
   const [profileForm, setProfileForm] = React.useState({});
   const [profileSaving, setProfileSaving] = React.useState(false);
   const [profileError, setProfileError] = React.useState('');
+  const [phoneReminderOpen, setPhoneReminderOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!isApiMode()) {
@@ -1758,6 +1744,16 @@ const UserPortalPage = () => {
       cancelled = true;
     };
   }, [session, sessionChecked]);
+
+  React.useEffect(() => {
+    if (!sessionChecked || portalLoading || !session || !apiProfile) return undefined;
+    if (apiProfile.phone && apiProfile.phone_verified) return undefined;
+    const reminderKey = `rmx.phone-reminder.${session.email || 'account'}`;
+    const lastShownAt = Number(window.localStorage.getItem(reminderKey) || 0);
+    if (Date.now() - lastShownAt < 14 * 24 * 60 * 60 * 1000) return undefined;
+    const timer = window.setTimeout(() => setPhoneReminderOpen(true), 1200);
+    return () => window.clearTimeout(timer);
+  }, [apiProfile, portalLoading, session, sessionChecked]);
 
   if (!sessionChecked || !session) return <AuthLoadingScreen />;
   if (['admin', 'staff'].includes(session.role)) return null;
@@ -1952,9 +1948,14 @@ const UserPortalPage = () => {
     window.location.href = '/login';
   };
 
+  const dismissPhoneReminder = () => {
+    window.localStorage.setItem(`rmx.phone-reminder.${session?.email || 'account'}`, String(Date.now()));
+    setPhoneReminderOpen(false);
+  };
+
   const renderView = () => {
     switch (activeView) {
-      case 'profile':      return <ProfileView      user={user} onPreviewAvatar={() => setAvatarPreview(true)} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} onContactUpdated={refreshProfileAfterContact} avatarUploading={avatarUploading} uploadError={uploadError} />;
+      case 'profile':      return <ProfileView      user={user} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} onContactUpdated={refreshProfileAfterContact} avatarUploading={avatarUploading} uploadError={uploadError} />;
       case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} highlight={pendingActionRef.current === 'highlight-cv' ? 'cv' : pendingActionRef.current === 'highlight-cert' ? 'cert' : null} />;
       case 'applications': return <ApplicationsView applications={applications} />;
       case 'alerts':       return <AlertsView initialAlerts={alerts} user={user} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;
@@ -2078,6 +2079,22 @@ const UserPortalPage = () => {
               <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => handleFileUpload('profile_picture', event.target.files?.[0])} />
             </label>
             {uploadError && <p className="form-error" style={{ marginTop: 10 }}>{uploadError}</p>}
+          </div>
+        </div>
+      )}
+
+      {phoneReminderOpen && (
+        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) dismissPhoneReminder(); }}>
+          <div className="avatar-preview-modal" role="dialog" aria-modal="true" aria-labelledby="phone-reminder-title">
+            <div style={{ color: 'var(--yellow-dark)', marginBottom: 10 }}><Icon name="phone" size={32} stroke={1.8} /></div>
+            <h3 id="phone-reminder-title">Add and verify your phone number</h3>
+            <p>A verified number helps protect your account and lets you receive important application updates. It is recommended, but it does not affect your profile-completion percentage.</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 18 }}>
+              <button className="btn btn-primary" type="button" onClick={() => { dismissPhoneReminder(); setActiveView('profile'); }}>
+                {apiProfile?.phone ? 'Verify Phone' : 'Add Phone'}
+              </button>
+              <button className="btn" type="button" onClick={dismissPhoneReminder}>Maybe Later</button>
+            </div>
           </div>
         </div>
       )}

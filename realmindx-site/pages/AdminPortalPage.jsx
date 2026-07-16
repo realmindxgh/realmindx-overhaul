@@ -31,6 +31,7 @@ const NAV = [
   { key: 'deliverySettlements', label: 'Delivery Settlements', group: 'Bookshop', icon: 'money' },
   { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
   { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
+  { key: 'bookshopCustomers', label: 'Bookshop Customers', group: 'Bookshop', icon: 'users' },
   { key: 'receiptsInvoices', label: 'Receipts & Invoices', group: 'Bookshop', icon: 'receipt' },
   { key: 'orderReviews', label: 'Order Reviews', group: 'Bookshop', icon: 'message' },
   { key: 'services', label: 'Services', group: 'Content', icon: 'consulting' },
@@ -103,7 +104,7 @@ const OTP_OVERRIDE_OPTIONS = [
 
 const EXPORTABLE_PERMISSION_KEYS = new Set(['jobs', 'applications', 'products', 'orders']);
 const NAV_PERMISSION_GROUPS = NAV
-  .filter(item => !['dashboard', 'admins', 'auditLogs', 'account', 'deliveryCompanies', 'deliverySettlements'].includes(item.key))
+  .filter(item => !['dashboard', 'admins', 'auditLogs', 'account', 'deliveryCompanies', 'deliverySettlements', 'bookshopCustomers'].includes(item.key))
   .map(item => {
     const actions = item.key === 'analytics'
       ? ['view', 'export']
@@ -177,6 +178,7 @@ const canAccessAdminItem = (item, session) => {
   if (item.key === 'dashboard' || item.key === 'account') return ['admin', 'staff'].includes(role);
   if (item.key === 'admins' || item.key === 'auditLogs') return false;
   if (item.key === 'receiptsInvoices') return hasSessionPermission(session, 'orders.view') || hasSessionPermission(session, 'receiptsInvoices.view');
+  if (item.key === 'bookshopCustomers') return hasSessionPermission(session, 'orders.view');
   if (item.key === 'deliveryCompanies') return hasSessionPermission(session, 'delivery.view') || hasSessionPermission(session, 'delivery.companies.manage');
   if (item.key === 'deliverySettlements') return hasSessionPermission(session, 'delivery.settlements.view');
   return hasSessionPermission(session, `${item.key}.view`);
@@ -4179,6 +4181,120 @@ const PriceAdjustmentView = ({ content, session }) => {
   );
 };
 
+const VerifiedContactValue = ({ value, verified, type }) => {
+  const label = `${type} ${verified ? 'verified' : 'not verified'}`;
+  return (
+    <span className="admin-verified-contact">
+      <span>{value || 'N/A'}</span>
+      <span
+        className={`admin-contact-check ${verified ? 'is-verified' : 'is-unverified'}`}
+        title={label}
+        aria-label={label}
+      >
+        {verified ? '✓' : '×'}
+      </span>
+    </span>
+  );
+};
+
+const BookshopCustomersView = () => {
+  const [customers, setCustomers] = React.useState(null);
+  const [search, setSearch] = React.useState('');
+
+  React.useEffect(() => {
+    if (!isApiMode()) return;
+    fetch('/api/admin/bookshop-accounts', { credentials: 'include' })
+      .then(response => response.ok ? response.json() : { items: [] })
+      .then(data => setCustomers(data.items || []))
+      .catch(() => setCustomers([]));
+  }, []);
+
+  const ranked = rankByFuzzyMatch(customers || [], search, customer =>
+    `${customer.first_name || ''} ${customer.last_name || ''} ${customer.email || ''} ${customer.phone || ''}`
+  );
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <h2 className="admin-page-title">Bookshop Customers</h2>
+        <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginTop:4 }}>
+          Customers use the same RealMindX identity as every other service. This view only shows people who have used the bookshop.
+        </p>
+      </div>
+      <div className="admin-table-card">
+        <div className="atc-header">
+          <h3>{ranked.length} Customer{ranked.length !== 1 ? 's' : ''}</h3>
+          <div className="atc-search"><span>Search</span>
+            <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Name or email" />
+          </div>
+        </div>
+        {!isApiMode() ? (
+          <EmptySection title="API mode required" body="Connect the Flask backend to see bookshop customers." />
+        ) : customers === null ? (
+          <EmptySection title="Loading…" body="" />
+        ) : ranked.length === 0 ? (
+          <EmptySection title="No Bookshop Customers Yet" body="Customers appear here after registering through or signing into the bookshop." />
+        ) : (
+          <AdminTableScroll>
+            <table className="admin-table">
+              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Orders</th><th>Status</th><th>Registered</th></tr></thead>
+              <tbody>
+                {ranked.map(customer => (
+                  <tr key={customer.id} style={{ opacity: customer.is_active === false ? 0.55 : 1 }}>
+                    <td className="td-primary">{[customer.first_name, customer.last_name].filter(Boolean).join(' ') || 'Unknown'}</td>
+                    <td><VerifiedContactValue value={customer.email} verified={customer.is_verified} type="Email" /></td>
+                    <td><VerifiedContactValue value={customer.phone} verified={customer.phone_verified} type="Phone" /></td>
+                    <td>{customer.order_count || 0}</td>
+                    <td><span className={`badge ${customer.is_active !== false ? 'badge-success' : 'badge-danger'}`}>{customer.is_active !== false ? 'Active' : 'Disabled'}</span></td>
+                    <td style={{ fontSize:'0.76rem', color:'var(--gray-600)', whiteSpace:'nowrap' }}>{customer.created_at ? new Date(customer.created_at).toLocaleDateString() : 'N/A'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </AdminTableScroll>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const emptyDisplay = value => {
+  if (value === null || value === undefined || value === '') return 'Not set';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : 'Not set';
+  return String(value);
+};
+
+const yesNo = value => value ? 'Yes' : 'No';
+
+const dateDisplay = value => value ? new Date(value).toLocaleDateString() : 'Not set';
+
+const experienceDisplay = value => {
+  if (value === null || value === undefined || value === '') return 'Not set';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value);
+  if (numeric === 0) return 'Less than 1 year';
+  if (numeric <= 2) return '1 - 2 years';
+  if (numeric <= 5) return '3 - 5 years';
+  if (numeric <= 10) return '6 - 10 years';
+  if (numeric <= 15) return '11 - 15 years';
+  if (numeric <= 20) return '16 - 20 years';
+  return 'More than 20 years';
+};
+
+const DetailField = ({ label, value, wide = false }) => (
+  <div className={`teacher-detail-field${wide ? ' is-wide' : ''}`}>
+    <div>{label}</div>
+    <span>{React.isValidElement(value) ? value : emptyDisplay(value)}</span>
+  </div>
+);
+
+const DetailSection = ({ title, children }) => (
+  <section className="teacher-detail-section">
+    <h4>{title}</h4>
+    {children}
+  </section>
+);
+
 const TeachersView = ({ session }) => {
   const [teachers, setTeachers] = React.useState(null);
   const [search, setSearch] = React.useState('');
@@ -4343,16 +4459,15 @@ const TeachersView = ({ session }) => {
               <thead>
                 <tr>
                   <th>Name</th><th>Email</th><th>Phone</th>
-                  <th>Verified</th><th>Profile</th><th>Status</th><th>Registered</th><th className="admin-actions-column">Actions</th>
+                  <th>Profile</th><th>Status</th><th>Registered</th><th className="admin-actions-column">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rankedTeachers.map(t => (
                   <tr key={t.id} style={{ opacity: t.is_active === false ? 0.55 : 1 }}>
                     <td className="td-primary">{[t.first_name, t.last_name].filter(Boolean).join(' ') || 'Unknown'}</td>
-                    <td>{t.email}</td>
-                    <td>{t.phone || 'N/A'}</td>
-                    <td><span className={`badge ${t.is_verified ? 'badge-success' : 'badge-navy'}`}>{t.is_verified ? 'Verified' : 'Pending'}</span></td>
+                    <td><VerifiedContactValue value={t.email} verified={t.is_verified} type="Email" /></td>
+                    <td><VerifiedContactValue value={t.phone} verified={t.phone_verified} type="Phone" /></td>
                     <td><span className={`badge ${t.profile_completion === 100 ? 'badge-success' : 'badge-navy'}`}>{t.profile_completion ?? 0}%</span></td>
                     <td>
                       <span className={`badge ${t.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
@@ -4432,14 +4547,14 @@ const TeachersView = ({ session }) => {
       {/* Teacher detail modal */}
       {detail && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'40px 20px', overflowY:'auto' }}>
-          <div style={{ background:'#fff', borderRadius:16, padding:0, width:'100%', maxWidth:600, boxShadow:'0 24px 72px rgba(0,0,0,0.28)', overflow:'hidden' }}>
+          <div className="teacher-detail-modal" style={{ background:'#fff', borderRadius:16, padding:0, width:'100%', maxWidth:900, boxShadow:'0 24px 72px rgba(0,0,0,0.28)', overflow:'hidden' }}>
             {/* Modal header */}
             <div style={{ background:'var(--navy)', padding:'24px 28px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <div style={{ display:'flex', alignItems:'center', gap:16 }}>
                 {detail.profile_picture_url ? (
-                  <img src={detail.profile_picture_url} alt="" style={{ width:52, height:52, borderRadius:'50%', objectFit:'cover', border:'2px solid rgba(255,255,255,0.3)' }} />
+                  <img src={detail.profile_picture_url} alt="" style={{ width:76, height:76, borderRadius:'50%', objectFit:'cover', border:'3px solid rgba(255,255,255,0.35)' }} />
                 ) : (
-                  <div style={{ width:52, height:52, borderRadius:'50%', background:'var(--yellow)', color:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:18 }}>
+                  <div style={{ width:76, height:76, borderRadius:'50%', background:'var(--yellow)', color:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:22 }}>
                     {([detail.first_name?.[0], detail.last_name?.[0]].filter(Boolean).join('').toUpperCase()) || 'T'}
                   </div>
                 )}
@@ -4466,16 +4581,27 @@ const TeachersView = ({ session }) => {
                 <p style={{ color:'var(--gray-600)', textAlign:'center', padding:'20px 0' }}>Loading profile…</p>
               ) : (
                 <>
-                  {/* Contact info */}
-                  <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Contact</h4>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', marginBottom:24 }}>
-                    {[['Email', detail.email], ['Phone', detail.phone || 'Not set'], ['Registered', detail.created_at ? new Date(detail.created_at).toLocaleDateString() : 'N/A'], ['Verified', detail.is_verified ? 'Yes ✓' : 'Pending']].map(([k, v]) => (
-                      <div key={k}>
-                        <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>
-                        <div style={{ fontSize:'0.875rem', color:'var(--navy)' }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
+                  <DetailSection title="Account Snapshot">
+                    <div className="teacher-detail-grid">
+                      <DetailField label="Full Name" value={[detail.first_name, detail.last_name].filter(Boolean).join(' ')} />
+                      <DetailField label="Email" value={<VerifiedContactValue value={detail.email} verified={detail.is_verified} type="Email" />} />
+                      <DetailField label="Phone" value={<VerifiedContactValue value={detail.phone} verified={detail.phone_verified} type="Phone" />} />
+                      <DetailField label="Status" value={detail.is_active !== false ? 'Active' : 'Disabled'} />
+                      <DetailField label="Registered" value={dateDisplay(detail.created_at)} />
+                      <DetailField label="Last Login" value={dateDisplay(detail.last_login_at)} />
+                      <DetailField label="Email Verified" value={yesNo(detail.is_verified)} />
+                      <DetailField label="Phone Verified" value={yesNo(detail.phone_verified)} />
+                      <DetailField label="Sex" value={detail.sex} />
+                      <DetailField label="Age Range" value={detail.age_range} />
+                      <DetailField label="Two-step Login" value={detail.two_factor_enabled ? 'Enabled' : 'Off'} />
+                      <DetailField label="Services" value={[
+                        detail.teacher_service_enabled ? 'Teacher' : null,
+                        detail.bookshop_service_enabled ? 'Bookshop' : null,
+                      ].filter(Boolean).join(', ')} />
+                      <DetailField label="Profile Completion" value={`${detail.profile_completion ?? 0}%`} />
+                      <DetailField label="Missing Profile Fields" value={(detail.profile_missing_fields || []).join(', ')} wide />
+                    </div>
+                  </DetailSection>
 
                   {/* Profile details */}
                   {detail.profile && (
@@ -4520,7 +4646,7 @@ const TeachersView = ({ session }) => {
                         </div>
                       )}
                       {/* Next of kin */}
-                      {(detail.profile.next_of_kin_name || detail.profile.next_of_kin_email) && (
+                      {(detail.profile.next_of_kin_name || detail.profile.next_of_kin_phone || detail.profile.next_of_kin_relationship || detail.profile.next_of_kin_email) && (
                         <div style={{ marginBottom:20 }}>
                           <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Next of Kin</h4>
                           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px' }}>
@@ -4536,6 +4662,62 @@ const TeachersView = ({ session }) => {
                     </>
                   )}
                   {!detail.profile && <p style={{ color:'var(--gray-600)', fontSize:'0.85rem' }}>No additional profile information submitted yet.</p>}
+
+                  <DetailSection title="Saved Placement Preferences">
+                    {(detail.job_alert_preferences || []).length === 0 ? (
+                      <p className="teacher-detail-empty">No saved placement or job-alert preferences yet.</p>
+                    ) : (
+                      <div className="teacher-detail-card-grid">
+                        {(detail.job_alert_preferences || []).map(preference => (
+                          <div className="teacher-detail-mini-card" key={preference.id}>
+                            <div className="teacher-detail-mini-title">
+                              {preference.is_default ? 'Default Preferences' : `Preference #${preference.id}`}
+                              <span className={`badge ${preference.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{preference.status}</span>
+                            </div>
+                            <div className="teacher-detail-grid is-compact">
+                              <DetailField label="Subjects" value={preference.subject} />
+                              <DetailField label="Locations" value={preference.location} />
+                              <DetailField label="Location IDs" value={preference.location_ids} />
+                              <DetailField label="Levels" value={preference.preferred_level} />
+                              <DetailField label="Curriculum" value={preference.curriculum} />
+                              <DetailField label="Employment Type" value={preference.employment_type} />
+                              <DetailField label="Frequency" value={preference.frequency} />
+                              <DetailField label="Email Alerts" value={yesNo(preference.alert_by_email)} />
+                              <DetailField label="Last Sent" value={dateDisplay(preference.last_sent_at)} />
+                              <DetailField label="Updated" value={dateDisplay(preference.updated_at)} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </DetailSection>
+
+                  <DetailSection title="Job Applications">
+                    {(detail.applications || []).length === 0 ? (
+                      <p className="teacher-detail-empty">No job applications submitted yet.</p>
+                    ) : (
+                      <div className="teacher-detail-card-grid">
+                        {(detail.applications || []).map(application => (
+                          <div className="teacher-detail-mini-card" key={application.id}>
+                            <div className="teacher-detail-mini-title">
+                              {application.job_title || 'Job application'}
+                              <span className="badge badge-navy">{application.status}</span>
+                            </div>
+                            <div className="teacher-detail-grid is-compact">
+                              <DetailField label="School / Organisation" value={application.organisation} />
+                              <DetailField label="Location" value={application.location} />
+                              <DetailField label="Subject" value={application.subject} />
+                              <DetailField label="Level" value={application.level} />
+                              <DetailField label="Employment Type" value={application.employment_type} />
+                              <DetailField label="Applied" value={dateDisplay(application.created_at)} />
+                              <DetailField label="Updated" value={dateDisplay(application.updated_at)} />
+                              <DetailField label="Cover Note" value={application.cover_note} wide />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </DetailSection>
 
                   <div style={{ marginTop:24, paddingTop:20, borderTop:'1px solid var(--border)' }}>
                     <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Payout Details</h4>
@@ -4930,6 +5112,8 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
           ? <PriceAdjustmentView content={content} session={session} />
           : activeView === 'teachers'
           ? <TeachersView session={session} />
+          : activeView === 'bookshopCustomers'
+          ? <BookshopCustomersView />
           : activeView === 'account'
           ? <AccountView session={session} onPasswordChanged={clearPasswordRotationFlag} />
           : CONFIG[activeView]

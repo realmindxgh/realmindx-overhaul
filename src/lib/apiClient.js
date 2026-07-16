@@ -170,6 +170,7 @@ export const api = {
   updateCheckoutDetails: (detailId, payload) => apiFetch(`/me/checkout-details/${detailId}`, { method: 'PUT', body: payload }),
   deleteCheckoutDetails: (detailId) => apiFetch(`/me/checkout-details/${detailId}`, { method: 'DELETE' }),
   requestContactChange: (payload) => apiFetch('/me/contact-change/request', { method: 'POST', body: payload }),
+  getContactChangeStatus: (challengeId) => apiFetch(`/me/contact-change/${challengeId}/status`),
   verifyContactChange: (payload) => apiFetch('/me/contact-change/verify', { method: 'POST', body: payload }),
   saveJobAlerts: (payload) => apiFetch('/me/job-alerts', { method: 'PUT', body: payload }),
   createJobAlert: (payload) => apiFetch('/me/job-alerts', { method: 'POST', body: payload }),
