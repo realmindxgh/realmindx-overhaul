@@ -15,6 +15,10 @@
 - Use `scripts/start-api-hidden.ps1` for the Flask API, `scripts/start-frontend-hidden.ps1` for Vite, or `scripts/start-dev-hidden.ps1` for both. They write logs under `logs/` and avoid popping up extra console windows.
 - Do not use bare `Start-Process`, `cmd /c start`, or double-click-oriented `.cmd` launchers for background work unless the user explicitly wants a visible interactive terminal.
 
+## Product UI preferences
+
+- Prefer modal dialogs over inline expansion for account, profile, contact-change, verification, and other focused edit flows. Inline expansion should only be used when a user explicitly asks for it or when a modal would make the task clearly worse.
+
 ## Local dev login and seed guidance
 
 - For local development in `realmindx-site`, use the SQLite fallback database at `realmindx_local.db` rather than the production PostgreSQL credentials in `.env`.

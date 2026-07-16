@@ -16,9 +16,12 @@ const labels = {
 };
 
 const WhatsAppGlyph = ({ className = '' }) => (
-  <svg className={className} viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-    <path d="M16 4.4A11.2 11.2 0 0 0 6.5 21.6L5 27l5.6-1.5A11.2 11.2 0 1 0 16 4.4Z" />
-    <path d="M12.1 10.1c-.3-.7-.6-.7-.9-.7h-.8c-.3 0-.8.1-1.2.6-.4.4-1.5 1.5-1.5 3.6s1.6 4.2 1.8 4.5c.2.3 3.1 5 7.8 6.8 3.9 1.5 4.7 1.2 5.5 1.1.8-.1 2.7-1.1 3.1-2.2.4-1.1.4-2 .3-2.2-.1-.2-.4-.3-.8-.5l-2.8-1.3c-.4-.2-.7-.2-1 .2-.3.4-1.1 1.3-1.4 1.6-.3.3-.5.3-.9.1-.4-.2-1.8-.7-3.4-2.1-1.2-1.1-2.1-2.5-2.3-2.9-.2-.4 0-.6.2-.8.2-.2.4-.5.6-.7.2-.2.3-.4.4-.7.1-.3 0-.5 0-.7l-1.3-3Z" />
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"
+      fill="currentColor"
+      stroke="none"
+    />
   </svg>
 );
 
@@ -30,7 +33,7 @@ export default function VerifiedContactField({
   className = '',
   icon = null,
   editLabel = '',
-  modal = false,
+  modal = true,
 }) {
   const meta = labels[field];
   const [editing, setEditing] = React.useState(false);
@@ -65,6 +68,16 @@ export default function VerifiedContactField({
     setChallenge(null);
     setOtp('');
     setWaitSeconds(0);
+    setChecking(false);
+    setError('');
+    setMessage('');
+    setNextValue(value || '');
+  };
+
+  const openEditor = () => {
+    setEditing(true);
+    setChallenge(null);
+    setOtp('');
     setChecking(false);
     setError('');
     setMessage('');
@@ -226,6 +239,10 @@ export default function VerifiedContactField({
     </div>
   ) : null;
 
+  const modalTitle = challenge
+    ? `Verify ${meta.title.toLowerCase()}`
+    : `${value ? 'Change' : 'Add'} ${meta.title.toLowerCase()}`;
+
   const inlineEditor = (
     <>
       {editing && !challenge && (
@@ -332,7 +349,7 @@ export default function VerifiedContactField({
           <span className={`verified-contact-badge ${verified ? 'is-verified' : 'needs-verification'}`}>
             {verified ? 'Verified' : 'Verification needed'}
           </span>
-          <button type="button" className="verified-contact-edit" onClick={() => { setEditing(true); setError(''); setMessage(''); }}>
+          <button type="button" className="verified-contact-edit" onClick={openEditor}>
             {editLabel || (value ? 'Change' : 'Add')}
           </button>
         </div>
@@ -340,19 +357,19 @@ export default function VerifiedContactField({
 
       {!modal && inlineEditor}
       {modal && (editing || challenge) && (
-        <div className="bs-modal-scrim" onClick={event => { if (event.target === event.currentTarget) reset(); }}>
-          <form className="bs-modal-box bs-account-contact-modal" onSubmit={challenge ? verifyCode : requestCode} role="dialog" aria-modal="true" aria-label={`Edit ${meta.title.toLowerCase()}`}>
-            <div className="bs-modal-head">
+        <div className="verified-contact-modal-scrim" onClick={event => { if (event.target === event.currentTarget) reset(); }}>
+          <form className="verified-contact-modal-card" onSubmit={challenge ? verifyCode : requestCode} role="dialog" aria-modal="true" aria-label={modalTitle}>
+            <div className="verified-contact-modal-head">
               <div>
-                <span className="bs-account-ref-modal-kicker">Contact details</span>
-                <h2>{challenge ? `Verify ${meta.title.toLowerCase()}` : `Edit ${meta.title.toLowerCase()}`}</h2>
+                <span className="verified-contact-modal-kicker">Contact details</span>
+                <h2>{modalTitle}</h2>
               </div>
-              <button className="bs-modal-close" type="button" onClick={reset} aria-label="Close">
+              <button className="verified-contact-modal-close" type="button" onClick={reset} aria-label="Close">
                 <span aria-hidden="true">×</span>
               </button>
             </div>
-            <div className="bs-modal-body">
-              <p className="bs-account-security-intro">
+            <div className="verified-contact-modal-body">
+              <p className="verified-contact-modal-intro">
                 {isWhatsAppInbound
                   ? `Send the challenge from ${challenge.destination} to ${challenge.whatsapp_number}.`
                   : challenge
@@ -362,7 +379,7 @@ export default function VerifiedContactField({
               {isWhatsAppInbound ? (
                 whatsAppChallenge
               ) : challenge ? (
-                <label className="bs-field">
+                <label className="verified-contact-modal-field">
                   <span>Verification code</span>
                   <input
                     inputMode="numeric"
@@ -376,7 +393,7 @@ export default function VerifiedContactField({
                 </label>
               ) : (
                 <>
-                  <label className="bs-field">
+                  <label className="verified-contact-modal-field">
                     <span>New {meta.title.toLowerCase()}</span>
                     <input
                       type={field === 'email' ? 'email' : 'tel'}
@@ -407,19 +424,19 @@ export default function VerifiedContactField({
               {error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}
               {message && <p className="verified-contact-feedback">{message}</p>}
             </div>
-            <div className="bs-modal-foot">
-              <button type="button" className="bs-btn bs-btn-outline-navy" onClick={reset}>Cancel</button>
+            <div className="verified-contact-modal-foot">
+              <button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button>
               {challenge && (
                 isWhatsAppInbound ? (
-                  <button type="button" className="bs-btn bs-btn-outline-navy" onClick={changeNumber}>Change number</button>
+                  <button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button>
                 ) : null
               )}
               {challenge && (
-                <button type="button" className="bs-btn bs-btn-outline-navy" onClick={resendCode} disabled={busy || waitSeconds > 0}>
+                <button type="button" className="verified-contact-modal-btn is-outline" onClick={resendCode} disabled={busy || waitSeconds > 0}>
                   {waitSeconds > 0 ? `Try again in ${waitSeconds}s` : isWhatsAppInbound ? 'New challenge' : `Send again by ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
                 </button>
               )}
-              <button type="submit" className="bs-btn bs-btn-navy" disabled={busy || checking}>
+              <button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy || checking}>
                 {isWhatsAppInbound
                   ? (checking ? 'Checking...' : 'Check status')
                   : busy ? (challenge ? 'Verifying...' : 'Sending...') : (challenge ? 'Verify and update' : 'Send verification code')}
