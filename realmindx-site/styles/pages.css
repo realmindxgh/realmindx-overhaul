@@ -2591,6 +2591,16 @@ input, textarea, select { font-family: inherit; }
   color: #25d366;
   flex: 0 0 16px;
 }
+.verified-contact-channel-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  background: var(--gray-50);
+  color: var(--gray-600);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
 .verified-contact-whatsapp-challenge {
   display: grid;
   gap: 9px;

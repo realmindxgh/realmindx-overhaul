@@ -323,6 +323,8 @@ def request_contact_change():
         return jsonify(error="Choose email or phone verification."), 400
     if field == "phone" and channel not in {"sms", "whatsapp"}:
         return jsonify(error="Choose SMS or WhatsApp verification."), 400
+    if field == "phone" and channel == "whatsapp" and not current_app.config.get("WHATSAPP_PHONE_VERIFICATION_ENABLED", False):
+        return jsonify(error="WhatsApp verification is temporarily unavailable. Please use SMS for now."), 400
     if field == "email":
         channel = "email"
     delivery_channel = "email"

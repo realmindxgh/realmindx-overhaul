@@ -120,6 +120,7 @@ jobs:
           PY
           }
           upsert_env_var "WHATSAPP_BUSINESS_PHONE_E164" "+233201166122"
+          upsert_env_var "WHATSAPP_PHONE_VERIFICATION_ENABLED" "false"
           upsert_env_var "WHATSAPP_INBOUND_CHALLENGE_ENABLED" "true"
           upsert_env_var "WHATSAPP_CHALLENGE_PREFIX" "RMX VERIFY"
           upsert_env_var "WHATSAPP_WEBHOOK_VERIFY_TOKEN" "$WHATSAPP_WEBHOOK_VERIFY_TOKEN"

@@ -28,6 +28,7 @@ class ContactVerificationTestConfig(Config):
     WHATSAPP_OTP_TEMPLATE_LANGUAGE = "en_US"
     WHATSAPP_GRAPH_API_VERSION = "v23.0"
     WHATSAPP_APP_SECRET = ""
+    WHATSAPP_PHONE_VERIFICATION_ENABLED = True
     FACEBOOK_APP_SECRET = ""
 
 
@@ -79,6 +80,17 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertFalse(data["manual_entry_allowed"])
         self.assertEqual(data["next_request_in_seconds"], 45)
         self.assertIn("WhatsApp", data["message"])
+
+    def test_whatsapp_phone_verification_can_be_disabled(self):
+        self.app.config["WHATSAPP_PHONE_VERIFICATION_ENABLED"] = False
+
+        response = self.client.post(
+            "/api/me/contact-change/request",
+            json={"field": "phone", "value": "024 000 0000", "channel": "whatsapp"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("temporarily unavailable", response.get_json()["error"])
 
     def test_whatsapp_inbound_challenge_cannot_be_typed_into_site(self):
         challenge = self.client.post(
