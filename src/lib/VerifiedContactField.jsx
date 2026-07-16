@@ -95,12 +95,25 @@ export default function VerifiedContactField({
       return;
     }
     setBusy(true);
-    const requestChannel = field === 'phone' ? 'sms' : channel;
+    const requestChannel = field === 'phone' ? channel : 'email';
     try {
       if (!isApiMode()) {
-        setChallenge({ challenge_id: 'local', destination: nextValue, channel: requestChannel });
+        setChallenge(requestChannel === 'whatsapp'
+          ? {
+              challenge_id: 'local',
+              destination: nextValue,
+              channel: requestChannel,
+              delivery_channel: 'whatsapp_inbound',
+              verification_mode: 'whatsapp_inbound',
+              challenge_phrase: 'RMX VERIFY 123456',
+              whatsapp_number: '+233201166122',
+              whatsapp_url: 'https://wa.me/233201166122?text=RMX%20VERIFY%20123456',
+            }
+          : { challenge_id: 'local', destination: nextValue, channel: requestChannel });
         setWaitSeconds(45);
-        setMessage(field === 'phone' ? 'Local SMS preview code: 123456' : 'Local preview code: 123456');
+        setMessage(requestChannel === 'whatsapp'
+          ? 'Local WhatsApp preview: waiting automatically for RMX VERIFY 123456.'
+          : field === 'phone' ? 'Local SMS preview code: 123456' : 'Local preview code: 123456');
         return;
       }
       const result = await api.requestContactChange({ field, value: nextValue.trim(), channel: requestChannel });
@@ -255,7 +268,18 @@ export default function VerifiedContactField({
             />
           </label>
           {field === 'phone' && (
-            <p className="verified-contact-channel-note">Verification codes are sent by SMS for now.</p>
+            <fieldset className="verified-contact-channel">
+              <legend>Send code by</legend>
+              <label>
+                <input type="radio" name="verification-channel" value="sms" checked={channel === 'sms'} onChange={() => setChannel('sms')} />
+                <span>SMS</span>
+              </label>
+              <label>
+                <input type="radio" name="verification-channel" value="whatsapp" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} />
+                <WhatsAppGlyph className="verified-contact-channel-icon" />
+                <span>WhatsApp</span>
+              </label>
+            </fieldset>
           )}
           <div className="verified-contact-form-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
@@ -302,7 +326,7 @@ export default function VerifiedContactField({
             </button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={reset}>Cancel</button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={resendCode} disabled={busy || waitSeconds > 0}>
-              {waitSeconds > 0 ? `Send again in ${waitSeconds}s` : 'Send SMS again'}
+              {waitSeconds > 0 ? `Send again in ${waitSeconds}s` : `Send again by ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
             </button>
           </div>
         </form>
@@ -390,7 +414,18 @@ export default function VerifiedContactField({
                     />
                   </label>
                   {field === 'phone' && (
-                    <p className="verified-contact-channel-note">Verification codes are sent by SMS for now.</p>
+                    <fieldset className="verified-contact-channel">
+                      <legend>Send code by</legend>
+                      <label>
+                        <input type="radio" name="verification-channel-modal" value="sms" checked={channel === 'sms'} onChange={() => setChannel('sms')} />
+                        <span>SMS</span>
+                      </label>
+                      <label>
+                        <input type="radio" name="verification-channel-modal" value="whatsapp" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} />
+                        <WhatsAppGlyph className="verified-contact-channel-icon" />
+                        <span>WhatsApp</span>
+                      </label>
+                    </fieldset>
                   )}
                 </>
               )}
@@ -406,7 +441,7 @@ export default function VerifiedContactField({
               )}
               {challenge && (
                 <button type="button" className="verified-contact-modal-btn is-outline" onClick={resendCode} disabled={busy || waitSeconds > 0}>
-                  {waitSeconds > 0 ? `Try again in ${waitSeconds}s` : isWhatsAppInbound ? 'New challenge' : 'Send SMS again'}
+                  {waitSeconds > 0 ? `Try again in ${waitSeconds}s` : isWhatsAppInbound ? 'New challenge' : `Send again by ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
                 </button>
               )}
               <button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy || checking}>
