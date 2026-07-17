@@ -60,3 +60,53 @@
   - `$env:FLASK_ENV = "development"`
   - `& .venv\Scripts\python.exe scripts\seed_teacher_account.py`
 - Store any future local account seeds or login changes in `AGENTS.md` so follow-up agents can reuse the same local setup and avoid repeated debugging.
+
+## Agent Safety and Windows Environment Rules
+
+### Scope and evidence
+- Inspect the existing implementation before making conclusions.
+- Never invent files, paths, commands, fields, endpoints, architecture, or evidence.
+- Verify that a path exists before citing it.
+- Clearly label findings as confirmed, uncertain, or not found.
+- Prefer repository read, glob, grep, and list tools before terminal commands.
+
+### Secrets and protected files
+- Never read, display, quote, summarize, modify, or search:
+  - `.env`
+  - `.env.*`
+  - credentials or secret files
+  - API keys or access tokens
+  - database passwords
+  - private keys
+  - `*.pem`
+  - `*.key`
+- `.env.example` may be read only when necessary.
+- Never include secret values in reports, logs, diffs, or responses.
+
+### Windows PowerShell
+- The host shell is Windows PowerShell.
+- Quote every path containing spaces.
+- Do not use Unix-only syntax or commands, including:
+  - `ls -la`
+  - `grep`
+  - Unix `find`
+  - `head`
+  - `tail`
+  - `&&`
+  - `||`
+  - `/dev/null`
+- Use PowerShell equivalents such as:
+  - `Get-ChildItem`
+  - `Select-String`
+  - `Select-Object`
+  - `Where-Object`
+- For multiple commands, run them separately or use semicolons.
+- Do not repeatedly retry failed Unix commands.
+
+### Production and Git safety
+- Do not deploy.
+- Do not apply production migrations.
+- Do not commit or push unless explicitly instructed.
+- Do not delete production data or uploaded files.
+- Ask before running destructive, irreversible, or production-affecting commands.
+- Report all files changed, commands run, tests run, and remaining risks.
