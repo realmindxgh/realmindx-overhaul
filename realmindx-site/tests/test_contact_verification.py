@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -139,6 +142,44 @@ class ContactVerificationTests(unittest.TestCase):
         user = User.query.filter_by(email="contact@example.com").one()
         self.assertEqual(user.phone, "+233240000000")
         self.assertTrue(user.phone_verified)
+
+    def test_whatsapp_webhook_accepts_valid_meta_signature(self):
+        self.app.config["WHATSAPP_APP_SECRET"] = "test-meta-secret"
+        challenge = self.client.post(
+            "/api/me/contact-change/request",
+            json={"field": "phone", "value": "024 000 0000", "channel": "whatsapp"},
+        ).get_json()
+        payload = {
+            "entry": [{
+                "changes": [{
+                    "value": {
+                        "metadata": {"phone_number_id": "123456789"},
+                        "messages": [{
+                            "id": "wamid.signed",
+                            "from": "233240000000",
+                            "type": "text",
+                            "text": {"body": challenge["challenge_phrase"]},
+                        }],
+                    },
+                }],
+            }],
+        }
+        raw_body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        signature = hmac.new(
+            self.app.config["WHATSAPP_APP_SECRET"].encode("utf-8"),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+
+        webhook = self.client.post(
+            "/api/webhooks/whatsapp",
+            data=raw_body,
+            content_type="application/json",
+            headers={"X-Hub-Signature-256": f"sha256={signature}"},
+        )
+
+        self.assertEqual(webhook.status_code, 200)
+        self.assertEqual(webhook.get_json()["results"][0]["status"], "verified")
 
     def test_whatsapp_webhook_reports_wrong_sender_number(self):
         challenge = self.client.post(
