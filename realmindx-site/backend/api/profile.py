@@ -17,6 +17,7 @@ from ..models import CheckoutDetail, ContactChangeToken, JobAlertPreference, Tea
 from ..serializers import user_json
 from ..sms_service import normalise_phone, send_sms
 from ..upload_utils import save_upload
+from ..whatsapp_access import can_use_whatsapp_phone_verification
 from ..whatsapp_service import (
     send_whatsapp_otp,
     whatsapp_business_number,
@@ -44,6 +45,7 @@ def profile_json(profile):
         "email": current_user.email,
         "phone": current_user.phone,
         "phone_verified": current_user.phone_verified,
+        "whatsapp_phone_verification_allowed": can_use_whatsapp_phone_verification(current_user),
         "sex": current_user.sex,
         "age_range": current_user.age_range,
         "is_verified": current_user.is_verified,
@@ -323,8 +325,11 @@ def request_contact_change():
         return jsonify(error="Choose email or phone verification."), 400
     if field == "phone" and channel not in {"sms", "whatsapp"}:
         return jsonify(error="Choose SMS or WhatsApp verification."), 400
-    if field == "phone" and channel == "whatsapp" and not current_app.config.get("WHATSAPP_PHONE_VERIFICATION_ENABLED", False):
-        return jsonify(error="WhatsApp verification is temporarily unavailable. Please use SMS for now."), 400
+    if field == "phone" and channel == "whatsapp":
+        if not current_app.config.get("WHATSAPP_PHONE_VERIFICATION_ENABLED", False):
+            return jsonify(error="WhatsApp verification is temporarily unavailable. Please use SMS for now."), 400
+        if not can_use_whatsapp_phone_verification(current_user):
+            return jsonify(error="WhatsApp verification is enabled only for selected test accounts right now. Please use SMS for now."), 400
     if field == "email":
         channel = "email"
     delivery_channel = "email"

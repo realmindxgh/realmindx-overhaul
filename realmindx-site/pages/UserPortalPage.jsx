@@ -587,7 +587,13 @@ const ProfileView = ({ user, onUploadAvatar, onEditProfile, onContactUpdated, av
           </div>
         ))}
         <VerifiedContactField field="email" value={user.email} verified={user.emailVerified} onUpdated={onContactUpdated} />
-        <VerifiedContactField field="phone" value={user.phone} verified={user.phoneVerified} onUpdated={onContactUpdated} />
+        <VerifiedContactField
+          field="phone"
+          value={user.phone}
+          verified={user.phoneVerified}
+          whatsappAllowed={user.whatsappPhoneVerificationAllowed}
+          onUpdated={onContactUpdated}
+        />
       </div>
 
       {/* Teaching Preferences */}
@@ -1795,6 +1801,10 @@ const UserPortalPage = () => {
         lastName,
         email,
         phone: profileSource.phone || '',
+        whatsappPhoneVerificationAllowed: Boolean(
+          profileSource.whatsapp_phone_verification_allowed
+          ?? session.whatsappPhoneVerificationAllowed
+        ),
         sex: profileSource.sex || '',
         ageRange: profileSource.age_range || '',
         location: profileSource.location || '',

@@ -1405,7 +1405,13 @@ const LegacyAccountPage = ({ navigate }) => {
               </div>
 
               <VerifiedContactField field="email" value={session.email} verified={session.emailVerified} onUpdated={refreshAccount} />
-              <VerifiedContactField field="phone" value={session.phone} verified={session.phoneVerified} onUpdated={refreshAccount} />
+              <VerifiedContactField
+                field="phone"
+                value={session.phone}
+                verified={session.phoneVerified}
+                whatsappAllowed={session.whatsappPhoneVerificationAllowed}
+                onUpdated={refreshAccount}
+              />
 
               <div className="bs-profile-security-note">
                 <Icon name="lock" size={16} />
@@ -1665,7 +1671,13 @@ const ExperimentalAccountPage = ({ navigate }) => {
                 </div>
 
                 <VerifiedContactField field="email" value={session.email} verified={session.emailVerified} onUpdated={refreshAccount} />
-                <VerifiedContactField field="phone" value={session.phone} verified={session.phoneVerified} onUpdated={refreshAccount} />
+                <VerifiedContactField
+                  field="phone"
+                  value={session.phone}
+                  verified={session.phoneVerified}
+                  whatsappAllowed={session.whatsappPhoneVerificationAllowed}
+                  onUpdated={refreshAccount}
+                />
               </section>
 
               <section className="bs-account-v2-card bs-account-v2-security">
@@ -2132,6 +2144,7 @@ const AccountPage = ({ navigate }) => {
                   field="phone"
                   value={session.phone}
                   verified={session.phoneVerified}
+                  whatsappAllowed={session.whatsappPhoneVerificationAllowed}
                   onUpdated={refreshAccount}
                   className="bs-account-ref-contact"
                   icon={<Icon name="phone" size={15} />}

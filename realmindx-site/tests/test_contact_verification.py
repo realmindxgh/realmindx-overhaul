@@ -32,6 +32,8 @@ class ContactVerificationTestConfig(Config):
     WHATSAPP_GRAPH_API_VERSION = "v23.0"
     WHATSAPP_APP_SECRET = ""
     WHATSAPP_PHONE_VERIFICATION_ENABLED = True
+    WHATSAPP_PHONE_VERIFICATION_ALLOW_ALL = False
+    WHATSAPP_PHONE_VERIFICATION_TEST_EMAILS = "contact@example.com"
     FACEBOOK_APP_SECRET = ""
 
 
@@ -94,6 +96,17 @@ class ContactVerificationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("temporarily unavailable", response.get_json()["error"])
+
+    def test_whatsapp_phone_verification_requires_test_allowlist(self):
+        self.app.config["WHATSAPP_PHONE_VERIFICATION_TEST_EMAILS"] = "someone-else@example.com"
+
+        response = self.client.post(
+            "/api/me/contact-change/request",
+            json={"field": "phone", "value": "024 000 0000", "channel": "whatsapp"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("selected test accounts", response.get_json()["error"])
 
     def test_whatsapp_inbound_challenge_cannot_be_typed_into_site(self):
         challenge = self.client.post(

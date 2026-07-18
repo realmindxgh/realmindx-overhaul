@@ -5,6 +5,7 @@ from .models import DeliveryOtp, UploadedFile
 from .order_status import normalize_order_status
 from .delivery_locations import delivery_zone_aliases
 from .profile_completion import teacher_profile_completion
+from .whatsapp_access import can_use_whatsapp_phone_verification
 
 
 def user_json(user):
@@ -21,6 +22,7 @@ def user_json(user):
         "full_name": user.full_name,
         "phone": user.phone,
         "phone_verified": user.phone_verified,
+        "whatsapp_phone_verification_allowed": can_use_whatsapp_phone_verification(user),
         "teacher_service_enabled": user.teacher_service_enabled,
         "bookshop_service_enabled": user.bookshop_service_enabled,
         "sex": user.sex,

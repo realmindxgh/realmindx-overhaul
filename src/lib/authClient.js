@@ -32,6 +32,7 @@ const toSession = (user = {}, roleHint = 'user') => {
     email: user.email,
     phone: user.phone || '',
     phoneVerified: Boolean(user.phone_verified),
+    whatsappPhoneVerificationAllowed: Boolean(user.whatsapp_phone_verification_allowed ?? user.whatsappPhoneVerificationAllowed),
     emailVerified: Boolean(user.is_verified),
     firstName: first,
     lastName: last,
