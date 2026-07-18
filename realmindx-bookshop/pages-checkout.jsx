@@ -137,7 +137,10 @@ const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, bulk
     <h3 className="bs-h3" style={{ fontSize:16, marginBottom:14 }}>Order Summary</h3>
     {detailed.map((b,i) => (
       <div className="bs-mini-item" key={b.id}>
-        <div className="bs-mini-cover"><CoverPlaceholder title={b.title} idx={i} small image={b.image} /><span className="bs-mini-qty">{b.qty}</span></div>
+        <div className="bs-mini-cover">
+          <CoverPlaceholder title={b.title} idx={i} small image={b.imageThumb || b.image} width={72} height={96} />
+          <span className="bs-mini-qty">{b.qty}</span>
+        </div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontFamily:'Montserrat', fontWeight:600, fontSize:13, color:'var(--bs-navy)', lineHeight:1.3 }}>{b.title}</div>
           <div className="bs-muted" style={{ fontSize:12 }}>{cedis(b.price)} x {b.qty}</div>

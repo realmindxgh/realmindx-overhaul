@@ -270,6 +270,9 @@ class Product(TimestampMixin, db.Model):
     short_description = db.Column(db.String(300), nullable=True)
     full_description = db.Column(db.Text, nullable=True)
     image_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
+    image_original_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
+    image_medium_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
+    image_thumb_file_id = db.Column(db.Integer, db.ForeignKey("uploaded_files.id"), nullable=True)
     stock_status = db.Column(db.String(30), default="in_stock", nullable=False, index=True)
     quantity_available = db.Column(db.Integer, nullable=True)
     subject = db.Column(db.String(160), nullable=True, index=True)
@@ -286,6 +289,9 @@ class Product(TimestampMixin, db.Model):
 
     category = db.relationship("ProductCategory", backref="products")
     image_file = db.relationship("UploadedFile", foreign_keys=[image_file_id])
+    image_original_file = db.relationship("UploadedFile", foreign_keys=[image_original_file_id])
+    image_medium_file = db.relationship("UploadedFile", foreign_keys=[image_medium_file_id])
+    image_thumb_file = db.relationship("UploadedFile", foreign_keys=[image_thumb_file_id])
 
 
 class BookRequest(TimestampMixin, db.Model):

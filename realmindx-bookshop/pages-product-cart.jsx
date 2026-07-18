@@ -299,6 +299,8 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
       : 0
   ));
   const hasReviews = Number(book.reviews || 0) > 0 && Number(book.rating || 0) > 0;
+  const detailImage = book.imageMedium || book.imageOriginal || book.image;
+  const lightboxImage = book.imageOriginal || book.imageMedium || book.image;
   const fmtReviewDate = iso => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
   const shareProduct = async () => {
     const url = `${BOOKSHOP_BASE_URL}${productHref(book)}`;
@@ -343,7 +345,15 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
       <div className="bs-pdp">
         <div>
           <div className="bs-pdp-main-img" onClick={() => setLightbox(true)}>
-            <CoverPlaceholder title={book.title} idx={idx} image={book.image} />
+            <CoverPlaceholder
+              title={book.title}
+              idx={idx}
+              image={detailImage}
+              loading="eager"
+              fetchPriority="high"
+              width={900}
+              height={1260}
+            />
           </div>
           {/* Thumb strip only for placeholder covers (which vary by index) — a real
               single product photo repeated three times reads as a fake gallery */}
@@ -351,7 +361,7 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
             <div className="bs-pdp-thumbs">
               {[0,1,2].map(i => (
                 <div key={i} className={`bs-pdp-thumb${activeImg === i ? ' active' : ''}`} onClick={() => setActiveImg(i)}>
-                  <CoverPlaceholder title={book.title} idx={idx+i} small image={book.image} />
+                  <CoverPlaceholder title={book.title} idx={idx+i} small image={book.imageThumb || book.image} width={96} height={128} />
                 </div>
               ))}
             </div>
@@ -514,7 +524,9 @@ const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
           >
             <Icon name="close" size={24} />
           </button>
-          <div className="bs-lightbox-img" onClick={e => e.stopPropagation()}><CoverPlaceholder title={book.title} idx={idx} image={book.image} /></div>
+          <div className="bs-lightbox-img" onClick={e => e.stopPropagation()}>
+            <CoverPlaceholder title={book.title} idx={idx} image={lightboxImage} loading="eager" width={1200} height={1680} />
+          </div>
         </div>
       )}
     </div>
@@ -691,7 +703,7 @@ const CartPage = ({ navigate }) => {
               >
                 {b.selected && b.stock && <Icon name="check" size={14} />}
               </button>
-              <div className="bs-cart-item-cover"><CoverPlaceholder title={b.title} idx={i} small image={b.image} /></div>
+              <div className="bs-cart-item-cover"><CoverPlaceholder title={b.title} idx={i} small image={b.imageThumb || b.image} width={96} height={128} /></div>
               <div className="bs-cart-item-mid">
                 <div className="bs-cart-meta-row">
                   <span className="bs-cat-badge">{b.catName}</span>
@@ -953,7 +965,14 @@ const WishlistPage = ({ navigate }) => {
                 navigate('product', { id: b.id, slug: productPathSegment(b) });
               }}
             >
-              <CoverPlaceholder title={b.title} idx={i} image={b.image} />
+              <CoverPlaceholder
+                title={b.title}
+                idx={i}
+                image={b.imageThumb || b.image}
+                loading={i < 4 ? 'eager' : 'lazy'}
+                width={400}
+                height={560}
+              />
             </a>
             <div className="bs-wishlist-body">
               <span className="bs-cat-badge" style={{ marginBottom:6 }}>{b.catName}</span>

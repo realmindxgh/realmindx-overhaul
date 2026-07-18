@@ -488,7 +488,7 @@ const App = () => {
         const approvedReviews = reviewsLoaded
           ? seoProductReviewState.items.map(productReviewStructuredData).filter(Boolean)
           : [];
-        const productImage = activeProduct.image || BOOKSHOP_DEFAULT_IMAGE;
+        const productImage = activeProduct.imageMedium || activeProduct.imageOriginal || activeProduct.image || BOOKSHOP_DEFAULT_IMAGE;
         currentMeta = {
           title: `${activeProduct.title} | RealMindX Bookshop`,
           desc: activeProduct.short || activeProduct.desc || activeProduct.full || meta.product.desc,

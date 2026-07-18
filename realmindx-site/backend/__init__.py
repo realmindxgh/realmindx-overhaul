@@ -186,7 +186,17 @@ def create_app(config_object=Config):
             from flask_login import current_user
             if not current_user.is_authenticated:
                 return jsonify(error="Unauthorised"), 401
-        return send_from_directory(upload_folder, filepath)
+        response = send_from_directory(upload_folder, filepath)
+        if filepath.startswith("public/images/") and filepath.lower().endswith((
+            ".avif",
+            ".gif",
+            ".jpeg",
+            ".jpg",
+            ".png",
+            ".webp",
+        )):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
 
     return app

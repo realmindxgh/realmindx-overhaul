@@ -15,7 +15,7 @@ from uuid import uuid4
 from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from flask_login import current_user, login_required
 from sqlalchemy import func, or_
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
 
 from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
@@ -52,6 +52,7 @@ from ..email_service import (
     send_email,
 )
 from ..extensions import db
+from ..image_variants import ensure_product_image_variants, reset_product_image_variants
 from ..delivery_locations import format_location_aliases
 from ..delivery_service import (
     DeliveryError,
@@ -1989,7 +1990,19 @@ def list_audit_logs():
 @login_required
 @permission_required("products.view")
 def list_products():
-    rows = Product.query.order_by(Product.featured.desc(), Product.created_at.desc()).all()
+    rows = (
+        Product.query
+        .options(
+            joinedload(Product.category),
+            joinedload(Product.image_file),
+            joinedload(Product.image_original_file),
+            joinedload(Product.image_medium_file),
+            joinedload(Product.image_thumb_file),
+            selectinload(Product.reviews),
+        )
+        .order_by(Product.featured.desc(), Product.created_at.desc())
+        .all()
+    )
     return jsonify(items=[product_json(row, include_private=True) for row in rows])
 
 
@@ -2102,6 +2115,8 @@ def create_product():
         return jsonify(error="Product name is required."), 400
     db.session.add(product)
     db.session.flush()
+    if product.image_file_id:
+        ensure_product_image_variants(product, owner_id=current_user.id)
     log_action("create_product", "product", product.id)
     db.session.commit()
     return jsonify(product=product_json(product, include_private=True)), 201
@@ -2113,6 +2128,7 @@ def create_product():
 def update_product(product_id):
     product = db.get_or_404(Product, product_id)
     payload = request.get_json(silent=True) or {}
+    previous_image_file_id = product.image_file_id
     for field in [
         "name",
         "slug",
@@ -2143,6 +2159,12 @@ def update_product(product_id):
         product.category = _category_from_payload(payload)
     if "status" in payload:
         product.is_active = payload["status"] == "published"
+    if "image_file_id" in payload:
+        product.image_file_id = payload.get("image_file_id") or None
+        if product.image_file_id != previous_image_file_id:
+            reset_product_image_variants(product)
+    if product.image_file_id:
+        ensure_product_image_variants(product, owner_id=current_user.id)
     log_action("update_product", "product", product.id)
     db.session.commit()
     return jsonify(product=product_json(product, include_private=True))
@@ -2329,9 +2351,14 @@ def import_products():
             product.is_active = True
             image_filename = row["image_filename"].lower()
             if image_filename and image_filename in image_ids:
-                product.image_file_id = image_ids[image_filename]
+                next_image_id = image_ids[image_filename]
+                if product.image_file_id != next_image_id:
+                    product.image_file_id = next_image_id
+                    reset_product_image_variants(product)
             elif image_filename:
                 missing_images.add(image_filename)
+            if product.image_file_id:
+                ensure_product_image_variants(product, owner_id=current_user.id)
         log_action(
             "import_products",
             "product",

@@ -682,7 +682,8 @@ def bookshop_public_page(path=""):
         if product:
             title = f"{product.name} | RealMindX Bookshop"
             description = product.short_description or product.full_description or "Educational books and learning materials available from RealMindX Bookshop."
-            product_image = _absolute_url(upload_public_url(product.image_file), BOOKSHOP_SITE_BASE_URL)
+            product_display_file = product.image_medium_file or product.image_file
+            product_image = _absolute_url(upload_public_url(product_display_file), BOOKSHOP_SITE_BASE_URL)
             image = book_og_public_url(product, BOOKSHOP_SITE_BASE_URL)
             profile = {"title": title, "description": description, "intro": description}
             og_type = "product"

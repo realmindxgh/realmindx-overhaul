@@ -11,6 +11,7 @@ from flask import Blueprint, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
 import requests
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload, selectinload
 
 from ..analytics import queue_analytics_event
 from ..audit import audit
@@ -427,7 +428,18 @@ def list_product_categories():
 
 @bookshop_bp.get("/products")
 def list_products():
-    query = Product.query.filter_by(is_active=True)
+    query = (
+        Product.query
+        .options(
+            joinedload(Product.category),
+            joinedload(Product.image_file),
+            joinedload(Product.image_original_file),
+            joinedload(Product.image_medium_file),
+            joinedload(Product.image_thumb_file),
+            selectinload(Product.reviews),
+        )
+        .filter_by(is_active=True)
+    )
     q = request.args.get("q")
     category = request.args.get("category")
     subject = request.args.get("subject")
@@ -464,7 +476,19 @@ def list_products():
 
 @bookshop_bp.get("/products/<int:product_id>")
 def get_product(product_id):
-    product = db.get_or_404(Product, product_id)
+    product = (
+        Product.query
+        .options(
+            joinedload(Product.category),
+            joinedload(Product.image_file),
+            joinedload(Product.image_original_file),
+            joinedload(Product.image_medium_file),
+            joinedload(Product.image_thumb_file),
+            selectinload(Product.reviews),
+        )
+        .filter_by(id=product_id)
+        .first_or_404()
+    )
     if not product.is_active:
         return jsonify(error="Product not available."), 404
     return jsonify(product=product_json(product))

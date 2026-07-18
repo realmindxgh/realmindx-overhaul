@@ -79,6 +79,9 @@ const fromApiProduct = (p) => {
   const levelName = normalizeBookshopTaxonomyValue('level', p.level) || p.level || '';
   const subject = normalizeBookshopTaxonomyValue('subject', p.subject) || p.subject || '';
   const curriculum = curriculumName ? `curriculum-${slugifyCat(curriculumName)}` : '';
+  const imageOriginal = apiAssetUrl(p.image_url_original || p.image_url) || null;
+  const imageMedium = apiAssetUrl(p.image_url_medium || p.image_url_original || p.image_url) || imageOriginal;
+  const imageThumb = apiAssetUrl(p.image_url_thumb || p.image_url_medium || p.image_url_original || p.image_url) || imageMedium;
   return normalizeCatalogBook({
     id: String(p.id),
     slug: p.slug || '',
@@ -104,7 +107,10 @@ const fromApiProduct = (p) => {
     badge: tags.length ? (BADGE_LABEL[tags[0]] || tags[0]) : undefined,
     featured: Boolean(p.featured),
     tags,
-    image: apiAssetUrl(p.image_url) || null,
+    image: imageThumb,
+    imageThumb,
+    imageMedium,
+    imageOriginal,
     updatedAt: p.updated_at || '',
     // Bulk discount — set on the category (bulk_discount_percent + bulk_min_qty)
     bulkDiscountPct: Number(p.bulk_discount_percent || p.category_bulk_discount_percent) || 0,
@@ -167,6 +173,9 @@ const mapProducts = (products, cats) => {
     const subject = normalizeBookshopTaxonomyValue('subject', p.subject) || p.subject || '';
     const curriculum = curriculumName ? `curriculum-${slugifyCat(curriculumName)}` : '';
     const badges = Array.isArray(p.badges) ? p.badges : [];
+    const imageOriginal = p.imageOriginal || p.image_original || p.image || null;
+    const imageMedium = p.imageMedium || p.image_medium || imageOriginal;
+    const imageThumb = p.imageThumb || p.image_thumb || imageMedium;
     return normalizeCatalogBook({
       id: String(p.id), title: p.name,
       slug: p.slug || '',
@@ -182,7 +191,11 @@ const mapProducts = (products, cats) => {
       grade: levelName, levelName, subject, author: p.author || '', publisher: p.publisher || p.author || '',
       isbn: p.isbn || '-',
       badge: badges.length ? (BADGE_LABEL[badges[0]] || badges[0]) : undefined,
-      featured: badges.length > 0, image: p.image || null,
+      featured: badges.length > 0,
+      image: imageThumb,
+      imageThumb,
+      imageMedium,
+      imageOriginal,
     });
   });
 };

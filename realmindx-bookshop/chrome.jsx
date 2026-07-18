@@ -485,7 +485,7 @@ const SearchSuggestionList = ({ suggestions, query, onSelect, onSubmit, classNam
         onClick={event => onSelect(event, book)}
       >
         <span className="bs-search-sug-cover" aria-hidden="true">
-          <CoverPlaceholder title={book.title} image={book.image} small />
+          <CoverPlaceholder title={book.title} image={book.imageThumb || book.image} small width={72} height={96} />
         </span>
         <span className="bs-search-sug-copy">
           <span className="bs-sug-title">{book.title}</span>
@@ -516,6 +516,7 @@ const Navbar = ({ route, navigate }) => {
   const [moreOpen, setMoreOpen] = React.useState(false);
   const [moreMenuStyle, setMoreMenuStyle] = React.useState({});
   const [q, setQ] = React.useState('');
+  const [debouncedQ, setDebouncedQ] = React.useState('');
   const [searchSurface, setSearchSurface] = React.useState('');
   const catsRef = React.useRef(null);
   const catsSearchRef = React.useRef(null);
@@ -585,6 +586,11 @@ const Navbar = ({ route, navigate }) => {
     };
   }, [moreOpen, positionMoreMenu]);
 
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQ(q), 260);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+
   const go = (r, e) => {
     if (e) e.preventDefault();
     setMenuOpen(false);
@@ -621,14 +627,14 @@ const Navbar = ({ route, navigate }) => {
   // Live suggestions now search the same fields that power the dedicated
   // browse pages and sidebar taxonomy filters.
   const suggestions = React.useMemo(() => {
-    const t = q.trim();
+    const t = debouncedQ.trim();
     if (t.length < 2) return [];
     const candidates = books.filter(book => bookMatchesBookshopSearchIntent(book, t) && (bookMatchesBookshopSearch(book, t) || fuzzyMatches(
       [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' '),
       t,
     )));
     return rankByFuzzyMatch(candidates, t, book => [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' ')).slice(0, 6);
-  }, [books, q]);
+  }, [books, debouncedQ]);
 
   const quickSubjects = [
     { ids: ['mathematics', 'maths'], label: 'Maths' },
@@ -1052,6 +1058,8 @@ const ProductCard = ({ book, idx = 0, navigate, searchContext = null }) => {
     wishlist.toggle(book.id);
   };
   const wishlisted = wishlist?.has(book.id);
+  const coverImage = book.imageThumb || book.image;
+  const eagerImage = idx < 8;
   return (
     <div className={`bs-pcard${book.stock ? '' : ' bs-oos'}`} onClick={openProduct} style={{ cursor:'pointer' }}>
       <div className="bs-pcard-cover">
@@ -1073,7 +1081,15 @@ const ProductCard = ({ book, idx = 0, navigate, searchContext = null }) => {
             openProduct();
           }}
         >
-          <CoverPlaceholder title={book.title} idx={idx} image={book.image} />
+          <CoverPlaceholder
+            title={book.title}
+            idx={idx}
+            image={coverImage}
+            loading={eagerImage ? 'eager' : 'lazy'}
+            fetchPriority={idx < 2 ? 'high' : undefined}
+            width={400}
+            height={560}
+          />
         </a>
       </div>
       <div className="bs-pcard-body">
@@ -1111,6 +1127,8 @@ const ProductCard = ({ book, idx = 0, navigate, searchContext = null }) => {
 const ListCard = ({ book, idx = 0, navigate, searchContext = null }) => {
   const { add } = useCart();
   const productUrl = hrefForProduct(book);
+  const coverImage = book.imageThumb || book.image;
+  const eagerImage = idx < 4;
   const openProduct = () => {
     if (searchContext?.term) {
       trackSearchClick({
@@ -1135,7 +1153,15 @@ const ListCard = ({ book, idx = 0, navigate, searchContext = null }) => {
           openProduct();
         }}
       >
-        <CoverPlaceholder title={book.title} idx={idx} small image={book.image} />
+        <CoverPlaceholder
+          title={book.title}
+          idx={idx}
+          small
+          image={coverImage}
+          loading={eagerImage ? 'eager' : 'lazy'}
+          width={96}
+          height={128}
+        />
       </a>
       <div className="bs-lcard-mid">
         <span className="bs-cat-badge">{book.catName}</span>

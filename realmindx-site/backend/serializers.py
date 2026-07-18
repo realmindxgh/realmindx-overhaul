@@ -130,6 +130,10 @@ def order_review_json(review):
 
 def product_json(product, include_private=False):
     rating_average, rating_count = _product_rating(product)
+    image_url = _upload_url(product.image_file) if hasattr(product, "image_file") else None
+    image_url_original = _upload_url(getattr(product, "image_original_file", None)) or image_url
+    image_url_medium = _upload_url(getattr(product, "image_medium_file", None)) or image_url_original
+    image_url_thumb = _upload_url(getattr(product, "image_thumb_file", None)) or image_url_medium
     payload = {
         "id": product.id,
         "name": product.name,
@@ -143,8 +147,14 @@ def product_json(product, include_private=False):
         "old_price": float(product.old_price) if product.old_price else None,
         "short_description": product.short_description,
         "full_description": product.full_description,
-        "image_url": _upload_url(product.image_file) if hasattr(product, "image_file") else None,
+        "image_url": image_url,
+        "image_url_original": image_url_original,
+        "image_url_medium": image_url_medium,
+        "image_url_thumb": image_url_thumb,
         "image_file_id": product.image_file_id,
+        "image_original_file_id": getattr(product, "image_original_file_id", None),
+        "image_medium_file_id": getattr(product, "image_medium_file_id", None),
+        "image_thumb_file_id": getattr(product, "image_thumb_file_id", None),
         "stock_status": product.stock_status,
         "quantity_available": product.quantity_available,
         "subject": product.subject,

@@ -108,12 +108,31 @@ const LoadingState = ({
 const cedis = (n) => `GH\u20b5${Number(n || 0).toFixed(2)}`;
 
 const COVER_TINTS = ['#143670','#1c4a96','#0d2550','#26417a','#324f8a'];
-const CoverPlaceholder = ({ title, idx = 0, small = false, image = null }) => {
+const CoverPlaceholder = ({
+  title,
+  idx = 0,
+  small = false,
+  image = null,
+  loading = 'lazy',
+  decoding = 'async',
+  fetchPriority,
+  width,
+  height,
+}) => {
   const tint = COVER_TINTS[idx % COVER_TINTS.length];
   if (image) {
+    const imgProps = {
+      src: image,
+      alt: title,
+      loading,
+      decoding,
+      width: width || (small ? 96 : 400),
+      height: height || (small ? 128 : 560),
+    };
+    if (fetchPriority) imgProps.fetchPriority = fetchPriority;
     return (
       <div className="bs-ph-cover bs-ph-img">
-        <img src={image} alt={title} loading="lazy" />
+        <img {...imgProps} />
       </div>
     );
   }

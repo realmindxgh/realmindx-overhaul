@@ -803,7 +803,7 @@ const adminAssetUrl = value => {
   }
 };
 
-const rowImageUrl = row => adminAssetUrl(row.image_url || row.image || row.logo_url || row.cover_url);
+const rowImageUrl = row => adminAssetUrl(row.image_url_thumb || row.image_url_medium || row.image_url || row.image || row.logo_url || row.cover_url);
 
 const insertMarkdownLink = (value, selectionStart, selectionEnd, href, label) => {
   const text = String(value || '');
@@ -3453,7 +3453,15 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     if (column === 'image_url' || column === 'image') {
       const src = rowImageUrl(row);
       return src ? (
-        <img className="admin-thumb" src={src} alt={row.title || row.label || row.name || 'Uploaded image'} />
+        <img
+          className="admin-thumb"
+          src={src}
+          alt={row.title || row.label || row.name || 'Uploaded image'}
+          loading="lazy"
+          decoding="async"
+          width="72"
+          height="72"
+        />
       ) : (
         <span className="td-muted">{row.image_key ? 'Default image' : 'No image yet'}</span>
       );

@@ -3,10 +3,12 @@ from datetime import date
 from markupsafe import escape
 from flask import current_app
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
 
 from .delivery_locations import format_location_aliases, normalize_location_key, split_location_aliases
 from .extensions import db
-from .models import DeliveryZone, Permission, Role, User, UserProfile
+from .image_variants import ensure_product_image_variants, product_image_variant_status
+from .models import DeliveryZone, Permission, Product, Role, User, UserProfile
 from .promo_affiliates import send_monthly_promo_statements
 from .email_service import OutboundEmail, app_email_shell, send_email
 
@@ -454,6 +456,76 @@ def register_cli(app):
                 sent += 1
         db.session.commit()
         click.echo(f"Sent {sent} teacher profile reminder(s) for {today.year}.")
+
+    @app.cli.command("backfill-product-image-variants")
+    @click.option("--dry-run", is_flag=True, help="List product image work without creating files or updating rows.")
+    @click.option("--limit", type=int, default=None, help="Maximum number of products to inspect.")
+    @click.option("--include-drafts", is_flag=True, help="Also inspect unpublished products.")
+    def backfill_product_image_variants_command(dry_run, limit, include_drafts):
+        """Generate missing WebP thumbnail and medium variants for existing product images."""
+        query = Product.query.options(
+            joinedload(Product.image_file),
+            joinedload(Product.image_original_file),
+            joinedload(Product.image_medium_file),
+            joinedload(Product.image_thumb_file),
+        ).order_by(Product.id.asc())
+        if not include_drafts:
+            query = query.filter(Product.is_active.is_(True))
+        if limit:
+            query = query.limit(limit)
+
+        products = query.all()
+        counts = {
+            "inspected": len(products),
+            "already_optimized": 0,
+            "missing_source": 0,
+            "would_generate": 0,
+            "generated": 0,
+            "failed": 0,
+        }
+
+        for product in products:
+            if not product.image_file_id:
+                counts["missing_source"] += 1
+                click.echo(f"skip product #{product.id}: no original image")
+                continue
+
+            status = product_image_variant_status(product)
+            if not status["source_exists"]:
+                counts["missing_source"] += 1
+                click.echo(f"skip product #{product.id}: original image file is missing")
+                continue
+
+            missing = status["missing"]
+            if not missing:
+                counts["already_optimized"] += 1
+                continue
+
+            if dry_run:
+                counts["would_generate"] += 1
+                click.echo(f"would generate {', '.join(missing)} for product #{product.id}: {product.name}")
+                continue
+
+            result = ensure_product_image_variants(product)
+            if result["status"] == "ok":
+                db.session.commit()
+                counts["generated"] += 1
+                created = ", ".join(result["created"]) or "none"
+                skipped = ", ".join(result["skipped"]) or "none"
+                click.echo(f"generated product #{product.id}: created={created}; skipped={skipped}")
+            else:
+                db.session.rollback()
+                counts["failed"] += 1
+                click.echo(f"failed product #{product.id}: {result['error']}")
+
+        mode = "DRY RUN" if dry_run else "DONE"
+        click.echo(
+            f"{mode}: inspected={counts['inspected']}, "
+            f"already_optimized={counts['already_optimized']}, "
+            f"missing_source={counts['missing_source']}, "
+            f"would_generate={counts['would_generate']}, "
+            f"generated={counts['generated']}, failed={counts['failed']}"
+        )
 
     @app.cli.command("seed-delivery-zones")
     @click.option(
