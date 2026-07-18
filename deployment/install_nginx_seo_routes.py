@@ -7,7 +7,39 @@ START_MARKER = "    # BEGIN REALMINDX MANAGED SEO ROUTES"
 END_MARKER = "    # END REALMINDX MANAGED SEO ROUTES"
 BOOKSHOP_START_MARKER = "    # BEGIN REALMINDX MANAGED BOOKSHOP SEO ROUTES"
 BOOKSHOP_END_MARKER = "    # END REALMINDX MANAGED BOOKSHOP SEO ROUTES"
+UPLOAD_START_MARKER = "    # BEGIN REALMINDX MANAGED UPLOAD ROUTES"
+UPLOAD_END_MARKER = "    # END REALMINDX MANAGED UPLOAD ROUTES"
 UPLOAD_LIMIT = "100M"
+UPLOAD_ROUTE_BLOCK = f"""{UPLOAD_START_MARKER}
+    # Public product and design images are immutable because uploaded files use
+    # unique names. Serve them directly for fast bookshop browsing.
+    location /uploads/public/ {{
+        alias /var/www/realmindx/realmindx-site/uploads/public/;
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }}
+
+    # Seeded design assets used by public pages are also public.
+    location /uploads/Redesign/ {{
+        alias /var/www/realmindx/realmindx-site/uploads/Redesign/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }}
+
+    # Everything else under /uploads may include protected documents, so keep
+    # Flask in charge of auth checks instead of letting nginx expose it.
+    location /uploads/ {{
+        proxy_pass         http://127.0.0.1:5002;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
+    }}
+{UPLOAD_END_MARKER}
+"""
 ROUTE_BLOCK = f"""{START_MARKER}
     location ~ ^/delivery-company(?<delivery_company_tail>/.*)?$ {{
         return 301 https://delivery.realmindxgh.com/manager$delivery_company_tail$is_args$args;
@@ -78,7 +110,7 @@ ROUTE_BLOCK = f"""{START_MARKER}
         proxy_read_timeout 60;
     }}
 
-    location ~ ^/(admin|staff|bookshop|delivery-company|delivery)\.webmanifest$ {{
+    location ~ ^/(admin|staff|bookshop|delivery-company|delivery)\\.webmanifest$ {{
         types {{ application/manifest+json webmanifest; }}
         try_files $uri =404;
         add_header Cache-Control "no-cache, must-revalidate";
@@ -121,7 +153,7 @@ BOOKSHOP_ROUTE_BLOCK = f"""{BOOKSHOP_START_MARKER}
         proxy_read_timeout 60;
     }}
 
-    location ~ ^/(admin|staff|bookshop|delivery-company|delivery)\.webmanifest$ {{
+    location ~ ^/(admin|staff|bookshop|delivery-company|delivery)\\.webmanifest$ {{
         types {{ application/manifest+json webmanifest; }}
         try_files $uri =404;
         add_header Cache-Control "no-cache, must-revalidate";
@@ -224,6 +256,40 @@ def remove_legacy_bookshop_routes(block):
     ])
 
 
+def remove_legacy_upload_routes(block):
+    return remove_location_blocks(block, [
+        lambda header: re.search(r"location\s+/uploads/public/\s*\{", header) is not None,
+        lambda header: re.search(r"location\s+/uploads/Redesign/\s*\{", header) is not None,
+        lambda header: re.search(r"location\s+/uploads/\s*\{", header) is not None,
+    ])
+
+
+def upload_routes_anchor(block):
+    client_body = re.search(
+        r"(?m)^\s*client_max_body_size\s+\S+;\s*\n",
+        block,
+    )
+    if client_body:
+        return client_body
+    tls_params = re.search(
+        r"(?m)^\s*ssl_dhparam\s+[^;]+;\s*\n",
+        block,
+    )
+    if tls_params:
+        return tls_params
+    return re.search(r"(?m)^server\s*\{\s*\n", block)
+
+
+def install_upload_routes(block):
+    block = remove_managed_block(block, UPLOAD_START_MARKER, UPLOAD_END_MARKER)
+    block = remove_legacy_upload_routes(block)
+    anchor = upload_routes_anchor(block)
+    if not anchor:
+        return block
+    insert_at = anchor.end()
+    return block[:insert_at] + UPLOAD_ROUTE_BLOCK + "\n" + block[insert_at:]
+
+
 def install_route(text):
     text = remove_managed_block(text, START_MARKER, END_MARKER)
     for start, end, block in server_blocks(text):
@@ -232,6 +298,7 @@ def install_route(text):
         if not re.search(r"(?m)^\s*listen\s+443\b", block):
             continue
         block = remove_legacy_main_routes(block)
+        block = install_upload_routes(block)
         text = text[:start] + block + text[end:]
         anchor = insertion_anchor(block)
         if not anchor:
@@ -251,6 +318,7 @@ def install_bookshop_route(text):
         if not re.search(r"(?m)^\s*listen\s+443\b", block):
             continue
         block = remove_legacy_bookshop_routes(block)
+        block = install_upload_routes(block)
         text = text[:start] + block + text[end:]
         anchor = insertion_anchor(block)
         if not anchor:
