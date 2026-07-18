@@ -3072,10 +3072,9 @@
 }
 
 .verified-contact-modal-foot {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 10px;
-  flex-wrap: wrap;
   border-top: 1px solid var(--bs-border);
   background: #fbfcff;
 }
@@ -3092,6 +3091,8 @@
   font-size: 12px;
   font-weight: 900;
   letter-spacing: .03em;
+  text-align: center;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -3108,10 +3109,15 @@
   .verified-contact-modal-body,
   .verified-contact-modal-foot {
     padding: 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .verified-contact-modal-foot .verified-contact-modal-btn {
-    flex: 1;
     min-width: 0;
+  }
+}
+@media (max-width: 420px) {
+  .verified-contact-modal-foot {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 600px) {
