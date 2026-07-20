@@ -4699,6 +4699,23 @@
 .bs-skeleton-order { height: 56px; width: 100%; margin-bottom: 10px; }
 .bs-skeleton-order-card { height: 90px; border-radius: var(--bs-radius-md); }
 
+/* Screen-reader only */
+.bs-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+/* Product card skeleton */
+.bs-pcard-skeleton { pointer-events: none; }
+.bs-pcard-skeleton .bs-pcard-cover .bs-skeleton-img { width: 100%; padding-bottom: 140%; border-radius: var(--bs-radius-md); }
+.bs-pcard-skeleton .bs-pcard-body { padding: 10px 0; }
+.bs-pcard-skeleton .bs-pcard-body .bs-skeleton-line { height: 14px; margin-bottom: 8px; border-radius: 4px; }
+.bs-pcard-skeleton .bs-pcard-body .bs-skeleton-line-sm { width: 55%; }
+.bs-pcard-skeleton .bs-pcard-body .bs-skeleton-line-lg { width: 85%; }
+.bs-pcard-skeleton .bs-pcard-body .bs-skeleton-line-mid { width: 70%; }
+.bs-pcard-skeleton .bs-pcard-body .bs-skeleton-price { height: 20px; width: 40%; margin-bottom: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bs-skeleton { animation: none; background: #e8ecf4; }
+}
+
 /* ============================================================ ORDERS PAGE ============================================================ */
 .bs-orders-hero {
   background: var(--bs-off-white); border-bottom: 1px solid var(--bs-border);
