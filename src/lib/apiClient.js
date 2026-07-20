@@ -102,6 +102,8 @@ export const api = {
   subscribeNewsletter: (payload) => apiFetch('/newsletter', { method: 'POST', body: payload }),
   initDonationPayment: (payload) => apiFetch('/donations/paystack/initialize', { method: 'POST', body: payload }),
   fetchProducts: (qs = '') => apiFetch(`/products${qs}`),
+  fetchProductSuggestions: (q) => apiFetch(`/products/suggestions?q=${encodeURIComponent(q)}`),
+  fetchProductSearch: (qs = '') => apiFetch(`/products${qs}`),
   createBookRequest: (payload) => apiFetch('/bookshop/book-requests', { method: 'POST', body: payload }),
   fetchCategories: () => apiFetch('/products/categories'),
   fetchFlyers: () => apiFetch('/flyers'),

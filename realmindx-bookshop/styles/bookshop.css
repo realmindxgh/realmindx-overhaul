@@ -1260,6 +1260,8 @@
   40%            { opacity: .8;  transform: scale(1.15); }
 }
 
+.bs-sentinel-retry { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--bs-muted); font-size: 14px; }
+
 /* ── End of results ────────────────────────────────────────── */
 .bs-end-of-results { margin-top: 32px; padding-bottom: 64px; }
 
@@ -1540,6 +1542,9 @@
 .bs-request-success { min-height: 340px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; }
 .bs-request-success-icon { width: 52px; height: 52px; display: grid; place-items: center; background: #e8f7ed; color: #12843c; border-radius: 50%; }
 .bs-request-success > strong { color: var(--bs-navy); font-size: 22px; letter-spacing: 1px; padding: 10px 16px; background: #f1f5fa; }
+.bs-request-page-wrap { padding: 40px 0; }
+.bs-request-page-wrap .bs-request-backdrop { position: relative; inset: auto; z-index: auto; background: none; padding: 0; }
+.bs-request-page-wrap .bs-request-modal { max-height: none; }
 @media (max-width: 620px) { .bs-request-modal { padding: 24px 18px; } .bs-request-grid { grid-template-columns: 1fr; } .bs-request-grid label.wide { grid-column: auto; } .bs-request-prompt { align-items: stretch; flex-direction: column; } }
 @media (max-width: 520px) {
   .bs-shop-toolbar.scoped { flex-wrap: wrap; padding: 9px 10px; }

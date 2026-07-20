@@ -10,7 +10,7 @@ from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
 import requests
-from sqlalchemy import or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload, selectinload
 
 from ..analytics import queue_analytics_event
@@ -57,6 +57,7 @@ from ..models import (
 )
 from ..security import require_turnstile
 from ..serializers import (
+    _upload_url,
     category_json,
     delivery_tracking_json,
     delivery_zone_json,
@@ -446,6 +447,12 @@ def list_products():
     level = request.args.get("level")
     curriculum = request.args.get("curriculum")
     publisher = request.args.get("publisher")
+    min_price = request.args.get("min_price", type=float)
+    max_price = request.args.get("max_price", type=float)
+    rating_min = request.args.get("rating_min", type=float)
+    rating_max = request.args.get("rating_max", type=float)
+    in_stock = request.args.get("in_stock")
+    sort = (request.args.get("sort") or "newest").strip().lower()
     if q:
         search_filter = product_search_filter(q)
         if search_filter is not None:
@@ -470,8 +477,63 @@ def list_products():
         query = query.filter(or_(*(Product.curriculum.ilike(term) for term in taxonomy_filter_terms("curriculum", curriculum))))
     if publisher:
         query = query.filter(Product.publisher == publisher)
-    products = query.order_by(Product.featured.desc(), Product.created_at.desc()).all()
+    if min_price is not None:
+        query = query.filter(Product.price >= min_price)
+    if max_price is not None:
+        query = query.filter(Product.price <= max_price)
+    if in_stock == "1" or in_stock == "true":
+        query = query.filter(Product.stock_status != "out_of_stock")
+    order_clauses = [Product.featured.desc()]
+    if sort == "low":
+        order_clauses.append(Product.price.asc())
+    elif sort == "high":
+        order_clauses.append(Product.price.desc())
+    elif sort == "popular":
+        order_clauses.append(Product.created_at.desc())
+    else:
+        order_clauses.append(Product.created_at.desc())
+    page = request.args.get("page", type=int)
+    per_page = request.args.get("per_page", type=int)
+    if page is not None and per_page is not None:
+        if per_page < 1:
+            per_page = 10
+        if per_page > 100:
+            per_page = 100
+        total = query.count()
+        products = query.order_by(*order_clauses).offset((page - 1) * per_page).limit(per_page).all()
+        return jsonify(items=[product_json(product) for product in products], total=total, page=page, per_page=per_page)
+    products = query.order_by(*order_clauses).all()
     return jsonify(items=[product_json(product) for product in products])
+
+
+def _suggestion_json(product):
+    return {
+        "id": product.id,
+        "name": product.name,
+        "slug": product.slug,
+        "price": float(product.price),
+        "image_url_thumb": _upload_url(getattr(product, "image_thumb_file", None)),
+        "author": product.author,
+    }
+
+
+@bookshop_bp.get("/products/suggestions")
+def list_product_suggestions():
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify(items=[])
+    query = (
+        Product.query
+        .options(
+            joinedload(Product.image_thumb_file),
+        )
+        .filter_by(is_active=True)
+    )
+    search_filter = product_search_filter(q)
+    if search_filter is not None:
+        query = query.outerjoin(ProductCategory).filter(search_filter)
+    products = query.order_by(Product.featured.desc(), Product.created_at.desc()).limit(6).all()
+    return jsonify(items=[_suggestion_json(p) for p in products])
 
 
 @bookshop_bp.get("/products/<int:product_id>")

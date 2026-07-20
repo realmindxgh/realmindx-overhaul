@@ -296,6 +296,8 @@ const LocalCatalogProvider = ({ children }) => {
   return <CatalogCtx.Provider value={value}>{children}</CatalogCtx.Provider>;
 };
 
+export { fromApiProduct };
+
 export const CatalogProvider = isApiMode()
   ? ApiCatalogProvider
   : IS_DEVELOPMENT
