@@ -1,6 +1,6 @@
 import React from 'react';
 import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, ScrollToTopFab, BottomNav } from './chrome.jsx';
-import { HomePage, ShopPage } from './pages-shop.jsx';
+import { HomePage, ShopPage, BookRequestModal } from './pages-shop.jsx';
 import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage, InvoicePage } from './pages-checkout.jsx';
 import { AuthPage, BookshopResetPasswordPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
@@ -29,7 +29,7 @@ const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.s
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 
 const prefixedPath = (path) => `${PREFIX}${path}`;
-const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'login', 'signup', 'reset-password', 'account', 'orders', 'review']);
+const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'login', 'signup', 'reset-password', 'account', 'orders', 'review', 'request-book']);
 const canonicalUrlForRoute = (route, params = {}) => `${canonicalBookshopBase}${bookshopPathForRoute(route, params)}`;
 const browseParam = (taxonomy, value = '') => ({ taxonomy, value });
 const BOOKSHOP_SHIPPING_DETAILS = {
@@ -147,6 +147,7 @@ const routeFromPath = () => {
   if (p === '/account')  return { route: 'account',  params: {} };
   if (p === '/orders')   return { route: 'orders',   params: {} };
   if (p === '/review')   return { route: 'review',   params: {} };
+  if (p === '/request-book') return { route: 'request-book', params: {} };
   return { route: 'home', params: {} };
 };
 
@@ -471,6 +472,7 @@ const App = () => {
       account:  { title: 'My Account | RealMindX Bookshop', desc: 'Manage your RealMindX Bookshop account, view billing info, and access your order history.' },
       orders:   { title: 'My Orders | RealMindX Bookshop', desc: 'View all your past orders, track deliveries, and see order details.' },
       review:   { title: 'Rate Your Order | RealMindX Bookshop', desc: 'Share feedback on your RealMindX Bookshop order.' },
+      'request-book': { title: 'Request a Book | RealMindX Bookshop', desc: 'Tell us what book you need and we will notify you when it is available.' },
     };
     let currentMeta = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
     let image = BOOKSHOP_DEFAULT_IMAGE;
@@ -626,6 +628,13 @@ const App = () => {
     case 'account':  page = <AccountPage navigate={navigate} />; break;
     case 'orders':   page = <OrdersPage navigate={navigate} />; break;
     case 'review':   page = <OrderReviewPage navigate={navigate} />; break;
+    case 'request-book': page = (
+      <div className="bs-container bs-fade-page">
+        <div className="bs-request-page-wrap">
+          <BookRequestModal open={true} onClose={() => navigate('home')} />
+        </div>
+      </div>
+    ); break;
     default:         page = <HomePage navigate={navigate} />;
   }
   const mainClassName = `bs-page${route === 'login' || route === 'signup' || route === 'reset-password' ? ' bs-page-auth' : ''}`;

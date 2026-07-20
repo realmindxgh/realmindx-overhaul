@@ -1,7 +1,7 @@
 import React from 'react';
 import { Icon, Reveal, LoadingState, cedis } from './shared.jsx';
 import { ProductCard, ListCard } from './chrome.jsx';
-import { useCatalog } from './catalog.jsx';
+import { useCatalog, fromApiProduct } from './catalog.jsx';
 import { trackSearch } from '../src/lib/analytics.js';
 import { subscribeNewsletter } from '../src/lib/managedContent.js';
 import { bookMatchesBookshopSearch, bookMatchesBookshopSearchIntent, findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
@@ -32,7 +32,8 @@ const FILTER_GROUPS = [
 
 const FILTER_PREVIEW_LIMIT = 5;
 const SEARCHABLE_FILTER_KEYS = new Set(['subjects']);
-const BATCH = 40;
+const DESKTOP_BATCH = 40;
+const MOBILE_BATCH = 10;
 
 const BookRequestModal = ({ open, onClose, initialTitle, browseContext }) => {
   const session = getDemoSession();
@@ -759,14 +760,32 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   const [filters, setFilters] = React.useState(() => createFilterState(rangeCeiling, initialBrowse, initialQuery));
   const [sort, setSort] = React.useState('newest');
   const [view, setView] = React.useState('grid');
-  const [visible, setVisible] = React.useState(BATCH);
-  const [loading, setLoading] = React.useState(false);
   const [drawer, setDrawer] = React.useState(false);
   const [browseQuery, setBrowseQuery] = React.useState('');
   const [requestOpen, setRequestOpen] = React.useState(false);
+  const [fetchedItems, setFetchedItems] = React.useState([]);
+  const [totalCount, setTotalCount] = React.useState(0);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [fetchError, setFetchError] = React.useState('');
+  const [hasMore, setHasMore] = React.useState(true);
+  const [fetchLoading, setFetchLoading] = React.useState(false);
   const sentinelRef = React.useRef(null);
-  const loadingRef = React.useRef(false);
+  const fetchingRef = React.useRef(false);
   const previousCeilingRef = React.useRef(rangeCeiling);
+  const abortRef = React.useRef(null);
+  const sentinelKeyRef = React.useRef(0);
+  const [isMobile, setIsMobile] = React.useState(
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+  );
+
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const BATCH = isMobile ? MOBILE_BATCH : DESKTOP_BATCH;
 
   React.useEffect(() => {
     const previousCeiling = previousCeilingRef.current;
@@ -780,23 +799,123 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     previousCeilingRef.current = rangeCeiling;
   }, [rangeCeiling]);
 
+  const buildSearchQuery = React.useCallback((page, perPage) => {
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('per_page', String(perPage));
+    const trimmed = filters.query.trim();
+    if (trimmed) params.set('q', trimmed);
+    if (initialBrowse.taxonomy === 'category' && initialBrowse.value) {
+      params.set('category', initialBrowse.value);
+    } else if (initialBrowse.taxonomy === 'subject' && initialBrowse.value) {
+      params.set('subject', initialBrowse.value);
+    } else if (initialBrowse.taxonomy === 'level' && initialBrowse.value) {
+      params.set('level', initialBrowse.value);
+    } else if (initialBrowse.taxonomy === 'curriculum' && initialBrowse.value) {
+      params.set('curriculum', initialBrowse.value);
+    } else if (initialBrowse.taxonomy === 'publisher' && initialBrowse.value) {
+      params.set('publisher', initialBrowse.value);
+    }
+    if (filters.subjects.length && !initialBrowse.value) {
+      params.set('subject', filters.subjects.join(','));
+    }
+    if (filters.levels.length) {
+      params.set('level', filters.levels.join(','));
+    }
+    if (filters.curricula.length) {
+      params.set('curriculum', filters.curricula.join(','));
+    }
+    if (filters.publishers.length) {
+      params.set('publisher', filters.publishers.join(','));
+    }
+    if (filters.categories.length && !initialBrowse.value) {
+      params.set('category', filters.categories.join(','));
+    }
+    if (filters.min > 0) params.set('min_price', String(filters.min));
+    if (filters.max < rangeCeiling) params.set('max_price', String(filters.max));
+    if (filters.inStock) params.set('in_stock', '1');
+    if (sort !== 'newest') params.set('sort', sort);
+    return params.toString();
+  }, [filters, initialBrowse, sort, rangeCeiling]);
+
+  const fetchPage = React.useCallback(async (page, append = false) => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    setFetchLoading(true);
+    setFetchError('');
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const qs = buildSearchQuery(page, BATCH);
+      const data = await api.fetchProductSearch(`?${qs}`);
+      if (controller.signal.aborted) return;
+      const items = (data.items || []).map(fromApiProduct);
+      if (append) {
+        setFetchedItems(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const deduped = items.filter(p => !existingIds.has(p.id));
+          return [...prev, ...deduped];
+        });
+      } else {
+        setFetchedItems(items);
+      }
+      setTotalCount(data.total || 0);
+      setCurrentPage(page);
+      setHasMore(data.total > page * BATCH);
+      sentinelKeyRef.current += 1;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      setFetchError('Could not load products. Try again.');
+    } finally {
+      if (!controller.signal.aborted) {
+        fetchingRef.current = false;
+        setFetchLoading(false);
+      }
+    }
+  }, [buildSearchQuery, BATCH]);
+
   React.useEffect(() => {
-    setVisible(BATCH);
-    setLoading(false);
-    loadingRef.current = false;
+    setFetchedItems([]);
+    setTotalCount(0);
+    setCurrentPage(1);
+    setHasMore(true);
+    setFetchError('');
+    fetchingRef.current = false;
+    sentinelKeyRef.current += 1;
   }, [filters, sort]);
 
-  const list = React.useMemo(() => {
-    const filtered = books.filter((book) => matchesCatalogueFilters(book, filters));
-    if (sort === 'low') return [...filtered].sort((left, right) => left.price - right.price);
-    if (sort === 'high') return [...filtered].sort((left, right) => right.price - left.price);
-    if (sort === 'popular') {
-      return [...filtered].sort((left, right) => (right.rating * (right.reviews || 1)) - (left.rating * (left.reviews || 1)));
-    }
-    return filters.query
-      ? rankByFuzzyMatch(filtered, filters.query, book => [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' '))
-      : filtered;
-  }, [books, filters, sort]);
+  React.useEffect(() => {
+    fetchPage(1);
+  }, [fetchPage]);
+
+  const loadMore = React.useCallback(() => {
+    if (!hasMore || fetchingRef.current) return;
+    fetchPage(currentPage + 1, true);
+  }, [hasMore, currentPage, fetchPage]);
+
+  const retryPage = React.useCallback(() => {
+    if (fetchingRef.current) return;
+    const page = fetchedItems.length > 0 ? currentPage + 1 : 1;
+    fetchPage(page, fetchedItems.length > 0);
+  }, [currentPage, fetchPage, fetchedItems.length]);
+
+  React.useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || allLoaded || fetchError) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !fetchingRef.current) {
+          loadMore();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [allLoaded, loadMore, fetchError]);
+
+  const list = React.useMemo(() => fetchedItems, [fetchedItems]);
 
   React.useEffect(() => {
     const term = String(initialQuery || '').trim();
@@ -806,14 +925,14 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       scope: 'bookshop',
       pageType: 'bookshop_search',
       path: `${PREFIX}/products`,
-      resultsCount: list.length,
+      resultsCount: totalCount,
       productImpressions: list.slice(0, 12).map((book, index) => ({
         productId: book.id,
         available: book.stock,
         position: index + 1,
       })),
     });
-  }, [catalogLoading, initialQuery, list]);
+  }, [catalogLoading, initialQuery, list, totalCount]);
 
   React.useEffect(() => {
     document.body.style.overflow = drawer ? 'hidden' : '';
@@ -822,29 +941,8 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     };
   }, [drawer]);
 
-  const shown = list.slice(0, visible);
-  const allLoaded = shown.length >= list.length;
-
-  React.useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel || allLoaded) return undefined;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !loadingRef.current) {
-          loadingRef.current = true;
-          setLoading(true);
-          setTimeout(() => {
-            setVisible((current) => current + BATCH);
-            setLoading(false);
-            loadingRef.current = false;
-          }, 280);
-        }
-      },
-      { rootMargin: '300px' },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [allLoaded, visible]);
+  const shown = list;
+  const allLoaded = !hasMore;
 
   const selectedLabels = React.useMemo(() => selectedLabelList(filters, taxonomies), [filters, taxonomies]);
   const selectedFilters = React.useMemo(() => selectedFilterList(filters, taxonomies), [filters, taxonomies]);
@@ -875,16 +973,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     context_label: contextLabel,
   };
 
-  const topPicks = React.useMemo(() => {
-    if (activeSelectionCount(filters) === 0 && !filters.inStock && filters.ratingMin === '' && filters.ratingMax === '' && !filters.query.trim()) {
-      return [];
-    }
-    const shownIds = new Set(list.map((book) => book.id));
-    return books
-      .filter((book) => !shownIds.has(book.id) && book.stock)
-      .sort((left, right) => (right.rating * (right.reviews || 1)) - (left.rating * (left.reviews || 1)))
-      .slice(0, 6);
-  }, [books, filters, list]);
+  const topPicks = React.useMemo(() => [], []);
 
   const browseItem = React.useMemo(
     () => (initialBrowse.taxonomy && initialBrowse.value
@@ -1189,8 +1278,8 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               <button className="bs-filter-mobile-btn" onClick={() => setDrawer(true)}><Icon name="filter" size={16} /> Filter</button>
               <span className="bs-shop-count">
                 {allLoaded
-                  ? <><strong>{list.length}</strong> result{list.length !== 1 ? 's' : ''}</>
-                  : <>Showing <strong>{shown.length}</strong> of <strong>{list.length}</strong></>}
+                  ? <><strong>{totalCount}</strong> result{totalCount !== 1 ? 's' : ''}</>
+                  : <>Showing <strong>{shown.length}</strong> of <strong>{totalCount}</strong></>}
               </span>
               {hasScopedBrowse && toolbarFilters.length > 0 && (
                 <div className="bs-toolbar-filters" aria-label="Applied filters">
@@ -1239,9 +1328,15 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
 
           {!allLoaded && shown.length > 0 && (
             <div ref={sentinelRef} className="bs-scroll-sentinel" aria-hidden="true">
-              {loading && (
+              {fetchLoading && (
                 <div className="bs-loading-dots" role="status" aria-label="Loading more">
                   <span /><span /><span />
+                </div>
+              )}
+              {fetchError && !fetchLoading && (
+                <div className="bs-sentinel-retry">
+                  <span>{fetchError}</span>
+                  <button type="button" className="bs-btn bs-btn-outline-navy" onClick={retryPage}>Try again</button>
                 </div>
               )}
             </div>
@@ -1306,7 +1401,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
           hiddenTaxonomy={hiddenFilterTaxonomy}
         />
         <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop: 18 }} onClick={() => setDrawer(false)}>
-          Show {list.length} result{list.length !== 1 ? 's' : ''}
+          Show {totalCount} result{totalCount !== 1 ? 's' : ''}
         </button>
       </div>
       <BookRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} initialTitle={requestTitle} browseContext={requestContext} />
@@ -1314,4 +1409,4 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   );
 };
 
-export { HomePage, ShopPage, CategoryStrip };
+export { HomePage, ShopPage, CategoryStrip, BookRequestModal };

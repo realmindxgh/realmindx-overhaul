@@ -6,7 +6,7 @@ import { bookMatchesBookshopSearch, bookMatchesBookshopSearchIntent } from '../s
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { trackCartAction, trackSearchClick, trackWishlistAction } from '../src/lib/analytics.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
-import { isApiMode } from '../src/lib/apiClient.js';
+import { isApiMode, api } from '../src/lib/apiClient.js';
 import { usePublicSettings } from '../src/lib/siteContent.js';
 import globalToast from '../src/lib/toast.js';
 import { clearCheckoutDraft } from './checkoutStorage.js';
@@ -586,10 +586,51 @@ const Navbar = ({ route, navigate }) => {
     };
   }, [moreOpen, positionMoreMenu]);
 
+  const [suggestions, setSuggestions] = React.useState([]);
+  const abortRef = React.useRef(null);
+
   React.useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQ(q), 260);
+    const timer = window.setTimeout(() => setDebouncedQ(q), 300);
     return () => window.clearTimeout(timer);
   }, [q]);
+
+  React.useEffect(() => {
+    const t = debouncedQ.trim();
+    if (t.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    if (!isApiMode()) {
+      const candidates = books.filter(book => bookMatchesBookshopSearchIntent(book, t) && (bookMatchesBookshopSearch(book, t) || fuzzyMatches(
+        [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' '),
+        t,
+      )));
+      const local = rankByFuzzyMatch(candidates, t, book => [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' ')).slice(0, 6);
+      setSuggestions(local);
+      return;
+    }
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    api.fetchProductSuggestions(t)
+      .then(data => {
+        if (!controller.signal.aborted) {
+          setSuggestions((data.items || []).map(p => ({
+            id: String(p.id),
+            title: p.name,
+            slug: p.slug || '',
+            price: Number(p.price) || 0,
+            image: p.image_url_thumb || null,
+            imageThumb: p.image_url_thumb || null,
+            author: p.author || '',
+          })));
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSuggestions([]);
+      });
+    return () => controller.abort();
+  }, [books, debouncedQ]);
 
   const go = (r, e) => {
     if (e) e.preventDefault();
@@ -604,8 +645,6 @@ const Navbar = ({ route, navigate }) => {
   const submitSearch = (e) => {
     if (e) e.preventDefault();
     const t = q.trim();
-    // sq makes every submission unique even for a repeated query, so the
-    // ShopPage remount key below always changes and re-applies initialQuery.
     navigate('shop', t ? { q: t, sq: ++searchSeq.current } : {});
     setCatsOpen(false);
     setOpenBrowseGroup('');
@@ -624,18 +663,6 @@ const Navbar = ({ route, navigate }) => {
     setQ('');
   };
 
-  // Live suggestions now search the same fields that power the dedicated
-  // browse pages and sidebar taxonomy filters.
-  const suggestions = React.useMemo(() => {
-    const t = debouncedQ.trim();
-    if (t.length < 2) return [];
-    const candidates = books.filter(book => bookMatchesBookshopSearchIntent(book, t) && (bookMatchesBookshopSearch(book, t) || fuzzyMatches(
-      [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' '),
-      t,
-    )));
-    return rankByFuzzyMatch(candidates, t, book => [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' ')).slice(0, 6);
-  }, [books, debouncedQ]);
-
   const quickSubjects = [
     { ids: ['mathematics', 'maths'], label: 'Maths' },
     { ids: ['english-language', 'english'], label: 'English' },
@@ -652,6 +679,7 @@ const Navbar = ({ route, navigate }) => {
     { title: 'Item Type', allLabel: 'Item Types', taxonomy: 'category', icon: 'box', items: taxonomies.categories || [] },
   ];
   const utilityLinks = [
+    { route: 'request-book', label: 'Request a Book', icon: 'search', description: 'Tell us what book you need and we will find it' },
     { route: 'invoice', label: 'Receipt/Invoice Verification', icon: 'files', description: 'Verify receipts and PDF invoices' },
     { route: 'documents', label: 'Education Documents', icon: 'book', description: 'Browse useful education files' },
   ];
@@ -852,7 +880,7 @@ const Navbar = ({ route, navigate }) => {
       {/* Note: no redundant close button here — the hamburger in the navbar already animates to X */}
       <div className={`bs-mobile-menu${menuOpen ? ' open' : ''}`}>
         <nav className="bs-mm-links">
-          {[['home','Home'],['shop','Shop'],['track','Track Order'],['invoice','Receipt/Invoice Verification'],['documents','Education Documents'],['contact','Contact'],['about','About']].map(([r,l]) => (
+          {[['home','Home'],['shop','Shop'],['request-book','Request a Book'],['track','Track Order'],['invoice','Receipt/Invoice Verification'],['documents','Education Documents'],['contact','Contact'],['about','About']].map(([r,l]) => (
             <a key={r} href={hrefForRoute(r)} className={`bs-mm-item${route === r ? ' active' : ''}`} onClick={(e) => go(r, e)}>
               {l}
             </a>

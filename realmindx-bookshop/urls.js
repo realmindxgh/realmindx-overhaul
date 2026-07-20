@@ -101,6 +101,8 @@ export const bookshopPathForRoute = (route, params = {}) => {
       return '/privacy';
     case 'terms':
       return '/terms';
+    case 'request-book':
+      return '/request-book';
     case 'account':
       return '/account';
     case 'orders':
