@@ -34,6 +34,22 @@ const FILTER_PREVIEW_LIMIT = 5;
 const SEARCHABLE_FILTER_KEYS = new Set(['subjects']);
 const DESKTOP_BATCH = 40;
 const MOBILE_BATCH = 10;
+const SKELETON_COUNT_DESKTOP = 8;
+const SKELETON_COUNT_MOBILE = 4;
+
+const ProductCardSkeleton = () => (
+  <div className="bs-pcard bs-pcard-skeleton" aria-hidden="true">
+    <div className="bs-pcard-cover">
+      <div className="bs-skeleton bs-skeleton-img" />
+    </div>
+    <div className="bs-pcard-body">
+      <div className="bs-skeleton bs-skeleton-line bs-skeleton-line-sm" />
+      <div className="bs-skeleton bs-skeleton-line bs-skeleton-line-lg" />
+      <div className="bs-skeleton bs-skeleton-line bs-skeleton-line-mid" />
+      <div className="bs-skeleton bs-skeleton-line bs-skeleton-price" />
+    </div>
+  </div>
+);
 
 const BookRequestModal = ({ open, onClose, initialTitle, browseContext }) => {
   const session = getDemoSession();
@@ -403,7 +419,9 @@ const CategoryStrip = ({ active = 'all', navigate }) => {
 
 const CategoryMarquee = ({ navigate }) => {
   const { categories } = useCatalog();
-  const items = [...categories, ...categories];
+  const realCategories = categories.filter(c => c.id !== 'all');
+  if (realCategories.length === 0) return null;
+  const items = [...realCategories, ...realCategories];
   return (
     <div className="bs-promo-band bs-category-marquee" aria-label="Bookshop categories">
       <div className="bs-category-marquee-track">
@@ -424,7 +442,7 @@ const CategoryMarquee = ({ navigate }) => {
 };
 
 const HomePage = ({ navigate }) => {
-  const { books, loading: catalogLoading } = useCatalog();
+  const { books, loading: catalogLoading, error: catalogError } = useCatalog();
   const [turnstileToken, setTurnstileToken] = React.useState('');
 
   const onSubscribe = async (event) => {
@@ -465,41 +483,63 @@ const HomePage = ({ navigate }) => {
     );
   }
 
+  if (catalogError && books.length === 0) {
+    return (
+      <div className="bs-fade-page">
+        <section className="bs-section bs-container" style={{ textAlign: 'center', padding: '80px 20px' }}>
+          <div className="bs-empty-icon" style={{ marginBottom: 16 }}><Icon name="refresh" size={36} /></div>
+          <h2>Could not load the bookshop</h2>
+          <p style={{ color: 'var(--bs-text-muted)', marginBottom: 24 }}>{catalogError}</p>
+          <button className="bs-btn bs-btn-navy" onClick={() => window.location.reload()}>Try again</button>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="bs-fade-page">
+      <div className="bs-sr-only" role="status" aria-live="polite">
+        {catalogLoading && 'Loading book suggestions\u2026'}
+        {!catalogLoading && !!books.length && `${books.length} product${books.length !== 1 ? 's' : ''} available`}
+        {catalogError && 'Some sections could not load.'}
+      </div>
       <HeroSlideshow navigate={navigate} />
 
-      <section className="bs-section bs-container">
-        <Reveal className="bs-section-head-row">
-          <div>
-            <span className="bs-eyebrow">Just Arrived</span>
-            <h2 className="bs-h2">New in the shop</h2>
+      {featured.length > 0 && (
+        <section className="bs-section bs-container">
+          <Reveal className="bs-section-head-row">
+            <div>
+              <span className="bs-eyebrow">Just Arrived</span>
+              <h2 className="bs-h2">New in the shop</h2>
+            </div>
+            <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>View all <Icon name="arrow" size={14} /></a>
+          </Reveal>
+          <div className="bs-product-grid bs-home-new-grid">
+            {featured.map((book, index) => (
+              <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index} navigate={navigate} /></Reveal>
+            ))}
           </div>
-          <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>View all <Icon name="arrow" size={14} /></a>
-        </Reveal>
-        <div className="bs-product-grid bs-home-new-grid">
-          {featured.map((book, index) => (
-            <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index} navigate={navigate} /></Reveal>
-          ))}
-        </div>
-      </section>
+        </section>
+      )}
 
       <CategoryMarquee navigate={navigate} />
 
-      <section className="bs-section bs-container">
-        <Reveal className="bs-section-head-row">
-          <div>
-            <span className="bs-eyebrow">Exam Season</span>
-            <h2 className="bs-h2">BECE &amp; WASSCE picks</h2>
+      {examPicks.length > 0 && (
+        <section className="bs-section bs-container">
+          <Reveal className="bs-section-head-row">
+            <div>
+              <span className="bs-eyebrow">Exam Season</span>
+              <h2 className="bs-h2">BECE &amp; WASSCE picks</h2>
+            </div>
+            <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>Browse the catalogue <Icon name="arrow" size={14} /></a>
+          </Reveal>
+          <div className="bs-product-grid">
+            {examPicks.map((book, index) => (
+              <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index + 4} navigate={navigate} /></Reveal>
+            ))}
           </div>
-          <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>Browse the catalogue <Icon name="arrow" size={14} /></a>
-        </Reveal>
-        <div className="bs-product-grid">
-          {examPicks.map((book, index) => (
-            <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index + 4} navigate={navigate} /></Reveal>
-          ))}
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="bs-newsletter">
         <div className="bs-container-narrow">
@@ -769,6 +809,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   const [fetchError, setFetchError] = React.useState('');
   const [hasMore, setHasMore] = React.useState(true);
   const [fetchLoading, setFetchLoading] = React.useState(false);
+  const [requestStatus, setRequestStatus] = React.useState('idle');
   const sentinelRef = React.useRef(null);
   const fetchingRef = React.useRef(false);
   const previousCeilingRef = React.useRef(rangeCeiling);
@@ -843,6 +884,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     fetchingRef.current = true;
     setFetchLoading(true);
     setFetchError('');
+    if (!append) setRequestStatus('loading');
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -863,10 +905,12 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       setTotalCount(data.total || 0);
       setCurrentPage(page);
       setHasMore(data.total > page * BATCH);
+      setRequestStatus('success');
       sentinelKeyRef.current += 1;
     } catch (err) {
       if (err.name === 'AbortError') return;
       setFetchError('Could not load products. Try again.');
+      if (!append) setRequestStatus('error');
     } finally {
       if (!controller.signal.aborted) {
         fetchingRef.current = false;
@@ -881,6 +925,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     setCurrentPage(1);
     setHasMore(true);
     setFetchError('');
+    setRequestStatus('loading');
     fetchingRef.current = false;
     sentinelKeyRef.current += 1;
   }, [filters, sort]);
@@ -906,7 +951,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
 
   React.useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || allLoaded || fetchError) return undefined;
+    if (!sentinel || allLoaded || fetchError || requestStatus === 'loading') return undefined;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && !fetchingRef.current) {
@@ -917,7 +962,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [allLoaded, loadMore, fetchError]);
+  }, [allLoaded, loadMore, fetchError, requestStatus]);
 
   React.useEffect(() => {
     const term = String(initialQuery || '').trim();
@@ -1276,9 +1321,11 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
             <div className="bs-toolbar-left">
               <button className="bs-filter-mobile-btn" onClick={() => setDrawer(true)}><Icon name="filter" size={16} /> Filter</button>
               <span className="bs-shop-count">
-                {allLoaded
-                  ? <><strong>{totalCount}</strong> result{totalCount !== 1 ? 's' : ''}</>
-                  : <>Showing <strong>{shown.length}</strong> of <strong>{totalCount}</strong></>}
+                {requestStatus === 'loading' && shown.length === 0
+                  ? 'Loading books\u2026'
+                  : allLoaded
+                    ? <><strong>{totalCount}</strong> result{totalCount !== 1 ? 's' : ''}</>
+                    : <>Showing <strong>{shown.length}</strong> of <strong>{totalCount}</strong></>}
               </span>
               {hasScopedBrowse && toolbarFilters.length > 0 && (
                 <div className="bs-toolbar-filters" aria-label="Applied filters">
@@ -1305,7 +1352,25 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
             </div>
           </div>
 
-          {shown.length === 0 ? (
+          <div className="bs-sr-only" role="status" aria-live="polite">
+            {requestStatus === 'loading' && 'Loading products\u2026'}
+            {requestStatus === 'success' && `${totalCount} product${totalCount !== 1 ? 's' : ''} found`}
+            {requestStatus === 'error' && 'Could not load products.'}
+          </div>
+          {requestStatus === 'error' && shown.length === 0 ? (
+            <div className="bs-empty-state" role="alert">
+              <div className="bs-empty-icon"><Icon name="refresh" size={36} /></div>
+              <h2>Could not load products.</h2>
+              <p>{fetchError}</p>
+              <div className="bs-empty-actions">
+                <button className="bs-btn bs-btn-navy" onClick={retryPage}>Try again</button>
+              </div>
+            </div>
+          ) : shown.length === 0 && (requestStatus === 'loading' || requestStatus === 'idle') ? (
+            <div className="bs-product-grid" aria-busy="true" role="status" aria-label="Loading products">
+              {Array.from({ length: isMobile ? SKELETON_COUNT_MOBILE : SKELETON_COUNT_DESKTOP }, (_, i) => <ProductCardSkeleton key={i} />)}
+            </div>
+          ) : shown.length === 0 && requestStatus === 'success' && totalCount === 0 ? (
             <div className="bs-empty-state">
               <div className="bs-empty-icon"><Icon name="search" size={36} /></div>
               <h2>No books match your {filters.query.trim() ? 'search' : 'filters'}.</h2>
@@ -1320,9 +1385,9 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
               </div>
             </div>
           ) : view === 'grid' ? (
-            <div className="bs-product-grid">{shown.map((book, index) => <ProductCard key={book.id} book={book} idx={index} navigate={navigate} searchContext={searchContext ? { ...searchContext, position: index + 1 } : null} />)}</div>
+            <div className="bs-product-grid" aria-busy={requestStatus === 'loading' && shown.length > 0 ? 'true' : undefined}>{shown.map((book, index) => <ProductCard key={book.id} book={book} idx={index} navigate={navigate} searchContext={searchContext ? { ...searchContext, position: index + 1 } : null} />)}</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{shown.map((book, index) => <ListCard key={book.id} book={book} idx={index} navigate={navigate} searchContext={searchContext ? { ...searchContext, position: index + 1 } : null} />)}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }} aria-busy={requestStatus === 'loading' && shown.length > 0 ? 'true' : undefined}>{shown.map((book, index) => <ListCard key={book.id} book={book} idx={index} navigate={navigate} searchContext={searchContext ? { ...searchContext, position: index + 1 } : null} />)}</div>
           )}
 
           {!allLoaded && shown.length > 0 && (
@@ -1400,7 +1465,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
           hiddenTaxonomy={hiddenFilterTaxonomy}
         />
         <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop: 18 }} onClick={() => setDrawer(false)}>
-          Show {totalCount} result{totalCount !== 1 ? 's' : ''}
+          {requestStatus === 'loading' ? 'Loading\u2026' : <>Show {totalCount} result{totalCount !== 1 ? 's' : ''}</>}
         </button>
       </div>
       <BookRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} initialTitle={requestTitle} browseContext={requestContext} />
