@@ -900,6 +900,10 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     fetchPage(page, fetchedItems.length > 0);
   }, [currentPage, fetchPage, fetchedItems.length]);
 
+  const list = React.useMemo(() => fetchedItems, [fetchedItems]);
+  const shown = list;
+  const allLoaded = !hasMore;
+
   React.useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel || allLoaded || fetchError) return undefined;
@@ -914,8 +918,6 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [allLoaded, loadMore, fetchError]);
-
-  const list = React.useMemo(() => fetchedItems, [fetchedItems]);
 
   React.useEffect(() => {
     const term = String(initialQuery || '').trim();
@@ -940,9 +942,6 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
       document.body.style.overflow = '';
     };
   }, [drawer]);
-
-  const shown = list;
-  const allLoaded = !hasMore;
 
   const selectedLabels = React.useMemo(() => selectedLabelList(filters, taxonomies), [filters, taxonomies]);
   const selectedFilters = React.useMemo(() => selectedFilterList(filters, taxonomies), [filters, taxonomies]);

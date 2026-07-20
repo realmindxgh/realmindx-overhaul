@@ -50,3 +50,4 @@ logs/
 screenshots/
 .local-pg/
 .claude/
+opencode.json
