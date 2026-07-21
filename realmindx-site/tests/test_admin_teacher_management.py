@@ -40,11 +40,14 @@ class AdminTeacherManagementTests(unittest.TestCase):
         active_teacher.set_password("TeacherPassword1")
         inactive_teacher = User(email="teacher-inactive@example.com", first_name="Inactive", last_name="Teacher", role=teacher_role, is_active=False, is_verified=True)
         inactive_teacher.set_password("TeacherPassword1")
-        db.session.add_all([admin_role, teacher_role, admin, active_teacher, inactive_teacher])
+        unverified_teacher = User(email="teacher-unverified@example.com", first_name="Unverified", last_name="Teacher", role=teacher_role, is_active=True, is_verified=False)
+        unverified_teacher.set_password("TeacherPassword1")
+        db.session.add_all([admin_role, teacher_role, admin, active_teacher, inactive_teacher, unverified_teacher])
         db.session.commit()
         db.session.add_all([
             UserProfile(user_id=active_teacher.id),
             UserProfile(user_id=inactive_teacher.id),
+            UserProfile(user_id=unverified_teacher.id),
         ])
         db.session.commit()
         # Ensure the active teacher has a job application to reproduce the delete crash.
@@ -56,6 +59,7 @@ class AdminTeacherManagementTests(unittest.TestCase):
 
         self.admin = admin
         self.active_teacher = active_teacher
+        self.unverified_teacher = unverified_teacher
         self.client = self.app.test_client()
         response = self.client.post("/api/auth/login", json={"email": admin.email, "password": "AdminPassword123!"})
         self.assertEqual(response.status_code, 200)
@@ -73,6 +77,13 @@ class AdminTeacherManagementTests(unittest.TestCase):
         data = response.get_json()
         self.assertIn("summary", data)
         self.assertEqual(data["summary"]["total_users"], 1)
+
+    def test_unverified_teacher_is_excluded_from_active_teachers(self):
+        response = self.client.get("/api/admin/users")
+        self.assertEqual(response.status_code, 200)
+        user_ids = [item["id"] for item in response.get_json()["items"]]
+        self.assertIn(self.active_teacher.id, user_ids)
+        self.assertNotIn(self.unverified_teacher.id, user_ids)
 
     def test_delete_teacher_account(self):
         db.session.add(JobAlertPreference(user_id=self.active_teacher.id, subject="Mathematics", location="Test"))

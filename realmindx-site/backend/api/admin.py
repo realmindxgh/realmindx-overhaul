@@ -1059,7 +1059,12 @@ def dashboard():
         teacher_count = db.session.scalar(
             db.select(func.count(User.id))
             .join(Role, User.role_id == Role.id)
-            .where(Role.name.in_(("user", "teacher")), User.is_active.is_(True))
+            .where(
+                Role.name == "user",
+                User.teacher_service_enabled.is_(True),
+                User.is_active.is_(True),
+                User.is_verified.is_(True),
+            )
         )
     return jsonify(
         summary={
@@ -1437,7 +1442,12 @@ def users():
     rows = (
         User.query
         .join(User.role)
-        .filter(Role.name == "user", User.teacher_service_enabled.is_(True))
+        .filter(
+            Role.name == "user",
+            User.teacher_service_enabled.is_(True),
+            User.is_active.is_(True),
+            User.is_verified.is_(True),
+        )
         .order_by(User.created_at.desc())
         .all()
     )
@@ -2581,10 +2591,6 @@ def export_products():
         with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
             csv_out = io.StringIO(); writer = csv.DictWriter(csv_out, fieldnames=headers); writer.writeheader(); writer.writerows(data_rows)
             zf.writestr("products.csv", csv_out.getvalue())
-            try:
-                pdf_stream = _build_admin_export_pdf("RealMindX Bookshop Products", headers, data_rows)
-                zf.writestr("products.pdf", pdf_stream.getvalue())
-            except ImportError: zf.writestr("products.pdf", b"PDF export requires reportlab.")
             for product in rows:
                 if getattr(product, "image_file", None) and product.image_file.storage_path:
                     try:

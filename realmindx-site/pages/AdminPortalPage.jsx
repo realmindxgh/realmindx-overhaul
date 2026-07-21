@@ -1639,6 +1639,20 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
             onClick={() => inputRef.current?.click()} disabled={uploading}>
             {uploading ? 'Uploading...' : preview ? 'Replace image' : 'Upload image'}
           </button>
+          {(preview || currentFileId) && (
+            <button
+              type="button"
+              className="btn btn-outline-navy btn-sm"
+              disabled={uploading}
+              onClick={() => {
+                setPreview(null);
+                setStaged(true);
+                onChange('', '');
+              }}
+            >
+              Remove image
+            </button>
+          )}
           {currentFileId && !preview && (
             <p style={{ fontSize: '0.75rem', color: 'var(--gray-700)', marginTop: 4 }}>Existing image on file</p>
           )}
@@ -2872,6 +2886,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [sortDir, setSortDir] = React.useState('asc');
   const [localRows, setLocalRows] = React.useState(null);
   const [showProductImport, setShowProductImport] = React.useState(false);
+  const [showProductActions, setShowProductActions] = React.useState(false);
   const [showBookRequests, setShowBookRequests] = React.useState(false);
   const [pendingBookRequests, setPendingBookRequests] = React.useState(0);
   const [actionStatus, setActionStatus] = React.useState(null);
@@ -3519,25 +3534,11 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             <>
               {config.collection === 'products' && (
                 <>
-                  <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setShowProductImport(value => !value)}>Batch Import</button>
-                  {canUpdate && (
-                    <button
-                      className="btn btn-outline-navy btn-sm"
-                      type="button"
-                      disabled={!missingImageStats?.published}
-                      onClick={() => setShowMissingImageConfirm(true)}
-                    >
-                      Unpublish products without images{missingImageStats ? ` (${missingImageStats.published})` : ''}
-                    </button>
-                  )}
+                  <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setShowProductActions(true)}>Actions</button>
                 </>
               )}
-              {config.collection === 'products' ? (
-                <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl(config.collection, 'zip')}>
-                  Export ZIP
-                </a>
-              ) : (
-                ['csv', 'xlsx', 'pdf'].map(format => (
+              {config.collection !== 'products' && (
+                ['csv', 'xlsx'].map(format => (
                   <a className="btn btn-outline-navy btn-sm" key={format} href={api.adminExportUrl(config.collection, format)}>
                     Export {format.toUpperCase()}
                   </a>
@@ -3546,7 +3547,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             </>
           )}
           {canCreate && (
-            <button className="btn btn-primary btn-sm" onClick={() => { setCreating(true); setEditing(null); }}>{config.createLabel}</button>
+            <button className="btn btn-primary btn-sm" style={config.collection === 'products' ? { marginLeft: 12 } : undefined} onClick={() => { setCreating(true); setEditing(null); }}>{config.createLabel}</button>
           )}
         </div>
       </div>
@@ -3556,6 +3557,30 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           onImported={() => fetchCollection(config.collection)}
           onClose={() => setShowProductImport(false)}
         />
+      )}
+      {config.collection === 'products' && showProductActions && (
+        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowProductActions(false); }}>
+          <div className="admin-modal" role="dialog" aria-modal="true" aria-label="Product actions">
+            <button className="admin-modal-close" type="button" onClick={() => setShowProductActions(false)} aria-label="Close"><Icon name="x" size={16} /></button>
+            <h3>Product actions</h3>
+            <p className="modal-subtitle">Run catalogue-wide tasks without crowding the product toolbar.</p>
+            <div style={{ display:'grid', gap:12, marginTop:22 }}>
+              <button className="btn btn-outline-navy" type="button" onClick={() => { setShowProductActions(false); setShowProductImport(true); }}>
+                Batch import catalogue
+              </button>
+              {canUpdate && (
+                <button
+                  className="btn btn-outline-navy"
+                  type="button"
+                  disabled={!missingImageStats?.published}
+                  onClick={() => { setShowProductActions(false); setShowMissingImageConfirm(true); }}
+                >
+                  Unpublish missing-image products{missingImageStats ? ` (${missingImageStats.published})` : ''}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
       <BookRequestsModal open={config.collection === 'products' && showBookRequests} onClose={() => setShowBookRequests(false)} session={session} onToast={setActionStatus} onPendingCount={setPendingBookRequests} />
 
@@ -3637,6 +3662,12 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               <input type="date" aria-label="Settlement end date" value={settlementEnd} onChange={event => setSettlementEnd(event.target.value)} />
             </>}
             {/* Status filter — shown whenever rows have a status column */}
+            <label className="admin-page-size">
+              <span>Rows</span>
+              <select value={tablePageSize} onChange={event => setTablePageSize(Number(event.target.value))}>
+                {[5, 10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
             {rows.some(r => 'status' in r) && (
               <select
                 value={filterStatus}
@@ -3650,12 +3681,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               </select>
             )}
             <div className="atc-search"><span>Search</span><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search records" /></div>
-            <label className="admin-page-size">
-              <span>Rows</span>
-              <select value={tablePageSize} onChange={event => setTablePageSize(Number(event.target.value))}>
-                {[5, 10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
-              </select>
-            </label>
+            {config.collection === 'products' && isApiMode() && (
+              <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl('products', 'zip')}>Export ZIP</a>
+            )}
           </div>
         </div>
         {loadError ? (
@@ -4617,7 +4645,7 @@ const TeachersView = ({ session }) => {
         <div>
           <h2 className="admin-page-title">Active Teachers</h2>
           <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginTop:4 }}>
-            Only teacher accounts are shown. Admin and staff accounts are excluded. Use the export buttons for records.
+            Only enabled teacher accounts with verified email addresses are shown. Admin, staff, unverified, and disabled accounts are excluded.
           </p>
         </div>
         {isApiMode() && canExportTeachers && (
@@ -4639,7 +4667,7 @@ const TeachersView = ({ session }) => {
         ) : teachers === null ? (
           <EmptySection title="Loading…" body="" />
         ) : rankedTeachers.length === 0 ? (
-          <EmptySection title="No Active Teachers Yet" body="Teacher accounts will appear here after registration and activation." />
+          <EmptySection title="No Active Teachers Yet" body="Teacher accounts appear here after email verification and activation." />
         ) : (
           <AdminTableScroll>
             <table className="admin-table">
