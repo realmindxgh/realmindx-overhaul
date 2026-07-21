@@ -112,6 +112,7 @@ const CoverPlaceholder = ({
   title,
   idx = 0,
   small = false,
+  showTitle = true,
   image = null,
   loading = 'lazy',
   decoding = 'async',
@@ -144,7 +145,7 @@ const CoverPlaceholder = ({
       <span className="bs-ph-spine" style={{ background: tint }} />
       {small
         ? <span className="bs-ph-label">Cover coming soon</span>
-        : <span className="bs-ph-title" style={{ color: tint }}>{title}</span>}
+        : showTitle && <span className="bs-ph-title" style={{ color: tint }}>{title}</span>}
     </div>
   );
 };

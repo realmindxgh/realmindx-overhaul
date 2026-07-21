@@ -60,6 +60,7 @@
   - `$env:FLASK_APP = "backend:create_app"`
   - `$env:FLASK_ENV = "development"`
   - `& .venv\Scripts\python.exe scripts\seed_teacher_account.py`
+- The approved persistent local Bookshop catalogue is `realmindx-site\realmindx_local.db`. It is intentionally excluded from Git and survives local server restarts. To create or refresh its catalogue without touching production data, use the same environment values above and run `& .venv\Scripts\python.exe scripts\seed_test_products.py` from `realmindx-site`. The seed is idempotent by product slug; do not point it at any other database.
 - Store any future local account seeds or login changes in `AGENTS.md` so follow-up agents can reuse the same local setup and avoid repeated debugging.
 
 ## Agent Safety and Windows Environment Rules

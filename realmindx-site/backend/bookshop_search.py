@@ -132,9 +132,13 @@ def exam_picks_filter():
     jhs_terms = taxonomy_filter_terms("level", "junior-high-lower-secondary")
     shs_terms = taxonomy_filter_terms("level", "senior-high-upper-secondary")
 
-    curriculum_clause = or_(*(Product.curriculum.ilike(t) for t in curriculum_terms))
-    jhs_clause = and_(curriculum_clause, or_(*(Product.level.ilike(t) for t in jhs_terms)))
-    shs_clause = and_(curriculum_clause, or_(*(Product.level.ilike(t) for t in shs_terms)))
+    # Taxonomy aliases are terms, rather than always complete stored values.
+    # Use partial matching so valid local legacy data such as "GES Standard"
+    # is included alongside the canonical production values. This mirrors the
+    # documented ILIKE '%term%' taxonomy behaviour.
+    curriculum_clause = or_(*(Product.curriculum.ilike(f"%{t}%") for t in curriculum_terms))
+    jhs_clause = and_(curriculum_clause, or_(*(Product.level.ilike(f"%{t}%") for t in jhs_terms)))
+    shs_clause = and_(curriculum_clause, or_(*(Product.level.ilike(f"%{t}%") for t in shs_terms)))
     return or_(jhs_clause, shs_clause)
 
 

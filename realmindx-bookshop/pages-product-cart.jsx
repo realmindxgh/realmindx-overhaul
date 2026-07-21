@@ -1,7 +1,7 @@
 ﻿import React from 'react';
 import { Icon, Stars, LoadingState, cedis, CoverPlaceholder } from './shared.jsx';
 import { useCart, useWishlist, ProductCard } from './chrome.jsx';
-import { useCatalog } from './catalog.jsx';
+import { useCatalog, fromApiProduct } from './catalog.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { trackProductView } from '../src/lib/analytics.js';
 import { canUseLocalFallback, useSiteCopyState } from '../src/lib/siteContent.js';
@@ -891,10 +891,47 @@ const WishlistPage = ({ navigate }) => {
   const wishlist = useWishlist();
   const { add: addToCart, addMany: addManyToCart } = useCart();
   const { books, loading: catalogLoading } = useCatalog();
+  const [resolvedBooks, setResolvedBooks] = React.useState(() => (isApiMode() ? [] : books));
+  const [wishlistLoading, setWishlistLoading] = React.useState(false);
 
-  const wishlisted = books.filter(b => wishlist?.has(b.id));
+  React.useEffect(() => {
+    const ids = wishlist?.items || [];
+    if (!isApiMode()) {
+      setResolvedBooks(books);
+      setWishlistLoading(false);
+      return undefined;
+    }
+    if (!ids.length) {
+      setResolvedBooks([]);
+      setWishlistLoading(false);
+      return undefined;
+    }
 
-  if (catalogLoading && (wishlist?.count || 0) > 0 && wishlisted.length === 0) return (
+    let cancelled = false;
+    setWishlistLoading(true);
+    // The normal catalogue endpoint is cached and proxy-safe in every
+    // supported deployment. Resolve the saved IDs from it instead of making
+    // tab navigation depend on a POST-only batch request.
+    api.fetchProducts('?limit=100')
+      .then(({ items = [] }) => {
+        if (cancelled) return;
+        const byId = new Map(items.map(item => [String(item.id), fromApiProduct(item)]));
+        // Keep the user's saved order and quietly drop products that are no
+        // longer active in the catalogue.
+        setResolvedBooks(ids.map(id => byId.get(String(id))).filter(Boolean));
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedBooks([]);
+      })
+      .finally(() => {
+        if (!cancelled) setWishlistLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [books, wishlist?.items]);
+
+  const wishlisted = (isApiMode() ? resolvedBooks : books).filter(b => wishlist?.has(b.id));
+
+  if ((catalogLoading || wishlistLoading) && (wishlist?.count || 0) > 0 && wishlisted.length === 0) return (
     <div className="bs-container bs-fade-page">
       <LoadingState
         title="Loading your wishlist"
@@ -926,7 +963,7 @@ const WishlistPage = ({ navigate }) => {
       <div className="bs-empty-state">
         <div className="bs-empty-icon"><Icon name="heart" size={40} /></div>
         <h2 className="bs-h2">Your wishlist is empty.</h2>
-        <p>Tap the <Icon name="heart" size={14} style={{ verticalAlign:'middle' }} /> on any product to save it here.</p>
+        <p>Tap the heart on any product to save it here.</p>
         <button className="bs-btn bs-btn-gold bs-btn-lg" onClick={() => navigate('shop')}>Browse the Shop <Icon name="arrow" size={16} /></button>
       </div>
     </div>
@@ -1020,6 +1057,12 @@ const WishlistPage = ({ navigate }) => {
           </section>
         );
       })()}
+
+      <div className="bs-wishlist-continue">
+        <button className="bs-btn bs-btn-navy bs-btn-lg" onClick={() => navigate('shop')}>
+          <Icon name="chevL" size={15} /> Continue Shopping
+        </button>
+      </div>
     </div>
   );
 };

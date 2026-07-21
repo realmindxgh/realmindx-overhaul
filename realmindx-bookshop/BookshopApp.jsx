@@ -897,6 +897,7 @@ const App = () => {
                 <BookshopErrorBoundary>
                   <BookshopBackButton navigate={navigate} />
                   {page}
+                  <Footer navigate={navigate} />
                 </BookshopErrorBoundary>
               </div>
             )}

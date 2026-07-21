@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend import create_app
 from backend.extensions import db
-from backend.models import ProductCategory, Product
+from backend.models import ProductCategory, Product, SiteSetting
 from decimal import Decimal
 from datetime import datetime, timezone
 
@@ -26,6 +26,19 @@ CATEGORIES = [
     {"name": "Stationery", "slug": "stationery", "description": "Writing materials and supplies"},
     {"name": "Professional Development", "slug": "professional-development", "description": "Career and skill development books"},
 ]
+
+# These scoped public settings make the API-backed local Bookshop feel complete
+# after seeding: footer, contact, checkout and support pages use the same data.
+BOOKSHOP_SETTINGS = {
+    "contact_email": "info@realmindxgh.com",
+    "contact_phone_1": "+233 55 803 9190",
+    "contact_phone_2": "+233 55 452 9493",
+    "contact_phone_3": "+233 55 132 4729",
+    "contact_address": "Dome Pillar 2, Accra, Ghana",
+    "working_hours_weekday": "Monday - Friday: 8:00am - 5:00pm",
+    "working_hours_saturday": "Saturday: 9:00am - 1:00pm",
+    "contact_map_embed": "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3970.4149449183387!2d-0.21959702603021514!3d5.652959532669197!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0xfdf9d0d971fa545%3A0xb6793ef61afc720f!2sDome%20pillar%202!5e0!3m2!1sen!2sgh!4v1780224663665!5m2!1sen!2sgh",
+}
 
 PRODUCTS = [
     # Textbooks (category 1)
@@ -92,6 +105,15 @@ PRODUCTS = [
 
 def seed():
     with app.app_context():
+        for key, value in BOOKSHOP_SETTINGS.items():
+            storage_key = f"bookshop__{key}"
+            setting = SiteSetting.query.filter_by(key=storage_key).first()
+            if not setting:
+                setting = SiteSetting(key=storage_key)
+                db.session.add(setting)
+            setting.value = value
+            setting.public = True
+
         # Create categories (skip "Stationery" since it already exists)
         existing_slugs = {c.slug for c in ProductCategory.query.all()}
         cat_map = {}

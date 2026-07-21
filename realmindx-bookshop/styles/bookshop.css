@@ -838,11 +838,12 @@
 }
 .bs-wa-fab:hover { transform: scale(1.08); background: #1da851; }
 @media (max-width: 768px) { .bs-wa-fab { bottom: calc(var(--bs-bottomnav-h) + 16px); } }
-.bs-scrolltop-fab {
+.bs button.bs-scrolltop-fab {
   position: fixed;
   right: 26px;
   bottom: 92px;
-  z-index: 699;
+  /* Stay above overlay content and the WhatsApp FAB, but below bottom nav. */
+  z-index: 710;
   width: 44px;
   height: 44px;
   border: 1px solid rgba(20,54,112,.2);
@@ -855,7 +856,7 @@
   transition: transform .18s, background .18s, color .18s, box-shadow .18s;
   animation: bsFadePage .2s ease;
 }
-.bs-scrolltop-fab:hover {
+.bs button.bs-scrolltop-fab:hover {
   transform: translateY(-2px);
   background: var(--bs-navy);
   color: #fff;
@@ -1517,14 +1518,15 @@
 .bs-qty-stepper.sm input { width: 38px; height: 36px; font-size: 14px; }
 @media (max-width: 600px) {
   .bs-cart-page-head { align-items: flex-start; gap: 12px; }
-  .bs-cart-page-head .bs-h2 { font-size: clamp(22px, 6.5vw, 24px) !important; }
+  .bs-cart-page-head .bs-h2 { font-size: clamp(20px, 5.8vw, 22px) !important; }
+  .bs-cart-count-copy { gap: 0; font-size: 13px; line-height: 1.4; }
   .bs-cart-head-actions { align-items: stretch; flex-direction: column; gap: 8px; }
   .bs-cart-clear-btn,
-  .bs-cart-invoice-btn { min-height: 32px; padding: 0 10px; font-size: 11px; width: 100%; }
+  .bs-cart-invoice-btn { min-height: 30px; padding: 0 9px; font-size: 10px; width: 100%; letter-spacing: .02em; }
   .bs-cart-item { grid-template-columns: 32px 78px 1fr; gap: 12px; min-height: 186px; padding: 22px 0; }
   .bs-cart-item-cover { width: 72px; }
   .bs-cart-item-mid { padding-right: 0; }
-  .bs-cart-item-title { font-size: 15px; line-height: 1.45; max-width: none; }
+  .bs-cart-item-title { font-size: 13px; line-height: 1.35; max-width: none; }
   .bs-cart-meta-row { justify-content: space-between; }
   .bs-cart-wishlist-link { width: 30px; height: 30px; flex-basis: 30px; }
   .bs-cart-item-right { grid-column: 2 / -1; justify-content: space-between; gap: 12px; padding-bottom: 0; }
@@ -1599,6 +1601,7 @@
 .bs-form-card { background: #fff; border: 1px solid var(--bs-border); border-radius: var(--bs-radius-md); padding: 30px; box-shadow: var(--bs-shadow-sm); }
 .bs-form-card .bs-h3 { font-size: 20px; color: var(--bs-navy); margin-bottom: 22px; }
 .bs-field { margin-bottom: 18px; }
+.bs-field:is(label) { display: block; }
 .bs-field label,
 .bs-field > span { display: block; font-family:'Montserrat',sans-serif; font-weight: 600; font-size: 13px; color: var(--bs-navy); margin-bottom: 7px; }
 .bs-field input, .bs-field textarea, .bs-field select { width: 100%; height: 48px; border: 1.5px solid var(--bs-border); border-radius: var(--bs-radius-sm); padding: 0 15px; font-size: 15px; background: #fff; color: var(--bs-text); transition: border-color .2s, box-shadow .2s; }
@@ -1903,6 +1906,10 @@
   .bs-steps { margin: 24px 0 28px; }
   .bs-form-card { padding: 22px 18px; }
   .bs-mobile-summary-bar { padding: 14px 16px; }
+  .bs-checkout .bs-h1, .bs-checkout h1 { font-size: 23px; }
+  .bs-checkout .bs-h2, .bs-checkout h2 { font-size: 20px; }
+  .bs-checkout .bs-field label, .bs-checkout .bs-field > span { font-size: 12px; }
+  .bs-checkout .bs-field input, .bs-checkout .bs-field select, .bs-checkout .bs-field textarea { font-size: 14px; }
 }
 .bs-trust-badges { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 16px; flex-wrap: wrap; }
 .bs-trust-badge { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--bs-muted); font-weight: 600; }
@@ -4917,7 +4924,7 @@
   gap: 12px;
   margin-bottom: 24px;
 }
-.bs-wishlist-move-all { min-height: 44px; }
+.bs button.bs-wishlist-move-all { min-height: 36px; padding: 0 13px; white-space: nowrap; }
 .bs-wishlist-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -4947,13 +4954,25 @@
 .bs-wishlist-actions {
   display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px;
 }
+.bs-wishlist-continue {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0 56px;
+}
 .bs-btn-sm {
   padding: 6px 12px; font-size: 12px; height: auto;
   display: inline-flex; align-items: center; gap: 5px;
 }
 @media (max-width: 560px) {
-  .bs-wishlist-head { align-items: stretch; }
-  .bs-wishlist-move-all { width: 100%; justify-content: center; }
+  .bs-wishlist-head { align-items: flex-start; flex-wrap: nowrap; gap: 10px; }
+  .bs button.bs-wishlist-move-all {
+    width: auto;
+    min-height: 30px;
+    padding: 0 9px;
+    font-size: 10px;
+    letter-spacing: .02em;
+    flex-shrink: 0;
+  }
   .bs-wishlist-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
 }
 
@@ -5007,7 +5026,10 @@
   }
 
   /* ── Mobile tab panel sticky overrides ────────────────────── */
-  .bs-tab-panel .bs-shop-toolbar { top: 0; }
+  /* The panel scrolls beneath the fixed bookshop navigation. Keep catalog
+     controls directly below that navigation, matching the product page. */
+  .bs-tab-panel .bs-shop-toolbar,
+  .bs-tab-overlay .bs-shop-toolbar { top: 0; }
   .bs-tab-panel .bs-filter-card { top: 0; }
   .bs-tab-panel .bs-summary-card { top: 0; }
   .bs-tab-panel .bs-mini-summary { top: 0; }

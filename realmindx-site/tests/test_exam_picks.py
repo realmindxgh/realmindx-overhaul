@@ -58,6 +58,8 @@ class ExamPicksEndpointTests(unittest.TestCase):
             _product("JHS English",     "GES / NaCCA Curriculum", "Junior High / Lower Secondary", self.category_id),
             _product("SHS Core Maths",  "GES / NaCCA Curriculum", "Senior High / Upper Secondary", self.category_id),
             _product("SHS Elective Maths", "GES / NaCCA Curriculum", "Senior High / Upper Secondary", self.category_id),
+            _product("Legacy JHS Science", "GES Standard", "JHS", self.category_id),
+            _product("Legacy SHS Physics", "GES Standard", "SHS", self.category_id),
             _product("Primary Maths",   "GES / NaCCA Curriculum", "Upper Primary", self.category_id),
             _product("KG Workbook",     "GES / NaCCA Curriculum", "Kindergarten", self.category_id),
             _product("Sixth Form Physics", "GES / NaCCA Curriculum", "Sixth Form / Pre-University", self.category_id),
@@ -98,6 +100,11 @@ class ExamPicksEndpointTests(unittest.TestCase):
         titles = self._titles(resp)
         self.assertIn("SHS Core Maths", titles)
         self.assertIn("SHS Elective Maths", titles)
+
+    def test_includes_documented_local_legacy_taxonomy_values(self):
+        titles = self._titles(self._exam_picks())
+        self.assertIn("Legacy JHS Science", titles)
+        self.assertIn("Legacy SHS Physics", titles)
 
     def test_excludes_ges_primary(self):
         resp = self._exam_picks()
@@ -146,7 +153,7 @@ class ExamPicksEndpointTests(unittest.TestCase):
     def test_total_count(self):
         resp = self._exam_picks()
         data = resp.get_json()
-        self.assertEqual(data["total"], 4)
+        self.assertEqual(data["total"], 6)
 
     def test_products_endpoint_without_exam_picks_returns_all(self):
         resp = self.client.get("/api/products?page=1&per_page=50")

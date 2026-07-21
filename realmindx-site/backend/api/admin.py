@@ -2458,6 +2458,73 @@ def preview_product_import():
     )
 
 
+def _build_admin_export_pdf(title, headers, data_rows):
+    """Build a readable, repeat-header table for admin exports.
+
+    CSV/XLSX preserve every field for operational work. The PDF intentionally
+    uses the same columns in landscape A3 so it remains a complete printable
+    report instead of a truncated list of pipe-separated values.
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A3, landscape
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, TableStyle
+
+    stream = io.BytesIO()
+    document = SimpleDocTemplate(
+        stream,
+        pagesize=landscape(A3),
+        leftMargin=10 * mm,
+        rightMargin=10 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+        title=title,
+        author="RealMindX",
+    )
+    styles = getSampleStyleSheet()
+    heading = styles["Title"]
+    heading.fontName = "Helvetica-Bold"
+    heading.fontSize = 17
+    heading.leading = 21
+    heading.textColor = colors.HexColor("#143670")
+    cell = styles["BodyText"]
+    cell.fontName = "Helvetica"
+    cell.fontSize = 5.8
+    cell.leading = 7.2
+    cell.textColor = colors.HexColor("#172b4d")
+    header = styles["BodyText"]
+    header.fontName = "Helvetica-Bold"
+    header.fontSize = 5.8
+    header.leading = 7
+    header.textColor = colors.white
+
+    def value(item):
+        text = str(item if item not in (None, "") else "-")
+        return escape(text).replace("\n", "<br/>")
+
+    table_data = [[Paragraph(escape(column.replace("_", " ").title()), header) for column in headers]]
+    for row in data_rows:
+        table_data.append([Paragraph(value(row.get(column)), cell) for column in headers])
+    usable_width = landscape(A3)[0] - document.leftMargin - document.rightMargin
+    table = LongTable(table_data, colWidths=[usable_width / max(len(headers), 1)] * len(headers), repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#143670")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d9e2f0")),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f9fd")]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    document.build([Paragraph(title, heading), Spacer(1, 5 * mm), table])
+    stream.seek(0)
+    return stream
+
+
 @admin_bp.get("/products/export")
 @login_required
 @permission_required("products.export")
@@ -2506,17 +2573,8 @@ def export_products():
         return send_file(stream, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name="products.xlsx")
     if export_format == "pdf":
         try:
-            from reportlab.pdfgen import canvas as rl_canvas
-            from reportlab.lib.pagesizes import A4
+            pdf_stream = _build_admin_export_pdf("RealMindX Bookshop Products", headers, data_rows)
         except ImportError: return jsonify(error="PDF export requires reportlab."), 501
-        pdf_stream = io.BytesIO(); pdf = rl_canvas.Canvas(pdf_stream, pagesize=A4); width, height = A4; y = height - 40
-        pdf.setFont("Helvetica-Bold", 14); pdf.drawString(40, y, "RealMindX Bookshop Products")
-        y -= 20; pdf.setFont("Helvetica", 8)
-        for row in data_rows:
-            line = f"{row['id']} | {row['name']} | {row['category']} | GHS {row['price']} | {row['stock_status']}"
-            pdf.drawString(40, y, line[:135]); y -= 12
-            if y < 40: pdf.showPage(); y = height - 40; pdf.setFont("Helvetica", 8)
-        pdf.save(); pdf_stream.seek(0)
         return send_file(pdf_stream, mimetype="application/pdf", as_attachment=True, download_name="products.pdf")
     if export_format == "zip":
         zip_stream = io.BytesIO()
@@ -2524,16 +2582,8 @@ def export_products():
             csv_out = io.StringIO(); writer = csv.DictWriter(csv_out, fieldnames=headers); writer.writeheader(); writer.writerows(data_rows)
             zf.writestr("products.csv", csv_out.getvalue())
             try:
-                from reportlab.pdfgen import canvas as rl_canvas
-                from reportlab.lib.pagesizes import A4
-                pdf_stream = io.BytesIO(); pdf = rl_canvas.Canvas(pdf_stream, pagesize=A4); width, height = A4; y = height - 40
-                pdf.setFont("Helvetica-Bold", 14); pdf.drawString(40, y, "RealMindX Bookshop Products")
-                y -= 20; pdf.setFont("Helvetica", 8)
-                for row in data_rows:
-                    line = f"{row['id']} | {row['name']} | {row['category']} | GHS {row['price']} | {row['stock_status']}"
-                    pdf.drawString(40, y, line[:135]); y -= 12
-                    if y < 40: pdf.showPage(); y = height - 40; pdf.setFont("Helvetica", 8)
-                pdf.save(); pdf_stream.seek(0); zf.writestr("products.pdf", pdf_stream.getvalue())
+                pdf_stream = _build_admin_export_pdf("RealMindX Bookshop Products", headers, data_rows)
+                zf.writestr("products.pdf", pdf_stream.getvalue())
             except ImportError: zf.writestr("products.pdf", b"PDF export requires reportlab.")
             for product in rows:
                 if getattr(product, "image_file", None) and product.image_file.storage_path:
@@ -2549,9 +2599,11 @@ def export_products():
 @login_required
 @permission_required("teachers.export")
 def export_users():
-    """Export registered teachers/users as Excel or CSV."""
+    """Export registered teachers with their complete work preferences."""
     from openpyxl import Workbook as XlsxWorkbook
     export_format = (request.args.get("format") or "xlsx").lower()
+    if export_format not in {"csv", "xlsx", "pdf"}:
+        return jsonify(error="Unsupported format. Use csv, xlsx, or pdf."), 400
     rows = (
         User.query
         .join(Role, User.role_id == Role.id, isouter=True)
@@ -2559,36 +2611,61 @@ def export_users():
         .order_by(User.created_at.desc())
         .all()
     )
-    headers = ["id", "first_name", "last_name", "email", "phone", "is_verified", "last_login_at", "created_at"]
+    headers = [
+        "id", "first_name", "last_name", "email", "phone", "is_verified", "last_login_at", "created_at",
+        "location", "teaching_subject", "preferred_level", "preferred_employment_type", "available_from",
+        "curriculum_experience", "preferred_locations", "years_of_experience", "date_of_birth", "bio",
+        "cv_filename", "certificate_filename", "next_of_kin_name", "next_of_kin_phone",
+        "next_of_kin_relationship", "next_of_kin_email",
+    ]
+
+    data_rows = []
+    for u in rows:
+        profile = u.profile
+        data_rows.append({
+            "id": u.id, "first_name": u.first_name or "", "last_name": u.last_name or "",
+            "email": u.email, "phone": u.phone or "", "is_verified": "Yes" if u.is_verified else "No",
+            "last_login_at": str(u.last_login_at or ""), "created_at": str(u.created_at or ""),
+            "location": getattr(profile, "location", "") or "",
+            "teaching_subject": getattr(profile, "teaching_subject", "") or "",
+            "preferred_level": getattr(profile, "preferred_level", "") or "",
+            "preferred_employment_type": getattr(profile, "preferred_employment_type", "") or "",
+            "available_from": getattr(profile, "available_from", "") or "",
+            "curriculum_experience": getattr(profile, "curriculum_experience", "") or "",
+            "preferred_locations": getattr(profile, "preferred_locations", "") or "",
+            "years_of_experience": getattr(profile, "years_of_experience", "") or "",
+            "date_of_birth": str(getattr(profile, "date_of_birth", "") or ""),
+            "bio": getattr(profile, "bio", "") or "",
+            "cv_filename": getattr(db.session.get(UploadedFile, getattr(profile, "cv_file_id", None)), "original_filename", "") if profile and getattr(profile, "cv_file_id", None) else "",
+            "certificate_filename": getattr(db.session.get(UploadedFile, getattr(profile, "certificate_file_id", None)), "original_filename", "") if profile and getattr(profile, "certificate_file_id", None) else "",
+            "next_of_kin_name": getattr(profile, "next_of_kin_name", "") or "",
+            "next_of_kin_phone": getattr(profile, "next_of_kin_phone", "") or "",
+            "next_of_kin_relationship": getattr(profile, "next_of_kin_relationship", "") or "",
+            "next_of_kin_email": getattr(profile, "next_of_kin_email", "") or "",
+        })
 
     if export_format == "csv":
         out = io.StringIO()
         writer = csv.DictWriter(out, fieldnames=headers)
         writer.writeheader()
-        for u in rows:
-            writer.writerow({
-                "id": u.id, "first_name": u.first_name or "", "last_name": u.last_name or "",
-                "email": u.email, "phone": u.phone or "",
-                "is_verified": u.is_verified, "last_login_at": str(u.last_login_at or ""),
-                "created_at": str(u.created_at),
-            })
+        writer.writerows(data_rows)
         return Response(out.getvalue(), mimetype="text/csv",
                         headers={"Content-Disposition": "attachment; filename=realmindx-teachers.csv"})
 
     wb = XlsxWorkbook()
     ws = wb.active
     ws.title = "Teachers"
-    ws.append(["ID", "First Name", "Last Name", "Email", "Phone", "Verified", "Last Login", "Registered"])
-    for u in rows:
-        ws.append([
-            u.id, u.first_name or "", u.last_name or "", u.email, u.phone or "",
-            "Yes" if u.is_verified else "No",
-            str(u.last_login_at.date() if u.last_login_at else ""),
-            str(u.created_at.date()),
-        ])
+    ws.append([column.replace("_", " ").title() for column in headers])
+    for row in data_rows:
+        ws.append([row[column] for column in headers])
     stream = io.BytesIO()
     wb.save(stream)
     stream.seek(0)
+    if export_format == "pdf":
+        try:
+            return send_file(_build_admin_export_pdf("RealMindX Teachers", headers, data_rows), mimetype="application/pdf", as_attachment=True, download_name="realmindx-teachers.pdf")
+        except ImportError:
+            return jsonify(error="PDF export requires reportlab."), 501
     return send_file(stream, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      as_attachment=True, download_name="realmindx-teachers.xlsx")
 
@@ -2600,8 +2677,12 @@ def export_jobs():
     """Export job posts as CSV, XLSX, or PDF."""
     export_format = (request.args.get("format") or "csv").lower()
     rows = Job.query.order_by(Job.created_at.desc()).all()
-    headers = ["id", "title", "organisation", "location", "subject", "level",
-               "employment_type", "salary_min", "salary_max", "deadline", "status", "created_at"]
+    headers = [
+        "id", "title", "organisation", "location", "delivery_zone", "subject", "level", "curriculum",
+        "employment_type", "preferred_sex", "preferred_age_range", "description", "requirements",
+        "responsibilities", "salary_min", "salary_max", "salary_currency", "deadline", "status",
+        "created_by_user_id", "created_at", "updated_at",
+    ]
 
     data_rows = [
         {
@@ -2609,14 +2690,24 @@ def export_jobs():
             "title": j.title,
             "organisation": j.organisation or "",
             "location": j.location or "",
+            "delivery_zone": j.delivery_zone.name if j.delivery_zone else "",
             "subject": j.subject or "",
             "level": j.level or "",
+            "curriculum": j.curriculum or "",
             "employment_type": j.employment_type or "",
+            "preferred_sex": j.preferred_sex or "",
+            "preferred_age_range": j.preferred_age_range or "",
+            "description": j.description or "",
+            "requirements": j.requirements or "",
+            "responsibilities": j.responsibilities or "",
             "salary_min": float(j.salary_min) if j.salary_min is not None else "",
             "salary_max": float(j.salary_max) if j.salary_max is not None else "",
+            "salary_currency": j.salary_currency or "",
             "deadline": str(j.deadline) if j.deadline else "",
             "status": j.status,
-            "created_at": str(j.created_at.date()) if j.created_at else "",
+            "created_by_user_id": j.created_by_id or "",
+            "created_at": j.created_at.isoformat() if j.created_at else "",
+            "updated_at": j.updated_at.isoformat() if j.updated_at else "",
         }
         for j in rows
     ]
@@ -2648,29 +2739,9 @@ def export_jobs():
 
     if export_format == "pdf":
         try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.pdfgen import canvas as rl_canvas
+            return send_file(_build_admin_export_pdf("RealMindX Job Posts", headers, data_rows), mimetype="application/pdf", as_attachment=True, download_name="realmindx-jobs.pdf")
         except ImportError:
             return jsonify(error="PDF export requires reportlab."), 501
-        stream = io.BytesIO()
-        pdf = rl_canvas.Canvas(stream, pagesize=A4)
-        width, height = A4
-        y = height - 48
-        pdf.setFont("Helvetica-Bold", 14)
-        pdf.drawString(40, y, "RealMindX Job Posts")
-        y -= 28
-        pdf.setFont("Helvetica", 8)
-        for j in rows:
-            line = f"{j.id}. {j.title} | {j.organisation or ''} | {j.location or ''} | {j.status}"
-            pdf.drawString(40, y, line[:135])
-            y -= 14
-            if y < 44:
-                pdf.showPage()
-                y = height - 48
-                pdf.setFont("Helvetica", 8)
-        pdf.save()
-        stream.seek(0)
-        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name="realmindx-jobs.pdf")
 
     return jsonify(error="Unsupported format. Use csv, xlsx, or pdf."), 400
 
@@ -2688,17 +2759,43 @@ def export_applications():
         .order_by(JobApplication.created_at.desc())
         .all()
     )
-    headers = ["id", "job_title", "applicant_name", "applicant_email", "status", "cover_note", "applied_at"]
+    headers = [
+        "id", "job_id", "job_title", "job_organisation", "job_location", "job_subject", "job_level",
+        "applicant_id", "applicant_name", "applicant_email", "applicant_phone", "applicant_sex",
+        "applicant_age_range", "applicant_location", "teaching_subject", "preferred_level",
+        "preferred_employment_type", "available_from", "years_of_experience", "curriculum_experience",
+        "preferred_locations", "status", "cover_note", "cv_filename", "certificate_filename", "applied_at", "updated_at",
+    ]
 
     data_rows = [
         {
             "id": a.id,
+            "job_id": a.job_id,
             "job_title": a.job.title if a.job else "",
+            "job_organisation": a.job.organisation if a.job else "",
+            "job_location": a.job.location if a.job else "",
+            "job_subject": a.job.subject if a.job else "",
+            "job_level": a.job.level if a.job else "",
+            "applicant_id": a.user_id,
             "applicant_name": f"{a.user.first_name or ''} {a.user.last_name or ''}".strip() if a.user else "",
             "applicant_email": a.user.email if a.user else "",
+            "applicant_phone": a.user.phone if a.user else "",
+            "applicant_sex": a.user.sex if a.user else "",
+            "applicant_age_range": a.user.age_range if a.user else "",
+            "applicant_location": a.user.profile.location if a.user and a.user.profile else "",
+            "teaching_subject": a.user.profile.teaching_subject if a.user and a.user.profile else "",
+            "preferred_level": a.user.profile.preferred_level if a.user and a.user.profile else "",
+            "preferred_employment_type": a.user.profile.preferred_employment_type if a.user and a.user.profile else "",
+            "available_from": a.user.profile.available_from if a.user and a.user.profile else "",
+            "years_of_experience": a.user.profile.years_of_experience if a.user and a.user.profile else "",
+            "curriculum_experience": a.user.profile.curriculum_experience if a.user and a.user.profile else "",
+            "preferred_locations": a.user.profile.preferred_locations if a.user and a.user.profile else "",
             "status": a.status,
-            "cover_note": (a.cover_note or "")[:200],
-            "applied_at": str(a.created_at.date()) if a.created_at else "",
+            "cover_note": a.cover_note or "",
+            "cv_filename": getattr(db.session.get(UploadedFile, a.cv_file_id), "original_filename", "") if a.cv_file_id else "",
+            "certificate_filename": getattr(db.session.get(UploadedFile, a.certificate_file_id), "original_filename", "") if a.certificate_file_id else "",
+            "applied_at": a.created_at.isoformat() if a.created_at else "",
+            "updated_at": a.updated_at.isoformat() if a.updated_at else "",
         }
         for a in rows
     ]
@@ -2730,31 +2827,9 @@ def export_applications():
 
     if export_format == "pdf":
         try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.pdfgen import canvas as rl_canvas
+            return send_file(_build_admin_export_pdf("RealMindX Job Applications", headers, data_rows), mimetype="application/pdf", as_attachment=True, download_name="realmindx-applications.pdf")
         except ImportError:
             return jsonify(error="PDF export requires reportlab."), 501
-        stream = io.BytesIO()
-        pdf = rl_canvas.Canvas(stream, pagesize=A4)
-        width, height = A4
-        y = height - 48
-        pdf.setFont("Helvetica-Bold", 14)
-        pdf.drawString(40, y, "RealMindX Job Applications")
-        y -= 28
-        pdf.setFont("Helvetica", 8)
-        for a in rows:
-            name = f"{a.user.first_name or ''} {a.user.last_name or ''}".strip() if a.user else "Unknown"
-            email = a.user.email if a.user else ""
-            line = f"{a.id}. {a.job.title if a.job else '?'} | {name} | {email} | {a.status}"
-            pdf.drawString(40, y, line[:135])
-            y -= 14
-            if y < 44:
-                pdf.showPage()
-                y = height - 48
-                pdf.setFont("Helvetica", 8)
-        pdf.save()
-        stream.seek(0)
-        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name="realmindx-applications.pdf")
 
     return jsonify(error="Unsupported format. Use csv, xlsx, or pdf."), 400
 
@@ -3330,8 +3405,18 @@ def admin_resolve_delivery_settlement_dispute(batch_id):
 def _settlement_export_response(batch, export_format):
     rows = [line_json(line) for line in batch.lines]
     for row in rows:
-        row.update(payment_reference=batch.payment_reference, dispute_status=batch.dispute_status)
-    headers = ["settlement_date", "order_reference", "company_name", "rider_name", "customer_name", "delivery_location", "payment_method", "book_subtotal", "customer_delivery_fee", "company_payable", "promotion_amount", "promotion_payer", "amount_collected_realmindx", "amount_collected_company", "amount_due_realmindx", "amount_due_company", "net_balance", "status", "delivered_at", "payment_reference", "dispute_status"]
+        row.update(
+            batch_reference=batch.reference,
+            batch_status=batch.status,
+            batch_payment_reference=batch.payment_reference,
+            batch_payment_date=batch.payment_date.isoformat() if batch.payment_date else "",
+            batch_adjustment_amount=float(batch.adjustment_amount or 0),
+            batch_adjustment_reason=batch.adjustment_reason or "",
+            dispute_status=batch.dispute_status,
+            dispute_notes=batch.dispute_notes or "",
+            resolution_notes=batch.resolution_notes or "",
+        )
+    headers = ["id", "batch_id", "batch_reference", "settlement_date", "batch_status", "order_id", "order_reference", "delivery_id", "company_id", "company_name", "rider_id", "rider_name", "customer_name", "delivery_location", "payment_method", "book_subtotal", "customer_delivery_fee", "company_payable", "promotion_amount", "promotion_payer", "amount_collected_realmindx", "amount_collected_company", "amount_due_realmindx", "amount_due_company", "net_balance", "adjustment_amount", "adjustment_reason", "batch_adjustment_amount", "batch_adjustment_reason", "status", "delivered_at", "created_at", "batch_payment_reference", "batch_payment_date", "dispute_status", "dispute_notes", "resolution_notes"]
     if export_format == "csv":
         output = io.StringIO(); writer = csv.DictWriter(output, fieldnames=headers); writer.writeheader()
         writer.writerows([{key: row.get(key) for key in headers} for row in rows])
@@ -3345,28 +3430,12 @@ def _settlement_export_response(batch, export_format):
         return send_file(stream, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=f"{batch.reference}.xlsx")
     if export_format == "pdf":
         try:
-            from reportlab.lib.pagesizes import landscape, A4
-            from reportlab.pdfgen import canvas as rl_canvas
+            return send_file(_build_admin_export_pdf(f"RealMindX Delivery Settlement {batch.reference}", headers, rows), mimetype="application/pdf", as_attachment=True, download_name=f"{batch.reference}.pdf")
         except ImportError: return jsonify(error="PDF export requires reportlab."), 501
-        stream = io.BytesIO(); pdf = rl_canvas.Canvas(stream, pagesize=landscape(A4)); width, height = landscape(A4)
-        totals = batch_json(batch); y = height - 40; pdf.setFont("Helvetica-Bold", 16); pdf.drawString(35, y, "RealMindX Delivery Settlement")
-        y -= 20; pdf.setFont("Helvetica", 9); pdf.drawString(35, y, f"{batch.reference} | {batch.company.name} | {batch.settlement_date} | {batch.status}")
-        y -= 18; pdf.drawString(35, y, f"Deliveries: {totals['delivery_count']} | Book value: GHS {totals['book_subtotal']:.2f} | Company payable: GHS {totals['company_payable']:.2f} | Net: GHS {totals['net_balance']:.2f}")
-        y -= 24; pdf.setFont("Helvetica-Bold", 7); pdf.drawString(35, y, "Order | Rider | Location | Payment | Book | Delivery | Payable | Due RMX | Due Company | Net")
-        pdf.setFont("Helvetica", 7)
-        for row in rows:
-            y -= 14
-            if y < 35: pdf.showPage(); y = height - 40; pdf.setFont("Helvetica", 7)
-            text = f"{row['order_reference']} | {row['rider_name'] or '-'} | {row['delivery_location'] or '-'} | {row['payment_method']} | {row['book_subtotal']:.2f} | {row['customer_delivery_fee']:.2f} | {row['company_payable']:.2f} | {row['amount_due_realmindx']:.2f} | {row['amount_due_company']:.2f} | {row['net_balance']:.2f}"
-            pdf.drawString(35, y, text[:180])
-        pdf.save(); stream.seek(0)
-        return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name=f"{batch.reference}.pdf")
     if export_format == "zip":
         try: from openpyxl import Workbook
         except ImportError: return jsonify(error="ZIP export requires openpyxl."), 501
-        try:
-            from reportlab.lib.pagesizes import landscape, A4
-            from reportlab.pdfgen import canvas as rl_canvas
+        try: pdf_export = _build_admin_export_pdf(f"RealMindX Delivery Settlement {batch.reference}", headers, rows)
         except ImportError: return jsonify(error="ZIP export requires reportlab."), 501
         zip_stream = io.BytesIO()
         with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -3375,18 +3444,7 @@ def _settlement_export_response(batch, export_format):
             workbook = Workbook(); sheet = workbook.active; sheet.title = "Settlement"; sheet.append(headers)
             for row in rows: sheet.append([row.get(key) for key in headers])
             xlsx_stream = io.BytesIO(); workbook.save(xlsx_stream); xlsx_stream.seek(0); zf.writestr(f"{batch.reference}.xlsx", xlsx_stream.getvalue())
-            pdf_stream = io.BytesIO(); pdf = rl_canvas.Canvas(pdf_stream, pagesize=landscape(A4)); width, height = landscape(A4)
-            totals = batch_json(batch); y = height - 40; pdf.setFont("Helvetica-Bold", 16); pdf.drawString(35, y, "RealMindX Delivery Settlement")
-            y -= 20; pdf.setFont("Helvetica", 9); pdf.drawString(35, y, f"{batch.reference} | {batch.company.name} | {batch.settlement_date} | {batch.status}")
-            y -= 18; pdf.drawString(35, y, f"Deliveries: {totals['delivery_count']} | Book value: GHS {totals['book_subtotal']:.2f} | Company payable: GHS {totals['company_payable']:.2f} | Net: GHS {totals['net_balance']:.2f}")
-            y -= 24; pdf.setFont("Helvetica-Bold", 7); pdf.drawString(35, y, "Order | Rider | Location | Payment | Book | Delivery | Payable | Due RMX | Due Company | Net")
-            pdf.setFont("Helvetica", 7)
-            for row in rows:
-                y -= 14
-                if y < 35: pdf.showPage(); y = height - 40; pdf.setFont("Helvetica", 7)
-                text = f"{row['order_reference']} | {row['rider_name'] or '-'} | {row['delivery_location'] or '-'} | {row['payment_method']} | {row['book_subtotal']:.2f} | {row['customer_delivery_fee']:.2f} | {row['company_payable']:.2f} | {row['amount_due_realmindx']:.2f} | {row['amount_due_company']:.2f} | {row['net_balance']:.2f}"
-                pdf.drawString(35, y, text[:180])
-            pdf.save(); pdf_stream.seek(0); zf.writestr(f"{batch.reference}.pdf", pdf_stream.getvalue())
+            zf.writestr(f"{batch.reference}.pdf", pdf_export.getvalue())
         zip_stream.seek(0)
         return send_file(zip_stream, mimetype="application/zip", as_attachment=True, download_name=f"{batch.reference}.zip")
     return jsonify(error="Use csv, xlsx, pdf, or zip."), 400
@@ -3554,18 +3612,28 @@ def export_orders():
         "id",
         "order_reference",
         "customer_name",
+        "customer_sex",
+        "customer_age_range",
         "email",
         "phone",
+        "invoice_id",
+        "payment_reference",
         "delivery_method",
         "delivery_zone_name",
         "delivery_region",
         "location",
         "payment_method",
+        "payment_provider",
         "payment_status",
         "status",
         "subtotal_amount",
+        "bulk_discount_amount",
+        "promo_code",
+        "promo_applies_to",
+        "promo_discount_amount",
         "delivery_fee",
         "total_amount",
+        "paid_at",
         "items",
         "notes",
         "created_at",
@@ -3576,18 +3644,28 @@ def export_orders():
             "id": order.id,
             "order_reference": order.order_reference,
             "customer_name": order.customer_name,
+            "customer_sex": order.customer_sex or "",
+            "customer_age_range": order.customer_age_range or "",
             "email": order.email,
             "phone": order.phone,
+            "invoice_id": order.invoice_id or "",
+            "payment_reference": order.payment_reference or "",
             "delivery_method": order.delivery_method,
             "delivery_zone_name": order.delivery_zone_name or "",
             "delivery_region": order.delivery_region or "",
             "location": order.location or "",
             "payment_method": order.payment_method or "",
+            "payment_provider": order.payment_provider or "",
             "payment_status": order.payment_status or "",
             "status": order.status,
             "subtotal_amount": float(order.subtotal_amount or 0) if order.subtotal_amount is not None else "",
+            "bulk_discount_amount": float(order.bulk_discount_amount or 0),
+            "promo_code": order.promo_code or "",
+            "promo_applies_to": order.promo_applies_to or "",
+            "promo_discount_amount": float(order.promo_discount_amount or 0),
             "delivery_fee": float(order.delivery_fee or 0),
             "total_amount": float(order.total_amount or 0) if order.total_amount is not None else "",
+            "paid_at": str(order.paid_at or ""),
             "items": "; ".join(
                 f"{item.product_name} x{item.quantity} @ GHS {float(item.unit_price or 0):.2f}"
                 for item in order.items
@@ -3633,31 +3711,9 @@ def export_orders():
 
     if export_format == "pdf":
         try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.pdfgen import canvas as rl_canvas
+            stream = _build_admin_export_pdf("RealMindX Bookshop Orders", headers, data_rows)
         except ImportError:
             return jsonify(error="PDF export requires reportlab."), 501
-        stream = io.BytesIO()
-        pdf = rl_canvas.Canvas(stream, pagesize=A4)
-        _, height = A4
-        y = height - 48
-        pdf.setFont("Helvetica-Bold", 14)
-        pdf.drawString(40, y, "RealMindX Bookshop Orders")
-        y -= 28
-        pdf.setFont("Helvetica", 8)
-        for order in rows:
-            line = (
-                f"{order.order_reference} | {order.customer_name} | "
-                f"GHS {float(order.total_amount or 0):.2f} | {order.status} | {order.payment_status}"
-            )
-            pdf.drawString(40, y, line[:135])
-            y -= 14
-            if y < 44:
-                pdf.showPage()
-                y = height - 48
-                pdf.setFont("Helvetica", 8)
-        pdf.save()
-        stream.seek(0)
         return send_file(stream, mimetype="application/pdf", as_attachment=True, download_name="realmindx-orders.pdf")
 
     return jsonify(error="Unsupported format. Use csv, xlsx, or pdf."), 400

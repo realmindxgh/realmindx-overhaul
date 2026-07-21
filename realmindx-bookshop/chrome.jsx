@@ -338,7 +338,10 @@ const CartProviderInner = ({ children, navigate }) => {
     .filter(Boolean);
   const selectedDetailed = detailed.filter(item => item.selected && item.stock);
   const count = detailed.reduce((s, item) => s + item.qty, 0);
-  const productCount = detailed.length;
+  // One source of truth for every cart badge and summary: total units in the
+  // validated cart. A cart with one title at quantity 27 must read 27
+  // everywhere, not 1 in navigation and 27 on the cart page.
+  const productCount = count;
   const selectedCount = selectedDetailed.reduce((s, item) => s + item.qty, 0);
   const subtotal = detailed.reduce((s, b) => s + b.price * b.qty, 0);
   const selectedSubtotal = selectedDetailed.reduce((s, b) => s + b.price * b.qty, 0);
@@ -927,8 +930,9 @@ const Footer = ({ navigate }) => {
           <div>
             <h4>Quick Links</h4>
             <div className="bs-footer-links">
-              <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>Shop All Books</a>
+              <a href={hrefForRoute('shop')} onClick={(e)=>{e.preventDefault();navigate('shop');}}>All Products</a>
               <a href={hrefForBrowse('curriculum')} onClick={(e)=>{e.preventDefault();navigate('shop', { taxonomy: 'curriculum' });}}>All Curricula</a>
+              <a href={hrefForRoute('request-book')} onClick={(e)=>{e.preventDefault();navigate('request-book');}}>Request a Book</a>
               <a href={hrefForRoute('track')} onClick={(e)=>{e.preventDefault();navigate('track');}}>Track an Order</a>
               <a href={hrefForRoute('invoice')} onClick={(e)=>{e.preventDefault();navigate('invoice');}}>Receipt/Invoice Verification</a>
               <a href={hrefForRoute('documents')} onClick={(e)=>{e.preventDefault();navigate('documents');}}>Education Documents</a>
@@ -987,15 +991,20 @@ const WhatsAppFab = ({ route }) => (
   </a>
 );
 
+const getMobileScrollContainer = () => (
+  document.querySelector('.bs-tab-panel.active')
+  || document.querySelector('.bs-tab-overlay')
+);
+
 const getTabScrollTop = () => {
-  const activePanel = document.querySelector('.bs-tab-panel.active');
-  return activePanel ? activePanel.scrollTop : window.scrollY;
+  const container = getMobileScrollContainer();
+  return container ? container.scrollTop : window.scrollY;
 };
 
 const scrollTabOrWindow = (top, behavior) => {
-  const activePanel = document.querySelector('.bs-tab-panel.active');
-  if (activePanel) {
-    activePanel.scrollTo({ top, behavior });
+  const container = getMobileScrollContainer();
+  if (container) {
+    container.scrollTo({ top, behavior });
   } else {
     window.scrollTo({ top, behavior });
   }
@@ -1008,7 +1017,7 @@ const ScrollToTopFab = ({ route }) => {
   React.useEffect(() => {
     const isMobileShell = !!document.querySelector('.bs-mobile-shell');
     const target = isMobileShell
-      ? document.querySelector('.bs-tab-panel.active')
+      ? getMobileScrollContainer()
       : window;
 
     if (!target && !isMobileShell) {
@@ -1024,7 +1033,7 @@ const ScrollToTopFab = ({ route }) => {
     target.addEventListener('scroll', update, { passive: true });
     update();
     return () => target.removeEventListener('scroll', update);
-  }, []);
+  }, [route]);
 
   if (!visible) return null;
   return (
@@ -1154,6 +1163,7 @@ const ProductCard = React.memo(({ book, idx = 0, navigate, searchContext = null 
           <CoverPlaceholder
             title={book.title}
             idx={idx}
+            showTitle={false}
             image={coverImage}
             loading={eagerImage ? 'eager' : 'lazy'}
             fetchPriority={idx < 2 ? 'high' : undefined}

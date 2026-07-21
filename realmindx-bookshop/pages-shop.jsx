@@ -607,7 +607,7 @@ const HomePage = ({ navigate }) => {
               <span className="bs-eyebrow">EXAM SEASON</span>
               <h2 className="bs-h2">BECE &amp; WASSCE picks</h2>
             </div>
-            <a className="bs-see-all" href={hrefForRoute('exam-catalogue')} onClick={(event) => { event.preventDefault(); navigate('exam-catalogue'); }}>Browse the Catalogue <Icon name="arrow" size={14} /></a>
+            <a className="bs-see-all" href={hrefForRoute('exam-catalogue')} onClick={(event) => { event.preventDefault(); navigate('exam-catalogue'); }}>Browse <Icon name="arrow" size={14} /></a>
           </Reveal>
           <div className="bs-product-grid bs-home-new-grid">
             {examPicks.map((book, index) => (
