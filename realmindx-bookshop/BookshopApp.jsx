@@ -1,6 +1,6 @@
 import React from 'react';
 import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, ScrollToTopFab, BottomNav } from './chrome.jsx';
-import { HomePage, ShopPage, BookRequestModal } from './pages-shop.jsx';
+import { HomePage, ShopPage, ExamPicksPage, BookRequestModal } from './pages-shop.jsx';
 import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage, InvoicePage } from './pages-checkout.jsx';
 import { AuthPage, BookshopResetPasswordPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
@@ -149,6 +149,9 @@ const routeFromPath = () => {
   if (p === '/orders')   return { route: 'orders',   params: {} };
   if (p === '/review')   return { route: 'review',   params: {} };
   if (p === '/request-book') return { route: 'request-book', params: {} };
+  if (p === '/collections/exam-picks') return { route: 'exam-catalogue', params: {} };
+  if (p === '/collections/bece-picks') return { route: 'exam-catalogue', params: {} };
+  if (p === '/collections/wassce-picks') return { route: 'exam-catalogue', params: {} };
   return { route: 'home', params: {} };
 };
 
@@ -587,6 +590,7 @@ const App = () => {
       account:  { title: 'My Account | RealMindX Bookshop', desc: 'Manage your RealMindX Bookshop account, view billing info, and access your order history.' },
       orders:   { title: 'My Orders | RealMindX Bookshop', desc: 'View all your past orders, track deliveries, and see order details.' },
       review:   { title: 'Rate Your Order | RealMindX Bookshop', desc: 'Share feedback on your RealMindX Bookshop order.' },
+      'exam-catalogue': { title: 'BECE & WASSCE Picks | Junior & Senior High Textbooks | RealMindX Bookshop', desc: 'Shop BECE (Junior High) and WASSCE (Senior High) textbooks and learning materials aligned with the GES / NaCCA Curriculum. Fast delivery across Ghana.' },
       'request-book': { title: 'Request a Book | RealMindX Bookshop', desc: 'Tell us what book you need and we will notify you when it is available.' },
     };
     let currentMeta = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
@@ -659,6 +663,14 @@ const App = () => {
         };
         robots = 'noindex, follow';
       }
+    } else if (route === 'exam-catalogue') {
+      structuredData = {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: currentMeta.title,
+        description: currentMeta.desc,
+        url: canonicalUrl,
+      };
     } else if (route === 'shop' && browseTaxonomy && !params.q) {
       const taxonomyName = taxonomyLabel(browseTaxonomy);
       const browseName = activeBrowse?.name || activeBrowse?.label || taxonomyName;
@@ -815,6 +827,8 @@ const App = () => {
     case 'terms':    page = <BookshopLegalPage type="terms" />; break;
     case 'orders':   page = <OrdersPage navigate={navigate} />; break;
     case 'review':   page = <OrderReviewPage navigate={navigate} />; break;
+    case 'exam-catalogue':
+      page = <ExamPicksPage navigate={navigate} />; break;
     case 'request-book': page = (
       <div className="bs-container bs-fade-page">
         <div className="bs-request-page-wrap">

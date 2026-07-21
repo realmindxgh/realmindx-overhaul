@@ -121,12 +121,28 @@ def _exact_alias_matches(value):
     return matches
 
 
+def exam_picks_filter():
+    """Return a SQLAlchemy filter clause for the combined BECE + WASSCE exam picks.
+
+    Rule: (curriculum matches GES/NaCCA AND level matches Junior High/Lower Secondary)
+          OR (curriculum matches GES/NaCCA AND level matches Senior High/Upper Secondary)
+    Uses taxonomy_filter_terms for robust term matching against known aliases.
+    """
+    curriculum_terms = taxonomy_filter_terms("curriculum", "ges-nacca-curriculum")
+    jhs_terms = taxonomy_filter_terms("level", "junior-high-lower-secondary")
+    shs_terms = taxonomy_filter_terms("level", "senior-high-upper-secondary")
+
+    curriculum_clause = or_(*(Product.curriculum.ilike(t) for t in curriculum_terms))
+    jhs_clause = and_(curriculum_clause, or_(*(Product.level.ilike(t) for t in jhs_terms)))
+    shs_clause = and_(curriculum_clause, or_(*(Product.level.ilike(t) for t in shs_terms)))
+    return or_(jhs_clause, shs_clause)
+
+
 def taxonomy_filter_terms(taxonomy, value):
     entry = _find_alias_group(taxonomy, value)
     if not entry:
         return _unique([value])
     return _unique([
-        value,
         entry.get("canonical"),
         entry.get("displayName"),
         *(entry.get("aliases") or []),
