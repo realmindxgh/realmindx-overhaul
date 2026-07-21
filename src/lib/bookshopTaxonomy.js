@@ -731,6 +731,75 @@ export const buildBookshopTaxonomies = (books = [], categories = []) => {
   };
 };
 
+export const buildTaxonomiesFromFilters = (filters, categories = []) => {
+  const taxonomies = { categories: [], subjects: [], levels: [], curricula: [], publishers: [] };
+
+  taxonomies.categories = categories
+    .filter((cat) => cat?.id && cat.id !== 'all')
+    .map((cat) => {
+      const profile = getBookshopSeoProfile('category', { id: cat.id, label: cat.name });
+      return taxon('category', profile.label || displayLabelFor('category', cat.name, cat.id), cat.count || 0, {
+        id: cat.id,
+        icon: cat.icon || 'book',
+        description: cat.description || profile.intro || profile.description,
+        legacyId: cat.id,
+        aliases: profile.aliases,
+        popularSearches: profile.popularSearches,
+        seoTitle: profile.title,
+        seoDescription: profile.description,
+      });
+    })
+    .filter((cat) => cat.count > 0);
+
+  const buildGroup = (taxonomy, items, icon, otherLabel) => {
+    if (!Array.isArray(items)) return [];
+    return items
+      .map((item) => {
+        const raw = String(item.name || '').trim();
+        if (!raw) return null;
+        const normalized = normalizeBookshopTaxonomyValue(taxonomy, raw);
+        const label = /^other$/i.test(normalized) ? otherLabel : normalized || raw;
+        const id = idFor(label);
+        const profile = getBookshopSeoProfile(taxonomy, { id, label });
+        return taxon(taxonomy, profile.label || displayLabelFor(taxonomy, label, id), item.count || 0, {
+          id,
+          icon,
+          fallbackLabel: otherLabel,
+          description: profile.intro || profile.description,
+          aliases: profile.aliases,
+          popularSearches: profile.popularSearches,
+          seoTitle: profile.title,
+          seoDescription: profile.description,
+        });
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.label.localeCompare(b.label));
+  };
+
+  taxonomies.subjects = buildGroup('subject', filters.subjects, 'book', 'Other Subjects');
+  taxonomies.levels = buildGroup('level', filters.levels, 'cap', 'Other Levels');
+  taxonomies.curricula = buildGroup('curriculum', filters.curricula, 'cap', 'Other Curricula');
+  taxonomies.publishers = buildGroup('publisher', filters.publishers, 'files', 'Other Publishers');
+
+  return {
+    ...taxonomies,
+    preview: {
+      subjects: previewItems(taxonomies.subjects, PRIORITY_SUBJECT_IDS, 4),
+      levels: previewItems(taxonomies.levels, [], 5),
+      curricula: previewItems(taxonomies.curricula, [], 5),
+      itemTypes: previewItems(taxonomies.categories, [], 6),
+      publishers: previewItems(taxonomies.publishers, [], 5),
+    },
+    lookup: {
+      category: taxonomyMap(taxonomies.categories),
+      subject: taxonomyMap(taxonomies.subjects),
+      level: taxonomyMap(taxonomies.levels),
+      curriculum: taxonomyMap(taxonomies.curricula),
+      publisher: taxonomyMap(taxonomies.publishers),
+    },
+  };
+};
+
 export const matchesTaxonomy = (book, taxonomy, id) => {
   const candidate = idFor(id, '');
   if (!candidate || candidate === 'all') return true;

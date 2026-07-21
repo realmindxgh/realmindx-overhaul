@@ -183,11 +183,11 @@ const ReviewForm = ({ productId }) => {
 const PDP_DELIVERY_FALLBACK = 'Orders are dispatched as quickly as stock and payment allow. Delivery fees are calculated at checkout, and free pickup is available at our Dome Pillar 2 shop.';
 const PDP_RETURNS_FALLBACK = 'Unused items in original condition can be returned within 7 days for an exchange or store credit. Damaged or incorrect items are replaced free of charge - just reach out on WhatsApp.';
 
-const ProductPage = ({ navigate, bookId, bookSlug = '' }) => {
+const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) => {
   const { books, loading: catalogLoading } = useCatalog();
   const { copy: siteCopy, loading: siteCopyLoading } = useSiteCopyState({ waitForApi: true });
   const allowLocalFallback = canUseLocalFallback();
-  const book = books.find(b => b.id === bookId) || books.find(b => productMatchesSegment(b, bookSlug)) || null;
+  const book = initialBook || books.find(b => b.id === bookId) || books.find(b => productMatchesSegment(b, bookSlug)) || null;
   const { add, buyNow } = useCart();
   const wishlist = useWishlist();
   const [qty, setQty] = React.useState(1);

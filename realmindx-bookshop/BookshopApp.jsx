@@ -5,7 +5,7 @@ import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage, InvoicePage } from './pages-checkout.jsx';
 import { AuthPage, BookshopResetPasswordPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
 import { DocumentsPage, ResourceDetailPage } from './pages-documents.jsx';
-import { CatalogProvider, useCatalog } from './catalog.jsx';
+import { CatalogProvider, useCatalog, fromApiProduct } from './catalog.jsx';
 import { Icon, LoadingState, cedis } from './shared.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { syncSessionFromApi } from '../src/lib/authClient.js';
@@ -20,6 +20,7 @@ import {
 import { findTaxonomyItem, getBookshopSeoProfile, matchesTaxonomy, taxonomyLabel } from '../src/lib/bookshopTaxonomy.js';
 import { clearCheckoutDraft, clearCheckoutSuccess } from './checkoutStorage.js';
 import { bookshopPathForRoute, canonicalBookshopBase, productHref, productMatchesSegment, productPathSegment } from './urls.js';
+import { saveCurrentScrollPosition, getSavedScrollPosition, hasSavedScroll } from '../src/lib/bookshopRouteCache.js';
 
 const GOLD_ACCENT = '#ffcc01';
 
@@ -330,6 +331,59 @@ const PaystackReturnPage = ({ paymentRef, legacy = false, navigate, clearCart })
   );
 };
 
+class BookshopErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error('[BookshopErrorBoundary]', error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="bs-empty-state" style={{ padding: '80px 20px' }}>
+          <div className="bs-empty-icon"><span role="img" aria-label="error">⚠</span></div>
+          <h2>Something went wrong</h2>
+          <p style={{ color: 'var(--bs-text-muted)', marginBottom: 24 }}>This section could not be displayed.</p>
+          <button className="bs-btn bs-btn-navy" onClick={() => { this.setState({ error: null }); window.location.reload(); }}>Reload page</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ---- Memoized persistent tab wrappers ----
+// These prevent the full page component tree from re-rendering when
+// another tab becomes active. Only the wrapper div's CSS class changes.
+const PersistentHomeTab = React.memo(({ navigate, isActive }) => (
+  <div className={`bs-tab-panel${isActive ? ' active' : ''}`} role="tabpanel" data-tab="home" aria-hidden={!isActive}>
+    <HomePage navigate={navigate} />
+    <Footer navigate={navigate} />
+  </div>
+));
+
+const PersistentShopTab = React.memo(({ navigate, initialBrowse, initialQuery, isActive, scrollContainerRef }) => (
+  <div ref={isActive ? scrollContainerRef : null} className={`bs-tab-panel${isActive ? ' active' : ''}`} role="tabpanel" data-tab="shop" aria-hidden={!isActive}>
+    <ShopPage navigate={navigate} initialBrowse={initialBrowse} initialQuery={initialQuery} active={isActive} scrollContainerRef={scrollContainerRef} />
+    <Footer navigate={navigate} />
+  </div>
+));
+
+const PersistentCartTab = React.memo(({ navigate, isActive }) => (
+  <div className={`bs-tab-panel${isActive ? ' active' : ''}`} role="tabpanel" data-tab="cart" aria-hidden={!isActive}>
+    <CartPage navigate={navigate} />
+    <Footer navigate={navigate} />
+  </div>
+));
+
+const PersistentAccountTab = React.memo(({ navigate, isActive }) => (
+  <div className={`bs-tab-panel${isActive ? ' active' : ''}`} role="tabpanel" data-tab="account" aria-hidden={!isActive}>
+    <AccountPage navigate={navigate} />
+    <Footer navigate={navigate} />
+  </div>
+));
+
 const App = () => {
   const { books, categories, taxonomies, loading: catalogLoading } = useCatalog();
   const initialRoute = React.useMemo(routeFromPath, []);
@@ -349,21 +403,81 @@ const App = () => {
     return order ? { reference: order, legacy: true } : null;
   });
 
-  const navigate = (r, p = {}) => {
+  const [isMobile, setIsMobile] = React.useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 768px)').matches;
+  });
+
+  React.useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const routeRef = React.useRef(route);
+  routeRef.current = route;
+
+  const navigate = React.useCallback((r, p = {}) => {
+    if (typeof performance !== 'undefined' && performance.mark) performance.mark('tab-tap');
+    if (typeof performance !== 'undefined' && performance.mark) performance.mark('route-update');
+    if (!isMobile) saveCurrentScrollPosition(routeRef.current);
     setRoute(r);
     setParams(p);
     const nextPath = pathForRoute(r, p);
     if (`${window.location.pathname}${window.location.search}` !== nextPath) {
       window.history.pushState({}, '', nextPath);
     }
-    window.scrollTo(0, 0);
-  };
+  }, [isMobile]);
 
-  const activeProduct = route === 'product'
-    ? books.find(book => String(book.id) === String(params.id))
-      || books.find(book => productMatchesSegment(book, params.slug))
-      || null
-    : null;
+  const [activeProduct, setActiveProduct] = React.useState(null);
+  const [productError, setProductError] = React.useState('');
+  const productAbortRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (route !== 'product') { setActiveProduct(null); setProductError(''); return; }
+    if (productAbortRef.current) productAbortRef.current.abort();
+    const controller = new AbortController();
+    productAbortRef.current = controller;
+    setProductError('');
+    if (params.id && isApiMode()) {
+      api.fetchProduct(params.id).then((data) => {
+        if (controller.signal.aborted) return;
+        const p = data?.product ? fromApiProduct(data.product) : null;
+        if (p) { setActiveProduct(p); setProductError(''); }
+        else { setActiveProduct(null); setProductError('Product not found.'); }
+      }).catch((err) => {
+        if (controller.signal.aborted) return;
+        setActiveProduct(null);
+        setProductError(err?.status === 404 ? 'Product not found.' : 'Could not load product. Try again.');
+      });
+    } else if (params.slug && isApiMode()) {
+      api.fetchProductSearch(`?q=${encodeURIComponent(params.slug)}&per_page=1`).then((data) => {
+        if (controller.signal.aborted) return;
+        const items = (data.items || []).map(fromApiProduct);
+        const matched = items.find((b) => productMatchesSegment(b, params.slug));
+        if (matched) { setActiveProduct(matched); setProductError(''); }
+        else { setActiveProduct(null); setProductError('Product not found.'); }
+      }).catch((err) => {
+        if (controller.signal.aborted) return;
+        setActiveProduct(null);
+        setProductError('Could not load product. Try again.');
+      });
+    } else if (params.id || params.slug) {
+      api.fetchProducts().then((data) => {
+        if (controller.signal.aborted) return;
+        const items = (data.items || []).map(fromApiProduct);
+        const found = items.find((b) => String(b.id) === String(params.id)) || items.find((b) => productMatchesSegment(b, params.slug)) || null;
+        if (found) { setActiveProduct(found); setProductError(''); }
+        else { setActiveProduct(null); setProductError('Product not found.'); }
+      }).catch((err) => {
+        if (controller.signal.aborted) return;
+        setActiveProduct(null);
+        setProductError('Could not load product. Try again.');
+      });
+    }
+    return () => { controller.abort(); };
+  }, [params.id, params.slug, route]);
   const activeBrowse = route === 'shop' && params.taxonomy
     ? findTaxonomyItem(taxonomies, params.taxonomy, params.value)
     : route === 'shop' && params.cat && params.cat !== 'all'
@@ -373,8 +487,9 @@ const App = () => {
   const requestedBrowseValue = params.value || params.cat || '';
   const browseValue = browseTaxonomy && requestedBrowseValue && !catalogLoading && !activeBrowse ? '' : requestedBrowseValue;
   const browseLabel = activeBrowse?.name || activeBrowse?.label || (browseValue ? taxonomyLabel(browseTaxonomy) : null);
-  const activeBrowseCount = route === 'shop' && browseTaxonomy
-    ? books.filter((book) => matchesTaxonomy(book, browseTaxonomy, browseValue)).length
+  const initialBrowse = React.useMemo(() => ({ taxonomy: browseTaxonomy, value: browseValue }), [browseTaxonomy, browseValue]);
+  const activeBrowseCount = route === 'shop' && browseTaxonomy && browseValue
+    ? taxonomies?.lookup?.[browseTaxonomy]?.get(browseValue)?.count || null
     : null;
   const canonicalParams = route === 'product' && activeProduct
     ? { slug: productPathSegment(activeProduct) }
@@ -597,21 +712,94 @@ const App = () => {
   }, []);
 
   React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.history.scrollRestoration = 'manual';
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (isMobile) return;
+    if (route === 'home' || route === 'shop') {
+      const savedY = getSavedScrollPosition(route);
+      if (savedY > 0) window.scrollTo(0, savedY);
+    } else {
+      window.scrollTo(0, 0);
+    }
+  }, [route, isMobile]);
+
+  React.useEffect(() => {
+    if (isMobile) return;
+    let ticking = false;
+    const handler = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          saveCurrentScrollPosition(route);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener('scroll', handler, { passive: true });
+    window.addEventListener('pagehide', () => { saveCurrentScrollPosition(route); }, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handler);
+    };
+  }, [route, isMobile]);
+
+  React.useLayoutEffect(() => {
+    if (typeof performance !== 'undefined' && performance.mark) {
+      performance.mark('tab-visible');
+      if (performance.getEntriesByName('tab-tap', 'mark').length) {
+        performance.measure('tab-switch', 'tab-tap', 'tab-visible');
+      }
+    }
+  }, [route]);
+
+  React.useEffect(() => {
     const onPop = () => {
+      if (!isMobile) saveCurrentScrollPosition(route);
       const next = routeFromPath();
       setRoute(next.route);
       setParams(next.params);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [route, isMobile]);
+
+  // ---- Persistent tab host ----
+  // All four main tab pages remain mounted after first visit so their
+  // React state and scroll positions survive route changes.
+  const TAB_ROUTES = new Set(['home', 'shop', 'cart', 'account']);
+  const persistentHomeRef = React.useRef(false);
+  const persistentShopRef = React.useRef(false);
+  const persistentCartRef = React.useRef(false);
+  const persistentAccountRef = React.useRef(false);
+  if (route === 'home') persistentHomeRef.current = true;
+  if (route === 'shop') persistentShopRef.current = true;
+  if (route === 'cart') persistentCartRef.current = true;
+  if (route === 'account') persistentAccountRef.current = true;
 
   let page;
   switch (route) {
-    case 'home':     page = <HomePage navigate={navigate} />; break;
-    case 'shop':     page = <ShopPage navigate={navigate} initialBrowse={{ taxonomy: browseTaxonomy, value: browseValue }} initialQuery={params.q || ''} key={`${browseTaxonomy || 'all'}::${browseValue || 'all'}::${params.q || ''}::${params.sq || ''}`} />; break;
-    case 'product':  page = <ProductPage navigate={navigate} bookId={activeProduct?.id} bookSlug={params.slug} key={activeProduct?.id || params.slug} />; break;
-    case 'cart':     page = <CartPage navigate={navigate} />; break;
+    case 'home': case 'shop': case 'cart': case 'account': page = null; break;
+    case 'product':
+      if (productError) {
+        page = (
+          <div className="bs-empty-state bs-fade-page" style={{ padding: '80px 20px' }}>
+            <div className="bs-empty-icon"><Icon name="search" size={36} /></div>
+            <h2>{productError}</h2>
+            <p style={{ color: 'var(--bs-text-muted)', marginBottom: 24 }}>The product may have been removed or is unavailable.</p>
+            <div className="bs-empty-actions">
+              <button className="bs-btn bs-btn-navy" onClick={() => navigate('shop')}>Browse the shop</button>
+              <button className="bs-btn bs-btn-outline" onClick={() => window.location.reload()}>Try again</button>
+            </div>
+          </div>
+        );
+      } else if (activeProduct) {
+        page = <ProductPage navigate={navigate} bookId={activeProduct?.id} bookSlug={params.slug} initialBook={activeProduct} key={activeProduct?.id || params.slug} />;
+      } else {
+        page = <div className="bs-fade-page bs-section bs-container"><LoadingState title="Loading product" body="Fetching product details\u2026" /></div>;
+      }
+      break;
     case 'wishlist': page = <WishlistPage navigate={navigate} />; break;
     case 'checkout': page = <CheckoutPage navigate={navigate} />; break;
     case 'track':    page = <TrackPage navigate={navigate} />; break;
@@ -625,7 +813,6 @@ const App = () => {
     case 'about':    page = <InfoPage navigate={navigate} />; break;
     case 'privacy':  page = <BookshopLegalPage type="privacy" />; break;
     case 'terms':    page = <BookshopLegalPage type="terms" />; break;
-    case 'account':  page = <AccountPage navigate={navigate} />; break;
     case 'orders':   page = <OrdersPage navigate={navigate} />; break;
     case 'review':   page = <OrderReviewPage navigate={navigate} />; break;
     case 'request-book': page = (
@@ -635,7 +822,7 @@ const App = () => {
         </div>
       </div>
     ); break;
-    default:         page = <HomePage navigate={navigate} />;
+    default:         page = null;
   }
   const mainClassName = `bs-page${route === 'login' || route === 'signup' || route === 'reset-password' ? ' bs-page-auth' : ''}`;
 
@@ -662,17 +849,86 @@ const App = () => {
     );
   }
 
+  const shopScrollRef = React.useRef(null);
+
+  const handleTabReTap = React.useCallback(() => {
+    if (isMobile) {
+      const activePanel = document.querySelector('.bs-tab-panel.active');
+      if (activePanel) activePanel.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [isMobile]);
+
+  if (isMobile) {
+    return (
+      <div className="bs">
+        <Navbar route={route} navigate={navigate} />
+        <div className="bs-mobile-shell">
+          <div className="bs-tab-viewport">
+            {persistentHomeRef.current && (
+              <PersistentHomeTab navigate={navigate} isActive={route === 'home'} />
+            )}
+            {persistentShopRef.current && (
+              <PersistentShopTab navigate={navigate} initialBrowse={initialBrowse} initialQuery={params.q || ''} isActive={route === 'shop'} scrollContainerRef={shopScrollRef} />
+            )}
+            {persistentCartRef.current && (
+              <PersistentCartTab navigate={navigate} isActive={route === 'cart'} />
+            )}
+            {persistentAccountRef.current && (
+              <PersistentAccountTab navigate={navigate} isActive={route === 'account'} />
+            )}
+            {!TAB_ROUTES.has(route) && (
+              <div className="bs-tab-overlay">
+                <BookshopErrorBoundary>
+                  <BookshopBackButton navigate={navigate} />
+                  {page}
+                </BookshopErrorBoundary>
+              </div>
+            )}
+          </div>
+          <BottomNav route={route} navigate={navigate} onReTap={handleTabReTap} />
+        </div>
+        <Footer navigate={navigate} />
+        <ScrollToTopFab route={route} />
+        <WhatsAppFab route={route} />
+      </div>
+    );
+  }
+
   return (
     <div className="bs">
       <Navbar route={route} navigate={navigate} />
       <main className={mainClassName}>
-        {route !== 'home' && <BookshopBackButton navigate={navigate} />}
-        {page}
+        {persistentHomeRef.current && (
+          <div style={route !== 'home' ? { display: 'none' } : undefined}>
+            <HomePage navigate={navigate} active={route === 'home'} />
+          </div>
+        )}
+        {persistentShopRef.current && (
+          <div style={route !== 'shop' ? { display: 'none' } : undefined}>
+            <ShopPage navigate={navigate} initialBrowse={initialBrowse} initialQuery={params.q || ''} active={route === 'shop'} scrollContainerRef={shopScrollRef} />
+          </div>
+        )}
+        {persistentCartRef.current && (
+          <div style={route !== 'cart' ? { display: 'none' } : undefined}>
+            <CartPage navigate={navigate} />
+          </div>
+        )}
+        {persistentAccountRef.current && (
+          <div style={route !== 'account' ? { display: 'none' } : undefined}>
+            <AccountPage navigate={navigate} />
+          </div>
+        )}
+        <BookshopErrorBoundary>
+          {!TAB_ROUTES.has(route) && <BookshopBackButton navigate={navigate} />}
+          {page}
+        </BookshopErrorBoundary>
       </main>
       <Footer navigate={navigate} />
       <ScrollToTopFab route={route} />
       <WhatsAppFab route={route} />
-      <BottomNav route={route} navigate={navigate} />
+      <BottomNav route={route} navigate={navigate} onReTap={handleTabReTap} />
     </div>
   );
 };
