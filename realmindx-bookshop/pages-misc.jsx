@@ -679,6 +679,9 @@ const BookshopResetPasswordPage = ({ navigate }) => {
 const ContactPage = ({ navigate }) => {
   const settings = usePublicSettings();
   const phones = [settings.contact_phone_1, settings.contact_phone_2, settings.contact_phone_3].filter(Boolean);
+  const mapSrc = settings.contact_address
+    ? `https://www.google.com/maps?q=${encodeURIComponent(settings.contact_address)}&output=embed`
+    : settings.contact_map_embed;
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const onSubmit = async (event) => {
     event.preventDefault();
@@ -733,10 +736,10 @@ const ContactPage = ({ navigate }) => {
           {phones.length ? <div className="bs-contact-row"><Icon name="phone" size={20} className="bs-ci" /><div><div className="bs-cr-label">Call us</div><div className="bs-cr-val">{phones.join(' / ')}</div></div></div> : null}
           {settings.contact_email ? <div className="bs-contact-row"><Icon name="mail" size={20} className="bs-ci" /><div><div className="bs-cr-label">Email</div><div className="bs-cr-val">{settings.contact_email}</div></div></div> : null}
           <a className="bs-contact-row" href="https://wa.link/q5rjtp" style={{ textDecoration: 'none' }}><Icon name="wa" size={20} className="bs-ci" /><div><div className="bs-cr-label">WhatsApp</div><div className="bs-cr-val">Chat with us instantly</div></div></a>
-          {settings.contact_map_embed ? (
+          {mapSrc ? (
             <iframe
               title={`${settings.contact_address || 'RealMindX Bookshop'} map`}
-              src={settings.contact_map_embed}
+              src={mapSrc}
               loading="lazy"
               allowFullScreen
               referrerPolicy="no-referrer-when-downgrade"

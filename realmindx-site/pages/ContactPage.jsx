@@ -51,6 +51,9 @@ const ContactPage = () => {
     settings.contact_phone_2,
     settings.contact_phone_3,
   ].filter(Boolean);
+  const mapSrc = settings.contact_address
+    ? `https://www.google.com/maps?q=${encodeURIComponent(settings.contact_address)}&output=embed`
+    : settings.contact_map_embed;
   const [form, setForm]       = useState(INITIAL);
   const [errors, setErrors]   = useState({});
   const [sent, setSent]       = useState(false);
@@ -343,11 +346,11 @@ const ContactPage = () => {
               <a href="https://wa.link/d6x888" target="_blank" rel="noreferrer" title="WhatsApp"><ContactSocialIcon name="whatsapp" /></a>
             </div>
 
-            {settings.contact_map_embed && (
+            {mapSrc && (
               <div className="contact-map-card">
                 <iframe
                   title={`${settings.contact_address} map`}
-                  src={settings.contact_map_embed}
+                  src={mapSrc}
                   loading="lazy"
                   allowFullScreen
                   referrerPolicy="no-referrer-when-downgrade"

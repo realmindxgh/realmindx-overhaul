@@ -16,6 +16,7 @@ import { PRODUCT_CURRICULUM_OPTIONS, PRODUCT_LEVEL_OPTIONS, PRODUCT_SUBJECT_OPTI
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 import { copyTextToClipboard } from '../../src/lib/clipboard.js';
 import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
+import globalToast from '../../src/lib/toast.js';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
@@ -3560,7 +3561,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       )}
       {config.collection === 'products' && showProductActions && (
         <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowProductActions(false); }}>
-          <div className="admin-modal" role="dialog" aria-modal="true" aria-label="Product actions">
+          <div className="admin-modal-panel" role="dialog" aria-modal="true" aria-label="Product actions" style={{ width:'min(520px, 100%)', padding:'32px' }}>
             <button className="admin-modal-close" type="button" onClick={() => setShowProductActions(false)} aria-label="Close"><Icon name="x" size={16} /></button>
             <h3>Product actions</h3>
             <p className="modal-subtitle">Run catalogue-wide tasks without crowding the product toolbar.</p>
@@ -4607,9 +4608,9 @@ const TeachersView = ({ session }) => {
     setReminding(t.id);
     try {
       const result = await api.adminCreate(`users/${t.id}/profile-reminder`, {});
-      window.alert(result?.message || `Profile reminder sent to ${t.email}.`);
+      globalToast.success(result?.message || `Profile reminder sent to ${t.email}.`);
     } catch (err) {
-      window.alert(err?.message || 'Could not send the profile reminder.');
+      globalToast.error(err?.message || 'Could not send the profile reminder.');
     } finally {
       setReminding(null);
     }

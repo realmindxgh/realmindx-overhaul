@@ -1015,24 +1015,21 @@ const ScrollToTopFab = ({ route }) => {
   const whatsappHidden = WHATSAPP_HIDDEN_ROUTES.has(route);
 
   React.useEffect(() => {
-    const isMobileShell = !!document.querySelector('.bs-mobile-shell');
-    const target = isMobileShell
-      ? getMobileScrollContainer()
-      : window;
-
-    if (!target && !isMobileShell) {
-      const update = () => setVisible(window.scrollY > 480);
-      window.addEventListener('scroll', update, { passive: true });
-      update();
-      return () => window.removeEventListener('scroll', update);
-    }
-
-    if (!target) return undefined;
-
-    const update = () => setVisible(target.scrollTop > 480);
-    target.addEventListener('scroll', update, { passive: true });
+    const update = () => {
+      const panel = getMobileScrollContainer();
+      const pageTop = Math.max(window.scrollY || 0, document.documentElement?.scrollTop || 0, document.body?.scrollTop || 0);
+      setVisible(Math.max(panel?.scrollTop || 0, pageTop) > 360);
+    };
+    const panel = getMobileScrollContainer();
+    window.addEventListener('scroll', update, { passive: true });
+    document.addEventListener('scroll', update, { passive: true, capture: true });
+    panel?.addEventListener('scroll', update, { passive: true });
     update();
-    return () => target.removeEventListener('scroll', update);
+    return () => {
+      window.removeEventListener('scroll', update);
+      document.removeEventListener('scroll', update, true);
+      panel?.removeEventListener('scroll', update);
+    };
   }, [route]);
 
   if (!visible) return null;
