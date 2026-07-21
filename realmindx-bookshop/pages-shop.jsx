@@ -140,7 +140,7 @@ const BookRequestModal = ({ open, onClose, initialTitle, browseContext }) => {
 const filterGroupForTaxonomy = (taxonomy) => FILTER_GROUPS.find((group) => group.taxonomy === taxonomy) || null;
 const safeCeilingValue = (value) => Math.max(2, Math.ceil(Number(value) || 0));
 
-const createFilterState = (ceiling, browse = {}, query = '') => {
+const createFilterState = (ceiling, browse = {}, query = '', extra = {}) => {
   const base = {
     categories: [],
     subjects: [],
@@ -156,6 +156,15 @@ const createFilterState = (ceiling, browse = {}, query = '') => {
   };
   const group = filterGroupForTaxonomy(browse.taxonomy);
   if (group && browse.value) base[group.key] = [browse.value];
+  for (const key of Object.keys(extra)) {
+    const val = extra[key];
+    if (Array.isArray(val)) {
+      const existing = Array.isArray(base[key]) ? base[key] : [];
+      base[key] = [...new Set([...existing, ...val])];
+    } else if (val !== undefined && val !== null) {
+      base[key] = val;
+    }
+  }
   return base;
 };
 
@@ -458,17 +467,19 @@ const HomePage = ({ navigate }) => {
   newArrivalsRef.current = newArrivals;
   examPicksRef.current = examPicks;
 
+  const examQs = `?exam_picks=1&per_page=${HOMEPAGE_SECTION_LIMIT}&sort=newest`;
+
   React.useEffect(() => {
     const cached = getHomeCacheStale();
     if (cached && (cached.newArrivals?.length > 0 || cached.examPicks?.length > 0)) {
-      setNewArrivals(cached.newArrivals);
-      setExamPicks(cached.examPicks);
+      setNewArrivals(cached.newArrivals || []);
+      setExamPicks(cached.examPicks || []);
       setSectionLoading(false);
       setSectionError('');
       if (cached.stale) {
         Promise.all([
           api.fetchProductSearch(`?sort=newest&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
-          api.fetchProductSearch(`?curriculum=WASSCE&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
+          api.fetchProductSearch(examQs).catch(() => ({ items: [] })),
         ]).then(([newData, examData]) => {
           setNewArrivals((newData.items || []).map(fromApiProduct));
           setExamPicks((examData.items || []).map(fromApiProduct));
@@ -479,8 +490,11 @@ const HomePage = ({ navigate }) => {
     if (!isApiMode()) {
       if (catalogBooks.length > 0) {
         setNewArrivals(catalogBooks.slice(0, HOMEPAGE_SECTION_LIMIT));
-        const picks = catalogBooks.filter(b => b.curriculumName === 'WASSCE').slice(0, HOMEPAGE_SECTION_LIMIT);
-        setExamPicks(picks.length ? picks : catalogBooks.slice(HOMEPAGE_SECTION_LIMIT, HOMEPAGE_SECTION_LIMIT * 2));
+        const combined = catalogBooks.filter(b =>
+          b.curriculumName === 'GES / NaCCA Curriculum'
+          && (b.levelName === 'Junior High / Lower Secondary' || b.levelName === 'Senior High / Upper Secondary')
+        ).slice(0, HOMEPAGE_SECTION_LIMIT);
+        setExamPicks(combined.length ? combined : []);
       }
       setSectionLoading(false);
       return;
@@ -490,7 +504,7 @@ const HomePage = ({ navigate }) => {
     setSectionError('');
     Promise.all([
       api.fetchProductSearch(`?sort=newest&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
-      api.fetchProductSearch(`?curriculum=WASSCE&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
+      api.fetchProductSearch(examQs).catch(() => ({ items: [] })),
     ]).then(([newData, examData]) => {
       if (!alive) return;
       setNewArrivals((newData.items || []).map(fromApiProduct));
@@ -507,11 +521,11 @@ const HomePage = ({ navigate }) => {
   React.useEffect(() => {
     return () => {
       const arrivals = newArrivalsRef.current;
-      const picks = examPicksRef.current;
-      if (arrivals.length > 0 || picks.length > 0) {
+      const exam = examPicksRef.current;
+      if (arrivals.length > 0 || exam.length > 0) {
         saveHomeCache({
           newArrivals: arrivals,
-          examPicks: picks,
+          examPicks: exam,
           scrollY: window.scrollY,
         });
       }
@@ -590,10 +604,10 @@ const HomePage = ({ navigate }) => {
         <section className="bs-section bs-container">
           <Reveal className="bs-section-head-row">
             <div>
-              <span className="bs-eyebrow">Exam Season</span>
+              <span className="bs-eyebrow">EXAM SEASON</span>
               <h2 className="bs-h2">BECE &amp; WASSCE picks</h2>
             </div>
-            <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>Browse the catalogue <Icon name="arrow" size={14} /></a>
+            <a className="bs-see-all" href={hrefForRoute('exam-catalogue')} onClick={(event) => { event.preventDefault(); navigate('exam-catalogue'); }}>Browse the Catalogue <Icon name="arrow" size={14} /></a>
           </Reveal>
           <div className="bs-product-grid bs-home-new-grid">
             {examPicks.map((book, index) => (
@@ -858,10 +872,10 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
   );
 };
 
-const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = true, scrollContainerRef }) => {
+const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = true, scrollContainerRef, initialFilters = {}, examPicks = false }) => {
   const { books, taxonomies, priceCeiling, loading: catalogLoading } = useCatalog();
   const rangeCeiling = safeCeilingValue(priceCeiling);
-  const [filters, setFilters] = React.useState(() => createFilterState(rangeCeiling, initialBrowse, initialQuery));
+  const [filters, setFilters] = React.useState(() => createFilterState(rangeCeiling, initialBrowse, initialQuery, initialFilters));
   const [sort, setSort] = React.useState('newest');
   const [view, setView] = React.useState('grid');
   const [drawer, setDrawer] = React.useState(false);
@@ -888,7 +902,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
   }, []);
 
   const cacheKey = React.useMemo(
-    () => buildShopCacheKey(filters, sort, BATCH, initialBrowse, initialQuery),
+    () => buildShopCacheKey(filters, sort, BATCH, initialBrowse, initialQuery, examPicks),
     [filters, sort, BATCH, initialBrowse, initialQuery]
   );
   const fetchingRef = React.useRef(false);
@@ -929,40 +943,44 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('per_page', String(perPage));
-    const trimmed = filters.query.trim();
-    if (trimmed) params.set('q', trimmed);
-    if (initialBrowse.taxonomy === 'category' && initialBrowse.value) {
-      params.set('category', initialBrowse.value);
-    } else if (initialBrowse.taxonomy === 'subject' && initialBrowse.value) {
-      params.set('subject', initialBrowse.value);
-    } else if (initialBrowse.taxonomy === 'level' && initialBrowse.value) {
-      params.set('level', initialBrowse.value);
-    } else if (initialBrowse.taxonomy === 'curriculum' && initialBrowse.value) {
-      params.set('curriculum', initialBrowse.value);
-    } else if (initialBrowse.taxonomy === 'publisher' && initialBrowse.value) {
-      params.set('publisher', initialBrowse.value);
-    }
-    if (filters.subjects.length && !initialBrowse.value) {
-      params.set('subject', filters.subjects.join(','));
-    }
-    if (filters.levels.length) {
-      params.set('level', filters.levels.join(','));
-    }
-    if (filters.curricula.length) {
-      params.set('curriculum', filters.curricula.join(','));
-    }
-    if (filters.publishers.length) {
-      params.set('publisher', filters.publishers.join(','));
-    }
-    if (filters.categories.length && !initialBrowse.value) {
-      params.set('category', filters.categories.join(','));
+    if (examPicks) {
+      params.set('exam_picks', '1');
+    } else {
+      const trimmed = filters.query.trim();
+      if (trimmed) params.set('q', trimmed);
+      if (initialBrowse.taxonomy === 'category' && initialBrowse.value) {
+        params.set('category', initialBrowse.value);
+      } else if (initialBrowse.taxonomy === 'subject' && initialBrowse.value) {
+        params.set('subject', initialBrowse.value);
+      } else if (initialBrowse.taxonomy === 'level' && initialBrowse.value) {
+        params.set('level', initialBrowse.value);
+      } else if (initialBrowse.taxonomy === 'curriculum' && initialBrowse.value) {
+        params.set('curriculum', initialBrowse.value);
+      } else if (initialBrowse.taxonomy === 'publisher' && initialBrowse.value) {
+        params.set('publisher', initialBrowse.value);
+      }
+      if (filters.subjects.length && !initialBrowse.value) {
+        params.set('subject', filters.subjects.join(','));
+      }
+      if (filters.levels.length) {
+        params.set('level', filters.levels.join(','));
+      }
+      if (filters.curricula.length) {
+        params.set('curriculum', filters.curricula.join(','));
+      }
+      if (filters.publishers.length) {
+        params.set('publisher', filters.publishers.join(','));
+      }
+      if (filters.categories.length && !initialBrowse.value) {
+        params.set('category', filters.categories.join(','));
+      }
     }
     if (filters.min > 0) params.set('min_price', String(filters.min));
     if (filters.max < rangeCeiling) params.set('max_price', String(filters.max));
     if (filters.inStock) params.set('in_stock', '1');
     if (sort !== 'newest') params.set('sort', sort);
     return params.toString();
-  }, [filters, initialBrowse, sort, rangeCeiling]);
+  }, [filters, initialBrowse, sort, rangeCeiling, examPicks]);
 
   const fetchPage = React.useCallback(async (page, append = false) => {
     if (fetchingRef.current) return;
@@ -1039,7 +1057,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
     setHasMore(true);
     setFetchError('');
     setRequestStatus('loading');
-    setFilters(createFilterState(rangeCeiling, initialBrowse, initialQuery));
+    setFilters(createFilterState(rangeCeiling, initialBrowse, initialQuery, initialFilters));
     setSort('newest');
     fetchingRef.current = false;
     sentinelKeyRef.current += 1;
@@ -1519,7 +1537,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
               </p>
               <div className="bs-empty-actions">
                 <button className="bs-btn bs-btn-gold" onClick={() => setRequestOpen(true)}>Request this book</button>
-                <button className="bs-btn bs-btn-outline" onClick={() => setFilters(createFilterState(rangeCeiling, initialBrowse, ''))}>Clear all filters</button>
+                <button className="bs-btn bs-btn-outline" onClick={() => setFilters(createFilterState(rangeCeiling, initialBrowse, '', initialFilters))}>Clear all filters</button>
               </div>
             </div>
           ) : view === 'grid' ? (
@@ -1611,4 +1629,15 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
   );
 };
 
-export { HomePage, ShopPage, CategoryStrip, BookRequestModal };
+const ExamPicksPage = (props) => (
+  <ShopPage
+    {...props}
+    examPicks={true}
+    initialFilters={{
+      levels: [],
+      curricula: [],
+    }}
+  />
+);
+
+export { HomePage, ShopPage, ExamPicksPage, CategoryStrip, BookRequestModal };

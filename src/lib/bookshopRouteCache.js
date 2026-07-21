@@ -48,9 +48,9 @@ export function isValidShopCache(entry) {
   return true
 }
 
-export function buildShopCacheKey(filters, sort, batch, initialBrowse, initialQuery) {
+export function buildShopCacheKey(filters, sort, batch, initialBrowse, initialQuery, examPicks = false) {
   const f = filters
-  const base = `${initialBrowse.taxonomy || ''}::${initialBrowse.value || ''}::${initialQuery || ''}`
+  const base = examPicks ? 'exam-picks::1' : `${initialBrowse.taxonomy || ''}::${initialBrowse.value || ''}::${initialQuery || ''}`
   return `${base}|c:${(f.categories||[]).sort().join(',')}|s:${(f.subjects||[]).sort().join(',')}|l:${(f.levels||[]).sort().join(',')}|u:${(f.curricula||[]).sort().join(',')}|p:${(f.publishers||[]).sort().join(',')}|min:${f.min}|max:${f.max}|rmin:${f.ratingMin}|rmax:${f.ratingMax}|stock:${f.inStock}|q:${f.query||''}|sort:${sort}|b:${batch}`
 }
 

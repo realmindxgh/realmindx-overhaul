@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from ..analytics import queue_analytics_event
 from ..audit import audit
-from ..bookshop_search import product_search_filter, taxonomy_filter_terms
+from ..bookshop_search import exam_picks_filter, product_search_filter, taxonomy_filter_terms
 from ..book_requests import BookRequestError, create_request, request_json
 from ..checkout_details import upsert_checkout_detail
 from ..contacts import TRANSACTIONAL_ONLY, upsert_contact
@@ -442,6 +442,7 @@ def list_products():
         .filter_by(is_active=True)
     )
     q = request.args.get("q")
+    exam_picks = request.args.get("exam_picks") in {"1", "true"}
     category = request.args.get("category")
     subject = request.args.get("subject")
     level = request.args.get("level")
@@ -457,26 +458,29 @@ def list_products():
         search_filter = product_search_filter(q)
         if search_filter is not None:
             query = query.outerjoin(ProductCategory).filter(search_filter)
-    if category:
-        if category == "curriculum":
-            query = query.filter(Product.curriculum.isnot(None), Product.curriculum != "")
-        elif category.startswith("curriculum-"):
-            matching = [
-                name
-                for (name,) in db.session.query(Product.curriculum).filter(Product.curriculum.isnot(None)).distinct().all()
-                if f"curriculum-{slugify(name)}" == category
-            ]
-            query = query.filter(Product.curriculum.in_(matching or ["__none__"]))
-        else:
-            query = query.filter(Product.category.has(ProductCategory.slug == category))
-    if subject:
-        query = query.filter(or_(*(Product.subject.ilike(term) for term in taxonomy_filter_terms("subject", subject))))
-    if level:
-        query = query.filter(or_(*(Product.level.ilike(term) for term in taxonomy_filter_terms("level", level))))
-    if curriculum:
-        query = query.filter(or_(*(Product.curriculum.ilike(term) for term in taxonomy_filter_terms("curriculum", curriculum))))
-    if publisher:
-        query = query.filter(Product.publisher == publisher)
+    if exam_picks:
+        query = query.filter(exam_picks_filter())
+    else:
+        if category:
+            if category == "curriculum":
+                query = query.filter(Product.curriculum.isnot(None), Product.curriculum != "")
+            elif category.startswith("curriculum-"):
+                matching = [
+                    name
+                    for (name,) in db.session.query(Product.curriculum).filter(Product.curriculum.isnot(None)).distinct().all()
+                    if f"curriculum-{slugify(name)}" == category
+                ]
+                query = query.filter(Product.curriculum.in_(matching or ["__none__"]))
+            else:
+                query = query.filter(Product.category.has(ProductCategory.slug == category))
+        if subject:
+            query = query.filter(or_(*(Product.subject.ilike(term) for term in taxonomy_filter_terms("subject", subject))))
+        if level:
+            query = query.filter(or_(*(Product.level.ilike(term) for term in taxonomy_filter_terms("level", level))))
+        if curriculum:
+            query = query.filter(or_(*(Product.curriculum.ilike(term) for term in taxonomy_filter_terms("curriculum", curriculum))))
+        if publisher:
+            query = query.filter(Product.publisher == publisher)
     if min_price is not None:
         query = query.filter(Product.price >= min_price)
     if max_price is not None:

@@ -104,6 +104,14 @@
 - For multiple commands, run them separately or use semicolons.
 - Do not repeatedly retry failed Unix commands.
 
+### Bookshop Data Schema
+
+- Read `docs/BOOKSHOP_DATA_SCHEMA.md` before creating or modifying a local Bookshop backend.
+- Do not invent curriculum or level values — use only the canonical lists documented there.
+- Do not hard-code local taxonomy IDs — production values differ from local SQLite seeds.
+- Do not create seed data using labels not present in the production schema.
+- Do not change exam-picks rules without updating the schema doc and the test suite.
+
 ### Production and Git safety
 - Do not deploy.
 - Do not apply production migrations.
