@@ -1,6 +1,7 @@
 ﻿import React from 'react';
 import { Icon, Stars, cedis, CoverPlaceholder, Logo } from './shared.jsx';
-import { useCatalog } from './catalog.jsx';
+import { useCatalog, fromApiProduct } from './catalog.jsx';
+
 import logoWhite from '../realmindx-site/assets/logo-white.png';
 import { bookMatchesBookshopSearch, bookMatchesBookshopSearchIntent } from '../src/lib/bookshopTaxonomy.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
@@ -76,24 +77,15 @@ const readSavedWishlist = () => {
 };
 
 const WishlistProvider = ({ children }) => {
-  const { books, loading: catalogLoading } = useCatalog();
+  const { loading: catalogLoading } = useCatalog();
   const [items, setItems] = React.useState(readSavedWishlist);
   const itemsRef = React.useRef(items);
-  const validIds = React.useMemo(() => new Set(books.map(book => String(book.id))), [books]);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(items));
     itemsRef.current = items;
   }, [items]);
-
-  React.useEffect(() => {
-    if (catalogLoading || books.length === 0) return;
-    setItems(prev => {
-      const next = prev.filter(id => validIds.has(String(id)));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [books.length, catalogLoading, validIds]);
 
   const toggle = (bookId) => {
     const id = String(bookId);
@@ -123,7 +115,7 @@ const WishlistProvider = ({ children }) => {
     removedIds.forEach(id => trackWishlistAction('remove', { productId: id }));
   };
   const has    = (bookId) => items.map(item => String(item)).includes(String(bookId));
-  const count  = catalogLoading ? 0 : items.filter(id => validIds.has(String(id))).length;
+  const count  = items.length;
 
   return (
     <WishlistCtx.Provider value={{ items, count, toggle, add, remove, removeMany, has }}>
@@ -212,9 +204,13 @@ const CartProvider = ({ children, navigate }) => {
 };
 
 const CartProviderInner = ({ children, navigate }) => {
-  const { books, loading: catalogLoading, error: catalogError } = useCatalog();
+  const { books } = useCatalog();
   const [items, setItems] = React.useState(readSavedCart);
+  const [productMap, setProductMap] = React.useState({});
+  const [cartLoading, setCartLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
   const itemsRef = React.useRef(items);
+  const lastFetchIdsRef = React.useRef('');
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -222,18 +218,39 @@ const CartProviderInner = ({ children, navigate }) => {
     itemsRef.current = items;
   }, [items]);
 
+  // Fetch product details for cart items via batch API
+  React.useEffect(() => {
+    const ids = items.map(i => i.id).filter(Boolean);
+    if (ids.length === 0) { setProductMap({}); setCartLoading(false); return; }
+    const key = ids.sort().join(',');
+    if (key === lastFetchIdsRef.current) return;
+    lastFetchIdsRef.current = key;
+    setProductMap({});
+    setCartLoading(true);
+    setError('');
+    if (isApiMode()) {
+      api.fetchProductBatch(ids).then((data) => {
+        const map = {};
+        (data.items || []).forEach((p) => { map[String(p.id)] = fromApiProduct(p); });
+        setProductMap(map);
+        setCartLoading(false);
+      }).catch((err) => {
+        setError(err.message || 'Could not load product details.');
+        setCartLoading(false);
+      });
+    } else {
+      if (books && books.length) {
+        const map = {};
+        books.forEach((b) => { map[String(b.id)] = b; });
+        setProductMap(map);
+      }
+      setCartLoading(false);
+    }
+  }, [items, books]);
+
   React.useEffect(() => {
     if (items.length === 0) clearCheckoutDraft();
   }, [items.length]);
-
-  React.useEffect(() => {
-    if (catalogLoading || books.length === 0) return;
-    const validIds = new Set(books.map(book => String(book.id)));
-    setItems(prev => {
-      const next = prev.filter(item => validIds.has(String(item.id)));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [books, catalogLoading]);
 
   const add = (bookId, qty = 1) => {
     const safeQty = Math.max(1, Number(qty) || 1);
@@ -243,8 +260,7 @@ const CartProviderInner = ({ children, navigate }) => {
       if (ex) return prev.map(i => String(i.id) === id ? { ...i, qty: i.qty + safeQty, selected: true } : i);
       return [...prev, { id, qty: safeQty, selected: true }];
     });
-    const b = books.find(x => String(x.id) === id);
-    globalToast.success(`Added "${b ? b.title : 'item'}" to cart`);
+    globalToast.success('Added item to cart');
     trackCartAction('add', { productId: id, quantity: safeQty });
   };
   const addMany = (bookIds, qty = 1) => {
@@ -316,22 +332,17 @@ const CartProviderInner = ({ children, navigate }) => {
   };
   const clearSelected = () => setItems(prev => prev.filter(item => item.selected === false));
 
-  // Resolve against the live catalogue; drop items whose product was
-  // removed/unpublished in the admin console so totals stay correct.
   const rawCount = items.reduce((s, item) => s + item.qty, 0);
   const detailed = items
-    .map(i => { const b = books.find(x => String(x.id) === String(i.id)); return b ? { ...b, qty: i.qty, selected: i.selected !== false } : null; })
+    .map(i => { const b = productMap[String(i.id)]; return b ? { ...b, qty: i.qty, selected: i.selected !== false } : null; })
     .filter(Boolean);
   const selectedDetailed = detailed.filter(item => item.selected && item.stock);
-  const count = catalogLoading ? 0 : detailed.reduce((s, item) => s + item.qty, 0);
-  const productCount = catalogLoading ? 0 : detailed.length;
+  const count = detailed.reduce((s, item) => s + item.qty, 0);
+  const productCount = detailed.length;
   const selectedCount = selectedDetailed.reduce((s, item) => s + item.qty, 0);
   const subtotal = detailed.reduce((s, b) => s + b.price * b.qty, 0);
   const selectedSubtotal = selectedDetailed.reduce((s, b) => s + b.price * b.qty, 0);
-  const loading = catalogLoading && rawCount > 0 && detailed.length === 0;
-  const error = !catalogLoading && catalogError && rawCount > 0 && detailed.length === 0
-    ? catalogError
-    : '';
+  const loading = cartLoading;
 
   // Bulk Purchase Discount — applies at the category's configured threshold.
   // Only the qualifying items get the discount; others are full price.
@@ -384,7 +395,6 @@ const CartProviderInner = ({ children, navigate }) => {
       deselectAll,
       navigate,
       loading,
-      catalogLoading,
       error,
     }}>
       {children}
@@ -977,15 +987,43 @@ const WhatsAppFab = ({ route }) => (
   </a>
 );
 
+const getTabScrollTop = () => {
+  const activePanel = document.querySelector('.bs-tab-panel.active');
+  return activePanel ? activePanel.scrollTop : window.scrollY;
+};
+
+const scrollTabOrWindow = (top, behavior) => {
+  const activePanel = document.querySelector('.bs-tab-panel.active');
+  if (activePanel) {
+    activePanel.scrollTo({ top, behavior });
+  } else {
+    window.scrollTo({ top, behavior });
+  }
+};
+
 const ScrollToTopFab = ({ route }) => {
   const [visible, setVisible] = React.useState(false);
   const whatsappHidden = WHATSAPP_HIDDEN_ROUTES.has(route);
 
   React.useEffect(() => {
-    const update = () => setVisible(window.scrollY > 480);
-    window.addEventListener('scroll', update, { passive: true });
+    const isMobileShell = !!document.querySelector('.bs-mobile-shell');
+    const target = isMobileShell
+      ? document.querySelector('.bs-tab-panel.active')
+      : window;
+
+    if (!target && !isMobileShell) {
+      const update = () => setVisible(window.scrollY > 480);
+      window.addEventListener('scroll', update, { passive: true });
+      update();
+      return () => window.removeEventListener('scroll', update);
+    }
+
+    if (!target) return undefined;
+
+    const update = () => setVisible(target.scrollTop > 480);
+    target.addEventListener('scroll', update, { passive: true });
     update();
-    return () => window.removeEventListener('scroll', update);
+    return () => target.removeEventListener('scroll', update);
   }, []);
 
   if (!visible) return null;
@@ -994,7 +1032,7 @@ const ScrollToTopFab = ({ route }) => {
       type="button"
       className={`bs-scrolltop-fab${whatsappHidden ? ' is-solo' : ''}`}
       aria-label="Back to top"
-      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      onClick={() => scrollTabOrWindow(0, 'smooth')}
     >
       <Icon name="arrowUp" size={21} stroke={2.2} />
     </button>
@@ -1002,7 +1040,7 @@ const ScrollToTopFab = ({ route }) => {
 };
 
 // ---------- Mobile bottom nav ----------
-const BottomNav = ({ route, navigate }) => {
+const BottomNav = ({ route, navigate, onReTap }) => {
   const { count } = useCart();
   const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   React.useEffect(() => {
@@ -1022,16 +1060,20 @@ const BottomNav = ({ route, navigate }) => {
     return () => { alive = false; };
   }, []);
   const items = [['home','Home','home'],['shop','Shop','shop'],['cart','Cart','cart'],['account','Account','user']];
+  const isActive = (r) => r === 'account' ? (route === 'login' || route === 'signup' || route === 'account') : route === r;
   return (
-    <nav className="bs-bottom-nav">
+    <nav className="bs-bottom-nav" role="tablist">
       {items.map(([r,l,icn]) => (
-        <a key={r} href={hrefForRoute(r)} className={(r === 'account' ? route === 'login' || route === 'signup' : route === r) ? 'active' : ''} onClick={(e) => {
+        <a key={r} href={hrefForRoute(r)} role="tab" aria-selected={isActive(r)} className={isActive(r) ? 'active' : ''} onClick={(e) => {
           e.preventDefault();
+          const alreadyActive = isActive(r);
           if (r === 'account') {
             navigate(session?.role ? 'account' : 'login');
+            if (alreadyActive && onReTap) onReTap(r);
             return;
           }
           navigate(r);
+          if (alreadyActive && onReTap) onReTap(r);
         }}>
           <Icon name={icn} size={22} />
           {l}
@@ -1058,7 +1100,7 @@ const RatingLine = ({ book, size = 13 }) => {
 };
 
 // ---------- Product card ----------
-const ProductCard = ({ book, idx = 0, navigate, searchContext = null }) => {
+const ProductCard = React.memo(({ book, idx = 0, navigate, searchContext = null }) => {
   const { add } = useCart();
   const wishlist = useWishlist();
   const [added, setAdded] = React.useState(false);
@@ -1149,10 +1191,10 @@ const ProductCard = ({ book, idx = 0, navigate, searchContext = null }) => {
       </div>
     </div>
   );
-};
+});
 
 // ---------- List-view card ----------
-const ListCard = ({ book, idx = 0, navigate, searchContext = null }) => {
+const ListCard = React.memo(({ book, idx = 0, navigate, searchContext = null }) => {
   const { add } = useCart();
   const productUrl = hrefForProduct(book);
   const coverImage = book.imageThumb || book.image;
@@ -1219,6 +1261,6 @@ const ListCard = ({ book, idx = 0, navigate, searchContext = null }) => {
       </div>
     </div>
   );
-};
+});
 
 export { CartCtx, useCart, CartProvider, clearBookshopCartStorage, WishlistCtx, useWishlist, WishlistProvider, Navbar, Footer, WhatsAppFab, ScrollToTopFab, BottomNav, ProductCard, ListCard };

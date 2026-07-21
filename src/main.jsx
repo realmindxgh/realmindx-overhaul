@@ -847,7 +847,7 @@ const HashScroll = ({ children }) => {
   const location = useLocation();
 
   React.useEffect(() => {
-    if (location.pathname === '/services') return;
+    if (location.pathname === '/services' || location.pathname.startsWith('/bookshop')) return;
     if (!location.hash) {
       window.scrollTo({ top: 0, left: 0 });
       return;

@@ -474,8 +474,10 @@
 /* ≤1024px: sidebar becomes a drawer, shop grid narrows; home drops to 3 */
 @media (max-width: 1024px) { .bs-product-grid { grid-template-columns: repeat(3,1fr); } .bs-shop-layout .bs-product-grid { grid-template-columns: repeat(3,1fr); } }
 @media (max-width: 768px)  { .bs-product-grid { grid-template-columns: repeat(2,1fr); gap: 10px; } }
-/* Home page: hide cards beyond 4 on mobile so View All is meaningful */
-@media (max-width: 768px)  { .bs-home-new-grid > *:nth-child(n+5) { display: none; } }
+/* Home page: max 2 rows at every breakpoint so the section stays compact */
+.bs-home-new-grid > *:nth-child(n+11) { display: none; }            /* >1024px: 5 cols × 2 = 10 */
+@media (max-width: 1024px) { .bs-home-new-grid > *:nth-child(n+7) { display: none; } }  /* 769-1024px: 3 cols × 2 = 6 */
+@media (max-width: 768px)  { .bs-home-new-grid > *:nth-child(n+5) { display: none; } }  /* ≤768px: 2 cols × 2 = 4 */
 
 /* ---------- Product card ---------- */
 .bs-pcard { background: #fff; border-radius: var(--bs-radius-md); overflow: hidden; box-shadow: var(--bs-shadow-sm); border: 1px solid var(--bs-border); display: flex; flex-direction: column; height: 100%; width: 100%; transition: transform .28s, box-shadow .28s; position: relative; }
@@ -654,6 +656,26 @@
   .bs-steps { gap: 8px; }
   .bs-steps .bs-step-label { display: none; }
   .bs-trust-badges { flex-wrap: wrap; gap: 10px; }
+
+  /* ── Breadcrumbs ─────────────────────────────────────────── */
+  .bs-breadcrumb { font-size: 13px; }
+
+  /* ── Mobile type scale ──────────────────────────────────── */
+  .bs-cart-page-head .bs-h2 { font-size: clamp(22px, 6.5vw, 24px) !important; }
+  .bs-form-card .bs-h3,
+  .bs-checkout-layout .bs-h3 { font-size: clamp(20px, 5.5vw, 22px); }
+  .bs-summary-card .bs-h3 { font-size: clamp(17px, 5vw, 18px); }
+  .bs-field label,
+  .bs-field > span { font-size: 14px; }
+  .bs-field input,
+  .bs-field textarea,
+  .bs-field select { font-size: 16px; }
+  .bs-summary-card { padding: 20px; }
+  .bs-summary-row { font-size: 14px; }
+  .bs-summary-row.bs-total { font-size: clamp(16px, 5vw, 18px); }
+  .bs-cart-subtotal { font-size: clamp(17px, 5vw, 19px); }
+  .bs-checkout-layout .bs-btn,
+  .bs-cart-cta-row .bs-btn { font-size: 15px; min-height: 48px; }
 
   /* ── Newsletter section ──────────────────────────────────── */
   .bs-newsletter { padding: 40px 0; }
@@ -1495,7 +1517,7 @@
 .bs-qty-stepper.sm input { width: 38px; height: 36px; font-size: 14px; }
 @media (max-width: 600px) {
   .bs-cart-page-head { align-items: flex-start; gap: 12px; }
-  .bs-cart-page-head .bs-h2 { font-size: 28px !important; }
+  .bs-cart-page-head .bs-h2 { font-size: clamp(22px, 6.5vw, 24px) !important; }
   .bs-cart-head-actions { align-items: stretch; flex-direction: column; gap: 8px; }
   .bs-cart-clear-btn,
   .bs-cart-invoice-btn { min-height: 32px; padding: 0 10px; font-size: 11px; width: 100%; }
@@ -1570,7 +1592,7 @@
 .bs-step.active .bs-step-label, .bs-step.done .bs-step-label { color: var(--bs-navy); }
 .bs-step-line { width: 64px; height: 2px; background: var(--bs-border); margin: 0 14px; }
 .bs-step-line.done { background: var(--bs-gold-live); }
-@media (max-width: 600px) { .bs-step-label { display: none; } .bs-step-line { width: 36px; } }
+@media (max-width: 600px) { .bs-step-label { display: none; } .bs-step-line { width: 36px; } .bs-steps { margin: 24px 0 28px; } .bs-checkout-layout { padding-bottom: 48px; } .bs-form-card { padding: 22px 18px; } }
 .bs-checkout-layout { display: grid; grid-template-columns: 1fr 380px; gap: 36px; align-items: start; padding-bottom: 72px; min-width: 0; }
 .bs-checkout-layout > * { min-width: 0; }
 @media (max-width: 900px) { .bs-checkout-layout { grid-template-columns: 1fr; } }
@@ -4933,4 +4955,68 @@
   .bs-wishlist-head { align-items: stretch; }
   .bs-wishlist-move-all { width: 100%; justify-content: center; }
   .bs-wishlist-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
+
+/* ── Mobile tab shell ────────────────────────────────────────── */
+@media (max-width: 768px) {
+  body.bs-has-bottomnav { overflow: hidden; }
+  body.bs-has-bottomnav .bs-page { padding-bottom: 0; }
+
+  .bs-mobile-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    padding-top: var(--bs-nav-h);
+  }
+
+  .bs-tab-viewport {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bs-tab-panel {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 1;
+    content-visibility: auto;
+  }
+  .bs-tab-panel.active {
+    visibility: visible;
+    pointer-events: auto;
+    z-index: 2;
+    content-visibility: visible;
+  }
+
+  .bs-tab-overlay {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 5;
+    background: var(--bs-bg, #fff);
+    animation: bsFadePage .35s;
+  }
+
+  /* ── Mobile tab panel sticky overrides ────────────────────── */
+  .bs-tab-panel .bs-shop-toolbar { top: 0; }
+  .bs-tab-panel .bs-filter-card { top: 0; }
+  .bs-tab-panel .bs-summary-card { top: 0; }
+  .bs-tab-panel .bs-mini-summary { top: 0; }
+
+  /* ── Hide global desktop footer on mobile; tab-panel footers are inside .bs-mobile-shell ── */
+  .bs-mobile-shell + .bs-footer { display: none; }
+}
+
+/* ── Desktop: hide mobile shell ────────────────────────────────── */
+@media (min-width: 769px) {
+  .bs-mobile-shell { display: none; }
 }

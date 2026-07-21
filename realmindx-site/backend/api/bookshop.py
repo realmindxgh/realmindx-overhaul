@@ -517,6 +517,41 @@ def _suggestion_json(product):
     }
 
 
+@bookshop_bp.get("/products/filters")
+def list_product_filters():
+    """Lightweight metadata endpoint — no full product records or images."""
+    active = Product.query.filter_by(is_active=True)
+    total = active.count()
+
+    def values_with_counts(column):
+        rows = (
+            active.with_entities(column, func.count(Product.id))
+            .filter(column.isnot(None), column != "")
+            .group_by(column)
+            .order_by(column.asc())
+            .all()
+        )
+        return [{"name": r[0], "count": r[1]} for r in rows if r[0]]
+
+    subjects = values_with_counts(Product.subject)
+    levels = values_with_counts(Product.level)
+    curricula = values_with_counts(Product.curriculum)
+    publishers = values_with_counts(Product.publisher)
+
+    max_price = (
+        active.with_entities(func.max(Product.price)).scalar() or 0
+    )
+
+    return jsonify({
+        "subjects": subjects,
+        "levels": levels,
+        "curricula": curricula,
+        "publishers": publishers,
+        "max_price": float(max_price),
+        "total": total,
+    })
+
+
 @bookshop_bp.get("/products/suggestions")
 def list_product_suggestions():
     q = (request.args.get("q") or "").strip()
@@ -534,6 +569,29 @@ def list_product_suggestions():
         query = query.outerjoin(ProductCategory).filter(search_filter)
     products = query.order_by(Product.featured.desc(), Product.created_at.desc()).limit(6).all()
     return jsonify(items=[_suggestion_json(p) for p in products])
+
+
+@bookshop_bp.post("/products/batch")
+def batch_products():
+    """Return full product JSON for a list of IDs. Max 50 per request."""
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get("ids", [])
+    if not isinstance(ids, list) or not ids:
+        return jsonify(items=[])
+    ids = [int(i) for i in ids if str(i).isdigit()][:50]
+    products = (
+        Product.query.options(
+            joinedload(Product.category),
+            joinedload(Product.image_file),
+            joinedload(Product.image_original_file),
+            joinedload(Product.image_medium_file),
+            joinedload(Product.image_thumb_file),
+            selectinload(Product.reviews),
+        )
+        .filter(Product.id.in_(ids), Product.is_active.is_(True))
+        .all()
+    )
+    return jsonify(items=[product_json(p) for p in products])
 
 
 @bookshop_bp.get("/products/<int:product_id>")

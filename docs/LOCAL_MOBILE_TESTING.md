@@ -1,183 +1,102 @@
-# Local Mobile Testing Guide
+# Local Mobile Testing with ngrok
 
-This document describes how to test the RealMindX Bookshop on a physical phone
-during local development.
+This document explains how to test the RealMindX Bookshop on an actual phone during local development.
 
-## Principle
+## Prerequisites
 
-**Long-running processes must be launched manually in separate visible
-PowerShell terminals.** OpenCode agents (or similar coding assistants) must
-not launch or wait on persistent processes such as Flask dev servers, Vite
-dev servers, ngrok, cloudflared, or other tunnels/watchers. Agents should
-only edit code and run short verification commands with timeouts.
+- [ngrok](https://ngrok.com/download) installed and in PATH
+- Flask API running on port 5000
+- Vite dev server running on port 5173
 
----
+## Service order
 
-## Setup
+Start services in this order:
 
-Open three separate PowerShell terminals.
-
-### Terminal 1 — Flask backend
+### 1. Flask API
 
 ```powershell
-cd E:\VS Code Projects\realmindx-overhaul\realmindx-site
-$env:DATABASE_URL = "sqlite:///$PWD\realmindx_local.db"
-.venv\Scripts\python -m flask run --host 127.0.0.1 --port 5000 --no-reload
+cd "E:\VS Code Projects\realmindx-overhaul\realmindx-site"
+$env:DATABASE_URL = "sqlite:///$PWD/realmindx_local.db"
+$env:FLASK_APP = "backend:create_app"
+$env:FLASK_ENV = "development"
+& .venv\Scripts\python.exe -m flask run --port 5000
 ```
 
-- Uses the project virtual environment (`.venv`)
-- Uses the local SQLite database (`realmindx_local.db`)
-- `--no-reload` prevents the Flask reloader from creating extra Python
-  processes and interfering with the single-process expectation
-
-### Terminal 2 — Vite frontend
+### 2. Vite dev server with current ngrok hostname
 
 ```powershell
-cd E:\VS Code Projects\realmindx-overhaul
-$env:__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS="your-temporary-domain.ngrok-free.app"
-npx vite --host 0.0.0.0 --port 5173
+cd "E:\VS Code Projects\realmindx-overhaul"
+$env:__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS = "<current-ngrok-hostname>"
+npx vite --host 0.0.0.0 --port 5173 --strictPort
 ```
 
-Key points:
+`__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` must be set **before** starting Vite so the ngrok hostname is allowed. If ngrok is restarted and gets a new hostname, Vite must also be restarted with the new hostname.
 
-- `--host 0.0.0.0` makes the server reachable from other devices on the LAN
-- The `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` environment variable adds the
-  temporary ngrok domain to Vite's allowed-host check **before** the server
-  starts. Set it in the same command line (or the same terminal session)
-  before launching Vite; setting it after Vite has started has no effect.
-- Vite automatically enables `strictPort` behaviour when `--port` is given,
-  but if port 5173 is already taken it will silently move to 5174. Always
-  verify the port in the terminal output.
+Do **not** use `server.allowedHosts: true` — this disables Vite's host-check security entirely.
 
-### Terminal 3 — ngrok tunnel
+Do **not** use `--host 127.0.0.1` — ngrok cannot forward to a loopback-only listener from external clients. Use `--host 0.0.0.0`.
+
+Use `--strictPort` to fail if port 5173 is occupied rather than silently moving to 5174.
+
+### 3. ngrok
 
 ```powershell
 ngrok http 5173
 ```
 
-- **Vite must already be running and listening on port 5173** before ngrok
-  starts. Ngrok only probes the port once on startup; if nothing is
-  listening it logs a connection-refused error and tunnels nothing.
-- Use a free ngrok account (authtoken configured). The free tier shows an
-  interstitial warning page when first visited.
+## Checking the current tunnel
 
----
-
-## Checking which process owns a port
-
-To inspect what is listening on port 5173:
+ngrok exposes a local inspection API on port 4040:
 
 ```powershell
-netstat -ano | Select-String "5173" | Select-String "LISTENING"
+# Get tunnel details
+Invoke-RestMethod http://127.0.0.1:4040/api/tunnels | ConvertTo-Json -Depth 5
+
+# The public URL will be something like https://<random>.ngrok-free.dev
 ```
 
-The last column is the PID. To stop only that process (if it belongs to
-this repository and is stale):
+If no tunnel is active, the request will fail with a connection refused error.
+
+## How to tell if the ngrok URL has changed
+
+- A stopped or restarted ngrok tunnel generates a **new random hostname**.
+- The old URL will show "Tunnel <old-url> not found" or a 502.
+- Check the current URL by inspecting `http://127.0.0.1:4040/api/tunnels`.
+
+## How to distinguish a Vite host error from an expired ngrok tunnel
+
+| Symptom | Likely cause |
+|---|---|
+| Response body says "Blocked request. This host is not allowed." | Vite's `allowedHosts` does not include the current ngrok hostname. Restart Vite with `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` set. |
+| Browser shows "Tunnel not found" or "502 Bad Gateway" | ngrok tunnel is dead or was restarted. Check `http://127.0.0.1:4040/api/tunnels`. |
+| "This site can't be reached" / connection refused | ngrok is not running at all. |
+| Page loads but API calls fail | Flask is not running or is on a different port. |
+
+## Stopping stale Vite processes
 
 ```powershell
+# Find processes listening on port 5173
+Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue |
+  Where-Object State -EQ "Listen"
+
+# Get the PID and process info
+Get-Process -Id <PID>
+
+# Stop only the stale Vite (not Flask or other node processes)
 Stop-Process -Id <PID> -Force
 ```
 
-Be careful not to terminate unrelated Node or Python processes.
+## Testing locally
 
----
+1. Open the current ngrok public URL on your phone.
+2. Navigate through Home, Shop, Cart, and Account tabs.
+3. Verify the original footer appears in each tab.
+4. Verify tab switching preserves scroll position.
+5. Verify no console errors (use `chrome://inspect` on Android).
 
-## Verifying the tunnel
+## Notes
 
-```powershell
-curl -s -H "ngrok-skip-browser-warning: 1" https://your-temporary-domain.ngrok-free.app/bookshop/
-```
-
-The `ngrok-skip-browser-warning: 1` header bypasses the ngrok-free-tier
-interstitial and returns the real application response. A successful test
-returns HTTP 200 with the SPA HTML shell.
-
----
-
-## Testing on a phone
-
-1. Open the ngrok URL on the phone browser
-   (`https://your-temporary-domain.ngrok-free.app`)
-2. Tap **Visit Site** on the ngrok interstitial (free tier)
-3. Navigate to `/bookshop/products` to verify mobile batching
-4. Scroll to verify infinite-scroll pagination
-5. Test search, filters, and sorting
-
----
-
-## Troubleshooting
-
-### Port 5173 already in use
-
-```powershell
-netstat -ano | Select-String "5173"
-```
-
-If a stale Vite process from this repository holds the port, stop it by
-PID. If another application owns the port, choose a different port with
-`--port <PORT>` in both Terminal 2 and Terminal 3.
-
-### Vite silently moved to port 5174
-
-Vite increments the port if 5173 is busy without always printing a clear
-warning. Check the first few lines of Vite's terminal output:
-
-```
-VITE v6.x  ready in 1234 ms
-  ➜  Local:   http://localhost:5173/
-```
-
-If it says `5174` instead, restart ngrok pointing at the correct port.
-
-### Ngrok still forwarding to the wrong port
-
-Ngrok captures the target port once at startup. If Vite restarted on a
-different port, stop ngrok (Ctrl+C) and restart with the correct port.
-
-### Vite says the host is not allowed
-
-```
-The request url ... is not allowed. ...
-```
-
-Set `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` **before** Vite starts. This
-environment variable is read once during Vite's config resolution; setting
-it afterwards has no effect. Stop Vite, set the variable, and restart.
-
-### Ngrok free-tier warning page
-
-ngrok-free.dev shows an interstitial page for first-time visitors. In a
-browser, tap **Visit Site**. For curl, send the header
-`ngrok-skip-browser-warning: 1`.
-
-### Cached 403 responses on the phone
-
-If the phone previously hit the ngrok URL before it was properly
-configured, the browser may cache the 403 interstitial response. Open a
-Private/Incognito tab or clear site data.
-
-### Flask reloader creates multiple Python processes
-
-Using `--no-reload` avoids this. If reloader was used, stop all Python
-processes belonging to the Flask app and restart with `--no-reload`.
-
-### OpenCode appears stuck while waiting for a persistent process
-
-Agents should **not** start long-running processes. If an agent is stuck
-waiting for a server to start, cancel the command and launch the process
-manually in a visible terminal, then let the agent proceed with
-verification commands.
-
-### API 500 errors
-
-Check the actual Flask traceback in Terminal 1. The Flask terminal output
-shows the full Python traceback for any unhandled exception.
-
-### Testing with different addresses
-
-- `http://localhost:5173` – works immediately, no tunnel needed
-- `http://127.0.0.1:5173` – works immediately, no tunnel needed
-- `http://<LAN_IP>:5173` – works without a tunnel; Vite must be started
-  with `--host 0.0.0.0`. Find your LAN IP with `ipconfig`.
-- `https://your-temporary-domain.ngrok-free.app` – requires ngrok tunnel
-  and the `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` env var
+- ngrok free tier URLs are temporary. After some time or a restart, the URL changes.
+- Always check the current tunnel before starting Vite.
+- Vite must be restarted with the new hostname if ngrok is restarted.
+- Do not commit the ngrok hostname to `vite.config.js` — use the environment variable.

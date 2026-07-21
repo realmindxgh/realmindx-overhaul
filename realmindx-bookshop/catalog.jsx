@@ -1,7 +1,7 @@
 import React from 'react';
 import { API_BASE, isApiMode, api } from '../src/lib/apiClient.js';
 import { useManagedContent, publicItems } from '../src/lib/managedContent.js';
-import { buildBookshopTaxonomies, normalizeBookshopTaxonomyValue } from '../src/lib/bookshopTaxonomy.js';
+import { buildBookshopTaxonomies, buildTaxonomiesFromFilters, normalizeBookshopTaxonomyValue } from '../src/lib/bookshopTaxonomy.js';
 import { BOOKS as DEMO_BOOKS, CATEGORIES as FALLBACK_CATEGORIES } from './shared.jsx';
 
 const normalizeCatalogBook = (book) => {
@@ -202,7 +202,6 @@ const mapProducts = (products, cats) => {
 
 // â”€â”€ API-mode CatalogProvider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ApiCatalogProvider = ({ children }) => {
-  const [books, setBooks] = React.useState([]);
   const [categories, setCategories] = React.useState(EMPTY_CATEGORIES);
   const [taxonomies, setTaxonomies] = React.useState(EMPTY_TAXONOMIES);
   const [flyers, setFlyers] = React.useState([]);
@@ -215,33 +214,29 @@ const ApiCatalogProvider = ({ children }) => {
     const load = async () => {
       setLoading(true);
       try {
-        const [prods, cats, flyerData] = await Promise.all([
-          api.fetchProducts(),
+        const [filters, cats, flyerData] = await Promise.all([
+          api.fetchProductFilters(),
           api.fetchCategories(),
           api.fetchFlyers().catch(() => ({ items: [] })),
         ]);
         if (cancelled) return;
 
-        const mappedBooks = (prods.items || []).map(fromApiProduct);
         const mappedCats = [
           { id: 'all', name: 'All Books', icon: 'grid' },
           ...(cats.items || []).map(fromApiCategory),
-        ];
-        const mappedFlyers = (flyerData.items || []).map(fromApiFlyer);
-        const mappedTaxonomies = buildBookshopTaxonomies(mappedBooks, mappedCats);
+        ].filter(Boolean);
 
-        setBooks(mappedBooks);
+        const mappedTaxonomies = buildTaxonomiesFromFilters(filters, mappedCats);
+
         setCategories(mappedCats.length ? mappedCats : EMPTY_CATEGORIES);
         setTaxonomies(mappedTaxonomies);
-        setFlyers(mappedFlyers);
+        const mappedFlyers = (flyerData.items || []).map(fromApiFlyer);
+        setFlyers(mappedFlyers.length ? mappedFlyers : FALLBACK_FLYERS);
+        setPriceCeiling(Math.max(80, Math.ceil((filters.max_price || 0) / 10) * 10));
         setError('');
-
-        const maxPrice = mappedBooks.reduce((m, b) => Math.max(m, b.price), 0);
-        setPriceCeiling(Math.max(80, Math.ceil(maxPrice / 10) * 10));
       } catch (err) {
         console.warn('[CatalogProvider] API fetch failed:', err.message);
         if (cancelled) return;
-        setBooks([]);
         setCategories(EMPTY_CATEGORIES);
         setTaxonomies(EMPTY_TAXONOMIES);
         setFlyers([]);
@@ -256,7 +251,7 @@ const ApiCatalogProvider = ({ children }) => {
   }, []);
 
   return (
-    <CatalogCtx.Provider value={{ books, categories, taxonomies, flyers, priceCeiling, loading, error }}>
+    <CatalogCtx.Provider value={{ books: [], categories, taxonomies, flyers, priceCeiling, loading, error }}>
       {children}
     </CatalogCtx.Provider>
   );
@@ -270,7 +265,7 @@ const ProductionEmptyCatalogProvider = ({ children }) => (
     flyers: [],
     priceCeiling: 80,
     loading: false,
-    error: 'Bookshop catalog API is not configured.',
+    error: 'Bookshop catalog is not configured.',
   }}>
     {children}
   </CatalogCtx.Provider>
@@ -296,7 +291,7 @@ const LocalCatalogProvider = ({ children }) => {
   return <CatalogCtx.Provider value={value}>{children}</CatalogCtx.Provider>;
 };
 
-export { fromApiProduct };
+export { CatalogCtx, fromApiProduct };
 
 export const CatalogProvider = isApiMode()
   ? ApiCatalogProvider

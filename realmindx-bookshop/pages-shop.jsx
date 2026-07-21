@@ -9,8 +9,9 @@ import TurnstileField from '../src/lib/TurnstileField.jsx';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute } from './urls.js';
 import { fuzzyMatches, rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
-import { api } from '../src/lib/apiClient.js';
+import { api, isApiMode } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
+import { buildShopCacheKey, saveShopCache, saveHomeCache, getHomeCacheStale } from '../src/lib/bookshopRouteCache.js';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
@@ -441,9 +442,81 @@ const CategoryMarquee = ({ navigate }) => {
   );
 };
 
+// Max 2 rows at widest desktop (5 cols × 2 = 10). CSS nth-child rules
+// cap rendered items at narrower widths so the section stays compact.
+const HOMEPAGE_SECTION_LIMIT = 10;
+
 const HomePage = ({ navigate }) => {
-  const { books, loading: catalogLoading, error: catalogError } = useCatalog();
+  const { loading: catalogLoading, error: catalogError, books: catalogBooks } = useCatalog();
   const [turnstileToken, setTurnstileToken] = React.useState('');
+  const [newArrivals, setNewArrivals] = React.useState([]);
+  const [examPicks, setExamPicks] = React.useState([]);
+  const [sectionLoading, setSectionLoading] = React.useState(true);
+  const [sectionError, setSectionError] = React.useState('');
+  const newArrivalsRef = React.useRef(newArrivals);
+  const examPicksRef = React.useRef(examPicks);
+  newArrivalsRef.current = newArrivals;
+  examPicksRef.current = examPicks;
+
+  React.useEffect(() => {
+    const cached = getHomeCacheStale();
+    if (cached && (cached.newArrivals?.length > 0 || cached.examPicks?.length > 0)) {
+      setNewArrivals(cached.newArrivals);
+      setExamPicks(cached.examPicks);
+      setSectionLoading(false);
+      setSectionError('');
+      if (cached.stale) {
+        Promise.all([
+          api.fetchProductSearch(`?sort=newest&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
+          api.fetchProductSearch(`?curriculum=WASSCE&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
+        ]).then(([newData, examData]) => {
+          setNewArrivals((newData.items || []).map(fromApiProduct));
+          setExamPicks((examData.items || []).map(fromApiProduct));
+        }).catch(() => {});
+      }
+      return;
+    }
+    if (!isApiMode()) {
+      if (catalogBooks.length > 0) {
+        setNewArrivals(catalogBooks.slice(0, HOMEPAGE_SECTION_LIMIT));
+        const picks = catalogBooks.filter(b => b.curriculumName === 'WASSCE').slice(0, HOMEPAGE_SECTION_LIMIT);
+        setExamPicks(picks.length ? picks : catalogBooks.slice(HOMEPAGE_SECTION_LIMIT, HOMEPAGE_SECTION_LIMIT * 2));
+      }
+      setSectionLoading(false);
+      return;
+    }
+    let alive = true;
+    setSectionLoading(true);
+    setSectionError('');
+    Promise.all([
+      api.fetchProductSearch(`?sort=newest&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
+      api.fetchProductSearch(`?curriculum=WASSCE&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
+    ]).then(([newData, examData]) => {
+      if (!alive) return;
+      setNewArrivals((newData.items || []).map(fromApiProduct));
+      setExamPicks((examData.items || []).map(fromApiProduct));
+      setSectionLoading(false);
+    }).catch(() => {
+      if (!alive) return;
+      setSectionError('Could not load sections.');
+      setSectionLoading(false);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      const arrivals = newArrivalsRef.current;
+      const picks = examPicksRef.current;
+      if (arrivals.length > 0 || picks.length > 0) {
+        saveHomeCache({
+          newArrivals: arrivals,
+          examPicks: picks,
+          scrollY: window.scrollY,
+        });
+      }
+    };
+  }, []);
 
   const onSubscribe = async (event) => {
     event.preventDefault();
@@ -459,20 +532,7 @@ const HomePage = ({ navigate }) => {
     }
   };
 
-  const featuredPool = books.filter((book) => book.featured);
-  const featured = [...featuredPool, ...books.filter((book) => !book.featured)].slice(0, 10);
-
-  const examTagged = books.filter((book) => (book.tags || []).includes('exam-pick'));
-  const examCatFeatured = books.filter((book) =>
-    book.featured && /bece|wassce|exam|past[\s-]?questions?|textbook/i.test(`${book.cat || ''} ${book.catName || ''}`)
-  );
-  const examFallback = books.filter((book) =>
-    /exam|past|textbook/i.test(book.cat || '') || /exam|past|textbook/i.test(book.catName || '')
-  );
-  const examPool = examTagged.length ? examTagged : examCatFeatured.length ? examCatFeatured : examFallback;
-  const examPicks = [...examPool, ...books.filter((book) => !examPool.includes(book))].slice(0, 10);
-
-  if (catalogLoading && books.length === 0) {
+  if (catalogLoading && !isApiMode()) {
     return (
       <div className="bs-fade-page">
         <HeroSlideshow navigate={navigate} />
@@ -483,7 +543,7 @@ const HomePage = ({ navigate }) => {
     );
   }
 
-  if (catalogError && books.length === 0) {
+  if (catalogError && !isApiMode()) {
     return (
       <div className="bs-fade-page">
         <section className="bs-section bs-container" style={{ textAlign: 'center', padding: '80px 20px' }}>
@@ -496,16 +556,18 @@ const HomePage = ({ navigate }) => {
     );
   }
 
+  const hasContent = newArrivals.length > 0 || examPicks.length > 0;
+
   return (
     <div className="bs-fade-page">
       <div className="bs-sr-only" role="status" aria-live="polite">
-        {catalogLoading && 'Loading book suggestions\u2026'}
-        {!catalogLoading && !!books.length && `${books.length} product${books.length !== 1 ? 's' : ''} available`}
-        {catalogError && 'Some sections could not load.'}
+        {sectionLoading && 'Loading sections\u2026'}
+        {!sectionLoading && hasContent && `Showing ${newArrivals.length + examPicks.length} product${newArrivals.length + examPicks.length !== 1 ? 's' : ''}`}
+        {sectionError && 'Some sections could not load.'}
       </div>
       <HeroSlideshow navigate={navigate} />
 
-      {featured.length > 0 && (
+      {newArrivals.length > 0 && (
         <section className="bs-section bs-container">
           <Reveal className="bs-section-head-row">
             <div>
@@ -515,7 +577,7 @@ const HomePage = ({ navigate }) => {
             <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>View all <Icon name="arrow" size={14} /></a>
           </Reveal>
           <div className="bs-product-grid bs-home-new-grid">
-            {featured.map((book, index) => (
+            {newArrivals.map((book, index) => (
               <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index} navigate={navigate} /></Reveal>
             ))}
           </div>
@@ -533,11 +595,17 @@ const HomePage = ({ navigate }) => {
             </div>
             <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>Browse the catalogue <Icon name="arrow" size={14} /></a>
           </Reveal>
-          <div className="bs-product-grid">
+          <div className="bs-product-grid bs-home-new-grid">
             {examPicks.map((book, index) => (
               <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index + 4} navigate={navigate} /></Reveal>
             ))}
           </div>
+        </section>
+      )}
+
+      {!sectionLoading && !hasContent && (
+        <section className="bs-section bs-container">
+          <p style={{ textAlign: 'center', color: 'var(--bs-text-muted)' }}>No products available yet. Check back soon.</p>
         </section>
       )}
 
@@ -558,7 +626,7 @@ const HomePage = ({ navigate }) => {
 };
 
 const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' }) => {
-  const { books, taxonomies } = useCatalog();
+  const { taxonomies } = useCatalog();
   const [open, setOpen] = React.useState({
     categories: true,
     subjects: true,
@@ -612,16 +680,12 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
   const availableCounts = React.useMemo(() => {
     const nextCounts = {};
     FILTER_GROUPS.forEach((group) => {
-      const scopedBooks = books.filter((book) => matchesCatalogueFilters(book, filters, { ignoreTaxonomy: group.taxonomy }));
       nextCounts[group.key] = new Map(
-        (taxonomies[group.key] || []).map((item) => [
-          item.id,
-          scopedBooks.filter((book) => matchesTaxonomy(book, group.taxonomy, item.id)).length,
-        ]),
+        (taxonomies[group.key] || []).map((item) => [item.id, item.count || 0]),
       );
     });
     return nextCounts;
-  }, [books, filters, taxonomies]);
+  }, [filters, taxonomies]);
 
   const rangeMax = safeCeilingValue(ceiling);
 
@@ -794,7 +858,7 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
   );
 };
 
-const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
+const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = true, scrollContainerRef }) => {
   const { books, taxonomies, priceCeiling, loading: catalogLoading } = useCatalog();
   const rangeCeiling = safeCeilingValue(priceCeiling);
   const [filters, setFilters] = React.useState(() => createFilterState(rangeCeiling, initialBrowse, initialQuery));
@@ -811,13 +875,10 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   const [fetchLoading, setFetchLoading] = React.useState(false);
   const [requestStatus, setRequestStatus] = React.useState('idle');
   const sentinelRef = React.useRef(null);
-  const fetchingRef = React.useRef(false);
-  const previousCeilingRef = React.useRef(rangeCeiling);
-  const abortRef = React.useRef(null);
-  const sentinelKeyRef = React.useRef(0);
   const [isMobile, setIsMobile] = React.useState(
     typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
   );
+  const BATCH = isMobile ? MOBILE_BATCH : DESKTOP_BATCH;
 
   React.useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');
@@ -826,7 +887,31 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  const BATCH = isMobile ? MOBILE_BATCH : DESKTOP_BATCH;
+  const cacheKey = React.useMemo(
+    () => buildShopCacheKey(filters, sort, BATCH, initialBrowse, initialQuery),
+    [filters, sort, BATCH, initialBrowse, initialQuery]
+  );
+  const fetchingRef = React.useRef(false);
+  const previousCeilingRef = React.useRef(rangeCeiling);
+  const abortRef = React.useRef(null);
+  const sentinelKeyRef = React.useRef(0);
+  const requestIdRef = React.useRef(0);
+  const fetchedItemsRef = React.useRef(fetchedItems);
+  const totalCountRef = React.useRef(totalCount);
+  const currentPageRef = React.useRef(currentPage);
+  const hasMoreRef = React.useRef(hasMore);
+  const cacheKeyRef = React.useRef(cacheKey);
+  const filtersRef = React.useRef(filters);
+  const sortRef = React.useRef(sort);
+  const requestStatusRef = React.useRef(requestStatus);
+  cacheKeyRef.current = cacheKey;
+  fetchedItemsRef.current = fetchedItems;
+  totalCountRef.current = totalCount;
+  currentPageRef.current = currentPage;
+  hasMoreRef.current = hasMore;
+  filtersRef.current = filters;
+  sortRef.current = sort;
+  requestStatusRef.current = requestStatus;
 
   React.useEffect(() => {
     const previousCeiling = previousCeilingRef.current;
@@ -888,38 +973,84 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const rid = ++requestIdRef.current;
     try {
       const qs = buildSearchQuery(page, BATCH);
       const data = await api.fetchProductSearch(`?${qs}`);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || rid !== requestIdRef.current) return;
       const items = (data.items || []).map(fromApiProduct);
       if (append) {
         setFetchedItems(prev => {
+          if (rid !== requestIdRef.current) return prev;
           const existingIds = new Set(prev.map(p => p.id));
           const deduped = items.filter(p => !existingIds.has(p.id));
           return [...prev, ...deduped];
         });
       } else {
+        if (rid !== requestIdRef.current) return;
         setFetchedItems(items);
       }
+      if (rid !== requestIdRef.current) return;
       setTotalCount(data.total || 0);
       setCurrentPage(page);
       setHasMore(data.total > page * BATCH);
       setRequestStatus('success');
+      if (rid === requestIdRef.current) {
+        const allProducts = append ? [...fetchedItemsRef.current, ...items] : items;
+        saveShopCache(cacheKeyRef.current, { products: allProducts, totalCount: data.total || 0, currentPage: page, hasMore: data.total > page * BATCH, scrollY: window.scrollY, filters: filtersRef.current, sort: sortRef.current, requestStatus: 'success' });
+      }
       sentinelKeyRef.current += 1;
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError' || rid !== requestIdRef.current) return;
       setFetchError('Could not load products. Try again.');
       if (!append) setRequestStatus('error');
     } finally {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && rid === requestIdRef.current) {
         fetchingRef.current = false;
         setFetchLoading(false);
       }
     }
   }, [buildSearchQuery, BATCH]);
 
+  // ---- Initial fetch (first mount only) ----
+  // The component stays mounted via the persistent route host, so this
+  // runs only once when the component is first created.
+  const initialFetchRef = React.useRef(true);
+
   React.useEffect(() => {
+    if (!initialFetchRef.current) return;
+    initialFetchRef.current = false;
+    if (import.meta.env.DEV) console.debug('[ShopPage] mount — initial fetch', { cacheKey });
+    fetchPage(1).catch(() => {});
+  }, [fetchPage]);
+
+  // ---- Browse-scope reset ----
+  // When the user navigates to a different browse scope while Shop stays
+  // mounted (e.g. /category/math → /category/science), reset state.
+  const browseScopeKey = `${initialBrowse.taxonomy || ''}::${initialBrowse.value || ''}::${initialQuery || ''}`;
+  const prevBrowseKeyRef = React.useRef(browseScopeKey);
+
+  React.useEffect(() => {
+    if (prevBrowseKeyRef.current === browseScopeKey && !initialFetchRef.current) return;
+    prevBrowseKeyRef.current = browseScopeKey;
+    setFetchedItems([]);
+    setTotalCount(0);
+    setCurrentPage(1);
+    setHasMore(true);
+    setFetchError('');
+    setRequestStatus('loading');
+    setFilters(createFilterState(rangeCeiling, initialBrowse, initialQuery));
+    setSort('newest');
+    fetchingRef.current = false;
+    sentinelKeyRef.current += 1;
+    window.scrollTo(0, 0);
+    fetchPage(1).catch(() => {});
+  }, [browseScopeKey, fetchPage]);
+
+  // ---- Filter/sort reset ----
+  // When the user changes a filter or sort option, reset results to page 1.
+  React.useEffect(() => {
+    if (initialFetchRef.current) return; // First mount handled separately
     setFetchedItems([]);
     setTotalCount(0);
     setCurrentPage(1);
@@ -928,11 +1059,29 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
     setRequestStatus('loading');
     fetchingRef.current = false;
     sentinelKeyRef.current += 1;
+    window.scrollTo(0, 0);
+    fetchPage(1).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, sort]);
 
+  // ---- Pagehide handler (full-page reload backup) ----
   React.useEffect(() => {
-    fetchPage(1);
-  }, [fetchPage]);
+    const onPageHide = () => {
+      if (requestStatusRef.current !== 'success') return;
+      saveShopCache(cacheKeyRef.current, {
+        products: fetchedItemsRef.current,
+        totalCount: totalCountRef.current,
+        currentPage: currentPageRef.current,
+        hasMore: hasMoreRef.current,
+        scrollY: window.scrollY,
+        filters: filtersRef.current,
+        sort: sortRef.current,
+        requestStatus: 'success',
+      });
+    };
+    window.addEventListener('pagehide', onPageHide, { passive: true });
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, []);
 
   const loadMore = React.useCallback(() => {
     if (!hasMore || fetchingRef.current) return;
@@ -951,18 +1100,19 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
 
   React.useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || allLoaded || fetchError || requestStatus === 'loading') return undefined;
+    const rootEl = scrollContainerRef?.current || null;
+    if (!active || !sentinel || allLoaded || fetchError || requestStatus === 'loading') return undefined;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && !fetchingRef.current) {
           loadMore();
         }
       },
-      { rootMargin: '200px' },
+      rootEl ? { root: rootEl, rootMargin: '200px' } : { rootMargin: '200px' },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [allLoaded, loadMore, fetchError, requestStatus]);
+  }, [active, allLoaded, loadMore, fetchError, requestStatus, sentinelRef, scrollContainerRef]);
 
   React.useEffect(() => {
     const term = String(initialQuery || '').trim();
@@ -990,9 +1140,9 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
 
   const selectedLabels = React.useMemo(() => selectedLabelList(filters, taxonomies), [filters, taxonomies]);
   const selectedFilters = React.useMemo(() => selectedFilterList(filters, taxonomies), [filters, taxonomies]);
-  const searchContext = filters.query.trim()
+  const searchContext = React.useMemo(() => filters.query.trim()
     ? { term: filters.query.trim(), scope: 'bookshop', path: `${PREFIX}/products`, source: 'results' }
-    : null;
+    : null, [filters.query]);
   const contextLabel = React.useMemo(() => {
     let base = 'the full catalogue';
     if (filters.query.trim()) base = `search results for "${filters.query.trim()}"`;
@@ -1095,18 +1245,6 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '' }) => {
   React.useEffect(() => {
     setBrowseQuery('');
   }, [initialBrowse.taxonomy]);
-
-  if (catalogLoading && books.length === 0) {
-    return (
-      <div className="bs-container bs-fade-page">
-        <div className="bs-breadcrumb">
-          <a href={hrefForRoute('home')} onClick={(event) => { event.preventDefault(); navigate('home'); }}>Home</a>
-          <span className="bs-sep">/</span><span className="bs-cur">Shop</span>
-        </div>
-        <LoadingState title="Loading the shop" body="Fetching the latest catalog, categories, and pricing." />
-      </div>
-    );
-  }
 
   return (
     <div className="bs-container bs-fade-page">
