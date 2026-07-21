@@ -299,6 +299,12 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
       : 0
   ));
   const hasReviews = Number(book.reviews || 0) > 0 && Number(book.rating || 0) > 0;
+  const reviewLinkLabel = reviewEligibility.eligible
+    ? 'Write a review'
+    : hasReviews
+      ? `${book.reviews} review${book.reviews === 1 ? '' : 's'}`
+      : 'Verified buyers can review';
+  const reviewLinkTarget = reviewEligibility.eligible ? '#write-review' : '#reviews';
   const detailImage = book.imageMedium || book.imageOriginal || book.image;
   const lightboxImage = book.imageOriginal || book.imageMedium || book.image;
   const fmtReviewDate = iso => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
@@ -373,7 +379,7 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
           <h1 className="bs-pdp-title bs-h2">{book.title}</h1>
           <div className="bs-pdp-rating-row">
             {hasReviews ? <Stars value={book.rating} size={17} /> : <span className="bs-no-rating">No ratings yet</span>}
-            <a className="bs-review-link" href="#reviews">{hasReviews ? `${book.reviews} review${book.reviews === 1 ? '' : 's'}` : 'Be the first to review'}</a>
+            <a className="bs-review-link" href={reviewLinkTarget}>{reviewLinkLabel}</a>
           </div>
           <div className="bs-pdp-price">{cedis(book.price)}{book.old && <span className="bs-old">{cedis(book.old)}</span>}</div>
           <div className={`bs-pcard-stock ${book.stock ? 'bs-stock-in' : 'bs-stock-out'}`} style={{ fontSize:13 }}>
@@ -494,6 +500,19 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
               </div>
             )}
             {hasBackendProduct && reviewEligibility.eligible && <ReviewForm key={book.id} productId={book.id} />}
+            {hasBackendProduct && !isLoggedIn() && (
+              <div className="bs-review-policy-note">
+                Only customers with a completed order for this item can leave a review. Sign in after your purchase to see if you are eligible.
+              </div>
+            )}
+            {hasBackendProduct && isLoggedIn() && reviewEligibility.loading && (
+              <div className="bs-review-policy-note">Checking this account’s review eligibility…</div>
+            )}
+            {hasBackendProduct && isLoggedIn() && !reviewEligibility.loading && !reviewEligibility.eligible && !reviewEligibility.alreadyReviewed && (
+              <div className="bs-review-policy-note">
+                Reviews are available after this account completes an order containing this item.
+              </div>
+            )}
             {hasBackendProduct && isLoggedIn() && reviewEligibility.alreadyReviewed && (
               <div className="bs-review-eligibility-note">
                 <Icon name="check" size={17} />

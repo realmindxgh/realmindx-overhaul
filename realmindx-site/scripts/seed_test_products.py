@@ -27,9 +27,10 @@ CATEGORIES = [
     {"name": "Professional Development", "slug": "professional-development", "description": "Career and skill development books"},
 ]
 
-# These scoped public settings make the API-backed local Bookshop feel complete
-# after seeding: footer, contact, checkout and support pages use the same data.
-BOOKSHOP_SETTINGS = {
+# Shared public contact settings are used by both the main site and Bookshop.
+# Keeping them unscoped makes the footer, contact, checkout and support pages
+# display one canonical set of details across the two public experiences.
+CONTACT_SETTINGS = {
     "contact_email": "info@realmindxgh.com",
     "contact_phone_1": "+233 55 803 9190",
     "contact_phone_2": "+233 55 452 9493",
@@ -105,11 +106,10 @@ PRODUCTS = [
 
 def seed():
     with app.app_context():
-        for key, value in BOOKSHOP_SETTINGS.items():
-            storage_key = f"bookshop__{key}"
-            setting = SiteSetting.query.filter_by(key=storage_key).first()
+        for key, value in CONTACT_SETTINGS.items():
+            setting = SiteSetting.query.filter_by(key=key).first()
             if not setting:
-                setting = SiteSetting(key=storage_key)
+                setting = SiteSetting(key=key)
                 db.session.add(setting)
             setting.value = value
             setting.public = True

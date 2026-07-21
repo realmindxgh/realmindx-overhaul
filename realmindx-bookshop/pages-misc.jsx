@@ -677,7 +677,7 @@ const BookshopResetPasswordPage = ({ navigate }) => {
 };
 
 const ContactPage = ({ navigate }) => {
-  const settings = usePublicSettings('bookshop');
+  const settings = usePublicSettings();
   const phones = [settings.contact_phone_1, settings.contact_phone_2, settings.contact_phone_3].filter(Boolean);
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const onSubmit = async (event) => {
@@ -768,7 +768,7 @@ const CopyParagraphs = ({ value }) => String(value || '')
   .map((paragraph, index) => <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>);
 
 const InfoPage = ({ navigate }) => {
-  const settings = usePublicSettings('bookshop');
+  const settings = usePublicSettings();
   const { copy: siteCopy, loading: copyLoading } = useSiteCopyState({ waitForApi: true });
   const allowLocalFallback = canUseLocalFallback();
   const copyValue = (key, fallback, empty = 'This information is currently unavailable.') =>
@@ -866,7 +866,7 @@ const BOOKSHOP_TERMS_SECTIONS = [
 ];
 
 const BookshopLegalPage = ({ type = 'privacy' }) => {
-  const settings = usePublicSettings('bookshop');
+  const settings = usePublicSettings();
   const privacy = type === 'privacy';
   const title = privacy ? 'Bookshop Privacy Policy' : 'Bookshop Terms and Conditions';
   const sections = React.useMemo(() => {

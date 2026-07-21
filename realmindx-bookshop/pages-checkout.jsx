@@ -160,7 +160,7 @@ const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, bulk
 );
 
 const CheckoutPage = ({ navigate }) => {
-  const settings = usePublicSettings('bookshop');
+  const settings = usePublicSettings();
   const pickupAddress = settings.contact_address || 'the RealMindX Bookshop';
   const {
     selectedDetailed: detailed,

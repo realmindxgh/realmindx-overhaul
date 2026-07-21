@@ -906,7 +906,7 @@ const Navbar = ({ route, navigate }) => {
 
 // ---------- Footer ----------
 const Footer = ({ navigate }) => {
-  const settings = usePublicSettings('bookshop');
+  const settings = usePublicSettings();
   const phones = [
     settings.contact_phone_1,
     settings.contact_phone_2,
