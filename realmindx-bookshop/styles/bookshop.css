@@ -518,6 +518,19 @@
 .bs-ph-cover { width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; }
 .bs-ph-cover.bs-ph-img { padding: 0; background: #eef1f7; }
 .bs-ph-cover.bs-ph-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Desktop catalogue cards should show each item as a centred product image.
+   Keep the mobile crop treatment, where the shorter cards need a denser image. */
+@media (min-width: 769px) {
+  .bs-pcard-cover .bs-ph-cover.bs-ph-img {
+    display: grid;
+    place-items: center;
+    padding: 10px;
+  }
+  .bs-pcard-cover .bs-ph-cover.bs-ph-img img {
+    object-fit: contain;
+    object-position: center center;
+  }
+}
 .bs-ph-label { font-family:'JetBrains Mono',monospace; font-size: 10px; color: rgba(20,54,112,.5); letter-spacing: .5px; position: relative; z-index: 1; line-height: 1.5; }
 .bs-ph-title { font-family:'Montserrat',sans-serif; font-weight: 800; font-size: 15px; color: var(--bs-navy); line-height: 1.15; position: relative; z-index: 1; text-wrap: balance; }
 .bs-ph-spine { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; z-index: 2; }

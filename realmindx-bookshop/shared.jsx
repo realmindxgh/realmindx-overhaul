@@ -91,6 +91,7 @@ const Stars = ({ value = 0, size = 14 }) => (
 const LoadingState = ({
   title = 'Loading',
   body = 'Please wait while we fetch the latest bookshop data.',
+  minimal = false,
 }) => (
   <div className="bs-empty-state bs-loading-state" role="status" aria-live="polite">
     <div className="bs-empty-icon bs-loading-icon" aria-hidden="true">
@@ -100,8 +101,8 @@ const LoadingState = ({
         <span />
       </div>
     </div>
-    <h2 className="bs-h2">{title}</h2>
-    <p>{body}</p>
+    <h2 className="bs-h2">{minimal ? 'Loading' : title}</h2>
+    {!minimal && body ? <p>{body}</p> : null}
   </div>
 );
 

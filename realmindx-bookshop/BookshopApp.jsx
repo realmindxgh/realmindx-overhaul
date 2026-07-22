@@ -359,10 +359,10 @@ class BookshopErrorBoundary extends React.Component {
 // ---- Memoized persistent tab wrappers ----
 // These prevent the full page component tree from re-rendering when
 // another tab becomes active. Only the wrapper div's CSS class changes.
-const PersistentHomeTab = React.memo(({ navigate, isActive }) => (
+const PersistentHomeTab = React.memo(({ navigate, isActive, onLoadingChange, homeLoading }) => (
   <div className={`bs-tab-panel${isActive ? ' active' : ''}`} role="tabpanel" data-tab="home" aria-hidden={!isActive}>
-    <HomePage navigate={navigate} />
-    <Footer navigate={navigate} />
+    <HomePage navigate={navigate} onLoadingChange={onLoadingChange} />
+    {!homeLoading && <Footer navigate={navigate} />}
   </div>
 ));
 
@@ -392,6 +392,7 @@ const App = () => {
   const initialRoute = React.useMemo(routeFromPath, []);
   const [route, setRoute] = React.useState(initialRoute.route);
   const [params, setParams] = React.useState(initialRoute.params);
+  const [homeLoading, setHomeLoading] = React.useState(initialRoute.route === 'home');
 
   // Handle the new payment-intent callback and legacy order callbacks that
   // may still return from Paystack after deployment.
@@ -809,7 +810,7 @@ const App = () => {
       } else if (activeProduct) {
         page = <ProductPage navigate={navigate} bookId={activeProduct?.id} bookSlug={params.slug} initialBook={activeProduct} key={activeProduct?.id || params.slug} />;
       } else {
-        page = <div className="bs-fade-page bs-section bs-container"><LoadingState title="Loading product" body="Fetching product details\u2026" /></div>;
+        page = <div className="bs-fade-page bs-section bs-container"><LoadingState minimal /></div>;
       }
       break;
     case 'wishlist': page = <WishlistPage navigate={navigate} />; break;
@@ -881,7 +882,7 @@ const App = () => {
         <div className="bs-mobile-shell">
           <div className="bs-tab-viewport">
             {persistentHomeRef.current && (
-              <PersistentHomeTab navigate={navigate} isActive={route === 'home'} />
+              <PersistentHomeTab navigate={navigate} isActive={route === 'home'} homeLoading={homeLoading} onLoadingChange={setHomeLoading} />
             )}
             {persistentShopRef.current && (
               <PersistentShopTab navigate={navigate} initialBrowse={initialBrowse} initialQuery={params.q || ''} isActive={route === 'shop'} scrollContainerRef={shopScrollRef} />
@@ -917,7 +918,7 @@ const App = () => {
       <main className={mainClassName}>
         {persistentHomeRef.current && (
           <div style={route !== 'home' ? { display: 'none' } : undefined}>
-            <HomePage navigate={navigate} active={route === 'home'} />
+            <HomePage navigate={navigate} active={route === 'home'} onLoadingChange={setHomeLoading} />
           </div>
         )}
         {persistentShopRef.current && (
@@ -940,7 +941,7 @@ const App = () => {
           {page}
         </BookshopErrorBoundary>
       </main>
-      <Footer navigate={navigate} />
+      {!(route === 'home' && homeLoading) && <Footer navigate={navigate} />}
       <ScrollToTopFab route={route} />
       <WhatsAppFab route={route} />
       <BottomNav route={route} navigate={navigate} onReTap={handleTabReTap} />

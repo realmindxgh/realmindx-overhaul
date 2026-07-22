@@ -455,7 +455,7 @@ const CategoryMarquee = ({ navigate }) => {
 // cap rendered items at narrower widths so the section stays compact.
 const HOMEPAGE_SECTION_LIMIT = 10;
 
-const HomePage = ({ navigate }) => {
+const HomePage = ({ navigate, onLoadingChange }) => {
   const { loading: catalogLoading, error: catalogError, books: catalogBooks } = useCatalog();
   const [turnstileToken, setTurnstileToken] = React.useState('');
   const [newArrivals, setNewArrivals] = React.useState([]);
@@ -466,6 +466,7 @@ const HomePage = ({ navigate }) => {
   const examPicksRef = React.useRef(examPicks);
   newArrivalsRef.current = newArrivals;
   examPicksRef.current = examPicks;
+  const hasContent = newArrivals.length > 0 || examPicks.length > 0;
 
   const examQs = `?exam_picks=1&per_page=${HOMEPAGE_SECTION_LIMIT}&sort=newest`;
 
@@ -519,6 +520,10 @@ const HomePage = ({ navigate }) => {
   }, []);
 
   React.useEffect(() => {
+    onLoadingChange?.(sectionLoading && !hasContent);
+  }, [hasContent, onLoadingChange, sectionLoading]);
+
+  React.useEffect(() => {
     return () => {
       const arrivals = newArrivalsRef.current;
       const exam = examPicksRef.current;
@@ -570,7 +575,15 @@ const HomePage = ({ navigate }) => {
     );
   }
 
-  const hasContent = newArrivals.length > 0 || examPicks.length > 0;
+  // Do not reveal the newsletter/footer before either product feed has finished.
+  // The home page is the first impression, so it should arrive as one complete page.
+  if (sectionLoading && !hasContent) {
+    return (
+      <div className="bs-fade-page bs-section bs-container">
+        <LoadingState minimal />
+      </div>
+    );
+  }
 
   return (
     <div className="bs-fade-page">
