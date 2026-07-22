@@ -49,6 +49,7 @@ jobs:
           WHATSAPP_ACCESS_TOKEN: ${{ secrets.WHATSAPP_ACCESS_TOKEN }}
           WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_BUSINESS_ACCOUNT_ID: ${{ secrets.WHATSAPP_BUSINESS_ACCOUNT_ID }}
+          WHATSAPP_BUSINESS_PHONE_E164: ${{ secrets.WHATSAPP_BUSINESS_PHONE_E164 }}
           WHATSAPP_OTP_TEMPLATE_NAME: ${{ vars.WHATSAPP_OTP_TEMPLATE_NAME }}
           WHATSAPP_OTP_TEMPLATE_LANGUAGE: ${{ vars.WHATSAPP_OTP_TEMPLATE_LANGUAGE }}
           WHATSAPP_GRAPH_API_VERSION: ${{ vars.WHATSAPP_GRAPH_API_VERSION }}
@@ -119,7 +120,7 @@ jobs:
           path.write_text("\n".join(lines) + "\n")
           PY
           }
-          upsert_env_var "WHATSAPP_BUSINESS_PHONE_E164" "+233201166122"
+          upsert_env_var "WHATSAPP_BUSINESS_PHONE_E164" "$WHATSAPP_BUSINESS_PHONE_E164"
           upsert_env_var "WHATSAPP_PHONE_VERIFICATION_ENABLED" "true"
           upsert_env_var "WHATSAPP_PHONE_VERIFICATION_ALLOW_ALL" "false"
           upsert_env_var "WHATSAPP_PHONE_VERIFICATION_TEST_EMAILS" "skgasante@gmail.com"
