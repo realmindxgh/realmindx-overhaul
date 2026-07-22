@@ -329,7 +329,7 @@ def request_contact_change():
         if not current_app.config.get("WHATSAPP_PHONE_VERIFICATION_ENABLED", False):
             return jsonify(error="WhatsApp verification is temporarily unavailable. Please use SMS for now."), 400
         if not can_use_whatsapp_phone_verification(current_user):
-            return jsonify(error="WhatsApp verification is enabled only for selected test accounts right now. Please use SMS for now."), 400
+            return jsonify(error="WhatsApp verification is not available for this account right now. Please use SMS for now."), 400
     if field == "email":
         channel = "email"
     delivery_channel = "email"

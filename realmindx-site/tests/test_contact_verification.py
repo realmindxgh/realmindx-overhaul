@@ -79,9 +79,9 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertEqual(data["channel"], "whatsapp")
         self.assertEqual(data["delivery_channel"], "whatsapp_inbound")
         self.assertEqual(data["verification_mode"], "whatsapp_inbound")
-        self.assertEqual(data["whatsapp_number"], "+233201166122")
+        self.assertEqual(data["whatsapp_number"], "+233257125229")
         self.assertIn("RMX VERIFY", data["challenge_phrase"])
-        self.assertIn("wa.me/233201166122", data["whatsapp_url"])
+        self.assertIn("wa.me/233257125229", data["whatsapp_url"])
         self.assertFalse(data["manual_entry_allowed"])
         self.assertEqual(data["next_request_in_seconds"], 45)
         self.assertIn("WhatsApp", data["message"])
@@ -97,7 +97,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("temporarily unavailable", response.get_json()["error"])
 
-    def test_whatsapp_phone_verification_requires_test_allowlist(self):
+    def test_whatsapp_phone_verification_is_available_to_all_enabled_users(self):
         self.app.config["WHATSAPP_PHONE_VERIFICATION_TEST_EMAILS"] = "someone-else@example.com"
 
         response = self.client.post(
@@ -105,8 +105,8 @@ class ContactVerificationTests(unittest.TestCase):
             json={"field": "phone", "value": "024 000 0000", "channel": "whatsapp"},
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("selected test accounts", response.get_json()["error"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["delivery_channel"], "whatsapp_inbound")
 
     def test_whatsapp_inbound_challenge_cannot_be_typed_into_site(self):
         challenge = self.client.post(

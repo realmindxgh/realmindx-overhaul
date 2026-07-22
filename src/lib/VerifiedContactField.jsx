@@ -48,6 +48,7 @@ export default function VerifiedContactField({
   const [checking, setChecking] = React.useState(false);
   const [error, setError] = React.useState('');
   const [message, setMessage] = React.useState('');
+  const [success, setSuccess] = React.useState(null);
   const isWhatsAppInbound = Boolean(challenge && (
     challenge.verification_mode === 'whatsapp_inbound'
     || challenge.delivery_channel === 'whatsapp_inbound'
@@ -80,6 +81,7 @@ export default function VerifiedContactField({
     setChecking(false);
     setError('');
     setMessage('');
+    setSuccess(null);
     setNextValue(value || '');
   };
 
@@ -92,6 +94,7 @@ export default function VerifiedContactField({
     setChecking(false);
     setError('');
     setMessage('');
+    setSuccess(null);
     setNextValue(value || '');
   };
 
@@ -99,6 +102,7 @@ export default function VerifiedContactField({
     event?.preventDefault();
     setError('');
     setMessage('');
+    setSuccess(null);
     if (!nextValue.trim()) {
       setError(`Enter the ${meta.title.toLowerCase()} you want to use.`);
       return;
@@ -117,8 +121,8 @@ export default function VerifiedContactField({
               delivery_channel: 'whatsapp_inbound',
               verification_mode: 'whatsapp_inbound',
               challenge_phrase: 'RMX VERIFY 123456',
-              whatsapp_number: '+233201166122',
-              whatsapp_url: 'https://wa.me/233201166122?text=RMX%20VERIFY%20123456',
+              whatsapp_number: '+233257125229',
+              whatsapp_url: 'https://wa.me/233257125229?text=RMX%20VERIFY%20123456',
             }
           : { challenge_id: 'local', destination: nextValue, channel: requestChannel });
         setWaitSeconds(45);
@@ -147,12 +151,19 @@ export default function VerifiedContactField({
   const finishVerified = React.useCallback(async () => {
     const session = await syncSessionFromApi();
     onUpdated?.(session);
-    setMessage(`${meta.title} updated and verified.`);
     setChallenge(null);
     setEditing(false);
     setOtp('');
     setChecking(false);
-  }, [meta.title, onUpdated]);
+    setError('');
+    setMessage('');
+    setSuccess({
+      title: `${meta.title} verified`,
+      body: field === 'phone'
+        ? 'Your phone number has been verified and saved to your RealMindX account.'
+        : 'Your email address has been verified and saved to your RealMindX account.',
+    });
+  }, [field, meta.title, onUpdated]);
 
   const checkWhatsAppStatus = React.useCallback(async ({ silent = false } = {}) => {
     if (!challenge?.challenge_id || !isApiMode()) return;
@@ -238,21 +249,33 @@ export default function VerifiedContactField({
   const whatsAppChallenge = isWhatsAppInbound ? (
     <div className="verified-contact-whatsapp-challenge">
       <div className="verified-contact-whatsapp-heading">
-        <WhatsAppGlyph className="verified-contact-whatsapp-icon" />
-        <span>WhatsApp challenge</span>
+        <span className="verified-contact-whatsapp-icon-wrap">
+          <WhatsAppGlyph className="verified-contact-whatsapp-icon" />
+        </span>
+        <div>
+          <span>WhatsApp verification</span>
+          <p>Open WhatsApp with the prepared message, send it once, and keep this window open.</p>
+        </div>
       </div>
-      <p className="verified-contact-whatsapp-warning">
-        If this phone has two WhatsApp accounts, select the account for the number you are verifying. Do not edit, shorten, add words, or add emojis to the prepared message.
+      <div className="verified-contact-whatsapp-code-card">
+        <span className="verified-contact-whatsapp-label">Message to send</span>
+        <strong>{challenge.challenge_phrase}</strong>
+        <span className="verified-contact-whatsapp-exact">Exact text only</span>
+      </div>
+      <p className="verified-contact-whatsapp-route">
+        Send to <strong>{challenge.whatsapp_number}</strong> from <strong>{challenge.destination}</strong>.
       </p>
-      <span className="verified-contact-whatsapp-label">Message to send</span>
-      <strong>{challenge.challenge_phrase}</strong>
-      <p>
-        Send this exact message to {challenge.whatsapp_number}. It must come from the phone number you are verifying.
-      </p>
+      <div className="verified-contact-whatsapp-note">
+        <strong>Before sending</strong>
+        <ul>
+          <li>If this phone has two WhatsApp accounts, select the account for the number you entered.</li>
+          <li>Do not edit, shorten, add words, or add emojis to the prepared message.</li>
+        </ul>
+      </div>
       {challenge.whatsapp_url && (
         <a className="verified-contact-whatsapp-open" href={challenge.whatsapp_url} target="_blank" rel="noopener noreferrer">
           <WhatsAppGlyph className="verified-contact-whatsapp-open-icon" />
-          Open WhatsApp
+          Open WhatsApp with message
         </a>
       )}
     </div>
@@ -377,6 +400,28 @@ export default function VerifiedContactField({
       </div>
 
       {!modal && inlineEditor}
+      {modal && success && (
+        <div className="verified-contact-modal-scrim">
+          <div className="verified-contact-modal-card is-success" role="dialog" aria-modal="true" aria-label={success.title}>
+            <button className="verified-contact-modal-close" type="button" onClick={() => setSuccess(null)} aria-label="Close">
+              <span aria-hidden="true">×</span>
+            </button>
+            <div className="verified-contact-success-body">
+              <span className="verified-contact-success-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              </span>
+              <span className="verified-contact-modal-kicker">Verified</span>
+              <h2>{success.title}</h2>
+              <p>{success.body}</p>
+              <button type="button" className="verified-contact-modal-btn is-primary" onClick={() => setSuccess(null)}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {modal && (editing || challenge) && (
         <div className="verified-contact-modal-scrim" onClick={event => { if (event.target === event.currentTarget) reset(); }}>
           <form className="verified-contact-modal-card" onSubmit={challenge ? verifyCode : requestCode} role="dialog" aria-modal="true" aria-label={modalTitle}>
@@ -392,7 +437,7 @@ export default function VerifiedContactField({
             <div className="verified-contact-modal-body">
               <p className="verified-contact-modal-intro">
                 {isWhatsAppInbound
-                  ? `Send the challenge from ${challenge.destination} to ${challenge.whatsapp_number}. This window checks automatically every few seconds.`
+                  ? 'Send the prepared WhatsApp message. RealMindX checks automatically every few seconds.'
                   : challenge
                   ? `Enter the 6 digit code sent to ${challenge.destination}.`
                   : `We will verify the new ${meta.title.toLowerCase()} before updating your shared RealMindX account.`}
@@ -447,18 +492,18 @@ export default function VerifiedContactField({
               {error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}
               {message && <p className="verified-contact-feedback">{message}</p>}
             </div>
-            <div className="verified-contact-modal-foot">
-              <button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button>
-              {challenge && (
-                isWhatsAppInbound ? (
+            <div className={`verified-contact-modal-foot ${isWhatsAppInbound ? 'is-whatsapp' : ''}`}>
+              <div className="verified-contact-modal-secondary-actions">
+                <button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button>
+                {challenge && isWhatsAppInbound && (
                   <button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button>
-                ) : null
-              )}
-              {challenge && (
-                <button type="button" className="verified-contact-modal-btn is-outline" onClick={resendCode} disabled={busy || waitSeconds > 0}>
-                  {waitSeconds > 0 ? `Try again in ${waitSeconds}s` : isWhatsAppInbound ? 'New challenge' : `Send again by ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
-                </button>
-              )}
+                )}
+                {challenge && (
+                  <button type="button" className="verified-contact-modal-btn is-outline" onClick={resendCode} disabled={busy || waitSeconds > 0}>
+                    {waitSeconds > 0 ? `Try again in ${waitSeconds}s` : isWhatsAppInbound ? 'New challenge' : `Send again by ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
+                  </button>
+                )}
+              </div>
               <button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy || checking}>
                 {isWhatsAppInbound
                   ? (checking ? 'Checking...' : 'Check now')

@@ -14,7 +14,7 @@ def whatsapp_challenge_phrase(code: str) -> str:
 
 
 def whatsapp_business_number() -> str:
-    return normalise_phone(current_app.config.get("WHATSAPP_BUSINESS_PHONE_E164", "")) or "+233201166122"
+    return normalise_phone(current_app.config.get("WHATSAPP_BUSINESS_PHONE_E164", "")) or "+233257125229"
 
 
 def whatsapp_challenge_url(phrase: str) -> str:

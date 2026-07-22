@@ -312,6 +312,73 @@ const JobModal = ({ job, onClose, applyState, applyError, onApply }) => {
   );
 };
 
+const CORE_JOB_SUBJECTS = [
+  'Mathematics',
+  'English Language',
+  'Integrated Science',
+  'Social Studies',
+  'ICT',
+  'Computing',
+  'Ghanaian Language',
+  'French',
+  'Religious and Moral Education',
+  'Creative Arts and Design',
+].filter(subject => SUBJECTS.includes(subject));
+
+const subjectOptionId = (prefix, subject) => `${prefix}-${subject.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()}`;
+
+const SubjectFilterCard = ({ selected = [], jobs = [], onToggle, idPrefix = 'subject' }) => {
+  const [query, setQuery] = useState('');
+  const selectedSet = React.useMemo(() => new Set(selected), [selected]);
+  const visibleSubjects = React.useMemo(() => {
+    if (query.trim()) {
+      return rankByFuzzyMatch(SUBJECTS, query).slice(0, 18);
+    }
+    const selectedExtras = SUBJECTS.filter(subject => selectedSet.has(subject) && !CORE_JOB_SUBJECTS.includes(subject));
+    return [...CORE_JOB_SUBJECTS, ...selectedExtras];
+  }, [query, selectedSet]);
+
+  return (
+    <div className="filter-card jobs-subject-filter-card">
+      <h4>Subject</h4>
+      <label className="jobs-subject-search">
+        <Icon name="search" size={14} stroke={2} />
+        <input
+          type="search"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          placeholder="Search other subjects..."
+        />
+      </label>
+      {!query.trim() && (
+        <p className="jobs-subject-filter-hint">
+          Showing 10 core subjects. Search to find the full subject list.
+        </p>
+      )}
+      <div className="filter-options-grid jobs-subject-options">
+        {visibleSubjects.map(subject => {
+          const inputId = subjectOptionId(idPrefix, subject);
+          return (
+            <div key={subject} className="filter-option">
+              <input
+                type="checkbox"
+                id={inputId}
+                checked={selectedSet.has(subject)}
+                onChange={() => onToggle(subject)}
+              />
+              <label htmlFor={inputId}>{subject}</label>
+              <span className="count">{jobs.filter(job => job.subject === subject).length}</span>
+            </div>
+          );
+        })}
+      </div>
+      {query.trim() && !visibleSubjects.length && (
+        <p className="jobs-subject-filter-empty">No subject matches that search.</p>
+      )}
+    </div>
+  );
+};
+
 /* ── Filter Modal (opened from the toolbar CTA) ─────── */
 // Works on a draft copy of the filters: ticking boxes changes nothing on the
 // page until "Save Filters" commits the draft; closing/overlay-click discards it.
@@ -328,7 +395,6 @@ const FilterModal = ({ filters, jobs, onApply, onClose }) => {
   const groups = [
     { key: 'type',    title: 'Job Type', options: JOB_TYPES },
     { key: 'level',   title: 'Level',    options: LEVELS },
-    { key: 'subject', title: 'Subject',  options: SUBJECTS },
   ];
   const matchers = {
     type:    (j, v) => j.type === v,
@@ -364,6 +430,12 @@ const FilterModal = ({ filters, jobs, onApply, onClose }) => {
               </div>
             </div>
           ))}
+          <SubjectFilterCard
+            selected={draft.subject}
+            jobs={jobs}
+            onToggle={value => toggle('subject', value)}
+            idPrefix="fm-subject"
+          />
         </div>
         <div className="job-modal-footer">
           <button
@@ -634,15 +706,12 @@ const JobsPage = () => {
               ))}
             </div>
 
-            <div className="filter-card">
-              <h4>Subject</h4>
-              {SUBJECTS.map(s => (
-                <div key={s} className="filter-option">
-                  <input type="checkbox" id={`sub-${s}`} checked={filters.subject.includes(s)} onChange={() => toggleFilter('subject', s)} />
-                  <label htmlFor={`sub-${s}`}>{s}</label>
-                </div>
-              ))}
-            </div>
+            <SubjectFilterCard
+              selected={filters.subject}
+              jobs={jobs}
+              onToggle={value => toggleFilter('subject', value)}
+              idPrefix="sub"
+            />
 
             {hasActiveFilters && (
               <button className="btn btn-outline-navy" onClick={clearFilters} style={{ width: '100%', justifyContent: 'center' }}>
