@@ -485,6 +485,7 @@
 .bs-pcard.bs-oos { opacity: .82; }
 /* Cover: slightly compressed portrait for tighter 5-col layout */
 .bs-pcard-cover { position: relative; aspect-ratio: 4/5; background: #eef1f7; overflow: hidden; }
+.bs-pcard-cover > .bs-product-link { display: block; width: 100%; height: 100%; }
 .bs-pcard.bs-oos .bs-pcard-cover { filter: grayscale(.55); }
 /* Body: reduced padding + gap for compact 5-col/4-col display */
 .bs-pcard-body { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
