@@ -16,7 +16,7 @@ with app.app_context():
     if not role:
         raise SystemExit('Role user not found')
 
-    email = 'teacher@realmindxgh.local'
+    email = 'teacher@realmindxgh.dev'
     user = User.query.filter_by(email=email).first()
     if not user:
         user = User(

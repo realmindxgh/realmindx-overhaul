@@ -6,6 +6,7 @@ from email_validator import EmailNotValidError, validate_email
 from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 from markupsafe import escape
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..audit import audit
@@ -377,22 +378,64 @@ def request_contact_change():
                 retry_after_seconds=retry_after,
             ), 429
 
+    if delivery_channel == "whatsapp_inbound":
+        ContactChangeToken.query.filter(
+            ContactChangeToken.field == "phone",
+            ContactChangeToken.delivery_channel == "whatsapp_inbound",
+            ContactChangeToken.target_value == target,
+            ContactChangeToken.used_at.is_(None),
+            ContactChangeToken.expires_at < now,
+        ).update({"status": "expired", "active_lock_key": None}, synchronize_session=False)
+
+        active_phone_challenges = ContactChangeToken.query.filter(
+            ContactChangeToken.field == "phone",
+            ContactChangeToken.delivery_channel == "whatsapp_inbound",
+            ContactChangeToken.target_value == target,
+            ContactChangeToken.status == "pending",
+            ContactChangeToken.used_at.is_(None),
+            ContactChangeToken.expires_at >= now,
+        ).all()
+        if any(challenge.user_id != current_user.id for challenge in active_phone_challenges):
+            return jsonify(
+                error=(
+                    "A WhatsApp verification for this number is already in progress. "
+                    "Please wait a few minutes and try again."
+                )
+            ), 409
+        for active_challenge in active_phone_challenges:
+            active_challenge.used_at = now
+            active_challenge.status = "cancelled"
+            active_challenge.active_lock_key = None
+
     ContactChangeToken.query.filter_by(
         user_id=current_user.id,
         field=field,
         used_at=None,
-    ).update({"used_at": now})
+    ).update({"used_at": now, "status": "cancelled", "active_lock_key": None})
     code = f"{secrets.randbelow(1_000_000):06d}"
     challenge = ContactChangeToken(
         user_id=current_user.id,
         field=field,
         target_value=target,
         delivery_channel=delivery_channel,
+        status="pending",
+        active_lock_key=target if delivery_channel == "whatsapp_inbound" else None,
         token_hash=generate_password_hash(code),
         expires_at=now + timedelta(minutes=15),
     )
     db.session.add(challenge)
-    db.session.flush()
+    try:
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        if delivery_channel == "whatsapp_inbound":
+            return jsonify(
+                error=(
+                    "A WhatsApp verification for this number is already in progress. "
+                    "Please wait a few minutes and try again."
+                )
+            ), 409
+        raise
     delivered = True if delivery_channel == "whatsapp_inbound" else _send_contact_change_code(field, target, code, channel)
     if not delivered:
         db.session.rollback()
@@ -409,7 +452,7 @@ def request_contact_change():
     masked = _mask_destination(field, target)
     delivery_label = "WhatsApp" if channel == "whatsapp" else channel.upper() if channel == "sms" else channel.title()
     if delivery_channel == "whatsapp_inbound":
-        phrase = whatsapp_challenge_phrase(code)
+        phrase = whatsapp_challenge_phrase()
         business_number = whatsapp_business_number()
         return jsonify(
             challenge_id=challenge.id,
@@ -419,14 +462,13 @@ def request_contact_change():
             verification_mode="whatsapp_inbound",
             destination=masked,
             target_phone=target,
-            challenge_code=code,
             challenge_phrase=phrase,
             whatsapp_number=business_number,
             whatsapp_url=whatsapp_challenge_url(phrase),
             expires_in_seconds=900,
             next_request_in_seconds=45 + (30 * len(recent_challenges)),
             manual_entry_allowed=False,
-            message=f"Open WhatsApp and send the challenge to {business_number} from {masked}.",
+            message=f"Open WhatsApp and send the prefilled verification message to {business_number} from {masked}.",
         )
     return jsonify(
         challenge_id=challenge.id,
@@ -455,7 +497,8 @@ def contact_change_status(challenge_id):
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     expired = not expires_at or expires_at < datetime.now(timezone.utc)
     verified = bool(
-        challenge.used_at
+        challenge.status == "verified"
+        and challenge.used_at
         and challenge.field == "phone"
         and current_user.phone == challenge.target_value
         and current_user.phone_verified
@@ -466,13 +509,13 @@ def contact_change_status(challenge_id):
         and challenge.delivery_channel == "whatsapp_inbound"
         and challenge.last_whatsapp_attempt_status == "wrong_number"
     )
-    wrong_message = (
-        not verified
-        and not expired
-        and challenge.delivery_channel == "whatsapp_inbound"
-        and challenge.last_whatsapp_attempt_status == "wrong_message"
+    status = (
+        "verified" if verified else
+        "wrong_number" if wrong_number else
+        "expired" if expired or challenge.status == "expired" else
+        "cancelled" if challenge.status == "cancelled" else
+        "pending"
     )
-    status = "verified" if verified else "wrong_number" if wrong_number else "wrong_message" if wrong_message else "expired" if expired else "pending"
     wrong_number_message = None
     if wrong_number:
         attempted = _mask_destination("phone", challenge.last_whatsapp_attempt_from or "")
@@ -480,12 +523,6 @@ def contact_change_status(challenge_id):
         wrong_number_message = (
             f"The challenge was sent from a different WhatsApp number ({attempted}), but you are verifying {expected}. "
             "Open WhatsApp with the account for the number you entered, or change the number below."
-        )
-    wrong_message_message = None
-    if wrong_message:
-        wrong_message_message = (
-            "WhatsApp received a message from the correct number, but it did not match the challenge. "
-            "Open WhatsApp again and send the prepared message exactly as shown. Do not edit, shorten, add words, or add emojis."
         )
     return jsonify(
         challenge_id=challenge.id,
@@ -495,7 +532,7 @@ def contact_change_status(challenge_id):
         status=status,
         verified=verified,
         wrong_number=wrong_number,
-        wrong_message=wrong_message,
+        wrong_message=False,
         last_attempt_from=_mask_destination("phone", challenge.last_whatsapp_attempt_from or "") if challenge.last_whatsapp_attempt_from else None,
         last_attempt_status=challenge.last_whatsapp_attempt_status,
         last_attempt_at=challenge.last_whatsapp_attempt_at.isoformat() if challenge.last_whatsapp_attempt_at else None,
@@ -504,9 +541,9 @@ def contact_change_status(challenge_id):
         message=(
             "Phone verified."
             if verified else wrong_number_message
-            if wrong_number else wrong_message_message
-            if wrong_message else "Challenge expired. Send a fresh one."
-            if expired else "Waiting for the WhatsApp message. If you already sent it and this stays pending, Meta has not delivered the WhatsApp webhook to RealMindX yet."
+            if wrong_number else "Challenge expired. Send a fresh one."
+            if status == "expired" else "This verification request was replaced. Start a fresh one if you still need to verify this number."
+            if status == "cancelled" else "Waiting for the WhatsApp verification message. Send the prefilled message without changing it."
         ),
     )
 
@@ -537,10 +574,14 @@ def verify_contact_change():
     if expires_at and expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if not expires_at or expires_at < datetime.now(timezone.utc):
+        challenge.status = "expired"
+        challenge.active_lock_key = None
+        db.session.commit()
         return jsonify(error="Verification code expired. Send a fresh code."), 400
     if not check_password_hash(challenge.token_hash, otp):
         return jsonify(error="Verification code is incorrect."), 400
 
+    now = datetime.now(timezone.utc)
     if challenge.field == "email":
         existing = User.query.filter(
             User.email == challenge.target_value,
@@ -553,16 +594,20 @@ def verify_contact_change():
     elif challenge.field == "phone":
         current_user.phone = challenge.target_value
         current_user.phone_verified = True
+        current_user.phone_verified_at = now
     else:
         return jsonify(error="Unsupported verification request."), 400
 
-    now = datetime.now(timezone.utc)
     challenge.used_at = now
+    challenge.status = "verified"
+    challenge.verified_at = now
+    challenge.active_lock_key = None
     ContactChangeToken.query.filter(
         ContactChangeToken.user_id == current_user.id,
         ContactChangeToken.field == challenge.field,
+        ContactChangeToken.id != challenge.id,
         ContactChangeToken.used_at.is_(None),
-    ).update({"used_at": now})
+    ).update({"used_at": now, "status": "cancelled", "active_lock_key": None})
     audit("contact_change_verified", "user", current_user.id, {"field": challenge.field})
     db.session.commit()
     return jsonify(

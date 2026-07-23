@@ -51,7 +51,7 @@
   - Email: `admin@realmindxgh.com`
   - Password: `Admin@12345`
 - A seeded teacher account is available for admin testing:
-  - Email: `teacher@realmindxgh.local`
+  - Email: `teacher@realmindxgh.dev`
   - Password: `Teacher@123`
 - If the engine cannot resolve `backend` imports from `realmindx-site`, add the repo root to `sys.path` in temporary Python seed scripts.
 - Prefer running seed scripts from `realmindx-site` with the local virtualenv:

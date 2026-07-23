@@ -1,20 +1,22 @@
 import hashlib
 import hmac
-import re
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
-from werkzeug.security import check_password_hash
 
 from ..audit import audit
 from ..extensions import db
 from ..models import ContactChangeToken, User, WhatsAppWebhookEvent
 from ..sms_service import normalise_phone
-from ..whatsapp_service import send_whatsapp_text
+from ..whatsapp_service import WHATSAPP_VERIFICATION_PHRASE, send_whatsapp_text
 
 
 whatsapp_bp = Blueprint("whatsapp_webhooks", __name__)
+
+RECENTLY_VERIFIED_WINDOW = timedelta(minutes=15)
+AUTO_REPLY_COOLDOWN = timedelta(minutes=15)
+EXPIRED_CHALLENGE_LOOKBACK = timedelta(days=1)
 
 
 def _support_whatsapp_number():
@@ -35,6 +37,15 @@ def _success_reply_text():
     )
 
 
+def _already_verified_reply_text():
+    support = _support_whatsapp_display_number()
+    return (
+        "✅ Your WhatsApp number has already been verified successfully.\n\n"
+        "You may return to RealMindX and continue.\n\n"
+        f"For help, message our monitored WhatsApp number at {support}."
+    )
+
+
 def _failure_reply_text():
     support = _support_whatsapp_display_number()
     return (
@@ -43,6 +54,15 @@ def _failure_reply_text():
         "Please return to RealMindX and start a new verification challenge.\n\n"
         "This WhatsApp number is used only for automatic verification and is not monitored. "
         f"For help, contact RealMindX on WhatsApp at *{support}*."
+    )
+
+
+def _no_active_request_reply_text():
+    support = _support_whatsapp_display_number()
+    return (
+        "We could not find an active RealMindX verification request for this number.\n\n"
+        "Please start verification from your RealMindX account and try again.\n\n"
+        f"For help, message our monitored WhatsApp number at {support}."
     )
 
 
@@ -56,37 +76,6 @@ def _fallback_reply_text():
     )
 
 
-def _success_reply_text():
-    support = _support_whatsapp_display_number()
-    return (
-        "\u2705 WhatsApp number verified successfully\n\n"
-        "The number you entered on RealMindX has now been verified. You may return to the website and continue.\n\n"
-        "Please note that this WhatsApp number is used only for automatic verification and is not monitored for messages or support. "
-        f"For help, please contact RealMindX on WhatsApp at {support}."
-    )
-
-
-def _failure_reply_text():
-    support = _support_whatsapp_display_number()
-    return (
-        "\u26a0\ufe0f *Verification could not be completed*\n\n"
-        "The verification message may be incorrect, expired, or linked to a different phone number. "
-        "Please return to RealMindX and start a new verification challenge.\n\n"
-        "This WhatsApp number is used only for automatic verification and is not monitored. "
-        f"For help, contact RealMindX on WhatsApp at *{support}*."
-    )
-
-
-def _fallback_reply_text():
-    support = _support_whatsapp_display_number()
-    return (
-        "\U0001f44b *Thank you for contacting RealMindX Education Ltd.*\n\n"
-        "This WhatsApp number is used only for automatic phone-number verification and is not monitored for general messages.\n\n"
-        "For enquiries or support, please message our monitored WhatsApp number:\n"
-        f"*{support}*"
-    )
-
-
 def _normalise_whatsapp_sender(value):
     value = str(value or "").strip()
     if value and not value.startswith("+"):
@@ -94,16 +83,14 @@ def _normalise_whatsapp_sender(value):
     return normalise_phone(value)
 
 
-def _extract_challenge_code(text):
-    body = re.sub(r"\s+", " ", str(text or "")).strip()
-    if not body:
-        return None
-    prefix = re.escape((current_app.config.get("WHATSAPP_CHALLENGE_PREFIX") or "RMX VERIFY").strip())
-    match = re.fullmatch(rf"{prefix}\s+(\d{{6}})", body, flags=re.IGNORECASE)
-    if match:
-        return match.group(1)
-    match = re.fullmatch(r"(\d{6})", body)
-    return match.group(1) if match else None
+def _as_aware(value):
+    if value and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _is_verification_phrase(text):
+    return str(text or "").strip().casefold() == WHATSAPP_VERIFICATION_PHRASE.casefold()
 
 
 def _incoming_text_messages(payload):
@@ -133,57 +120,184 @@ def _verify_signature(raw_body):
     return hmac.compare_digest(header, expected)
 
 
-def _challenge_is_active(challenge, now):
-    expires_at = challenge.expires_at
-    if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    return bool(expires_at and expires_at >= now)
-
-
-def _recent_whatsapp_challenges(now):
-    # Verification codes are valid for minutes, but keeping a one-day lookback lets
-    # us give a clear "expired" or "already used" response for recent mistakes
-    # without comparing every historical hash on each inbound webhook.
-    window_start = now - timedelta(days=1)
-    return (
-        ContactChangeToken.query
-        .filter(
-            ContactChangeToken.field == "phone",
-            ContactChangeToken.delivery_channel == "whatsapp_inbound",
-            ContactChangeToken.created_at >= window_start,
-        )
-        .order_by(ContactChangeToken.created_at.desc())
-        .all()
-    )
-
-
 def _message_was_processed(message_id):
     if not message_id:
         return False
     return bool(WhatsAppWebhookEvent.query.filter_by(message_id=message_id).first())
 
 
-def _mark_whatsapp_attempt(challenge, message, now, status, audit_action):
+def _active_pending_challenge_for_sender(sender, now):
+    return (
+        ContactChangeToken.query
+        .filter(
+            ContactChangeToken.field == "phone",
+            ContactChangeToken.delivery_channel == "whatsapp_inbound",
+            ContactChangeToken.target_value == sender,
+            ContactChangeToken.status == "pending",
+            ContactChangeToken.used_at.is_(None),
+            ContactChangeToken.expires_at >= now,
+        )
+        .order_by(ContactChangeToken.created_at.desc())
+        .with_for_update()
+        .first()
+    )
+
+
+def _expired_pending_challenge_for_sender(sender, now):
+    return (
+        ContactChangeToken.query
+        .filter(
+            ContactChangeToken.field == "phone",
+            ContactChangeToken.delivery_channel == "whatsapp_inbound",
+            ContactChangeToken.target_value == sender,
+            ContactChangeToken.status.in_(("pending", "expired")),
+            ContactChangeToken.used_at.is_(None),
+            ContactChangeToken.expires_at < now,
+            ContactChangeToken.created_at >= now - EXPIRED_CHALLENGE_LOOKBACK,
+        )
+        .order_by(ContactChangeToken.created_at.desc())
+        .first()
+    )
+
+
+def _recently_verified_user_for_sender(sender, now):
+    cutoff = now - RECENTLY_VERIFIED_WINDOW
+    return (
+        User.query
+        .filter(
+            User.phone == sender,
+            User.phone_verified.is_(True),
+            User.phone_verified_at.isnot(None),
+            User.phone_verified_at >= cutoff,
+        )
+        .order_by(User.phone_verified_at.desc())
+        .first()
+    )
+
+
+def _has_recent_event(sender, statuses, since):
+    if not sender:
+        return False
+    return bool(
+        WhatsAppWebhookEvent.query
+        .filter(
+            WhatsAppWebhookEvent.sender == sender,
+            WhatsAppWebhookEvent.status.in_(tuple(statuses)),
+            WhatsAppWebhookEvent.created_at >= since,
+        )
+        .first()
+    )
+
+
+def _result_for_message(message):
+    return {
+        "message_id": message["message_id"],
+        "from": message["from"],
+        "phone_number_id": message.get("phone_number_id"),
+        "text_preview": (message.get("text") or "")[:160],
+        "status": "ignored",
+        "record_event": True,
+        "reply_kind": None,
+    }
+
+
+def _complete_whatsapp_challenge(challenge, message, now, result):
+    user = db.session.get(User, challenge.user_id)
+    if not user:
+        result["status"] = "user_missing"
+        return False
+    if challenge.target_value != message["from"] or challenge.status != "pending" or challenge.used_at:
+        result["status"] = "verification_race_lost"
+        return False
+
     challenge.last_whatsapp_attempt_from = message["from"]
     challenge.last_whatsapp_attempt_at = now
-    challenge.last_whatsapp_attempt_status = status
+    challenge.last_whatsapp_attempt_status = "verified"
+    challenge.status = "verified"
+    challenge.verified_at = now
+    challenge.used_at = now
+    challenge.active_lock_key = None
+    user.phone = challenge.target_value
+    user.phone_verified = True
+    user.phone_verified_at = now
+
+    ContactChangeToken.query.filter(
+        ContactChangeToken.user_id == user.id,
+        ContactChangeToken.field == "phone",
+        ContactChangeToken.id != challenge.id,
+        ContactChangeToken.status == "pending",
+        ContactChangeToken.used_at.is_(None),
+    ).update({"used_at": now, "status": "cancelled", "active_lock_key": None}, synchronize_session=False)
+
     audit(
-        audit_action,
+        "contact_change_verified",
+        "user",
+        user.id,
+        {"field": "phone", "channel": "whatsapp_inbound", "message_id": message["message_id"]},
+        actor_email="whatsapp:webhook",
+    )
+    result.update({
+        "status": "verified",
+        "user_id": user.id,
+        "challenge_id": challenge.id,
+        "reply_kind": "success",
+    })
+    return True
+
+
+def _mark_expired_challenge(challenge, message, now, result):
+    challenge.last_whatsapp_attempt_from = message["from"]
+    challenge.last_whatsapp_attempt_at = now
+    challenge.last_whatsapp_attempt_status = "expired"
+    challenge.status = "expired"
+    challenge.active_lock_key = None
+    audit(
+        "contact_change_expired_whatsapp_message",
         "user",
         challenge.user_id,
         {"field": "phone", "message_id": message["message_id"]},
         actor_email="whatsapp:webhook",
     )
+    result.update({
+        "status": "verification_failed",
+        "failure_reason": "expired",
+        "challenge_id": challenge.id,
+        "user_id": challenge.user_id,
+    })
+    if not _has_recent_event(message["from"], {"verification_failed"}, now - AUTO_REPLY_COOLDOWN):
+        result["reply_kind"] = "failure"
+    else:
+        result["status"] = "verification_failed_suppressed"
+    return True
 
 
-def _mark_wrong_message(challenge, message, now):
-    _mark_whatsapp_attempt(
-        challenge,
-        message,
-        now,
-        "wrong_message",
-        "contact_change_wrong_whatsapp_message",
-    )
+def _mark_recently_verified(message, now, user, result):
+    verified_at = _as_aware(user.phone_verified_at) or now
+    result.update({
+        "status": "already_verified_recent",
+        "user_id": user.id,
+    })
+    if _has_recent_event(message["from"], {"already_verified_recent"}, verified_at):
+        result.update({"status": "already_verified_recent_suppressed", "reply_kind": None})
+        return False
+    result["reply_kind"] = "already_verified"
+    return False
+
+
+def _mark_fallback(message, now, result):
+    if _has_recent_event(message["from"], {"fallback_redirect"}, now - AUTO_REPLY_COOLDOWN):
+        result.update({"status": "fallback_redirect_suppressed", "reply_kind": None})
+        return False
+    result.update({"status": "fallback_redirect", "reply_kind": "fallback"})
+    return False
+
+
+def _mark_no_active_request(message, now, result):
+    if _has_recent_event(message["from"], {"verification_no_active_request"}, now - AUTO_REPLY_COOLDOWN):
+        result.update({"status": "verification_no_active_request_suppressed", "reply_kind": None})
+        return False
+    result.update({"status": "verification_no_active_request", "reply_kind": "no_active_request"})
+    return False
 
 
 def process_whatsapp_webhook_payload(payload):
@@ -194,16 +308,8 @@ def process_whatsapp_webhook_payload(payload):
     for message in _incoming_text_messages(payload):
         sender = message["from"]
         message_id = message["message_id"]
-        code = _extract_challenge_code(message["text"])
-        result = {
-            "message_id": message_id,
-            "from": sender,
-            "phone_number_id": message.get("phone_number_id"),
-            "text_preview": (message.get("text") or "")[:160],
-            "status": "ignored",
-            "record_event": True,
-            "reply_kind": None,
-        }
+        result = _result_for_message(message)
+
         if not message_id:
             result["status"] = "missing_message_id"
             results.append(result)
@@ -216,153 +322,30 @@ def process_whatsapp_webhook_payload(payload):
             results.append(result)
             continue
 
-        challenges = _recent_whatsapp_challenges(now)
-        active_challenges = [
-            challenge for challenge in challenges
-            if challenge.used_at is None and _challenge_is_active(challenge, now)
-        ]
-        sender_challenge = next(
-            (
-                challenge for challenge in active_challenges
-                if challenge.target_value == sender and _challenge_is_active(challenge, now)
-            ),
-            None,
-        )
-        if not code:
-            if sender_challenge:
-                _mark_wrong_message(sender_challenge, message, now)
-                result.update({"status": "wrong_message", "challenge_id": sender_challenge.id})
-                changed = True
-            else:
-                result["status"] = "non_verification_text"
-            result["reply_kind"] = "fallback"
-            results.append(result)
-            continue
-
-        matching_challenges = [
-            challenge for challenge in challenges
-            if check_password_hash(challenge.token_hash, code)
-        ]
-        active_matches = [
-            challenge for challenge in matching_challenges
-            if challenge.used_at is None and _challenge_is_active(challenge, now)
-        ]
-        verified_match = next(
-            (challenge for challenge in active_matches if challenge.target_value == sender),
-            None,
-        )
-
-        if verified_match:
-            challenge = verified_match
-            user = db.session.get(User, challenge.user_id)
-            if not user:
-                result["status"] = "user_missing"
+        if _is_verification_phrase(message.get("text")):
+            active_challenge = _active_pending_challenge_for_sender(sender, now)
+            if active_challenge:
+                changed = _complete_whatsapp_challenge(active_challenge, message, now, result) or changed
                 results.append(result)
                 continue
-            challenge.last_whatsapp_attempt_from = sender
-            challenge.last_whatsapp_attempt_at = now
-            challenge.last_whatsapp_attempt_status = "verified"
-            user.phone = challenge.target_value
-            user.phone_verified = True
-            ContactChangeToken.query.filter(
-                ContactChangeToken.user_id == user.id,
-                ContactChangeToken.field == "phone",
-                ContactChangeToken.used_at.is_(None),
-            ).update({"used_at": now}, synchronize_session=False)
-            audit(
-                "contact_change_verified",
-                "user",
-                user.id,
-                {"field": "phone", "channel": "whatsapp_inbound", "message_id": message["message_id"]},
-                actor_email="whatsapp:webhook",
-            )
-            result.update({
-                "status": "verified",
-                "user_id": user.id,
-                "challenge_id": challenge.id,
-                "reply_kind": "success",
-            })
-            changed = True
+
+            recent_user = _recently_verified_user_for_sender(sender, now)
+            if recent_user:
+                _mark_recently_verified(message, now, recent_user, result)
+                results.append(result)
+                continue
+
+            expired_challenge = _expired_pending_challenge_for_sender(sender, now)
+            if expired_challenge:
+                changed = _mark_expired_challenge(expired_challenge, message, now, result) or changed
+                results.append(result)
+                continue
+
+            _mark_no_active_request(message, now, result)
             results.append(result)
             continue
 
-        wrong_number_match = active_matches[0] if active_matches else None
-        if wrong_number_match:
-            _mark_whatsapp_attempt(
-                wrong_number_match,
-                message,
-                now,
-                "wrong_number",
-                "contact_change_wrong_whatsapp_number",
-            )
-            result.update({
-                "status": "wrong_number",
-                "challenge_id": wrong_number_match.id,
-                "user_id": wrong_number_match.user_id,
-                "reply_kind": "failure",
-            })
-            changed = True
-            results.append(result)
-            continue
-
-        expired_match = next(
-            (
-                challenge for challenge in matching_challenges
-                if challenge.used_at is None and not _challenge_is_active(challenge, now)
-            ),
-            None,
-        )
-        if expired_match:
-            _mark_whatsapp_attempt(
-                expired_match,
-                message,
-                now,
-                "expired",
-                "contact_change_expired_whatsapp_message",
-            )
-            result.update({
-                "status": "expired",
-                "challenge_id": expired_match.id,
-                "user_id": expired_match.user_id,
-                "reply_kind": "failure",
-            })
-            changed = True
-            results.append(result)
-            continue
-
-        used_match = next(
-            (challenge for challenge in matching_challenges if challenge.used_at is not None),
-            None,
-        )
-        if used_match:
-            _mark_whatsapp_attempt(
-                used_match,
-                message,
-                now,
-                "already_used",
-                "contact_change_used_whatsapp_message",
-            )
-            result.update({
-                "status": "already_used",
-                "challenge_id": used_match.id,
-                "user_id": used_match.user_id,
-                "reply_kind": "failure",
-            })
-            changed = True
-            results.append(result)
-            continue
-
-        if sender_challenge:
-            _mark_wrong_message(sender_challenge, message, now)
-            result.update({
-                "status": "wrong_message",
-                "challenge_id": sender_challenge.id,
-                "user_id": sender_challenge.user_id,
-                "reply_kind": "failure",
-            })
-            changed = True
-        else:
-            result.update({"status": "invalid_code", "reply_kind": "failure"})
+        _mark_fallback(message, now, result)
         results.append(result)
 
     if changed:
@@ -392,8 +375,12 @@ def _reply_text_for_result(result):
     reply_kind = result.get("reply_kind")
     if reply_kind == "success":
         return _success_reply_text()
+    if reply_kind == "already_verified":
+        return _already_verified_reply_text()
     if reply_kind == "failure":
         return _failure_reply_text()
+    if reply_kind == "no_active_request":
+        return _no_active_request_reply_text()
     if reply_kind == "fallback":
         return _fallback_reply_text()
     return None

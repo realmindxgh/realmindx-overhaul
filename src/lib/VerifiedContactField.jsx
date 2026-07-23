@@ -25,6 +25,10 @@ const WhatsAppGlyph = ({ className = '' }) => (
   </svg>
 );
 
+const WHATSAPP_VERIFICATION_PHRASE = 'Verify my RealMindX number';
+const WHATSAPP_VERIFICATION_NUMBER = '+233257125229';
+const WHATSAPP_VERIFICATION_URL = `https://wa.me/${WHATSAPP_VERIFICATION_NUMBER.replace(/\D/g, '')}?text=${encodeURIComponent(WHATSAPP_VERIFICATION_PHRASE)}`;
+
 export default function VerifiedContactField({
   field,
   value,
@@ -120,14 +124,14 @@ export default function VerifiedContactField({
               channel: requestChannel,
               delivery_channel: 'whatsapp_inbound',
               verification_mode: 'whatsapp_inbound',
-              challenge_phrase: 'RMX VERIFY 123456',
-              whatsapp_number: '+233257125229',
-              whatsapp_url: 'https://wa.me/233257125229?text=RMX%20VERIFY%20123456',
+              challenge_phrase: WHATSAPP_VERIFICATION_PHRASE,
+              whatsapp_number: WHATSAPP_VERIFICATION_NUMBER,
+              whatsapp_url: WHATSAPP_VERIFICATION_URL,
             }
           : { challenge_id: 'local', destination: nextValue, channel: requestChannel });
         setWaitSeconds(45);
         setMessage(requestChannel === 'whatsapp'
-          ? 'Local WhatsApp preview: waiting automatically for RMX VERIFY 123456.'
+          ? 'Local WhatsApp preview: send the prefilled message without changing it.'
           : field === 'phone' ? 'Local SMS preview code: 123456' : 'Local preview code: 123456');
         return;
       }
@@ -136,13 +140,13 @@ export default function VerifiedContactField({
       setWaitSeconds(result.next_request_in_seconds || 45);
       const isWhatsAppResult = result.verification_mode === 'whatsapp_inbound' || result.delivery_channel === 'whatsapp_inbound';
       setMessage(isWhatsAppResult
-        ? 'Waiting for the WhatsApp message. We are checking automatically every few seconds; no need to press anything after sending.'
+        ? 'Waiting for the WhatsApp verification message. We are checking automatically every few seconds.'
         : (result.message || 'Verification code sent.'));
     } catch (requestError) {
       if (requestError.data?.retry_after_seconds) {
         setWaitSeconds(requestError.data.retry_after_seconds);
       }
-      setError(requestError.message || 'Could not send the verification code.');
+      setError(requestError.message || (requestChannel === 'whatsapp' ? 'Could not start WhatsApp verification.' : 'Could not send the verification code.'));
     } finally {
       setBusy(false);
     }
@@ -179,12 +183,10 @@ export default function VerifiedContactField({
       }
       if (status?.status === 'wrong_number') {
         setError(status.message || 'The challenge came from a different WhatsApp number. Use the WhatsApp account for the number you entered, or change the number.');
-      } else if (status?.status === 'wrong_message') {
-        setError(status.message || 'WhatsApp received a message from your number, but it did not match the challenge. Send the prepared message exactly as shown.');
       } else if (status?.status === 'expired') {
-        setError(status.message || 'This WhatsApp challenge has expired. Send a fresh one.');
+        setError(status.message || 'This WhatsApp verification has expired. Start a fresh one.');
       } else if (!silent) {
-        setMessage(status?.message || 'Still waiting for the WhatsApp message. We are checking automatically every few seconds.');
+        setMessage(status?.message || 'Still waiting for the WhatsApp verification message.');
       }
     } catch (statusError) {
       if (!silent) setError(statusError.message || 'Could not check the WhatsApp challenge yet.');
@@ -253,29 +255,35 @@ export default function VerifiedContactField({
           <WhatsAppGlyph className="verified-contact-whatsapp-icon" />
         </span>
         <div>
-          <span>WhatsApp verification</span>
-          <p>Open WhatsApp with the prepared message, send it once, and keep this window open.</p>
+          <span>Verify your WhatsApp number</span>
+          <p>Tap the button below, then send the prefilled WhatsApp message without changing it.</p>
         </div>
       </div>
-      <div className="verified-contact-whatsapp-code-card">
-        <span className="verified-contact-whatsapp-label">Message to send</span>
-        <strong>{challenge.challenge_phrase}</strong>
-        <span className="verified-contact-whatsapp-exact">Exact text only</span>
+      <div className="verified-contact-whatsapp-panel">
+        <div>
+          <span>Send to</span>
+          <strong>{challenge.whatsapp_number}</strong>
+        </div>
+        <div>
+          <span>Message to send</span>
+          <strong>{challenge.challenge_phrase || WHATSAPP_VERIFICATION_PHRASE}</strong>
+        </div>
+        <div>
+          <span>From</span>
+          <strong>{challenge.destination}</strong>
+        </div>
       </div>
       <p className="verified-contact-whatsapp-route">
-        Send to <strong>{challenge.whatsapp_number}</strong> from <strong>{challenge.destination}</strong>.
+        Keep this RealMindX window open after sending. The message must be sent from the phone number you are verifying.
       </p>
       <div className="verified-contact-whatsapp-note">
-        <strong>Before sending</strong>
-        <ul>
-          <li>If this phone has two WhatsApp accounts, select the account for the number you entered.</li>
-          <li>Do not edit, shorten, add words, or add emojis to the prepared message.</li>
-        </ul>
+        <strong>Important</strong>
+        <p>If this phone has two WhatsApp accounts, select the account for the number you entered. Do not edit the prepared message.</p>
       </div>
       {challenge.whatsapp_url && (
         <a className="verified-contact-whatsapp-open" href={challenge.whatsapp_url} target="_blank" rel="noopener noreferrer">
           <WhatsAppGlyph className="verified-contact-whatsapp-open-icon" />
-          Open WhatsApp with message
+          Open WhatsApp
         </a>
       )}
     </div>
@@ -303,7 +311,7 @@ export default function VerifiedContactField({
           </label>
           {field === 'phone' && (
             <fieldset className="verified-contact-channel">
-              <legend>Send code by</legend>
+              <legend>Choose verification method</legend>
               <label>
                 <input type="radio" name="verification-channel" value="sms" checked={channel === 'sms'} onChange={() => setChannel('sms')} />
                 <span>SMS</span>
@@ -319,7 +327,7 @@ export default function VerifiedContactField({
           )}
           <div className="verified-contact-form-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
-              {busy ? 'Sending...' : 'Send verification code'}
+              {busy ? 'Sending...' : channel === 'whatsapp' ? 'Verify with WhatsApp' : 'Send SMS code'}
             </button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={reset}>Cancel</button>
           </div>
@@ -336,7 +344,7 @@ export default function VerifiedContactField({
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={changeNumber}>Change number</button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={reset}>Cancel</button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={resendCode} disabled={busy || waitSeconds > 0}>
-              {waitSeconds > 0 ? `Try again in ${waitSeconds}s` : 'Create a new challenge'}
+              {waitSeconds > 0 ? `Retry in ${waitSeconds}s` : 'Start again'}
             </button>
           </div>
         </div>
@@ -373,7 +381,7 @@ export default function VerifiedContactField({
   );
 
   return (
-    <div className={`verified-contact ${className}`.trim()}>
+    <div className={`verified-contact ${className}`.trim()} data-contact-field={field}>
       <div className="verified-contact-main">
         {icon ? (
           <div className="verified-contact-copy has-icon">
@@ -424,7 +432,7 @@ export default function VerifiedContactField({
       )}
       {modal && (editing || challenge) && (
         <div className="verified-contact-modal-scrim" onClick={event => { if (event.target === event.currentTarget) reset(); }}>
-          <form className="verified-contact-modal-card" onSubmit={challenge ? verifyCode : requestCode} role="dialog" aria-modal="true" aria-label={modalTitle}>
+          <form className={`verified-contact-modal-card ${isWhatsAppInbound ? 'has-whatsapp-challenge' : ''}`} onSubmit={challenge ? verifyCode : requestCode} role="dialog" aria-modal="true" aria-label={modalTitle}>
             <div className="verified-contact-modal-head">
               <div>
                 <span className="verified-contact-modal-kicker">Contact details</span>
@@ -437,10 +445,10 @@ export default function VerifiedContactField({
             <div className="verified-contact-modal-body">
               <p className="verified-contact-modal-intro">
                 {isWhatsAppInbound
-                  ? 'Send the prepared WhatsApp message. RealMindX checks automatically every few seconds.'
+                  ? 'Send the prefilled WhatsApp message from the phone number you entered. RealMindX checks automatically.'
                   : challenge
                   ? `Enter the 6 digit code sent to ${challenge.destination}.`
-                  : `We will verify the new ${meta.title.toLowerCase()} before updating your shared RealMindX account.`}
+                  : `We will verify the new ${meta.title.toLowerCase()} before updating your RealMindX account.`}
               </p>
               {isWhatsAppInbound ? (
                 whatsAppChallenge
@@ -473,7 +481,7 @@ export default function VerifiedContactField({
                   </label>
                   {field === 'phone' && (
                     <fieldset className="verified-contact-channel">
-                      <legend>Send code by</legend>
+                      <legend>Choose verification method</legend>
                       <label>
                         <input type="radio" name="verification-channel-modal" value="sms" checked={channel === 'sms'} onChange={() => setChannel('sms')} />
                         <span>SMS</span>
@@ -498,16 +506,21 @@ export default function VerifiedContactField({
                 {challenge && isWhatsAppInbound && (
                   <button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button>
                 )}
-                {challenge && (
+                {challenge && waitSeconds <= 0 && (
                   <button type="button" className="verified-contact-modal-btn is-outline" onClick={resendCode} disabled={busy || waitSeconds > 0}>
-                    {waitSeconds > 0 ? `Try again in ${waitSeconds}s` : isWhatsAppInbound ? 'New challenge' : `Send again by ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
+                    {isWhatsAppInbound ? 'Start again' : `Send again by ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
                   </button>
+                )}
+                {challenge && waitSeconds > 0 && (
+                  <span className="verified-contact-countdown" aria-live="polite">
+                    {waitSeconds}s
+                  </span>
                 )}
               </div>
               <button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy || checking}>
                 {isWhatsAppInbound
                   ? (checking ? 'Checking...' : 'Check now')
-                  : busy ? (challenge ? 'Verifying...' : 'Sending...') : (challenge ? 'Verify and update' : 'Send verification code')}
+                  : busy ? (challenge ? 'Verifying...' : 'Sending...') : (challenge ? 'Verify and update' : channel === 'whatsapp' ? 'Verify with WhatsApp' : 'Send code')}
               </button>
             </div>
           </form>

@@ -7,10 +7,16 @@ from flask import current_app
 
 from .sms_service import normalise_phone
 
+WHATSAPP_VERIFICATION_PHRASE = "Verify my RealMindX number"
 
-def whatsapp_challenge_phrase(code: str) -> str:
-    prefix = (current_app.config.get("WHATSAPP_CHALLENGE_PREFIX") or "RMX VERIFY").strip()
-    return f"{prefix} {code}"
+
+def whatsapp_challenge_phrase(code: str | None = None) -> str:
+    """Return the prefilled WhatsApp verification text.
+
+    The phrase is not an OTP. It is a clear intent marker so an ordinary
+    customer message such as "Hi" is never treated as verification.
+    """
+    return (current_app.config.get("WHATSAPP_CHALLENGE_MESSAGE") or WHATSAPP_VERIFICATION_PHRASE).strip() or WHATSAPP_VERIFICATION_PHRASE
 
 
 def whatsapp_business_number() -> str:

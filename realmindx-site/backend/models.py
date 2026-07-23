@@ -61,6 +61,7 @@ class User(UserMixin, TimestampMixin, db.Model):
     age_range = db.Column(db.String(30), nullable=True, index=True)
     profile_reminder_sent_year = db.Column(db.Integer, nullable=True, index=True)
     phone_verified = db.Column(db.Boolean, default=False, nullable=False)
+    phone_verified_at = db.Column(db.DateTime(timezone=True), nullable=True)
     teacher_service_enabled = db.Column(db.Boolean, default=True, nullable=False, index=True)
     bookshop_service_enabled = db.Column(db.Boolean, default=False, nullable=False, index=True)
     role_id = db.Column(db.Integer, db.ForeignKey("roles.id"), nullable=False)
@@ -988,17 +989,23 @@ class AccountSecurityCode(TimestampMixin, db.Model):
 
 class ContactChangeToken(TimestampMixin, db.Model):
     __tablename__ = "contact_change_tokens"
+    __table_args__ = (
+        db.Index("uq_active_whatsapp_phone", "active_lock_key", unique=True),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     field = db.Column(db.String(20), nullable=False, index=True)
     target_value = db.Column(db.String(255), nullable=False)
     delivery_channel = db.Column(db.String(30), default="email", nullable=False, index=True)
+    status = db.Column(db.String(30), default="pending", nullable=False, index=True)
+    active_lock_key = db.Column(db.String(255), nullable=True)
     last_whatsapp_attempt_from = db.Column(db.String(40), nullable=True)
     last_whatsapp_attempt_at = db.Column(db.DateTime(timezone=True), nullable=True)
     last_whatsapp_attempt_status = db.Column(db.String(40), nullable=True)
     token_hash = db.Column(db.String(255), nullable=False)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    verified_at = db.Column(db.DateTime(timezone=True), nullable=True)
     used_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
