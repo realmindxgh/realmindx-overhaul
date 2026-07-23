@@ -1757,6 +1757,7 @@ const UserPortalPage = () => {
 
   React.useEffect(() => {
     if (!sessionChecked || portalLoading || !session || !apiProfile) return undefined;
+    if (!apiProfile.terms_accepted_at) return undefined;
     if (apiProfile.phone && apiProfile.phone_verified) return undefined;
     const reminderKey = `rmx.phone-reminder.${session.email || 'account'}`;
     const lastShownAt = Number(window.localStorage.getItem(reminderKey) || 0);
@@ -1999,6 +2000,24 @@ const UserPortalPage = () => {
     }
   };
 
+  const declineTerms = async () => {
+    setTermsAccepting(true);
+    setTermsError('');
+    try {
+      const resp = await fetch('/api/auth/decline-terms', { method: 'POST', credentials: 'include' });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Could not process your request.');
+      }
+      clearDemoSession();
+      queueToast('Your account has been deleted.', 'success');
+      window.location.href = '/';
+    } catch (err) {
+      setTermsError(err.message);
+      setTermsAccepting(false);
+    }
+  };
+
   const renderView = () => {
     switch (activeView) {
       case 'profile':      return <ProfileView      user={user} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} onContactUpdated={refreshProfileAfterContact} avatarUploading={avatarUploading} uploadError={uploadError} />;
@@ -2130,24 +2149,108 @@ const UserPortalPage = () => {
       )}
 
       {termsModalOpen && (
-        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !termsAccepting) setTermsModalOpen(false); }}>
-          <div className="avatar-preview-modal" role="dialog" aria-modal="true" aria-labelledby="terms-modal-title">
-            <h3 id="terms-modal-title" style={{ marginBottom: 12 }}>Terms and Conditions</h3>
-            <div style={{ textAlign: 'left', maxHeight: 280, overflowY: 'auto', marginBottom: 16, fontSize: 14, lineHeight: 1.7, color: '#333' }}>
-              <p>Welcome to RealMindX! Before you continue, please review and accept our terms.</p>
-              <p>By using RealMindX, you agree to:</p>
-              <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
-                <li>Provide accurate and current personal information</li>
-                <li>Use the platform responsibly and lawfully</li>
-                <li>Respect the privacy and rights of other users</li>
-                <li>Accept our <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--navy)' }}>Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--navy)' }}>Privacy Policy</a></li>
-              </ul>
-              <p>Your account connects you to teaching opportunities, educational resources, and our bookshop. Please take a moment to read the full terms linked above.</p>
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(1, 17, 38, 0.8)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="terms-modal-title" style={{
+            background: '#fff', borderRadius: 12,
+            width: 'min(520px, calc(100vw - 32px))',
+            maxHeight: 'calc(100dvh - 48px)',
+            overflowY: 'auto', padding: 36, position: 'relative',
+            boxShadow: '0 28px 90px rgba(1, 17, 38, 0.32)',
+          }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%',
+              background: '#fff6cc',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}>
+              <Icon name="check" size={28} stroke={2.5} />
             </div>
-            {termsError && <p className="form-error" style={{ marginBottom: 10 }}>{termsError}</p>}
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" type="button" disabled={termsAccepting} onClick={acceptTerms}>
-                {termsAccepting ? 'Please wait...' : 'Accept & Continue'}
+            <h3 id="terms-modal-title" style={{
+              fontFamily: "'Montserrat', sans-serif",
+              fontSize: '1.35rem', fontWeight: 900,
+              textAlign: 'center', color: 'var(--navy)',
+              marginBottom: 8,
+            }}>
+              Terms and Conditions
+            </h3>
+            <p style={{
+              textAlign: 'center', fontSize: '0.85rem',
+              color: 'var(--gray-600)', marginBottom: 24,
+              lineHeight: 1.6,
+            }}>
+              Welcome to RealMindX! Before you continue, please review and accept our terms.
+            </p>
+            <div style={{
+              borderTop: '1px solid var(--gray-200)',
+              borderBottom: '1px solid var(--gray-200)',
+              padding: '20px 0', marginBottom: 24,
+            }}>
+              {[
+                'Provide accurate and current personal information',
+                'Use the platform responsibly and lawfully',
+                'Respect the privacy and rights of other users',
+                'Accept our Terms of Service and Privacy Policy',
+              ].map((text, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  marginBottom: i < 3 ? 14 : 0,
+                }}>
+                  <div style={{
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: '#dcfce7',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0, marginTop: 2,
+                  }}>
+                    <Icon name="check" size={12} stroke={3} />
+                  </div>
+                  <span style={{ fontSize: '0.88rem', color: 'var(--text-body)', lineHeight: 1.55 }}>
+                    {text}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p style={{
+              fontSize: '0.82rem', color: 'var(--gray-600)',
+              textAlign: 'center', lineHeight: 1.6, marginBottom: 24,
+            }}>
+              Your account connects you to teaching opportunities, educational resources, and our bookshop. Please take a moment to read the full{' '}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--navy)', fontWeight: 700, textDecoration: 'underline' }}>
+                Terms of Service
+              </a>{' '}and{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--navy)', fontWeight: 700, textDecoration: 'underline' }}>
+                Privacy Policy
+              </a>.
+            </p>
+            {termsError && <p className="form-error" style={{ textAlign: 'center', marginBottom: 16 }}>{termsError}</p>}
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={termsAccepting}
+                onClick={acceptTerms}
+                style={{ minWidth: 140 }}
+              >
+                {termsAccepting ? 'Please wait...' : 'Accept'}
+              </button>
+              <button
+                className="btn"
+                type="button"
+                disabled={termsAccepting}
+                onClick={declineTerms}
+                style={{
+                  minWidth: 140,
+                  background: '#fee2e2',
+                  color: '#ef4444',
+                  border: '1px solid #fca5a5',
+                  fontWeight: 700,
+                }}
+              >
+                Decline & Delete Account
               </button>
             </div>
           </div>
