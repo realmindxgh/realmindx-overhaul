@@ -480,7 +480,23 @@ def list_products():
         if curriculum:
             query = query.filter(or_(*(Product.curriculum.ilike(term) for term in taxonomy_filter_terms("curriculum", curriculum))))
         if publisher:
-            query = query.filter(Product.publisher == publisher)
+            terms = []
+            for p in publisher.split(','):
+                p = p.strip()
+                if not p:
+                    continue
+                terms.append(p)
+                if '-' in p:
+                    terms.append(p.replace('-', '%'))
+            seen = set()
+            unique = []
+            for t in terms:
+                key = t.strip().lower()
+                if key and key not in seen:
+                    seen.add(key)
+                    unique.append(t)
+            if unique:
+                query = query.filter(or_(*(Product.publisher.ilike(f"%{t}%") for t in unique)))
     if min_price is not None:
         query = query.filter(Product.price >= min_price)
     if max_price is not None:
