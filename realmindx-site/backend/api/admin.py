@@ -1475,6 +1475,145 @@ def bookshop_accounts():
     return jsonify(items=items)
 
 
+def _profile_reminder_items(user, missing):
+    items = list(missing or [])
+    if not getattr(user, "phone_verified", False):
+        items.append("Verify your phone number")
+    return items
+
+
+def _send_teacher_profile_reminder(user):
+    completion, missing = teacher_profile_completion(user)
+    reminder_items = _profile_reminder_items(user, missing)
+    if not reminder_items:
+        return {"status": "skipped", "reason": "complete", "profile_completion": completion}
+
+    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
+    missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
+    missing_text = "\n".join(f"- {item}" for item in reminder_items)
+    result = send_email(OutboundEmail(
+        to=user.email,
+        subject="You are almost ready for better-matched teaching opportunities",
+        html=app_email_shell(
+            "Complete your profile and unlock better job matches",
+            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
+            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
+            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
+            "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
+            "Finish My Profile",
+            portal_url,
+            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
+        ),
+        text=(
+            "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
+            f"Remaining items:\n{missing_text}\n\n"
+            f"Finish here: {portal_url}"
+        ),
+    ))
+    if result.get("status") != "sent":
+        return {"status": "failed", "profile_completion": completion, "missing_fields": reminder_items}
+    log_action("send_teacher_profile_reminder", "user", user.id, {
+        "email": user.email,
+        "profile_completion": completion,
+        "missing_fields": reminder_items,
+    })
+    return {
+        "status": "sent",
+        "profile_completion": completion,
+        "missing_fields": reminder_items,
+    }
+
+
+def _send_teacher_profile_reminder(user):
+    completion, missing = teacher_profile_completion(user)
+    reminder_items = _profile_reminder_items(user, missing)
+    if not reminder_items:
+        return {"status": "skipped", "reason": "complete", "profile_completion": completion}
+
+    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
+    missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
+    missing_text = "\n".join(f"- {item}" for item in reminder_items)
+    result = send_email(OutboundEmail(
+        to=user.email,
+        subject="You are almost ready for better-matched teaching opportunities",
+        html=app_email_shell(
+            "Complete your profile and unlock better job matches",
+            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
+            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
+            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
+            "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
+            "Finish My Profile",
+            portal_url,
+            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
+        ),
+        text=(
+            "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
+            f"Remaining items:\n{missing_text}\n\n"
+            f"Finish here: {portal_url}"
+        ),
+    ))
+    if result.get("status") != "sent":
+        return {"status": "failed", "profile_completion": completion, "missing_fields": reminder_items}
+    log_action("send_teacher_profile_reminder", "user", user.id, {
+        "email": user.email,
+        "profile_completion": completion,
+        "missing_fields": reminder_items,
+    })
+    return {
+        "status": "sent",
+        "profile_completion": completion,
+        "missing_fields": reminder_items,
+    }
+
+
+@admin_bp.post("/users/profile-reminders")
+@login_required
+@permission_required("teachers.edit")
+def send_profile_reminders_batch():
+    rows = (
+        User.query
+        .join(User.role)
+        .filter(
+            Role.name == "user",
+            User.teacher_service_enabled.is_(True),
+            User.is_active.is_(True),
+            User.is_verified.is_(True),
+        )
+        .order_by(User.created_at.desc())
+        .all()
+    )
+    sent = []
+    skipped = 0
+    failed = []
+    for user in rows:
+        result = _send_teacher_profile_reminder(user)
+        if result["status"] == "sent":
+            sent.append(user.email)
+        elif result["status"] == "failed":
+            failed.append(user.email)
+        else:
+            skipped += 1
+    if sent:
+        db.session.commit()
+
+    message = (
+        f"Profile reminders sent to {len(sent)} teacher{'s' if len(sent) != 1 else ''}."
+        if sent else
+        "No teachers need a profile reminder right now."
+    )
+    if failed:
+        message += f" {len(failed)} could not be delivered."
+    return jsonify(
+        message=message,
+        sent_count=len(sent),
+        skipped_count=skipped,
+        failed_count=len(failed),
+        failed_emails=failed[:10],
+    )
+
+
 @admin_bp.post("/users/<int:user_id>/profile-reminder")
 @login_required
 @permission_required("teachers.edit")
@@ -1484,6 +1623,14 @@ def send_profile_reminder(user_id):
         return jsonify(error="Profile reminders can only be sent to teacher accounts."), 403
     if not user.is_active:
         return jsonify(error="Enable this teacher account before sending a profile reminder."), 409
+    result = _send_teacher_profile_reminder(user)
+    if result["status"] == "skipped":
+        return jsonify(error="This teacher's profile and phone verification are already complete."), 409
+    if result["status"] != "sent":
+        return jsonify(error="The reminder could not be delivered. Check the email service and try again."), 502
+    db.session.commit()
+    return jsonify(message=f"Profile reminder sent to {user.email}.", profile_completion=result["profile_completion"])
+
     completion, missing = teacher_profile_completion(user)
     if completion >= 100:
         return jsonify(error="This teacher's profile is already complete."), 409

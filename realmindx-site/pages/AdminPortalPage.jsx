@@ -1183,6 +1183,31 @@ const whatsappStatusMeta = {
     className: 'badge-warning',
     help: 'The sender matched, but the message was edited or did not match the prepared challenge.',
   },
+  invalid_code: {
+    label: 'Invalid code',
+    className: 'badge-warning',
+    help: 'The message looked like a verification command, but no recent challenge matched that code.',
+  },
+  expired: {
+    label: 'Expired',
+    className: 'badge-warning',
+    help: 'The challenge code was recognised, but that verification request had expired.',
+  },
+  already_used: {
+    label: 'Already used',
+    className: 'badge-warning',
+    help: 'The challenge code was recognised, but it had already been used or replaced by a newer request.',
+  },
+  non_verification_text: {
+    label: 'Non-verification text',
+    className: 'badge-info',
+    help: 'The sender sent ordinary text, so RealMindX replied that this number is only for verification.',
+  },
+  missing_message_id: {
+    label: 'Missing message ID',
+    className: 'badge-danger',
+    help: 'Meta delivered a message without an incoming message ID, so RealMindX did not reply because idempotency could not be guaranteed.',
+  },
   no_matching_challenge: {
     label: 'No active challenge',
     className: 'badge-warning',
@@ -4531,6 +4556,8 @@ const TeachersView = ({ session }) => {
   const [payoutError, setPayoutError] = React.useState('');
   const [deleting, setDeleting] = React.useState(null);
   const [reminding, setReminding] = React.useState(null);
+  const [batchReminding, setBatchReminding] = React.useState(false);
+  const [batchReminderConfirm, setBatchReminderConfirm] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState(null);
   const canEditTeachers = hasSessionPermission(session, 'teachers.edit');
   const canDeleteTeachers = hasSessionPermission(session, 'teachers.delete');
@@ -4560,6 +4587,9 @@ const TeachersView = ({ session }) => {
   const filtered = (teachers || [])
     .filter(t => t.role === 'user' || !t.role);
   const rankedTeachers = rankByFuzzyMatch(filtered, search, t => `${t.first_name} ${t.last_name} ${t.email} ${t.phone || ''}`);
+  const reminderEligibleCount = (teachers || [])
+    .filter(t => (t.role === 'user' || !t.role) && ((t.profile_completion ?? 0) < 100 || !t.phone_verified))
+    .length;
 
   const openDetail = async (t) => {
     setDetailLoading(true);
@@ -4598,7 +4628,7 @@ const TeachersView = ({ session }) => {
       if (detail?.id === t.id) setDetail(null);
     } catch (err) {
       console.error(err);
-      window.alert(err?.message || 'Could not delete teacher account.');
+      globalToast.error(err?.message || 'Could not delete teacher account.');
     } finally {
       setDeleting(null);
     }
@@ -4613,6 +4643,32 @@ const TeachersView = ({ session }) => {
       globalToast.error(err?.message || 'Could not send the profile reminder.');
     } finally {
       setReminding(null);
+    }
+  };
+
+  const openBatchProfileReminderConfirm = () => {
+    if (!reminderEligibleCount) {
+      globalToast.info('Every active teacher has a complete profile and verified phone number.');
+      return;
+    }
+    setBatchReminderConfirm(true);
+  };
+
+  const sendBatchProfileReminders = async () => {
+    setBatchReminderConfirm(false);
+    setBatchReminding(true);
+    try {
+      const result = await api.adminCreate('users/profile-reminders', {});
+      const failed = Number(result?.failed_count || 0);
+      if (failed > 0) {
+        globalToast.warning(result?.message || `Reminders sent, but ${failed} could not be delivered.`);
+      } else {
+        globalToast.success(result?.message || 'Profile reminders sent.');
+      }
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not send batch profile reminders.');
+    } finally {
+      setBatchReminding(false);
     }
   };
 
@@ -4657,11 +4713,22 @@ const TeachersView = ({ session }) => {
         )}
       </div>
       <div className="admin-table-card">
-        <div className="atc-header">
+        <div className="atc-header teachers-toolbar">
           <h3>{rankedTeachers.length} Teacher{rankedTeachers.length !== 1 ? 's' : ''}</h3>
           <div className="atc-search"><span>Search</span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or email" />
           </div>
+          {canEditTeachers ? (
+            <button
+              type="button"
+              className="btn btn-outline-navy btn-sm teachers-batch-reminder"
+              disabled={batchReminding || reminderEligibleCount === 0}
+              onClick={openBatchProfileReminderConfirm}
+              title={reminderEligibleCount === 0 ? 'All active teachers have complete profiles and verified phone numbers.' : 'Send one profile reminder email to every teacher who still has profile or phone verification items outstanding.'}
+            >
+              {batchReminding ? 'Sending reminders…' : `Remind incomplete teachers${reminderEligibleCount ? ` (${reminderEligibleCount})` : ''}`}
+            </button>
+          ) : null}
         </div>
         {!isApiMode() ? (
           <EmptySection title="API mode required" body="Connect the Flask backend to see registered teachers." />
@@ -4706,13 +4773,13 @@ const TeachersView = ({ session }) => {
                             {toggling === t.id ? '…' : t.is_active !== false ? 'Disable' : 'Enable'}
                           </button>
                         ) : null}
-                        {canEditTeachers && t.profile_completion < 100 ? (
+                        {canEditTeachers && ((t.profile_completion ?? 0) < 100 || !t.phone_verified) ? (
                           <button
                             className="table-action-btn"
                             style={{ background:'#e8f1ff', color:'var(--navy)' }}
                             disabled={reminding === t.id || t.is_active === false}
                             onClick={() => sendProfileReminder(t)}
-                            title={t.is_active === false ? 'Enable this account before sending a reminder' : `Missing: ${(t.profile_missing_fields || []).join(', ')}`}
+                            title={t.is_active === false ? 'Enable this account before sending a reminder' : `Missing: ${[...(t.profile_missing_fields || []), ...(!t.phone_verified ? ['Verify your phone number'] : [])].join(', ')}`}
                           >
                             {reminding === t.id ? 'Sending…' : 'Send Profile Reminder'}
                           </button>
@@ -4736,6 +4803,37 @@ const TeachersView = ({ session }) => {
           </AdminTableScroll>
         )}
       </div>
+
+      {batchReminderConfirm && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="batch-profile-reminder-title" style={{ position:'relative', background:'#fff', borderRadius:18, padding:'34px 32px 30px', width:'100%', maxWidth:520, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setBatchReminderConfirm(false)} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
+            <div style={{ width:58, height:58, borderRadius:'50%', background:'#eff6ff', border:'2px solid #bfdbfe', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', color:'var(--navy)' }}>
+              <Icon name="mail" size={24} />
+            </div>
+            <p style={{ margin:'0 0 8px', textAlign:'center', color:'#b88900', fontWeight:900, letterSpacing:'0.16em', textTransform:'uppercase', fontSize:'0.72rem' }}>
+              Profile reminders
+            </p>
+            <h3 id="batch-profile-reminder-title" style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', textAlign:'center', marginBottom:10, fontSize:'1.2rem' }}>
+              Send reminder emails?
+            </h3>
+            <p style={{ fontSize:'0.9rem', color:'var(--gray-600)', textAlign:'center', marginBottom:18, lineHeight:1.6 }}>
+              RealMindX will email <strong style={{ color:'var(--navy)' }}>{reminderEligibleCount}</strong> active teacher{reminderEligibleCount === 1 ? '' : 's'} who still need to complete profile details or verify a phone number.
+            </p>
+            <div style={{ background:'#f8fafc', border:'1px solid #dbe4f0', borderRadius:14, padding:'14px 16px', marginBottom:24, color:'var(--gray-600)', fontSize:'0.84rem', lineHeight:1.55 }}>
+              The email will include the missing profile sections and phone-number verification when it is still outstanding.
+            </div>
+            <div style={{ display:'flex', gap:12 }}>
+              <button className="btn btn-outline-navy" style={{ flex:1 }} type="button" onClick={() => setBatchReminderConfirm(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex:1 }} type="button" onClick={sendBatchProfileReminders} disabled={batchReminding}>
+                {batchReminding ? 'Sending...' : 'Send reminders'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteConfirm && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>

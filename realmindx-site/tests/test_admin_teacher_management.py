@@ -11,7 +11,7 @@ from backend.config import Config
 from backend.extensions import db
 from unittest.mock import patch
 
-from backend.models import Job, JobAlertPreference, JobApplication, Role, TeacherPlacement, User, UserProfile
+from backend.models import Job, JobAlertPreference, JobApplication, Role, TeacherPlacement, UploadedFile, User, UserProfile
 
 
 class AdminTeacherManagementTestConfig(Config):
@@ -133,7 +133,69 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertIn("almost ready", message.subject)
         self.assertIn("almost there", message.html)
         self.assertIn("Finish My Profile", message.html)
+        self.assertIn("Verify your phone number", message.html)
+        self.assertIn("Verify your phone number", message.text)
         self.assertIn("https://realmindxgh.com/logo-white.png", message.html)
+
+    @patch("backend.api.admin.send_email", return_value={"provider": "test", "status": "sent"})
+    def test_send_batch_profile_reminders_includes_phone_verification(self, send_email_mock):
+        complete_no_phone = User(
+            email="complete-no-phone@example.com",
+            first_name="Complete",
+            last_name="Teacher",
+            role=Role.query.filter_by(name="user").one(),
+            is_active=True,
+            is_verified=True,
+            teacher_service_enabled=True,
+            phone="+233200000111",
+            phone_verified=False,
+        )
+        complete_no_phone.set_password("TeacherPassword1")
+        db.session.add(complete_no_phone)
+        db.session.flush()
+        cv = UploadedFile(
+            owner_id=complete_no_phone.id,
+            original_filename="cv.pdf",
+            stored_filename="cv.pdf",
+            storage_path="protected/cv.pdf",
+            mime_type="application/pdf",
+            size_bytes=100,
+            category="cv",
+        )
+        cert = UploadedFile(
+            owner_id=complete_no_phone.id,
+            original_filename="certificate.pdf",
+            stored_filename="certificate.pdf",
+            storage_path="protected/certificate.pdf",
+            mime_type="application/pdf",
+            size_bytes=100,
+            category="certificate",
+        )
+        db.session.add_all([cv, cert])
+        db.session.flush()
+        db.session.add(UserProfile(
+            user_id=complete_no_phone.id,
+            location="Accra",
+            teaching_subject="Mathematics",
+            preferred_level="JHS",
+            preferred_employment_type="Full time",
+            curriculum_experience="GES",
+            cv_file_id=cv.id,
+            certificate_file_id=cert.id,
+        ))
+        db.session.commit()
+
+        response = self.client.post("/api/admin/users/profile-reminders", json={})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["sent_count"], 2)
+        self.assertEqual(send_email_mock.call_count, 2)
+        sent_by_email = {call.args[0].to: call.args[0] for call in send_email_mock.call_args_list}
+        self.assertIn("complete-no-phone@example.com", sent_by_email)
+        phone_email = sent_by_email["complete-no-phone@example.com"]
+        self.assertIn("Verify your phone number", phone_email.html)
+        self.assertIn("Verify your phone number", phone_email.text)
 
     def test_teacher_with_placement_history_must_be_disabled_instead(self):
         application = JobApplication.query.filter_by(user_id=self.active_teacher.id).one()

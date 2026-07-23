@@ -22,6 +22,59 @@ def whatsapp_challenge_url(phrase: str) -> str:
     return f"https://wa.me/{business_number.lstrip('+')}?text={quote(phrase)}"
 
 
+def send_whatsapp_text(phone: str, body: str) -> bool:
+    """Send a plain WhatsApp text message through the Cloud API."""
+    access_token = current_app.config.get("WHATSAPP_ACCESS_TOKEN", "")
+    phone_number_id = current_app.config.get("WHATSAPP_PHONE_NUMBER_ID", "")
+    graph_version = current_app.config.get("WHATSAPP_GRAPH_API_VERSION", "v23.0")
+
+    if not access_token or not phone_number_id:
+        current_app.logger.debug("[whatsapp] Cloud API credentials not set; skipping text reply")
+        return False
+
+    normalised = normalise_phone(phone)
+    if not normalised:
+        current_app.logger.warning("[whatsapp] Invalid text reply destination: %s", phone)
+        return False
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": normalised.lstrip("+"),
+        "type": "text",
+        "text": {
+            "preview_url": False,
+            "body": str(body or "").strip(),
+        },
+    }
+    url = f"https://graph.facebook.com/{graph_version}/{phone_number_id}/messages"
+
+    try:
+        response = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=10,
+        )
+        data = response.json()
+        if response.ok and data.get("messages"):
+            current_app.logger.info("[whatsapp] Text reply accepted for %s", normalised)
+            return True
+        error = data.get("error") or {}
+        current_app.logger.warning(
+            "[whatsapp] Meta rejected text reply (status=%s, code=%s, type=%s)",
+            response.status_code,
+            error.get("code"),
+            error.get("type"),
+        )
+    except (requests.RequestException, ValueError) as exc:
+        current_app.logger.warning("[whatsapp] Text reply failed: %s", exc)
+    return False
+
+
 def send_whatsapp_otp(phone: str, code: str) -> bool:
     """Send an OTP with an approved Meta authentication template."""
     access_token = current_app.config.get("WHATSAPP_ACCESS_TOKEN", "")
