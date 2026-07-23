@@ -455,6 +455,9 @@ const CategoryMarquee = ({ navigate }) => {
 // cap rendered items at narrower widths so the section stays compact.
 const HOMEPAGE_SECTION_LIMIT = 10;
 
+const STATIONERY_CATS = new Set(['stationery', 'note-books']);
+const SUBJECT_PRIORITY = { mathematics: 1, maths: 1, science: 2, 'integrated science': 2 };
+
 const HomePage = ({ navigate, onLoadingChange }) => {
   const { loading: catalogLoading, error: catalogError, books: catalogBooks } = useCatalog();
   const [turnstileToken, setTurnstileToken] = React.useState('');
@@ -467,6 +470,24 @@ const HomePage = ({ navigate, onLoadingChange }) => {
   newArrivalsRef.current = newArrivals;
   examPicksRef.current = examPicks;
   const hasContent = newArrivals.length > 0 || examPicks.length > 0;
+
+  const sortedNewArrivals = React.useMemo(() => {
+    return [...newArrivals].sort((a, b) => {
+      const aIsStationery = STATIONERY_CATS.has(a.cat);
+      const bIsStationery = STATIONERY_CATS.has(b.cat);
+      if (!aIsStationery && bIsStationery) return -1;
+      if (aIsStationery && !bIsStationery) return 1;
+      return 0;
+    });
+  }, [newArrivals]);
+
+  const sortedExamPicks = React.useMemo(() => {
+    return [...examPicks].sort((a, b) => {
+      const aPri = SUBJECT_PRIORITY[a.subject?.toLowerCase()] ?? 99;
+      const bPri = SUBJECT_PRIORITY[b.subject?.toLowerCase()] ?? 99;
+      return aPri - bPri;
+    });
+  }, [examPicks]);
 
   const examQs = `?exam_picks=1&per_page=${HOMEPAGE_SECTION_LIMIT}&sort=newest`;
 
@@ -594,7 +615,7 @@ const HomePage = ({ navigate, onLoadingChange }) => {
       </div>
       <HeroSlideshow navigate={navigate} />
 
-      {newArrivals.length > 0 && (
+      {sortedNewArrivals.length > 0 && (
         <section className="bs-section bs-container">
           <Reveal className="bs-section-head-row">
             <div>
@@ -604,7 +625,7 @@ const HomePage = ({ navigate, onLoadingChange }) => {
             <a className="bs-see-all" href={hrefForRoute('shop')} onClick={(event) => { event.preventDefault(); navigate('shop'); }}>View all <Icon name="arrow" size={14} /></a>
           </Reveal>
           <div className="bs-product-grid bs-home-new-grid">
-            {newArrivals.map((book, index) => (
+            {sortedNewArrivals.map((book, index) => (
               <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index} navigate={navigate} /></Reveal>
             ))}
           </div>
@@ -613,7 +634,7 @@ const HomePage = ({ navigate, onLoadingChange }) => {
 
       <CategoryMarquee navigate={navigate} />
 
-      {examPicks.length > 0 && (
+      {sortedExamPicks.length > 0 && (
         <section className="bs-section bs-container">
           <Reveal className="bs-section-head-row">
             <div>
@@ -623,7 +644,7 @@ const HomePage = ({ navigate, onLoadingChange }) => {
             <a className="bs-see-all" href={hrefForRoute('exam-catalogue')} onClick={(event) => { event.preventDefault(); navigate('exam-catalogue'); }}>Browse <Icon name="arrow" size={14} /></a>
           </Reveal>
           <div className="bs-product-grid bs-home-new-grid">
-            {examPicks.map((book, index) => (
+            {sortedExamPicks.map((book, index) => (
               <Reveal key={book.id} delay={(index % 4) + 1}><ProductCard book={book} idx={index + 4} navigate={navigate} /></Reveal>
             ))}
           </div>
