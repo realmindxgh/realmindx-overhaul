@@ -153,6 +153,14 @@ def taxonomy_filter_terms(taxonomy, value):
     ])
 
 
+def canonical_taxonomy_value(taxonomy, value):
+    """Return the canonical display form of a taxonomy value via alias groups."""
+    entry = _find_alias_group(taxonomy, value)
+    if entry:
+        return entry.get("canonical") or value
+    return value
+
+
 def expand_product_search_terms(value):
     raw = str(value or "").strip()
     query_key = normalize_search_text(raw)
