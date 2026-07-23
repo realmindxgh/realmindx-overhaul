@@ -219,6 +219,7 @@ def signup():
         sex=(payload.get("sex") or "").strip() or None,
         age_range=(payload.get("age_range") or "").strip() or None,
         role=role,
+        terms_accepted_at=datetime.now(timezone.utc),
         teacher_service_enabled=str(payload.get("surface") or "teacher").strip().lower() != "bookshop",
         bookshop_service_enabled=str(payload.get("surface") or "teacher").strip().lower() == "bookshop",
     )
@@ -480,6 +481,15 @@ def me():
     if not current_user.is_authenticated:
         return jsonify(user=None), 200
     return jsonify(user=user_json(current_user))
+
+
+@auth_bp.post("/accept-terms")
+@login_required
+def accept_terms():
+    current_user.terms_accepted_at = datetime.now(timezone.utc)
+    from ..extensions import db
+    db.session.commit()
+    return jsonify(message="Terms accepted.", user=user_json(current_user))
 
 
 @auth_bp.post("/verify-email-otp")

@@ -40,6 +40,7 @@ def user_json(user):
         "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         "profile_completion": profile_completion,
         "profile_missing_fields": profile_missing_fields,
+        "terms_accepted_at": user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
     }
 
 

@@ -145,20 +145,18 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
 
     created = False
     if not user:
-        if session.get("oauth_intent") != "signup":
-            return None, False
-        if not session.get("oauth_terms_accepted"):
-            return None, False
         role = Role.query.filter_by(name="user").first()
         if not role:
             role = Role(name="user", description="Public account")
             db.session.add(role)
+        terms_now = datetime.now(timezone.utc) if session.get("oauth_terms_accepted") else None
         user = User(
             email=(email or f"{provider}_{provider_user_id}@noemail.local").lower(),
             first_name=first_name or "",
             last_name=last_name or "",
             role=role,
-            is_verified=True,   # social login implies verified email
+            is_verified=True,
+            terms_accepted_at=terms_now,
             teacher_service_enabled=session.get("oauth_surface", "main") != "bookshop",
             bookshop_service_enabled=session.get("oauth_surface", "main") == "bookshop",
         )
@@ -193,7 +191,11 @@ def _login_and_redirect(user, frontend_path=None):
     user.last_login_at = datetime.now(timezone.utc)
     db.session.commit()
     default_path = "/account" if surface == "bookshop" else "/portal"
-    return redirect(f"{_frontend_base(surface)}{frontend_path or _safe_next(default_path)}")
+    next_path = frontend_path or _safe_next(default_path)
+    if user.terms_accepted_at is None:
+        sep = "&" if "?" in next_path else "?"
+        next_path = f"{next_path}{sep}terms=required"
+    return redirect(f"{_frontend_base(surface)}{next_path}")
 
 
 def _social_user_or_terms_error(user, provider):
@@ -204,8 +206,7 @@ def _social_user_or_terms_error(user, provider):
     session.pop("oauth_terms_accepted", None)
     session.pop("oauth_next", None)
     signup_path = "/signup" if surface == "bookshop" else "/register"
-    error = "terms_required" if intent == "signup" else "account_not_found_social"
-    query = urlencode({"error": error, "provider": provider})
+    query = urlencode({"error": "account_not_found_social", "provider": provider})
     return redirect(f"{_frontend_base(surface)}{signup_path}?{query}")
 
 

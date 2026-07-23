@@ -1642,6 +1642,10 @@ const UserPortalPage = () => {
   const [profileSaving, setProfileSaving] = React.useState(false);
   const [profileError, setProfileError] = React.useState('');
   const [phoneReminderOpen, setPhoneReminderOpen] = React.useState(false);
+  const [termsModalOpen, setTermsModalOpen] = React.useState(false);
+  const [termsAccepting, setTermsAccepting] = React.useState(false);
+  const [termsError, setTermsError] = React.useState('');
+  const [profilePromptOpen, setProfilePromptOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!isApiMode()) {
@@ -1760,6 +1764,18 @@ const UserPortalPage = () => {
     const timer = window.setTimeout(() => setPhoneReminderOpen(true), 1200);
     return () => window.clearTimeout(timer);
   }, [apiProfile, portalLoading, session, sessionChecked]);
+
+  React.useEffect(() => {
+    if (!sessionChecked || !apiProfile) return;
+    const urlTermsParam = new URLSearchParams(window.location.search).get('terms') === 'required';
+    const termsNotAccepted = !apiProfile.terms_accepted_at;
+    if (urlTermsParam && termsNotAccepted) {
+      setTermsModalOpen(true);
+      const url = new URL(window.location);
+      url.searchParams.delete('terms');
+      window.history.replaceState({}, '', url);
+    }
+  }, [sessionChecked, apiProfile]);
 
   if (!sessionChecked || !session) return <AuthLoadingScreen />;
   if (['admin', 'staff'].includes(session.role)) return null;
@@ -1963,6 +1979,26 @@ const UserPortalPage = () => {
     setPhoneReminderOpen(false);
   };
 
+  const acceptTerms = async () => {
+    setTermsAccepting(true);
+    setTermsError('');
+    try {
+      const resp = await fetch('/api/auth/accept-terms', { method: 'POST', credentials: 'include' });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Could not accept terms.');
+      setApiProfile(prev => ({ ...(prev || {}), terms_accepted_at: data.user?.terms_accepted_at }));
+      setTermsModalOpen(false);
+      const completion = typeof profileCompletion === 'number' ? profileCompletion : 0;
+      if (completion < 100 && user) {
+        setTimeout(() => setProfilePromptOpen(true), 600);
+      }
+    } catch (err) {
+      setTermsError(err.message);
+    } finally {
+      setTermsAccepting(false);
+    }
+  };
+
   const renderView = () => {
     switch (activeView) {
       case 'profile':      return <ProfileView      user={user} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} onContactUpdated={refreshProfileAfterContact} avatarUploading={avatarUploading} uploadError={uploadError} />;
@@ -2089,6 +2125,47 @@ const UserPortalPage = () => {
               <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => handleFileUpload('profile_picture', event.target.files?.[0])} />
             </label>
             {uploadError && <p className="form-error" style={{ marginTop: 10 }}>{uploadError}</p>}
+          </div>
+        </div>
+      )}
+
+      {termsModalOpen && (
+        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !termsAccepting) setTermsModalOpen(false); }}>
+          <div className="avatar-preview-modal" role="dialog" aria-modal="true" aria-labelledby="terms-modal-title">
+            <h3 id="terms-modal-title" style={{ marginBottom: 12 }}>Terms and Conditions</h3>
+            <div style={{ textAlign: 'left', maxHeight: 280, overflowY: 'auto', marginBottom: 16, fontSize: 14, lineHeight: 1.7, color: '#333' }}>
+              <p>Welcome to RealMindX! Before you continue, please review and accept our terms.</p>
+              <p>By using RealMindX, you agree to:</p>
+              <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
+                <li>Provide accurate and current personal information</li>
+                <li>Use the platform responsibly and lawfully</li>
+                <li>Respect the privacy and rights of other users</li>
+                <li>Accept our <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--navy)' }}>Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--navy)' }}>Privacy Policy</a></li>
+              </ul>
+              <p>Your account connects you to teaching opportunities, educational resources, and our bookshop. Please take a moment to read the full terms linked above.</p>
+            </div>
+            {termsError && <p className="form-error" style={{ marginBottom: 10 }}>{termsError}</p>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" type="button" disabled={termsAccepting} onClick={acceptTerms}>
+                {termsAccepting ? 'Please wait...' : 'Accept & Continue'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {profilePromptOpen && (
+        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setProfilePromptOpen(false); }}>
+          <div className="avatar-preview-modal" role="dialog" aria-modal="true" aria-labelledby="profile-prompt-title">
+            <div style={{ marginBottom: 12 }}><Icon name="user" size={32} stroke={1.8} /></div>
+            <h3 id="profile-prompt-title">Complete your profile</h3>
+            <p>Your profile is <strong>{profileCompletion}%</strong> complete. Add your teaching details to help schools find and connect with you.</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 18 }}>
+              <button className="btn btn-primary" type="button" onClick={() => { setProfilePromptOpen(false); setActiveView('profile'); }}>
+                Complete Profile
+              </button>
+              <button className="btn" type="button" onClick={() => setProfilePromptOpen(false)}>Later</button>
+            </div>
           </div>
         </div>
       )}
