@@ -9,13 +9,12 @@ from flask import Blueprint, current_app, jsonify, request, session
 from markupsafe import escape
 from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
-from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
-from ..models import AccountSecurityCode, AuthIdentity, CheckoutDetail, ContactChangeToken, EmailVerificationToken, JobAlertPreference, PasswordResetToken, PlatformTermsAcceptance, Role, User, UserProfile
+from ..models import AccountSecurityCode, AuditLog, AuthIdentity, CheckoutDetail, ContactChangeToken, EmailVerificationToken, JobAlertPreference, PasswordResetToken, PlatformTermsAcceptance, Role, User, UserProfile
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
 from ..sms_service import normalise_phone
@@ -500,6 +499,8 @@ def decline_terms():
     actor_id = user.id
     actor_email = user.email
     try:
+        audit("user_declined_terms", "user", actor_id, {"email": actor_email})
+        AuditLog.query.filter_by(actor_id=user.id).update({"actor_id": None})
         CheckoutDetail.query.filter_by(user_id=user.id).delete()
         ContactChangeToken.query.filter_by(user_id=user.id).delete()
         EmailVerificationToken.query.filter_by(user_id=user.id).delete()
@@ -509,14 +510,13 @@ def decline_terms():
         AuthIdentity.query.filter_by(user_id=user.id).delete()
         PlatformTermsAcceptance.query.filter_by(user_id=user.id).delete()
         db.session.delete(user)
-        audit("user_declined_terms", "user", actor_id, {"email": actor_email})
         db.session.commit()
         logout_user()
         return jsonify(message="Account deleted.")
-    except SQLAlchemyError:
+    except Exception as e:
         db.session.rollback()
         current_app.logger.exception("Failed to delete user %s during decline-terms", actor_id)
-        return jsonify(error="Could not delete your account. Please try again or contact support."), 500
+        return jsonify(error=str(e)), 500
 
 
 @auth_bp.post("/verify-email-otp")
