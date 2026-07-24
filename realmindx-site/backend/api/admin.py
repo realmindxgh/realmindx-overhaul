@@ -72,6 +72,18 @@ from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
 from ..profile_completion import teacher_profile_completion
 from ..sms_service import normalise_phone
+from ..bookshop_search import canonical_taxonomy_value
+
+
+def _normalize_taxonomy(value, taxonomy):
+    if not value:
+        return value
+    try:
+        return canonical_taxonomy_value(taxonomy, value)
+    except Exception:
+        return value
+
+
 from ..models import (
     AnalyticsEvent,
     AuditLog,
@@ -2257,11 +2269,11 @@ def create_product():
         image_file_id=payload.get("image_file_id") or None,
         stock_status=payload.get("stock_status") or "in_stock",
         quantity_available=payload.get("quantity_available"),
-        subject=payload.get("subject"),
-        level=payload.get("level"),
-        curriculum=payload.get("curriculum"),
+        subject=_normalize_taxonomy(payload.get("subject"), "subject"),
+        level=_normalize_taxonomy(payload.get("level"), "level"),
+        curriculum=_normalize_taxonomy(payload.get("curriculum"), "curriculum"),
         author=payload.get("author"),
-        publisher=payload.get("publisher"),
+        publisher=_normalize_taxonomy(payload.get("publisher"), "publisher"),
         product_type=payload.get("product_type"),
         source=payload.get("source"),
         featured=bool(payload.get("featured")),
@@ -2310,6 +2322,9 @@ def update_product(product_id):
     ]:
         if field in payload:
             setattr(product, field, payload[field])
+    for _tax_field, _tax_type in [("subject", "subject"), ("level", "level"), ("curriculum", "curriculum"), ("publisher", "publisher")]:
+        if _tax_field in payload:
+            setattr(product, _tax_field, _normalize_taxonomy(payload[_tax_field], _tax_type))
     if "slug" in payload:
         product.slug = _unique_product_slug(payload["slug"] or product.name, product.id)
     if "category_id" in payload or "category_name" in payload or "category" in payload:
@@ -2495,11 +2510,11 @@ def import_products():
             product.full_description = row["full_description"]
             product.stock_status = row["stock_status"]
             product.quantity_available = row["quantity_available"]
-            product.subject = row["subject"]
-            product.level = row["level"]
-            product.curriculum = row["curriculum"]
+            product.subject = _normalize_taxonomy(row["subject"], "subject")
+            product.level = _normalize_taxonomy(row["level"], "level")
+            product.curriculum = _normalize_taxonomy(row["curriculum"], "curriculum")
             product.author = row["author"]
-            product.publisher = row["publisher"]
+            product.publisher = _normalize_taxonomy(row["publisher"], "publisher")
             product.product_type = row["product_type"]
             product.delivery_note = row["delivery_note"]
             product.tags = row["tags"]
