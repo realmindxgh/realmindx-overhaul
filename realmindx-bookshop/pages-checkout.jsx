@@ -153,6 +153,7 @@ const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, bulk
     {bulkSaving > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Bulk Purchase Discount{bulkDiscountPct ? ` (${bulkDiscountPct}%)` : ''}</span><span>-{cedis(bulkSaving)}</span></div>}
     {promoProductDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Promo {promoCode} on products</span><span>-{cedis(promoProductDiscount)}</span></div>}
     <div className="bs-summary-row"><span>Delivery</span><span>{cedis(delivery)}</span></div>
+    {delivery > 0 && <div style={{ fontSize:11, color:'var(--bs-text-muted)', fontStyle:'italic', marginBottom:6 }}>Delivery fee is an estimate. Actual fee may vary slightly based on your exact location.</div>}
     {promoDeliveryDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Delivery discount</span><span>-{cedis(promoDeliveryDiscount)}</span></div>}
     {promoOrderDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Promo {promoCode} on order</span><span>-{cedis(promoOrderDiscount)}</span></div>}
     <div className="bs-summary-row bs-total" style={{ fontSize:18 }}><span>Total</span><span>{cedis(total)}</span></div>
