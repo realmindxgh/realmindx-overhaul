@@ -1021,7 +1021,10 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
     fetchingRef.current = true;
     setFetchLoading(true);
     setFetchError('');
-    if (!append) setRequestStatus('loading');
+    let skeletonTimer;
+    if (!append) {
+      skeletonTimer = setTimeout(() => setRequestStatus('loading'), 200);
+    }
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1030,6 +1033,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
       const qs = buildSearchQuery(page, BATCH);
       const data = await api.fetchProductSearch(`?${qs}`);
       if (controller.signal.aborted || rid !== requestIdRef.current) return;
+      clearTimeout(skeletonTimer);
       const items = (data.items || []).map(fromApiProduct);
       if (append) {
         setFetchedItems(prev => {
@@ -1053,6 +1057,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
       }
       sentinelKeyRef.current += 1;
     } catch (err) {
+      clearTimeout(skeletonTimer);
       if (err.name === 'AbortError' || rid !== requestIdRef.current) return;
       setFetchError('Could not load products. Try again.');
       if (!append) setRequestStatus('error');
@@ -1099,20 +1104,23 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
     fetchPage(1).catch(() => {});
   }, [browseScopeKey, fetchPage]);
 
-  // ---- Filter/sort reset ----
-  // When the user changes a filter or sort option, reset results to page 1.
+  // ---- Filter/sort reset (debounced 300ms) ----
+  // Rapid checkbox clicks are batched into a single request. Old results stay
+  // visible during the debounce + fetch; the skeleton only appears on first
+  // load or when the initial response is genuinely slow (>200ms via fetchPage)
   React.useEffect(() => {
-    if (initialFetchRef.current) return; // First mount handled separately
-    setFetchedItems([]);
-    setTotalCount(0);
-    setCurrentPage(1);
-    setHasMore(true);
-    setFetchError('');
-    setRequestStatus('loading');
-    fetchingRef.current = false;
-    sentinelKeyRef.current += 1;
-    window.scrollTo(0, 0);
-    fetchPage(1).catch(() => {});
+    if (initialFetchRef.current) return;
+    const timer = setTimeout(() => {
+      setTotalCount(0);
+      setCurrentPage(1);
+      setHasMore(true);
+      setFetchError('');
+      fetchingRef.current = false;
+      sentinelKeyRef.current += 1;
+      window.scrollTo(0, 0);
+      fetchPage(1).catch(() => {});
+    }, 300);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, sort]);
 

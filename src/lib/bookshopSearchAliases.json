@@ -313,6 +313,64 @@
       "popularSearches": [
         "KG books"
       ]
+    },
+    {
+      "id": "early-childhood-daycare",
+      "canonical": "Early Childhood / Daycare",
+      "displayName": "Early Childhood / Daycare",
+      "aliases": [
+        "early childhood",
+        "daycare",
+        "creche"
+      ],
+      "popularSearches": [
+        "early childhood books",
+        "daycare books"
+      ]
+    },
+    {
+      "id": "pre-school-nursery",
+      "canonical": "Pre-School / Nursery",
+      "displayName": "Pre-School / Nursery",
+      "aliases": [
+        "pre-school",
+        "preschool",
+        "nursery",
+        "nursery school",
+        "pre school"
+      ],
+      "popularSearches": [
+        "pre-school books",
+        "nursery books"
+      ]
+    },
+    {
+      "id": "sixth-form-pre-university",
+      "canonical": "Sixth Form / Pre-University",
+      "displayName": "Sixth Form / Pre-University",
+      "aliases": [
+        "sixth form",
+        "pre-university",
+        "a-level"
+      ],
+      "popularSearches": [
+        "sixth form books",
+        "pre-university books"
+      ]
+    },
+    {
+      "id": "tvet-vocational",
+      "canonical": "TVET / Vocational",
+      "displayName": "TVET / Vocational",
+      "aliases": [
+        "tvet",
+        "vocational",
+        "technical vocational"
+      ],
+      "popularSearches": [
+        "TVET books",
+        "vocational books"
+      ]
     }
   ],
   "category": [
