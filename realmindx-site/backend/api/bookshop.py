@@ -16,6 +16,17 @@ from sqlalchemy.orm import joinedload, selectinload
 from ..analytics import queue_analytics_event
 from ..audit import audit
 from ..bookshop_search import canonical_taxonomy_value, exam_picks_filter, product_search_filter, taxonomy_filter_terms
+
+
+
+def _multi_taxonomy_terms(taxonomy, raw):
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    terms = []
+    for part in parts:
+        terms.extend(taxonomy_filter_terms(taxonomy, part))
+    return terms
+
+
 from ..book_requests import BookRequestError, create_request, request_json
 from ..checkout_details import upsert_checkout_detail
 from ..contacts import TRANSACTIONAL_ONLY, upsert_contact
@@ -474,11 +485,11 @@ def list_products():
             else:
                 query = query.filter(Product.category.has(ProductCategory.slug == category))
         if subject:
-            query = query.filter(or_(*(Product.subject.ilike(f"%{term}%") for term in taxonomy_filter_terms("subject", subject))))
+            query = query.filter(or_(*(Product.subject.ilike(f"%{term}%") for term in _multi_taxonomy_terms("subject", subject))))
         if level:
-            query = query.filter(or_(*(Product.level.ilike(f"%{term}%") for term in taxonomy_filter_terms("level", level))))
+            query = query.filter(or_(*(Product.level.ilike(f"%{term}%") for term in _multi_taxonomy_terms("level", level))))
         if curriculum:
-            query = query.filter(or_(*(Product.curriculum.ilike(f"%{term}%") for term in taxonomy_filter_terms("curriculum", curriculum))))
+            query = query.filter(or_(*(Product.curriculum.ilike(f"%{term}%") for term in _multi_taxonomy_terms("curriculum", curriculum))))
         if publisher:
             terms = []
             for p in publisher.split(','):
