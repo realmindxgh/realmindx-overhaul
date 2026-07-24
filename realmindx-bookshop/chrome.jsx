@@ -486,7 +486,7 @@ const NavUserMenu = ({ navigate }) => {
   );
 };
 
-const SearchSuggestionList = ({ suggestions, query, onSelect, onSubmit, className = '' }) => (
+const SearchSuggestionList = ({ suggestions, query, onSelect, onSubmit, className = '', onSuggestionClickStart }) => (
   <div className={`bs-search-suggestions${className ? ` ${className}` : ''}`} role="listbox">
     {suggestions.map((book) => (
       <a
@@ -494,7 +494,10 @@ const SearchSuggestionList = ({ suggestions, query, onSelect, onSubmit, classNam
         href={hrefForProduct(book)}
         role="option"
         className="bs-search-sug-item"
-        onMouseDown={event => event.preventDefault()}
+        onMouseDown={event => {
+          event.preventDefault();
+          onSuggestionClickStart?.();
+        }}
         onClick={event => onSelect(event, book)}
       >
         <span className="bs-search-sug-cover" aria-hidden="true">
@@ -509,7 +512,10 @@ const SearchSuggestionList = ({ suggestions, query, onSelect, onSubmit, classNam
     <button
       type="button"
       className="bs-sug-all"
-      onMouseDown={event => event.preventDefault()}
+      onMouseDown={event => {
+        event.preventDefault();
+        onSuggestionClickStart?.();
+      }}
       onClick={onSubmit}
     >
       <Icon name="search" size={13} />
@@ -601,6 +607,7 @@ const Navbar = ({ route, navigate }) => {
 
   const [suggestions, setSuggestions] = React.useState([]);
   const abortRef = React.useRef(null);
+  const suggestionClickRef = React.useRef(false);
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQ(q), 300);
@@ -667,6 +674,7 @@ const Navbar = ({ route, navigate }) => {
 
   const selectSuggestion = (event, book) => {
     event.preventDefault();
+    suggestionClickRef.current = false;
     trackSearchClick({ term: q, productId: book.id, scope: 'bookshop', path: '/bookshop/products', source: 'suggestions' });
     navigate('product', { id: book.id, slug: productPathSegment(book) });
     setCatsOpen(false);
@@ -712,8 +720,14 @@ const Navbar = ({ route, navigate }) => {
               <input
                 value={q}
                 onChange={e => setQ(e.target.value)}
-                onFocus={() => setSearchSurface('nav')}
-                onBlur={() => setTimeout(() => setSearchSurface(current => current === 'nav' ? '' : current), 160)}
+                onFocus={() => {
+                  suggestionClickRef.current = false;
+                  setSearchSurface('nav');
+                }}
+                onBlur={() => {
+                  if (suggestionClickRef.current) return;
+                  setTimeout(() => setSearchSurface(current => current === 'nav' ? '' : current), 160);
+                }}
                 placeholder="Search textbooks, curriculum, stationery..."
                 aria-label="Search the shop"
                 aria-autocomplete="list"
@@ -728,7 +742,7 @@ const Navbar = ({ route, navigate }) => {
             </form>
 
             {/* Live suggestions dropdown */}
-            {showNavSuggestions && <SearchSuggestionList suggestions={suggestions} query={q} onSelect={selectSuggestion} onSubmit={submitSearch} />}
+            {showNavSuggestions && <SearchSuggestionList suggestions={suggestions} query={q} onSelect={selectSuggestion} onSubmit={submitSearch} onSuggestionClickStart={() => suggestionClickRef.current = true} />}
           </div>
 
           <div className="bs-nav-actions">
@@ -762,8 +776,14 @@ const Navbar = ({ route, navigate }) => {
                       onKeyDown={event => {
                         if (event.key === 'Enter') submitSearch(event);
                       }}
-                      onFocus={() => setSearchSurface('menu')}
-                      onBlur={() => setTimeout(() => setSearchSurface(current => current === 'menu' ? '' : current), 160)}
+                      onFocus={() => {
+                        suggestionClickRef.current = false;
+                        setSearchSurface('menu');
+                      }}
+                      onBlur={() => {
+                        if (suggestionClickRef.current) return;
+                        setTimeout(() => setSearchSurface(current => current === 'menu' ? '' : current), 160);
+                      }}
                       placeholder="Search textbooks, curriculum, stationery..."
                       aria-label="Search the shop"
                       aria-autocomplete="list"
@@ -782,6 +802,7 @@ const Navbar = ({ route, navigate }) => {
                       onSelect={selectSuggestion}
                       onSubmit={submitSearch}
                       className="bs-cats-search-suggestions"
+                      onSuggestionClickStart={() => suggestionClickRef.current = true}
                     />
                   )}
                 </div>
