@@ -716,7 +716,10 @@ const CheckoutPage = ({ navigate }) => {
               <label className="bs-field" style={{ marginBottom:8 }}><span style={{ fontFamily:'Montserrat', fontWeight:600, fontSize:13, color:'var(--bs-navy)', display:'block', marginBottom:7 }}>Delivery Method</span></label>
               <div className={`bs-radio-card${method==='delivery'?' sel':''}`} onClick={() => setMethod('delivery')}>
                 <span className="bs-radio-dot" /><div><div className="bs-rc-title">Home Delivery</div><div className="bs-rc-sub">Within 48 hours, nationwide</div></div>
-                <span className="bs-rc-price">{selectedZone ? cedis(Number(selectedZone.fee)) : ''}</span>
+                <div style={{ marginLeft:'auto', textAlign:'right' }}>
+                  <span className="bs-rc-price">{selectedZone ? cedis(Number(selectedZone.fee)) : ''}</span>
+                  {selectedZone && Number(selectedZone.fee) > 0 && <div style={{ fontSize:11, color:'var(--bs-text-muted)', lineHeight:1.3 }}>Estimate only. Actual fee may vary.</div>}
+                </div>
               </div>
               <div className={`bs-radio-card${method==='pickup'?' sel':''}`} onClick={() => setMethod('pickup')}>
                 <span className="bs-radio-dot" /><div><div className="bs-rc-title">Pickup at {pickupAddress}</div><div className="bs-rc-sub">Ready next working day</div></div><span className="bs-rc-price">Free</span>
