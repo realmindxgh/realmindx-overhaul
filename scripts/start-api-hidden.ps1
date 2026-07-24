@@ -11,6 +11,8 @@ if (-not (Test-Path $python)) {
 
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
 
+$env:DATABASE_URL = "sqlite:///$siteRoot/realmindx_local.db"
+
 $arguments = @(
   "-m", "flask",
   "--app", "backend:create_app",

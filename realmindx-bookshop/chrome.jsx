@@ -566,7 +566,9 @@ const Navbar = ({ route, navigate }) => {
     const onDoc = (e) => {
       if (catsRef.current && !catsRef.current.contains(e.target)) {
         setCatsOpen(false);
-        setSearchSurface('');
+        if (!suggestionClickRef.current) {
+          setSearchSurface('');
+        }
       }
       if (moreRef.current && !moreRef.current.contains(e.target)) {
         setMoreOpen(false);
@@ -608,11 +610,18 @@ const Navbar = ({ route, navigate }) => {
   const [suggestions, setSuggestions] = React.useState([]);
   const abortRef = React.useRef(null);
   const suggestionClickRef = React.useRef(false);
+  const blurTimerRef = React.useRef(null);
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQ(q), 300);
     return () => window.clearTimeout(timer);
   }, [q]);
+
+  React.useEffect(() => {
+    return () => {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+    };
+  }, []);
 
   React.useEffect(() => {
     const t = debouncedQ.trim();
@@ -719,14 +728,21 @@ const Navbar = ({ route, navigate }) => {
               <Icon name="search" size={19} className="bs-search-icn" />
               <input
                 value={q}
-                onChange={e => setQ(e.target.value)}
+                onChange={e => {
+                  setQ(e.target.value);
+                  setSearchSurface('nav');
+                }}
                 onFocus={() => {
                   suggestionClickRef.current = false;
+                  if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
                   setSearchSurface('nav');
                 }}
                 onBlur={() => {
                   if (suggestionClickRef.current) return;
-                  setTimeout(() => setSearchSurface(current => current === 'nav' ? '' : current), 160);
+                  blurTimerRef.current = setTimeout(() => {
+                    blurTimerRef.current = null;
+                    setSearchSurface(current => current === 'nav' ? '' : current);
+                  }, 160);
                 }}
                 placeholder="Search textbooks, curriculum, stationery..."
                 aria-label="Search the shop"
@@ -772,17 +788,24 @@ const Navbar = ({ route, navigate }) => {
                     <input
                       ref={catsSearchRef}
                       value={q}
-                      onChange={event => setQ(event.target.value)}
+                      onChange={event => {
+                        setQ(event.target.value);
+                        setSearchSurface('menu');
+                      }}
                       onKeyDown={event => {
                         if (event.key === 'Enter') submitSearch(event);
                       }}
                       onFocus={() => {
                         suggestionClickRef.current = false;
+                        if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
                         setSearchSurface('menu');
                       }}
                       onBlur={() => {
                         if (suggestionClickRef.current) return;
-                        setTimeout(() => setSearchSurface(current => current === 'menu' ? '' : current), 160);
+                        blurTimerRef.current = setTimeout(() => {
+                          blurTimerRef.current = null;
+                          setSearchSurface(current => current === 'menu' ? '' : current);
+                        }, 160);
                       }}
                       placeholder="Search textbooks, curriculum, stationery..."
                       aria-label="Search the shop"
