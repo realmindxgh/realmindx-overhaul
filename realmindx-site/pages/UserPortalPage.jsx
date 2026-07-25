@@ -380,12 +380,17 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
   const recentApplications = applications.slice(0, 3);
 
   return (
-  <div>
+    <div>
     {/* Welcome card */}
     <div className="welcome-card">
       <div className="welcome-content">
         <p className="welcome-greeting">Welcome back</p>
         <h2>Hello, {user.firstName}.</h2>
+        {user.applicationId ? (
+          <p className="application-id-display" style={{ fontSize: '0.8rem', color: 'var(--gray-500)', marginTop: 4 }}>
+            Application ID: <strong>{user.applicationId}</strong>
+          </p>
+        ) : null}
         <p>
           {user.isNew
             ? 'Your portal is almost ready. Complete your profile to start applying for teaching jobs.'
@@ -1848,6 +1853,7 @@ const UserPortalPage = () => {
         nextOfKinRelationship: profileSource.next_of_kin_relationship || '',
         nextOfKinEmail: profileSource.next_of_kin_email || '',
         placements: profileSource.placements || [],
+        applicationId: profileSource.application_id || '',
       }
     : {
         ...MOCK_USER,

@@ -11,6 +11,8 @@ from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from sqlalchemy.exc import IntegrityError
+
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
@@ -18,6 +20,7 @@ from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
 from ..sms_service import normalise_phone
+from ..teacher_ids import generate_application_id
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -225,6 +228,20 @@ def signup():
     )
     user.set_password(password)
     db.session.add(user)
+    for _attempt in range(2):
+        try:
+            user.application_id = generate_application_id()
+            break
+        except IntegrityError:
+            db.session.rollback()
+            if _attempt == 1:
+                current_app.logger.exception("Failed to generate application ID after retry")
+                return jsonify(error="Could not complete registration. Please try again."), 500
+            db.session.add(user)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Failed to generate application ID")
+            return jsonify(error="Could not complete registration. Please try again."), 500
     db.session.flush()
     db.session.add(UserProfile(user_id=user.id))
     _send_verification_otp(user)
