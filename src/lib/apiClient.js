@@ -169,6 +169,7 @@ export const api = {
 
   updateProfile: (payload) => apiFetch('/me/profile', { method: 'PUT', body: payload }),
   fetchProfile: () => apiFetch('/me/profile'),
+  submitProfile: () => apiFetch('/me/profile/submit', { method: 'POST' }),
   updateAccount: (payload) => apiFetch('/me/account', { method: 'PUT', body: payload }),
   fetchCheckoutDetails: () => apiFetch('/me/checkout-details'),
   saveCheckoutDetails: (payload) => apiFetch('/me/checkout-details', { method: 'POST', body: payload }),
