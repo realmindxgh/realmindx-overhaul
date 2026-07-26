@@ -1304,8 +1304,8 @@ const InvoicePage = ({ navigate }) => {
       <div className="bs-track-search bs-invoice-search">
         <div className="bs-text-center">
           <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Receipt/Invoice Verification</span>
-          <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Verify a receipt or invoice</h1>
-          <p className="bs-muted" style={{ marginTop:10 }}>Enter the exact receipt/order reference or invoice ID to confirm that your RealMindX Bookshop document is genuine.</p>
+          <h1 className="bs-h2 bs-invoice-title" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Verify a receipt or invoice</h1>
+          <p className="bs-muted bs-invoice-intro">Enter the exact receipt/order reference or invoice ID to confirm that your RealMindX Bookshop document is genuine.</p>
         </div>
         <form className="bs-track-input-row" onSubmit={submit}>
           <input ref={inputRef} placeholder="e.g. RMX-INV-9F2A7C4B11 or RMX-ORDER-..." value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
@@ -1319,7 +1319,7 @@ const InvoicePage = ({ navigate }) => {
           <div className="bs-empty-state" style={{ marginTop:28, padding:'34px 22px' }}>
             <div className="bs-empty-icon"><Icon name="search" size={30} /></div>
             <h2 className="bs-h3">No matching receipt or invoice found.</h2>
-            <p>Check the ID and try again.</p>
+            <p className="bs-invoice-empty-copy">Check the ID and try again.</p>
           </div>
         )}
 
