@@ -472,6 +472,186 @@ class TeacherReviewTests(unittest.TestCase):
         audit_entries = AuditLog.query.filter_by(action="teacher_profile_rejected").all()
         self.assertEqual(len(audit_entries), 1)
 
+    # -- reopen rejected --
+
+    def test_reopen_transitions_to_under_review(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop1")
+        profile.profile_status = "rejected"
+        profile.review_notes = "Documents unclear."
+        profile.reviewed_at = datetime.now(timezone.utc)
+        profile.reviewed_by_id = self.admin_user.id
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Teacher has clarified the documents."})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "under_review")
+        self.assertEqual(data["profile_status"], "under_review")
+
+    def test_reopen_requires_note(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop2")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": ""})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_reopen_rejects_whitespace_note(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop3")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "   "})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_reopen_application_id_unchanged(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop4")
+        profile.profile_status = "rejected"
+        app_id = teacher.application_id
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "New evidence provided."})
+        self.assertEqual(resp.status_code, 200)
+        db.session.refresh(teacher)
+        self.assertEqual(teacher.application_id, app_id)
+        self.assertEqual(resp.get_json()["application_id"], app_id)
+
+    def test_reopen_teacher_id_remains_null(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop5")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Reopening for review."})
+        self.assertEqual(resp.status_code, 200)
+        db.session.refresh(teacher)
+        self.assertIsNone(teacher.teacher_id)
+        self.assertIsNone(resp.get_json()["teacher_id"])
+
+    def test_reopen_requires_rejected_status(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop6")
+        profile.profile_status = "submitted"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Should fail."})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_reopen_requires_teacher_service_enabled(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop7", teacher_service_enabled=False)
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Should fail."})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_reopen_records_reviewer_and_date(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop8")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Admin review."})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["reviewed_by_id"], self.admin_user.id)
+        self.assertIsNotNone(data["reviewed_at"])
+
+    def test_reopen_creates_audit_event(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop9")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Reopening for audit check."})
+        audit_entries = AuditLog.query.filter_by(action="teacher_profile_review_reopened").all()
+        self.assertEqual(len(audit_entries), 1)
+
+    def test_reopen_idempotent_no_duplicate_audit(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop10")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_admin()
+        resp1 = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "First reopen."})
+        self.assertEqual(resp1.status_code, 200)
+        resp2 = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Second reopen."})
+        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.get_json()["profile_status"], "under_review")
+        self.assertIn("already been reopened", resp2.get_json().get("message", "").lower())
+        audit_entries = AuditLog.query.filter_by(action="teacher_profile_review_reopened").all()
+        self.assertEqual(len(audit_entries), 1)
+
+    def test_reopen_preserves_rejection_history(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop11")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/reject", json={"reason": "Original rejection reason."})
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "rejected")
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Reopening note."})
+        self.assertEqual(resp.status_code, 200)
+        audit_entries = AuditLog.query.filter_by(action="teacher_profile_review_reopened").all()
+        self.assertEqual(len(audit_entries), 1)
+        self.assertIn("reopening_note", audit_entries[0].details)
+        original_rejection = AuditLog.query.filter_by(action="teacher_profile_rejected", entity_id=str(teacher.id)).first()
+        self.assertIsNotNone(original_rejection, "Original rejection audit event should still exist")
+        self.assertIn("reason", original_rejection.details)
+
+    def test_reopen_preserves_profile_lock(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop12")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Reopening."})
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "under_review")
+        self._login_as(f"teacher-rop12@example.com", "TeacherPassword1!")
+        edit_resp = self.client.put("/api/me/profile", json={"first_name": "Hacked"})
+        self.assertEqual(edit_resp.status_code, 423)
+        upload_resp = self.client.post("/api/me/uploads", data={
+            "file": (io.BytesIO(b"data"), "cv.pdf"),
+            "kind": "cv",
+        }, content_type="multipart/form-data")
+        self.assertEqual(upload_resp.status_code, 423)
+
+    def test_reopen_teacher_gets_403(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop13")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_as(f"teacher-rop13@example.com", "TeacherPassword1!")
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Should fail."})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_reopen_readonly_staff_gets_403(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop14")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        staff_role = Role.query.filter_by(name="staff").one()
+        staff = User(email="staff-reopen@example.com", first_name="Staff", last_name="User", role=staff_role, is_active=True, is_verified=True)
+        staff.set_password("StaffPass123!")
+        db.session.add(staff)
+        db.session.commit()
+        self._login_as("staff-reopen@example.com", "StaffPass123!")
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Should fail."})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_reopen_then_request_revision_available(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rop15")
+        profile.profile_status = "rejected"
+        profile.review_notes = "Original rejection."
+        db.session.commit()
+        self._login_admin()
+        reopen_resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reopen-review", json={"note": "Reopening."})
+        self.assertEqual(reopen_resp.status_code, 200)
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "under_review")
+        revision_resp = self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Please update CV."})
+        self.assertEqual(revision_resp.status_code, 200)
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "revision_required")
+        self._login_as("teacher-rop15@example.com", "TeacherPassword1!")
+        edit_resp = self.client.put("/api/me/profile", json={"bio": "Updated after revision."})
+        self.assertEqual(edit_resp.status_code, 200)
+        db.session.refresh(profile)
+        self.assertEqual(profile.review_notes, "Please update CV.")
+
     # -- visual verification --
 
     def test_verify_transitions_and_issues_teacher_id(self):

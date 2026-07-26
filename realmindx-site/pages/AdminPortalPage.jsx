@@ -52,6 +52,7 @@ const NAV = [
   { key: 'admins', label: 'Admin Accounts', group: 'System', icon: 'shield' },
   { key: 'staff', label: 'Staff Accounts', group: 'System', icon: 'shield' },
   { key: 'teachers', label: 'Active Teachers', group: 'System', icon: 'teacher' },
+  { key: 'teacherReview', label: 'Teacher Review', group: 'System', icon: 'clipboard' },
   { key: 'whatsappDiagnostics', label: 'WhatsApp Logs', group: 'System', icon: 'whatsapp' },
   { key: 'auditLogs', label: 'Audit Log', group: 'System', icon: 'clipboard' },
   { key: 'account', label: 'My Account', group: 'System', icon: 'user' },
@@ -116,7 +117,7 @@ const NAV_PERMISSION_GROUPS = NAV
           ? ['view']
         : item.key === 'staff'
           ? ['view', 'create', 'edit', 'delete']
-          : item.key === 'whatsappDiagnostics'
+          : item.key === 'whatsappDiagnostics' || item.key === 'teacherReview'
             ? ['view']
           : item.key === 'teachers'
             ? ['view', 'edit', 'export']
@@ -185,6 +186,7 @@ const canAccessAdminItem = (item, session) => {
   if (item.key === 'bookshopCustomers') return hasSessionPermission(session, 'orders.view');
   if (item.key === 'deliveryCompanies') return hasSessionPermission(session, 'delivery.view') || hasSessionPermission(session, 'delivery.companies.manage');
   if (item.key === 'deliverySettlements') return hasSessionPermission(session, 'delivery.settlements.view');
+  if (item.key === 'teacherReview') return hasSessionPermission(session, 'teachers.view');
   return hasSessionPermission(session, `${item.key}.view`);
 };
 
@@ -5305,6 +5307,736 @@ const ForcedPasswordChangeModal = ({ session, loginPath, onPasswordChanged }) =>
   );
 };
 
+const STATUS_LABELS = {
+  submitted: 'Submitted',
+  under_review: 'Under review',
+  revision_required: 'Revision required',
+  verified: 'Visually verified',
+  rejected: 'Rejected',
+};
+const STATUS_OPTIONS = ['', 'submitted', 'under_review', 'revision_required', 'verified', 'rejected'];
+
+const statusBadgeClass = (s) => {
+  const map = { submitted: 'badge-navy', under_review: 'badge-warning', revision_required: 'badge-warning', verified: 'badge-success', rejected: 'badge-danger' };
+  return map[s] || 'badge-navy';
+};
+
+const TeacherReviewView = ({ session }) => {
+  const [queue, setQueue] = React.useState(null);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(1);
+  const [pages, setPages] = React.useState(1);
+  const [perPage] = React.useState(50);
+  const [statusFilter, setStatusFilter] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [debouncedSearch, setDebouncedSearch] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [detail, setDetail] = React.useState(null);
+  const [detailLoading, setDetailLoading] = React.useState(false);
+  const queueReqRef = React.useRef(0);
+  const detailReqRef = React.useRef(0);
+
+  // action states
+  const [startingReview, setStartingReview] = React.useState(false);
+  const [showRevisionModal, setShowRevisionModal] = React.useState(false);
+  const [revisionNote, setRevisionNote] = React.useState('');
+  const [revisionSaving, setRevisionSaving] = React.useState(false);
+  const [showRejectModal, setShowRejectModal] = React.useState(false);
+  const [rejectReason, setRejectReason] = React.useState('');
+  const [rejectSaving, setRejectSaving] = React.useState(false);
+  const [showVerifyModal, setShowVerifyModal] = React.useState(false);
+  const [checklist, setChecklist] = React.useState({
+    required_documents_present: false,
+    documents_readable: false,
+    identity_details_consistent: false,
+    qualifications_consistent: false,
+    teaching_details_consistent: false,
+    no_obvious_alteration_detected: false,
+  });
+  const [verifySaving, setVerifySaving] = React.useState(false);
+  const [showVerifyConfirm, setShowVerifyConfirm] = React.useState(false);
+  const [showReopenModal, setShowReopenModal] = React.useState(false);
+  const [reopenNote, setReopenNote] = React.useState('');
+  const [reopenSaving, setReopenSaving] = React.useState(false);
+
+  const closeDetail = React.useCallback(() => {
+    detailReqRef.current += 1;
+    setDetail(null);
+    setDetailLoading(false);
+    setStartingReview(false);
+    setShowRevisionModal(false);
+    setRevisionNote('');
+    setRevisionSaving(false);
+    setShowRejectModal(false);
+    setRejectReason('');
+    setRejectSaving(false);
+    setShowVerifyModal(false);
+    setChecklist({
+      required_documents_present: false,
+      documents_readable: false,
+      identity_details_consistent: false,
+      qualifications_consistent: false,
+      teaching_details_consistent: false,
+      no_obvious_alteration_detected: false,
+    });
+    setShowVerifyConfirm(false);
+    setVerifySaving(false);
+    setShowReopenModal(false);
+    setReopenNote('');
+    setReopenSaving(false);
+  }, []);
+
+  const fetchQueue = React.useCallback(async (p = page, s = statusFilter, q = debouncedSearch) => {
+    const seq = ++queueReqRef.current;
+    setLoading(true);
+    try {
+      const params = { page: p, per_page: perPage };
+      if (s) params.status = s;
+      if (q) params.search = q;
+      const data = await api.fetchTeacherReviewQueue(params);
+      if (seq !== queueReqRef.current) return;
+      setQueue(data.items || []);
+      setTotal(data.total || 0);
+      setPages(data.pages || 1);
+      setPage(data.page || 1);
+    } catch (err) {
+      if (seq !== queueReqRef.current) return;
+      globalToast.error(err?.message || 'Could not load review queue.');
+      setQueue([]);
+    } finally {
+      if (seq === queueReqRef.current) setLoading(false);
+    }
+  }, [page, perPage, statusFilter, debouncedSearch]);
+
+  React.useEffect(() => { fetchQueue(); }, [fetchQueue]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  React.useEffect(() => {
+    if (debouncedSearch !== undefined) {
+      setPage(1);
+    }
+  }, [statusFilter, debouncedSearch]);
+
+  const canView = hasSessionPermission(session, 'teachers.view');
+  const canEdit = hasSessionPermission(session, 'teachers.edit');
+
+  const openDetail = async (item) => {
+    const seq = ++detailReqRef.current;
+    setDetailLoading(true);
+    setDetail({ ...item, _loading: true });
+    try {
+      const data = await api.fetchTeacherReviewDetail(item.id);
+      if (seq !== detailReqRef.current) return;
+      setDetail(data);
+    } catch (err) {
+      if (seq !== detailReqRef.current) return;
+      globalToast.error(err?.message || 'Could not load review detail.');
+    } finally {
+      if (seq === detailReqRef.current) setDetailLoading(false);
+    }
+  };
+
+  const refreshDetail = async () => {
+    if (!detail?.id) return;
+    const seq = ++detailReqRef.current;
+    try {
+      const data = await api.fetchTeacherReviewDetail(detail.id);
+      if (seq !== detailReqRef.current) return;
+      setDetail(data);
+      return data;
+    } catch { /* ignore */ }
+  };
+
+  const startReview = async () => {
+    if (!detail?.id || startingReview) return;
+    setStartingReview(true);
+    try {
+      const result = await api.startTeacherReview(detail.id);
+      await refreshDetail();
+      await fetchQueue();
+      globalToast.success(result?.message || 'Review started successfully.');
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not start review.');
+    } finally {
+      setStartingReview(false);
+    }
+  };
+
+  const openRevisionModal = () => {
+    setRevisionNote('');
+    setShowRevisionModal(true);
+  };
+
+  const cancelRevision = () => {
+    if (revisionSaving) return;
+    setShowRevisionModal(false);
+    setRevisionNote('');
+  };
+
+  const submitRevision = async () => {
+    if (!detail?.id || !revisionNote.trim() || revisionSaving) return;
+    setRevisionSaving(true);
+    try {
+      const result = await api.requestTeacherRevision(detail.id, revisionNote.trim());
+      await refreshDetail();
+      await fetchQueue();
+      setShowRevisionModal(false);
+      setRevisionNote('');
+      globalToast.success(result?.message || 'Revision requested.');
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not request revision.');
+    } finally {
+      setRevisionSaving(false);
+    }
+  };
+
+  const openRejectModal = () => {
+    setRejectReason('');
+    setShowRejectModal(true);
+  };
+
+  const cancelReject = () => {
+    if (rejectSaving) return;
+    setShowRejectModal(false);
+    setRejectReason('');
+  };
+
+  const submitReject = async () => {
+    if (!detail?.id || !rejectReason.trim() || rejectSaving) return;
+    setRejectSaving(true);
+    try {
+      const result = await api.rejectTeacherProfile(detail.id, rejectReason.trim());
+      await refreshDetail();
+      await fetchQueue();
+      setShowRejectModal(false);
+      setRejectReason('');
+      globalToast.success(result?.message || 'Profile rejected.');
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not reject profile.');
+    } finally {
+      setRejectSaving(false);
+    }
+  };
+
+  const openReopenModal = () => {
+    setReopenNote('');
+    setShowReopenModal(true);
+  };
+
+  const cancelReopen = () => {
+    if (reopenSaving) return;
+    setShowReopenModal(false);
+    setReopenNote('');
+  };
+
+  const submitReopen = async () => {
+    if (!detail?.id || !reopenNote.trim() || reopenSaving) return;
+    setReopenSaving(true);
+    try {
+      const result = await api.reopenTeacherReview(detail.id, reopenNote.trim());
+      await refreshDetail();
+      await fetchQueue();
+      setShowReopenModal(false);
+      setReopenNote('');
+      globalToast.success(result?.message || 'Application reopened for review.');
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not reopen application.');
+    } finally {
+      setReopenSaving(false);
+    }
+  };
+
+  const openVerifyModal = () => {
+    setChecklist({
+      required_documents_present: false,
+      documents_readable: false,
+      identity_details_consistent: false,
+      qualifications_consistent: false,
+      teaching_details_consistent: false,
+      no_obvious_alteration_detected: false,
+    });
+    setShowVerifyConfirm(false);
+    setShowVerifyModal(true);
+  };
+
+  const cancelVerify = () => {
+    if (verifySaving) return;
+    setShowVerifyModal(false);
+    setChecklist({
+      required_documents_present: false,
+      documents_readable: false,
+      identity_details_consistent: false,
+      qualifications_consistent: false,
+      teaching_details_consistent: false,
+      no_obvious_alteration_detected: false,
+    });
+    setShowVerifyConfirm(false);
+  };
+
+  const allChecked = Object.values(checklist).every(Boolean);
+
+  const openVerifyConfirm = () => {
+    if (!allChecked || verifySaving) return;
+    setShowVerifyConfirm(true);
+  };
+
+  const submitVerify = async () => {
+    if (!detail?.id || verifySaving) return;
+    setVerifySaving(true);
+    try {
+      const result = await api.verifyTeacherProfile(detail.id, checklist);
+      await refreshDetail();
+      await fetchQueue();
+      setShowVerifyModal(false);
+      setShowVerifyConfirm(false);
+      globalToast.success('Visual verification complete. Teacher ID: ' + (result.teacher_id || 'issued.'));
+    } catch (err) {
+      if (err.status === 409) {
+        globalToast.error(err?.message || 'Inconsistent state. Refreshing record...');
+        await refreshDetail();
+      } else {
+        globalToast.error(err?.message || 'Verification failed.');
+      }
+    } finally {
+      setVerifySaving(false);
+    }
+  };
+
+  const reviewDetail = detail?.review || {};
+  const profileStatus = detail?.profile_status || reviewDetail?.profile_status || '';
+  const location = detail?.review?.location || detail?.location || '';
+  const teachingSubject = detail?.review?.teaching_subject || '';
+  const preferredLevel = detail?.review?.preferred_level || '';
+  const preferredEmploymentType = detail?.review?.preferred_employment_type || '';
+  const curriculumExperience = detail?.review?.curriculum_experience || '';
+  const bio = detail?.review?.bio || '';
+
+  const showDetailActions = () => {
+    if (!canEdit) return null;
+    if (profileStatus === 'submitted') {
+      return (
+        <button className="btn btn-primary" onClick={startReview} disabled={startingReview}>
+          {startingReview ? 'Starting...' : 'Start Review'}
+        </button>
+      );
+    }
+    if (profileStatus === 'under_review') {
+      return (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline-navy" onClick={openRevisionModal}>Request Revision</button>
+          <button className="btn btn-outline-navy" style={{ background: '#fee2e2', color: '#991b1b', borderColor: '#fecaca' }} onClick={openRejectModal}>Reject</button>
+          <button className="btn btn-primary" onClick={openVerifyModal}>Visually Verify</button>
+        </div>
+      );
+    }
+    if (profileStatus === 'revision_required') {
+      return (
+        <p style={{ fontSize: '0.85rem', color: 'var(--gray-600)', margin: 0, fontStyle: 'italic' }}>
+          Waiting for the teacher to resubmit their profile.
+        </p>
+      );
+    }
+    if (profileStatus === 'rejected') {
+      return (
+        <button className="btn btn-outline-navy" onClick={openReopenModal} disabled={reopenSaving}>
+          <Icon name="refresh-cw" size={14} style={{ marginRight: 6 }} />Reopen for Review
+        </button>
+      );
+    }
+    return null;
+  };
+
+  const queueColumns = (item) => {
+    const idDisplay = item.teacher_id || item.application_id || `#${item.id}`;
+    const secondaryId = item.teacher_id ? item.application_id : null;
+    return (
+      <tr key={item.id}>
+        <td className="td-primary" style={{ whiteSpace: 'nowrap' }}>
+          <div>{idDisplay}</div>
+          {secondaryId ? <div style={{ fontSize: '0.72rem', color: 'var(--gray-500)' }}>{secondaryId}</div> : null}
+        </td>
+        <td>
+          <div style={{ fontWeight: 600 }}>{[item.first_name, item.last_name].filter(Boolean).join(' ')}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--gray-500)' }}>{item.email}</div>
+        </td>
+        <td className="td-muted" style={{ fontSize: '0.84rem' }}>
+          {item.teaching_subject ? <div>{item.teaching_subject}</div> : null}
+          {item.preferred_level ? <div style={{ fontSize: '0.76rem', color: 'var(--gray-500)' }}>{item.preferred_level}</div> : null}
+        </td>
+        <td><span className={`badge ${statusBadgeClass(item.profile_status)}`}>{STATUS_LABELS[item.profile_status] || item.profile_status}</span></td>
+        <td style={{ fontSize: '0.78rem', color: 'var(--gray-500)', whiteSpace: 'nowrap' }}>
+          {item.submitted_at ? new Date(item.submitted_at).toLocaleDateString() : '—'}
+        </td>
+        <td style={{ whiteSpace: 'nowrap' }}>
+          <span style={{ color: item.cv_present ? 'var(--green)' : 'var(--gray-400)', marginRight: 8 }} title={item.cv_present ? 'CV present' : 'No CV'}>
+            {item.cv_present ? 'CV' : '—'}
+          </span>
+          <span style={{ color: item.certificate_present ? 'var(--green)' : 'var(--gray-400)' }} title={item.certificate_present ? 'Certificate present' : 'No certificate'}>
+            {item.certificate_present ? 'Cert' : '—'}
+          </span>
+        </td>
+        <td className="admin-actions-column">
+          <button className="table-action-btn" onClick={() => openDetail(item)} disabled={detailLoading}>
+            Review
+          </button>
+        </td>
+      </tr>
+    );
+  };
+
+  if (!canView) {
+    return <EmptySection title="Access restricted" body="You do not have permission to view teacher reviews." />;
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div>
+          <h2 className="admin-page-title">Teacher Review</h2>
+          <p style={{ fontSize: '0.86rem', color: 'var(--gray-600)', marginTop: 4 }}>
+            Review and verify teacher profiles. {total > 0 && `${total} record${total !== 1 ? 's' : ''} found.`}
+          </p>
+        </div>
+      </div>
+
+      <div className="admin-table-card">
+        <div className="atc-header" style={{ flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {STATUS_OPTIONS.map(s => (
+              <button
+                key={s}
+                type="button"
+                className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-outline-navy'}`}
+                onClick={() => { setStatusFilter(s); setPage(1); }}
+              >
+                {STATUS_LABELS[s] || 'All'}
+              </button>
+            ))}
+          </div>
+          <div className="atc-search">
+            <span>Search</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, email, phone, or ID" aria-label="Search teacher reviews" />
+          </div>
+        </div>
+
+        {!isApiMode() ? (
+          <EmptySection title="API mode required" body="Connect the Flask backend to access the review queue." />
+        ) : loading && queue === null ? (
+          <EmptySection title="Loading…" body="" />
+        ) : queue && queue.length === 0 ? (
+          <EmptySection
+            title={search ? 'No matching records' : statusFilter ? `No ${STATUS_LABELS[statusFilter]?.toLowerCase() || statusFilter} records` : 'No review records'}
+            body={search ? 'Try a different search term.' : statusFilter ? 'Profiles with this status will appear here.' : 'Submitted teacher profiles will appear here.'}
+          />
+        ) : queue ? (
+          <>
+            <AdminTableScroll>
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Teacher</th><th>Teaching</th><th>Status</th><th>Submitted</th><th>Docs</th><th className="admin-actions-column">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queue.map(queueColumns)}
+                </tbody>
+              </table>
+            </AdminTableScroll>
+            {pages > 1 ? (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '16px 0', alignItems: 'center' }}>
+                <button className="btn btn-sm btn-outline-navy" disabled={page <= 1 || loading} onClick={() => setPage(p => Math.max(1, p - 1))}>Previous</button>
+                <span style={{ fontSize: '0.84rem', color: 'var(--gray-600)' }}>Page {page} of {pages}</span>
+                <button className="btn btn-sm btn-outline-navy" disabled={page >= pages || loading} onClick={() => setPage(p => Math.min(pages, p + 1))}>Next</button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+
+      {detail ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="review-detail-title" style={{ position: 'relative', background: '#fff', borderRadius: 18, padding: '34px 32px 30px', width: '100%', maxWidth: 840, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={closeDetail} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
+
+            {detail._loading ? (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}><p>Loading detail...</p></div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+                  <div>
+                    <h3 id="review-detail-title" style={{ fontFamily: "'Montserrat',sans-serif", color: 'var(--navy)', margin: 0, fontSize: '1.25rem' }}>
+                      {[detail.first_name, detail.last_name].filter(Boolean).join(' ')}
+                    </h3>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--gray-500)' }}>{detail.email}</p>
+                  </div>
+                  <span className={`badge ${statusBadgeClass(profileStatus)}`} style={{ fontSize: '0.82rem', padding: '4px 12px' }}>{STATUS_LABELS[profileStatus] || profileStatus}</span>
+                </div>
+
+                <div className="teacher-detail-section">
+                  <h4>Identity</h4>
+                  <div className="teacher-detail-grid">
+                    <DetailField label="Application ID" value={detail.application_id} />
+                    {detail.teacher_id ? <DetailField label="Teacher ID" value={detail.teacher_id} wide /> : null}
+                    <DetailField label="Full name" value={[detail.first_name, detail.last_name].filter(Boolean).join(' ')} />
+                    <DetailField label="Email" value={detail.email} />
+                    <DetailField label="Phone" value={detail.phone} />
+                  </div>
+                </div>
+
+                <div className="teacher-detail-section">
+                  <h4>Teaching Profile</h4>
+                  <div className="teacher-detail-grid">
+                    <DetailField label="Teaching subject" value={teachingSubject} />
+                    <DetailField label="Preferred level" value={preferredLevel} />
+                    <DetailField label="Employment type" value={preferredEmploymentType} />
+                    <DetailField label="Curriculum experience" value={curriculumExperience} wide />
+                    <DetailField label="Location" value={location} />
+                    {bio ? <DetailField label="Bio" value={bio} wide /> : null}
+                  </div>
+                </div>
+
+                <div className="teacher-detail-section">
+                  <h4>Review Status</h4>
+                  <div className="teacher-detail-grid">
+                    <DetailField label="Profile status" value={STATUS_LABELS[profileStatus] || profileStatus} />
+                    <DetailField label="Completion" value={detail.profile_completion != null ? `${detail.profile_completion}%` : '—'} />
+                    {detail.profile_missing_fields?.length ? (
+                      <DetailField label="Missing fields" value={detail.profile_missing_fields.join(', ')} wide />
+                    ) : null}
+                    <DetailField label="Submitted" value={detail.submitted_at ? new Date(detail.submitted_at).toLocaleDateString() : '—'} />
+                    <DetailField label="Reviewed" value={detail.reviewed_at ? new Date(detail.reviewed_at).toLocaleDateString() : '—'} />
+                    {detail.review_notes ? (
+                      <div className="teacher-detail-field is-wide">
+                        <div>Review notes</div>
+                        <span style={{ whiteSpace: 'pre-wrap' }}>{detail.review_notes}</span>
+                      </div>
+                    ) : null}
+                    {detail.teacher_id_issued_at ? <DetailField label="Teacher ID issued" value={new Date(detail.teacher_id_issued_at).toLocaleDateString()} /> : null}
+                  </div>
+                </div>
+
+                <div className="teacher-detail-section">
+                  <h4>Documents</h4>
+                  <div className="teacher-detail-grid">
+                    {reviewDetail.cv_url ? (
+                      <div className="teacher-detail-field is-wide">
+                        <label>CV</label>
+                        <span>{reviewDetail.cv_filename || 'CV'}</span>
+                        <a href={reviewDetail.cv_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Icon name="eye" size={14} /> View CV
+                        </a>
+                      </div>
+                    ) : <DetailField label="CV" value="Not uploaded" />}
+                    {reviewDetail.certificate_url ? (
+                      <div className="teacher-detail-field is-wide">
+                        <label>Certificate</label>
+                        <span>{reviewDetail.certificate_filename || 'Certificate'}</span>
+                        <a href={reviewDetail.certificate_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Icon name="eye" size={14} /> View Certificate
+                        </a>
+                      </div>
+                    ) : <DetailField label="Certificate" value="Not uploaded" />}
+                  </div>
+                </div>
+
+                {detail.applications?.length ? (
+                  <div className="teacher-detail-section">
+                    <h4>Job Applications</h4>
+                    <div className="teacher-detail-grid">
+                      {detail.applications.map(app => (
+                        <DetailField key={app.id} label={app.job_title || `Application #${app.id}`} value={`${app.organisation || ''} — ${app.status}`} wide />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {detail.placements?.length ? (
+                  <div className="teacher-detail-section">
+                    <h4>Placements</h4>
+                    <div className="teacher-detail-grid">
+                      {detail.placements.map(pl => (
+                        <DetailField key={pl.id} label={pl.job_title || 'Placement'} value={`${pl.school_name} — ${pl.status}`} wide />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 20, marginTop: 8 }}>
+                  {showDetailActions()}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {showRevisionModal ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="revision-modal-title" style={{ background: '#fff', borderRadius: 18, padding: '34px 32px 30px', width: '100%', maxWidth: 520, boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={cancelRevision} aria-label="Close" disabled={revisionSaving}><Icon name="x" size={16} /></button>
+            <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#fff8e1', border: '2px solid #ffe082', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#f59e0b' }}>
+              <Icon name="file" size={24} />
+            </div>
+            <p style={{ margin: '0 0 8px', textAlign: 'center', color: '#b88900', fontWeight: 900, letterSpacing: '0.16em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
+              Revision required
+            </p>
+            <h3 id="revision-modal-title" style={{ fontFamily: "'Montserrat',sans-serif", color: 'var(--navy)', textAlign: 'center', marginBottom: 10, fontSize: '1.2rem' }}>
+              Request profile revision
+            </h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)', textAlign: 'center', marginBottom: 18, lineHeight: 1.6 }}>
+              {detail ? `${detail.first_name} ${detail.last_name} (${detail.application_id || `#${detail.id}`})` : ''}
+            </p>
+            <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)', marginBottom: 20 }}>
+              Revision notes
+              <textarea className="form-textarea" rows={4} value={revisionNote} onChange={e => setRevisionNote(e.target.value)} placeholder="Explain what the teacher needs to correct..." aria-label="Revision notes" />
+            </label>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={cancelRevision} disabled={revisionSaving}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} type="button" disabled={!revisionNote.trim() || revisionSaving} onClick={submitRevision}>
+                {revisionSaving ? 'Saving...' : 'Request Revision'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRejectModal ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="reject-modal-title" style={{ background: '#fff', borderRadius: 18, padding: '34px 32px 30px', width: '100%', maxWidth: 520, boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={cancelReject} aria-label="Close" disabled={rejectSaving}><Icon name="x" size={16} /></button>
+            <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#fef2f2', border: '2px solid #fecaca', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#dc2626' }}>
+              <Icon name="warning" size={24} />
+            </div>
+            <p style={{ margin: '0 0 8px', textAlign: 'center', color: '#991b1b', fontWeight: 900, letterSpacing: '0.16em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
+              Reject application
+            </p>
+            <h3 id="reject-modal-title" style={{ fontFamily: "'Montserrat',sans-serif", color: 'var(--navy)', textAlign: 'center', marginBottom: 10, fontSize: '1.2rem' }}>
+              Reject this application?
+            </h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)', textAlign: 'center', marginBottom: 18, lineHeight: 1.6 }}>
+              <strong>{detail ? `${detail.first_name} ${detail.last_name}` : ''}</strong><br />
+              {detail ? (detail.application_id || `#${detail.id}`) : ''}<br />
+              This teacher will be notified that their application was rejected. Ordinary resubmission will not be possible.
+            </p>
+            <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)', marginBottom: 20 }}>
+              Rejection reason
+              <textarea className="form-textarea" rows={4} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Explain the reason for rejection..." aria-label="Rejection reason" />
+            </label>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={cancelReject} disabled={rejectSaving}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 1, background: '#dc2626', borderColor: '#dc2626' }} type="button" disabled={!rejectReason.trim() || rejectSaving} onClick={submitReject}>
+                {rejectSaving ? 'Rejecting...' : 'Reject Application'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showVerifyModal ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="verify-modal-title" style={{ background: '#fff', borderRadius: 18, padding: '34px 32px 30px', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={cancelVerify} aria-label="Close" disabled={verifySaving}><Icon name="x" size={16} /></button>
+            <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#16a34a' }}>
+              <Icon name="check" size={24} />
+            </div>
+            <p style={{ margin: '0 0 8px', textAlign: 'center', color: '#15803d', fontWeight: 900, letterSpacing: '0.16em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
+              Visual verification
+            </p>
+            <h3 id="verify-modal-title" style={{ fontFamily: "'Montserrat',sans-serif", color: 'var(--navy)', textAlign: 'center', marginBottom: 10, fontSize: '1.2rem' }}>
+              Visual verification checklist
+            </h3>
+            <p style={{ fontSize: '0.84rem', color: 'var(--gray-600)', textAlign: 'center', marginBottom: 18, lineHeight: 1.5, padding: '0 8px' }}>
+              Confirm that you have visually inspected the submitted profile and documents.
+            </p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--gray-500)', textAlign: 'center', marginBottom: 20, lineHeight: 1.5, fontStyle: 'italic', padding: '0 8px' }}>
+              Visual verification confirms that RealMindX has reviewed the submitted profile and documents for presence, readability, and reasonable consistency. It does not mean that the issuing institutions independently authenticated the documents.
+            </p>
+            <div style={{ marginBottom: 20 }}>
+              {[
+                { key: 'required_documents_present', label: 'The required CV and certificate are present' },
+                { key: 'documents_readable', label: 'The submitted documents are readable' },
+                { key: 'identity_details_consistent', label: 'The teacher\'s identity details are reasonably consistent' },
+                { key: 'qualifications_consistent', label: 'The qualifications are consistent with the profile' },
+                { key: 'teaching_details_consistent', label: 'The teaching details are consistent with the submitted qualifications' },
+                { key: 'no_obvious_alteration_detected', label: 'No obvious signs of document alteration were noticed during visual review' },
+              ].map(({ key, label }) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', fontSize: '0.88rem', cursor: 'pointer', borderBottom: '1px solid var(--gray-100)' }}>
+                  <input type="checkbox" checked={checklist[key]} onChange={() => setChecklist(prev => ({ ...prev, [key]: !prev[key] }))} style={{ marginTop: 3 }} aria-label={label} />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            {!showVerifyConfirm ? (
+              <button className="btn btn-primary" style={{ width: '100%' }} type="button" disabled={!allChecked} onClick={openVerifyConfirm}>
+                Continue
+              </button>
+            ) : (
+              <div>
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 14, padding: '14px 16px', marginBottom: 20, fontSize: '0.84rem', color: '#166534', lineHeight: 1.55 }}>
+                  <strong>Confirm visual verification</strong><br />
+                  Teacher: {detail ? `${detail.first_name} ${detail.last_name}` : ''}<br />
+                  Application ID: {detail ? (detail.application_id || `#${detail.id}`) : ''}<br /><br />
+                  A permanent Teacher ID will be issued upon verification. This action should only be completed after human visual inspection.
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={() => setShowVerifyConfirm(false)} disabled={verifySaving}>Back</button>
+                  <button className="btn btn-primary" style={{ flex: 1 }} type="button" disabled={verifySaving} onClick={submitVerify}>
+                    {verifySaving ? 'Verifying...' : 'Confirm & Issue Teacher ID'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {showReopenModal ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="reopen-modal-title" style={{ background: '#fff', borderRadius: 18, padding: '34px 32px 30px', width: '100%', maxWidth: 540, boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={cancelReopen} aria-label="Close" disabled={reopenSaving}><Icon name="x" size={16} /></button>
+            <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#f0f0f0', border: '2px solid #d0d0d0', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#666' }}>
+              <Icon name="refresh-cw" size={24} />
+            </div>
+            <h3 id="reopen-modal-title" style={{ fontFamily: "'Montserrat',sans-serif", color: 'var(--navy)', textAlign: 'center', marginBottom: 4, fontSize: '1.15rem' }}>
+              Reopen for Review
+            </h3>
+            <p style={{ fontSize: '0.84rem', color: 'var(--gray-600)', textAlign: 'center', marginBottom: 16, lineHeight: 1.5 }}>
+              Teacher: {detail ? `${detail.first_name} ${detail.last_name}` : ''}<br />
+              Application ID: {detail ? (detail.application_id || `#${detail.id}`) : ''}
+            </p>
+            {detail?.review_notes ? (
+              <div style={{ background: '#f9f9f9', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: '0.82rem' }}>
+                <strong style={{ color: 'var(--gray-700)' }}>Previous rejection reason</strong>
+                <p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', color: 'var(--gray-600)', lineHeight: 1.5 }}>{detail.review_notes}</p>
+              </div>
+            ) : null}
+            <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: '0.82rem', color: '#9a3412', lineHeight: 1.55 }}>
+              <strong>This does not approve the application.</strong><br />
+              The application will be returned to <strong>Under review</strong> for reassessment. After reopening, you may request corrections, verify, or reject as usual.
+            </div>
+            <label style={{ display: 'grid', gap: 6, marginBottom: 18 }}>
+              Reason for reopening
+              <textarea className="form-textarea" rows={4} value={reopenNote} onChange={e => setReopenNote(e.target.value)} placeholder="Explain why this application is being reopened..." />
+            </label>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={cancelReopen} disabled={reopenSaving}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} type="button" disabled={!reopenNote.trim() || reopenSaving} onClick={submitReopen}>
+                {reopenSaving ? 'Reopening...' : 'Reopen for Review'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const AdminPortalPage = ({ portalRole = 'admin' }) => {
   const { content } = useAdminContent();
   const requiredRole = portalRole === 'staff' ? 'staff' : 'admin';
@@ -5426,6 +6158,8 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
           ? <PriceAdjustmentView content={content} session={session} />
           : activeView === 'teachers'
           ? <TeachersView session={session} />
+          : activeView === 'teacherReview'
+          ? <TeacherReviewView session={session} />
           : activeView === 'bookshopCustomers'
           ? <BookshopCustomersView />
           : activeView === 'whatsappDiagnostics'

@@ -83,6 +83,7 @@ ACTION_LABELS = {
     "teacher_profile_revision_requested": "Admin requested corrections to a teacher profile",
     "teacher_profile_visually_verified": "Admin completed visual verification of a teacher profile",
     "teacher_profile_rejected": "Admin rejected a teacher profile",
+    "teacher_profile_review_reopened": "Admin reopened a rejected teacher profile for another review",
     "teacher_id_issued": "Issued a permanent Teacher ID",
     "teacher_profile_submitted": "Teacher submitted profile for review",
     "send_newsletter_campaign": "Sent a newsletter campaign",

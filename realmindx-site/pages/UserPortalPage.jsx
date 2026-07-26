@@ -431,6 +431,18 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
           {user.submittedAt ? <span className="profile-status-meta">Submitted: {new Date(user.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span> : null}
         </div>
       </div>
+    ) : user.profileStatus === 'under_review' ? (
+      <div className="profile-status-banner status-under-review">
+        <span className="profile-status-icon">&#10003;</span>
+        <div className="profile-status-text">
+          <strong>Application Under Review</strong>
+          <span>Your teacher application is currently being reviewed by RealMindX.</span>
+          {user.applicationId ? <span className="profile-status-meta">Application ID: {user.applicationId}</span> : null}
+          <span style={{ marginTop: 10, display: 'block', fontSize: '0.85rem', lineHeight: 1.5 }}>
+            If your application was recently reopened, this means it has been returned for another assessment. You do not need to make changes unless RealMindX requests corrections.
+          </span>
+        </div>
+      </div>
     ) : user.profileStatus === 'complete' ? (
       <div className="profile-status-banner status-complete">
         <span className="profile-status-icon">&#10003;</span>
@@ -446,8 +458,48 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
         <div className="profile-status-text">
           <strong>Changes Requested</strong>
           <span>{user.reviewNotes || 'An administrator has requested changes to your profile. Please review and update.'}</span>
+          <span style={{ marginTop: 10, display: 'block', fontSize: '0.85rem', lineHeight: 1.5 }}>
+            Please review the requested changes above, edit your profile to address them, and submit your updated profile for further review.
+          </span>
         </div>
-        <button className="btn btn-primary profile-submit-btn" onClick={() => setActive('profile')}>Update Profile</button>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn btn-primary profile-submit-btn" onClick={() => setActive('profile')}>Edit Profile</button>
+          <button className="btn btn-outline profile-submit-btn" onClick={() => setActive('profile')}>Review Documents</button>
+          {user.profileComplete >= 100 ? (
+            <button className="btn btn-outline profile-submit-btn" onClick={() => setSubmitModalOpen(true)}>Submit Updated Profile</button>
+          ) : (
+            <span style={{ fontSize: '0.78rem', color: '#92400e' }}>
+              Complete all required fields ({user.profileComplete}%) before submitting.
+            </span>
+          )}
+        </div>
+      </div>
+    ) : user.profileStatus === 'rejected' ? (
+      <div className="profile-status-banner status-rejected">
+        <span className="profile-status-icon">&#10007;</span>
+        <div className="profile-status-text">
+          <strong>Application Not Approved</strong>
+          {user.applicationId ? <span className="profile-status-meta">Application ID: {user.applicationId}</span> : null}
+          <span style={{ marginTop: 6, display: 'block', lineHeight: 1.5 }}>
+            {user.reviewNotes || 'Your application was not approved at this time.'}
+          </span>
+          <span style={{ marginTop: 10, display: 'block', fontSize: '0.85rem', lineHeight: 1.5 }}>
+            If you believe there has been an error or have new information that may affect the review of your application, please contact our team.
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline profile-submit-btn" onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(user.applicationId);
+              queueToast('success', 'Application ID copied to clipboard.');
+            } catch {
+              queueToast('error', 'Could not copy automatically. Please select and copy the Application ID above.');
+            }
+          }}>Copy Application ID</button>
+          <a className="btn btn-primary profile-submit-btn" href={`/contact?${new URLSearchParams({ subject: 'Request for reconsideration of teacher application', application_id: user.applicationId, name: `${user.firstName} ${user.lastName}` }).toString()}`}>
+            Contact RealMindX
+          </a>
+        </div>
       </div>
     ) : user.profileStatus === 'incomplete' ? (
       <div className="profile-status-banner status-incomplete">
@@ -616,6 +668,19 @@ const ProfileView = ({ user, onUploadAvatar, onEditProfile, onContactUpdated, av
           {user.profileStatus === 'revision_required' && (
             <div style={{ marginTop: 8, fontSize: '0.82rem', color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '8px 12px' }}>
               Changes requested: {user.reviewNotes || 'Please review and update your profile.'}
+            </div>
+          )}
+          {user.profileStatus === 'rejected' && (
+            <div style={{ marginTop: 8, fontSize: '0.82rem', color: '#991b1b', background: '#fee2e2', borderRadius: 6, padding: '8px 12px' }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Application Not Approved</div>
+              {user.applicationId ? <div style={{ marginBottom: 4 }}>Application ID: <strong>{user.applicationId}</strong></div> : null}
+              <div style={{ marginBottom: 4, whiteSpace: 'pre-wrap' }}>{user.reviewNotes || 'Your application was not approved at this time.'}</div>
+              <div style={{ marginTop: 6, fontSize: '0.78rem' }}>
+                If you believe there has been an error or have new information that may affect the review of your application, please&nbsp;
+                <a href={`/contact?${new URLSearchParams({ subject: 'Request for reconsideration of teacher application', application_id: user.applicationId, name: `${user.firstName} ${user.lastName}` }).toString()}`}>
+                  contact our team
+                </a>.
+              </div>
             </div>
           )}
         </div>
@@ -2448,6 +2513,14 @@ const UserPortalPage = () => {
         .status-submitted .profile-status-icon {
           background: #bbf7d0;
         }
+        .status-under-review {
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          color: #1e40af;
+        }
+        .status-under-review .profile-status-icon {
+          background: #bfdbfe;
+        }
         .status-complete {
           background: #eff6ff;
           border: 1px solid #bfdbfe;
@@ -2471,6 +2544,14 @@ const UserPortalPage = () => {
         }
         .status-incomplete .profile-status-icon {
           background: #e5e7eb;
+        }
+        .status-rejected {
+          background: #fee2e2;
+          border: 1px solid #fecaca;
+          color: #991b1b;
+        }
+        .status-rejected .profile-status-icon {
+          background: #fecaca;
         }
         @media (max-width: 640px) {
           .profile-status-banner {

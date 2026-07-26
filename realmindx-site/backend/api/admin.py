@@ -2194,6 +2194,59 @@ def reject_teacher_profile(user_id):
     ), 200
 
 
+@admin_bp.post("/teachers/<int:user_id>/reopen-review")
+@login_required
+@permission_required("teachers.edit")
+def reopen_teacher_review(user_id):
+    """Reopen a rejected teacher application for another review."""
+    payload = request.get_json(silent=True) or {}
+    note = (payload.get("note") or "").strip()
+    if not note:
+        return jsonify(error="A note explaining why this case is being reopened is required."), 400
+
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+    profile = user.profile
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "under_review":
+        return jsonify(
+            profile_status="under_review",
+            reviewed_by_id=profile.reviewed_by_id,
+            reviewed_at=profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+            message="This application has already been reopened."
+        ), 200
+
+    if profile.profile_status != "rejected":
+        return jsonify(error=f"Cannot reopen: current status is '{profile.profile_status}'."), 400
+
+    profile.profile_status = "under_review"
+    profile.review_notes = note
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+
+    log_action("teacher_profile_review_reopened", "user", user.id, {
+        "application_id": user.application_id,
+        "previous_status": "rejected",
+        "new_status": "under_review",
+        "reopening_note": note,
+    })
+    db.session.commit()
+    return jsonify(
+        profile_status="under_review",
+        application_id=user.application_id,
+        teacher_id=user.teacher_id,
+        review_notes=note,
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
+
+
 @admin_bp.post("/teachers/<int:user_id>/verify")
 @login_required
 @permission_required("teachers.edit")
