@@ -75,6 +75,7 @@ class User(UserMixin, TimestampMixin, db.Model):
     terms_accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
     application_id = db.Column(db.String(30), nullable=True, unique=True, index=True)
     teacher_id = db.Column(db.String(30), nullable=True, unique=True, index=True)
+    teacher_id_issued_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     role = db.relationship("Role")
     profile = db.relationship("UserProfile", uselist=False, back_populates="user", cascade="all, delete-orphan", foreign_keys=lambda: [UserProfile.user_id])
@@ -170,6 +171,23 @@ class TeacherIdCounter(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     year = db.Column(db.Integer, nullable=False, unique=True)
     last_application_seq = db.Column(db.Integer, default=0, nullable=False)
+    last_teacher_seq = db.Column(db.Integer, default=0, nullable=False)
+
+
+class TeacherIdGlobalCounter(TimestampMixin, db.Model):
+    """Global counter for permanent Teacher IDs.
+
+    This table holds exactly one row (``id = 1``) with a global sequence
+    that never resets.  The primary-key constraint on ``id``, combined with
+    the convention that code always reads and writes ``id = 1``, guarantees
+    singleton semantics at the database level.  Teacher IDs
+    (``RMX-TCH-NNNNNN``) contain no year component, so the sequence must
+    remain unique across all years.
+    """
+
+    __tablename__ = "teacher_id_global_counter"
+
+    id = db.Column(db.Integer, primary_key=True)
     last_teacher_seq = db.Column(db.Integer, default=0, nullable=False)
 
 

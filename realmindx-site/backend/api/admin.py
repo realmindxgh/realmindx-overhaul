@@ -72,6 +72,7 @@ from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
 from ..profile_completion import teacher_profile_completion
 from ..sms_service import normalise_phone
+from ..teacher_ids import generate_teacher_id
 from ..bookshop_search import canonical_taxonomy_value
 
 
@@ -1877,6 +1878,425 @@ def get_user(user_id):
         for placement in placements
     ]
     return jsonify(data)
+
+
+def _review_queue_item(user):
+    profile = getattr(user, "profile", None)
+    completion, _ = teacher_profile_completion(user)
+    cv_exists = bool(profile and profile.cv_file_id)
+    certificate_exists = bool(profile and profile.certificate_file_id)
+    return {
+        "id": user.id,
+        "application_id": user.application_id,
+        "teacher_id": user.teacher_id,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "phone": user.phone,
+        "profile_status": profile.profile_status if profile else None,
+        "profile_completion": completion,
+        "submitted_at": profile.submitted_at.isoformat() if profile and profile.submitted_at else None,
+        "reviewed_at": profile.reviewed_at.isoformat() if profile and profile.reviewed_at else None,
+        "reviewed_by_id": profile.reviewed_by_id if profile else None,
+        "teaching_subject": profile.teaching_subject if profile else None,
+        "preferred_level": profile.preferred_level if profile else None,
+        "location": profile.location if profile else None,
+        "cv_present": cv_exists,
+        "certificate_present": certificate_exists,
+    }
+
+
+def _review_detail(user):
+    profile = getattr(user, "profile", None)
+    completion, missing = teacher_profile_completion(user)
+    data = user_json(user)
+    data["profile_completion"] = completion
+    data["profile_missing_fields"] = missing
+    if profile:
+        def _file_payload(file_id):
+            if not file_id:
+                return {"url": None, "filename": None}
+            f = db.session.get(UploadedFile, file_id)
+            if not f:
+                return {"url": None, "filename": None}
+            return {
+                "url": f"/uploads/{f.visibility}/{f.category}/{f.stored_filename}",
+                "filename": f.original_filename,
+            }
+        cv_file = _file_payload(profile.cv_file_id)
+        certificate_file = _file_payload(profile.certificate_file_id)
+        data["review"] = {
+            "location": profile.location,
+            "teaching_subject": profile.teaching_subject,
+            "preferred_level": profile.preferred_level,
+            "preferred_employment_type": profile.preferred_employment_type,
+            "available_from": profile.available_from,
+            "curriculum_experience": profile.curriculum_experience,
+            "bio": profile.bio,
+            "cv_url": cv_file["url"],
+            "cv_filename": cv_file["filename"],
+            "certificate_url": certificate_file["url"],
+            "certificate_filename": certificate_file["filename"],
+            "profile_status": profile.profile_status,
+            "submitted_at": profile.submitted_at.isoformat() if profile.submitted_at else None,
+            "reviewed_at": profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+            "reviewed_by_id": profile.reviewed_by_id,
+            "review_notes": profile.review_notes,
+        }
+    else:
+        data["review"] = None
+    applications = (
+        JobApplication.query
+        .options(joinedload(JobApplication.job))
+        .filter_by(user_id=user.id)
+        .order_by(JobApplication.updated_at.desc(), JobApplication.created_at.desc())
+        .all()
+    )
+    data["applications"] = [
+        {
+            "id": app.id,
+            "job_id": app.job_id,
+            "status": app.status,
+            "cover_note": app.cover_note,
+            "created_at": app.created_at.isoformat() if app.created_at else None,
+            "updated_at": app.updated_at.isoformat() if app.updated_at else None,
+            "job_title": app.job.title if app.job else None,
+            "organisation": app.job.organisation if app.job else None,
+        }
+        for app in applications
+    ]
+    placements = (
+        TeacherPlacement.query
+        .filter_by(user_id=user.id)
+        .order_by(TeacherPlacement.accepted_at.desc(), TeacherPlacement.created_at.desc())
+        .all()
+    )
+    data["placements"] = [
+        {
+            "id": p.id,
+            "application_id": p.application_id,
+            "job_id": p.job_id,
+            "school_name": p.school_name,
+            "job_title": p.job_title,
+            "status": p.status,
+            "accepted_at": p.accepted_at.isoformat() if p.accepted_at else None,
+            "started_at": p.started_at.isoformat() if p.started_at else None,
+            "ended_at": p.ended_at.isoformat() if p.ended_at else None,
+            "notes": p.notes,
+        }
+        for p in placements
+    ]
+    return data
+
+
+@admin_bp.get("/teachers/review")
+@login_required
+@permission_required("teachers.view")
+def teacher_review_queue():
+    """List teacher profiles in the review lifecycle."""
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = max(1, min(100, request.args.get("per_page", 50, type=int)))
+    status_filter = request.args.get("status")
+    search = request.args.get("search", "").strip()
+
+    valid_statuses = {"submitted", "under_review", "revision_required", "verified", "rejected"}
+    if status_filter and status_filter not in valid_statuses:
+        return jsonify(error=f"Invalid status. Choose from: {', '.join(sorted(valid_statuses))}"), 400
+
+    query = (
+        User.query
+        .join(User.role)
+        .join(UserProfile, UserProfile.user_id == User.id, isouter=True)
+        .filter(Role.name == "user")
+    )
+
+    if status_filter:
+        query = query.filter(UserProfile.profile_status == status_filter)
+    else:
+        query = query.filter(UserProfile.profile_status.in_(valid_statuses))
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            db.or_(
+                User.first_name.ilike(search_pattern),
+                User.last_name.ilike(search_pattern),
+                User.email.ilike(search_pattern),
+                User.phone.ilike(search_pattern),
+                User.application_id.ilike(search_pattern),
+                User.teacher_id.ilike(search_pattern),
+                db.func.concat(User.first_name, " ", User.last_name).ilike(search_pattern),
+            )
+        )
+
+    total = query.count()
+    rows = query.order_by(UserProfile.submitted_at.desc().nullslast(), User.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    return jsonify(
+        items=[_review_queue_item(u) for u in rows.items],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=rows.pages,
+    )
+
+
+@admin_bp.get("/teachers/<int:user_id>/review")
+@login_required
+@permission_required("teachers.view")
+def teacher_review_detail(user_id):
+    """Return a single teacher's complete review record."""
+    user = db.get_or_404(User, user_id)
+    if user.role and user.role.name != "user":
+        return jsonify(error="Only teacher accounts can be reviewed."), 403
+    return jsonify(_review_detail(user))
+
+
+@admin_bp.post("/teachers/<int:user_id>/start-review")
+@login_required
+@permission_required("teachers.edit")
+def start_teacher_review(user_id):
+    """Move a submitted profile to under_review."""
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+    profile = user.profile
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "under_review":
+        return jsonify(
+            profile_status="under_review",
+            reviewed_by_id=profile.reviewed_by_id,
+            reviewed_at=profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+            message="Review has already been started for this profile."
+        ), 200
+
+    if profile.profile_status != "submitted":
+        return jsonify(error=f"Cannot start review: current status is '{profile.profile_status}'."), 400
+
+    profile.profile_status = "under_review"
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+
+    log_action("teacher_profile_review_started", "user", user.id, {
+        "application_id": user.application_id,
+        "previous_status": "submitted",
+        "new_status": "under_review",
+    })
+    db.session.commit()
+    return jsonify(
+        profile_status="under_review",
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
+
+
+@admin_bp.post("/teachers/<int:user_id>/request-revision")
+@login_required
+@permission_required("teachers.edit")
+def request_teacher_revision(user_id):
+    """Move an under_review profile to revision_required with notes."""
+    payload = request.get_json(silent=True) or {}
+    note = (payload.get("note") or "").strip()
+    if not note:
+        return jsonify(error="A review note explaining the required corrections is required."), 400
+
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+    profile = user.profile
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "revision_required":
+        return jsonify(
+            profile_status="revision_required",
+            message="Revision has already been requested for this profile."
+        ), 200
+
+    if profile.profile_status != "under_review":
+        return jsonify(error=f"Cannot request revision: current status is '{profile.profile_status}'."), 400
+
+    profile.profile_status = "revision_required"
+    profile.review_notes = note
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+
+    log_action("teacher_profile_revision_requested", "user", user.id, {
+        "application_id": user.application_id,
+        "previous_status": "under_review",
+        "new_status": "revision_required",
+        "note": note,
+    })
+    db.session.commit()
+    return jsonify(
+        profile_status="revision_required",
+        review_notes=note,
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
+
+
+@admin_bp.post("/teachers/<int:user_id>/reject")
+@login_required
+@permission_required("teachers.edit")
+def reject_teacher_profile(user_id):
+    """Move an under_review profile to rejected with a reason."""
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or "").strip()
+    if not reason:
+        return jsonify(error="A rejection reason is required."), 400
+
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+    profile = user.profile
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "rejected":
+        return jsonify(
+            profile_status="rejected",
+            message="This profile has already been rejected."
+        ), 200
+
+    if profile.profile_status != "under_review":
+        return jsonify(error=f"Cannot reject: current status is '{profile.profile_status}'."), 400
+
+    profile.profile_status = "rejected"
+    profile.review_notes = reason
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+
+    log_action("teacher_profile_rejected", "user", user.id, {
+        "application_id": user.application_id,
+        "previous_status": "under_review",
+        "new_status": "rejected",
+        "reason": reason,
+    })
+    db.session.commit()
+    return jsonify(
+        profile_status="rejected",
+        review_notes=reason,
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
+
+
+@admin_bp.post("/teachers/<int:user_id>/verify")
+@login_required
+@permission_required("teachers.edit")
+def verify_teacher_profile(user_id):
+    """Complete visual verification and issue a permanent Teacher ID."""
+    payload = request.get_json(silent=True) or {}
+
+    required_checks = [
+        "required_documents_present",
+        "documents_readable",
+        "identity_details_consistent",
+        "qualifications_consistent",
+        "teaching_details_consistent",
+        "no_obvious_alteration_detected",
+    ]
+    checklist = {}
+    for key in required_checks:
+        val = payload.get(key)
+        if val is not True:
+            return jsonify(error=f"Confirmation '{key}' must be true to proceed with verification."), 400
+        checklist[key] = val
+
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+
+    # Lock both the profile and the user row for the full transaction.
+    profile = db.session.query(UserProfile).with_for_update().filter_by(user_id=user.id).first()
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    user_lock = db.session.query(User).with_for_update().filter_by(id=user.id).first()
+    user = user_lock or user
+
+    if profile.profile_status == "under_review" and user.teacher_id:
+        return jsonify(
+            error="Inconsistent state: profile is under review but already has a Teacher ID. "
+                  "Contact support to resolve this before proceeding."
+        ), 409
+
+    if profile.profile_status == "verified" and user.teacher_id:
+        return jsonify(
+            application_id=user.application_id,
+            teacher_id=user.teacher_id,
+            profile_status="verified",
+            reviewed_by_id=profile.reviewed_by_id,
+            reviewed_at=profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+            message="This profile has already been verified."
+        ), 200
+
+    if profile.profile_status not in ("under_review", "verified"):
+        return jsonify(error=f"Cannot verify: current status is '{profile.profile_status}'."), 400
+
+    completion, _ = teacher_profile_completion(user)
+    if completion < 100:
+        return jsonify(error="Profile must be 100% complete before verification."), 400
+
+    if not profile.cv_file_id:
+        return jsonify(error="CV is missing."), 400
+    cv = db.session.get(UploadedFile, profile.cv_file_id)
+    if not cv or cv.owner_id != user.id:
+        return jsonify(error="CV file record is invalid."), 400
+
+    if not profile.certificate_file_id:
+        return jsonify(error="Certificate is missing."), 400
+    cert = db.session.get(UploadedFile, profile.certificate_file_id)
+    if not cert or cert.owner_id != user.id:
+        return jsonify(error="Certificate file record is invalid."), 400
+
+    if user.teacher_id:
+        existing_id = user.teacher_id
+        issued_now = False
+    else:
+        existing_id = generate_teacher_id()
+        issued_now = True
+
+    profile.profile_status = "verified"
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+    user.teacher_id = existing_id
+    user.teacher_id_issued_at = datetime.now(timezone.utc)
+
+    log_action("teacher_profile_visually_verified", "user", user.id, {
+        "application_id": user.application_id,
+        "teacher_id": user.teacher_id,
+        "previous_status": "under_review",
+        "new_status": "verified",
+        "checklist": checklist,
+    })
+    if issued_now:
+        log_action("teacher_id_issued", "user", user.id, {
+            "application_id": user.application_id,
+            "teacher_id": user.teacher_id,
+        })
+
+    db.session.commit()
+    return jsonify(
+        application_id=user.application_id,
+        teacher_id=user.teacher_id,
+        profile_status="verified",
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
 
 
 @admin_bp.post("/uploads")

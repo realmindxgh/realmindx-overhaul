@@ -29,6 +29,8 @@ from ..whatsapp_service import (
 
 profile_bp = Blueprint("profile", __name__)
 
+_LOCKED_STATUSES = frozenset({"submitted", "under_review", "verified", "rejected"})
+
 
 def _upload_url(uploaded_file):
     if not uploaded_file:
@@ -140,7 +142,9 @@ def update_profile():
     payload = request.get_json(silent=True) or {}
     profile = get_or_create_profile()
 
-    if profile.profile_status == "submitted":
+    _LOCKED_STATUSES = frozenset({"submitted", "under_review", "verified", "rejected"})
+
+    if profile.profile_status in _LOCKED_STATUSES:
         return jsonify(error="Your profile is currently under review and cannot be edited."), 423
 
     if "sex" in payload:
@@ -267,8 +271,8 @@ def update_account():
         return jsonify(error="First name is required."), 400
 
     profile = current_user.profile
-    if profile and profile.profile_status == "submitted":
-        return jsonify(error="Identity details cannot be changed while your profile is awaiting review."), 423
+    if profile and profile.profile_status in _LOCKED_STATUSES:
+        return jsonify(error="Identity details cannot be changed while your profile is locked."), 423
 
     current_user.first_name = first_name
     current_user.last_name = last_name or None
@@ -650,7 +654,7 @@ def upload_user_file():
     category, profile_field, visibility = field_map.get(kind, ("documents", None, "protected"))
     profile = get_or_create_profile()
 
-    if profile_field in ("cv_file_id", "certificate_file_id") and profile.profile_status == "submitted":
+    if profile_field in ("cv_file_id", "certificate_file_id") and profile.profile_status in _LOCKED_STATUSES:
         return jsonify(error="Your profile is under review and documents cannot be replaced."), 423
 
     try:
@@ -731,6 +735,12 @@ def submit_profile():
 
     if profile.profile_status == "revision_required":
         return jsonify(error="Please update your profile and address the requested changes before submitting."), 400
+
+    if profile.profile_status == "rejected":
+        return jsonify(error="Your profile has been rejected and cannot be resubmitted."), 400
+
+    if profile.profile_status == "verified":
+        return jsonify(error="Your profile has already been verified."), 400
 
     if profile.profile_status not in ("complete", "incomplete"):
         return jsonify(error="Profile cannot be submitted in its current state."), 400

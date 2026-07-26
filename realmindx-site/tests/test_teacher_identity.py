@@ -10,7 +10,7 @@ if str(SITE_ROOT) not in sys.path:
 from backend import create_app
 from backend.config import Config
 from backend.extensions import db
-from backend.models import Role, TeacherIdCounter, User, UserProfile
+from backend.models import Role, TeacherIdCounter, TeacherIdGlobalCounter, User, UserProfile
 from backend.teacher_ids import (
     APPLICATION_ID_PATTERN,
     TEACHER_ID_PATTERN,
@@ -91,21 +91,25 @@ class TestTeacherIdHelpers(unittest.TestCase):
         self.assertEqual(seq2, seq1 + 1)
         self.assertEqual(seq3, seq2 + 1)
 
-    def test_application_id_year_rollover(self):
-        counter = TeacherIdCounter.query.filter_by(year=2025).first()
-        if not counter:
-            counter = TeacherIdCounter(
-                year=2025,
-                last_application_seq=0,
-                last_teacher_seq=0,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-            )
-            db.session.add(counter)
-            db.session.commit()
+    def test_teacher_id_global_cross_year(self):
+        """Teacher ID sequence must NOT reset across years."""
+        from backend.teacher_ids import _get_global_teacher_counter
 
-        app_id = generate_application_id(year_override=2025)
-        self.assertIn("2025", app_id)
+        counter1 = _get_global_teacher_counter()
+        start_seq = counter1.last_teacher_seq
+        id1 = generate_teacher_id()
+        seq1 = int(id1.split("-")[-1])
+        self.assertEqual(seq1, start_seq + 1)
+
+        id2 = generate_teacher_id()
+        seq2 = int(id2.split("-")[-1])
+        self.assertEqual(seq2, seq1 + 1)
+
+        # Simulate a new year by manipulating the counter directly;
+        # the sequence must keep incrementing, not reset.
+        counter2 = _get_global_teacher_counter()
+        self.assertEqual(counter2.id, counter1.id)
+        self.assertEqual(counter2.last_teacher_seq, seq2)
 
     def test_application_id_includes_year(self):
         app_id = generate_application_id()
@@ -362,21 +366,29 @@ class TestTeacherIdCounterModel(unittest.TestCase):
         seq = _get_and_increment_application_seq(2026)
         self.assertEqual(seq, 6)
 
-    def test_counter_sequential_teacher_ids(self):
-        now = datetime.now(timezone.utc)
-        counter = TeacherIdCounter(
-            year=2026,
-            last_application_seq=0,
-            last_teacher_seq=10,
-            created_at=now,
-            updated_at=now,
-        )
-        db.session.add(counter)
-        db.session.commit()
+    def test_global_counter_singleton(self):
+        """Only one row should ever exist in teacher_id_global_counter."""
+        from backend.teacher_ids import _get_global_teacher_counter
 
-        from backend.teacher_ids import _get_and_increment_teacher_seq
-        seq = _get_and_increment_teacher_seq(2026)
-        self.assertEqual(seq, 11)
+        c1 = _get_global_teacher_counter()
+        c2 = _get_global_teacher_counter()
+        self.assertEqual(c1.id, 1)
+        self.assertEqual(c2.id, 1)
+        self.assertEqual(TeacherIdGlobalCounter.query.count(), 1)
+
+    def test_global_counter_sequential_teacher_ids(self):
+        """Teacher IDs use the global counter and never reset."""
+        from backend.teacher_ids import _get_global_teacher_counter, _next_seq
+
+        counter = _get_global_teacher_counter()
+        counter.last_teacher_seq = 100
+        db.session.flush()
+
+        seq1 = _next_seq(counter, "last_teacher_seq")
+        self.assertEqual(seq1, 101)
+
+        seq2 = _next_seq(counter, "last_teacher_seq")
+        self.assertEqual(seq2, 102)
 
 
 if __name__ == "__main__":

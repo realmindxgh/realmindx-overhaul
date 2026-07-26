@@ -1,0 +1,804 @@
+import io
+import sys
+import unittest
+from pathlib import Path
+from datetime import datetime, timezone
+from unittest.mock import patch
+
+SITE_ROOT = Path(__file__).resolve().parents[1]
+if str(SITE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SITE_ROOT))
+
+from backend import create_app
+from backend.config import Config
+from backend.extensions import db
+from backend.models import AuditLog, Permission, Role, UploadedFile, User, UserProfile
+from backend.teacher_ids import generate_application_id
+
+
+class TeacherReviewTestConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = "sqlite://"
+    SECRET_KEY = "teacher-review-tests"
+    BASE_URL = "http://localhost"
+    BOOKSHOP_URL = "http://bookshop.localhost"
+    CORS_ORIGINS = ["http://localhost", "http://bookshop.localhost"]
+    RATELIMIT_ENABLED = False
+    WTF_CSRF_ENABLED = False
+
+
+def _make_submitted_teacher(session, email_suffix="1", teacher_service_enabled=True):
+    role = Role.query.filter_by(name="user").one()
+    teacher = User(
+        email=f"teacher-{email_suffix}@example.com",
+        first_name="Test",
+        last_name="Teacher",
+        role=role,
+        is_active=True,
+        is_verified=True,
+        teacher_service_enabled=teacher_service_enabled,
+        application_id=generate_application_id(),
+    )
+    teacher.set_password("TeacherPassword1!")
+    session.add(teacher)
+    session.flush()
+    profile = UserProfile(user_id=teacher.id)
+    profile.location = "Accra"
+    profile.teaching_subject = "Mathematics"
+    profile.preferred_level = "Senior High"
+    profile.preferred_employment_type = "Full-time"
+    profile.curriculum_experience = "WASSCE"
+    profile.profile_status = "submitted"
+    profile.submitted_at = datetime.now(timezone.utc)
+    cv = UploadedFile(
+        owner_id=teacher.id, original_filename="cv.pdf", stored_filename="cv_stored.pdf",
+        storage_path="/tmp/cv.pdf", mime_type="application/pdf", size_bytes=100, category="cv",
+    )
+    cert = UploadedFile(
+        owner_id=teacher.id, original_filename="cert.pdf", stored_filename="cert_stored.pdf",
+        storage_path="/tmp/cert.pdf", mime_type="application/pdf", size_bytes=100, category="certificate",
+    )
+    session.add_all([profile, cv, cert])
+    session.flush()
+    profile.cv_file_id = cv.id
+    profile.certificate_file_id = cert.id
+    session.commit()
+    return teacher, profile
+
+
+def _make_admin(session, email="admin@example.com"):
+    role = Role.query.filter_by(name="admin").one()
+    admin = User(email=email, first_name="Admin", last_name="User", role=role, is_active=True, is_verified=True)
+    admin.set_password("AdminPassword123!")
+    session.add(admin)
+    session.commit()
+    return admin
+
+
+class TeacherReviewTests(unittest.TestCase):
+    def setUp(self):
+        self.app = create_app(TeacherReviewTestConfig)
+        self.context = self.app.app_context()
+        self.context.push()
+        db.create_all()
+        db.session.execute(db.text("PRAGMA foreign_keys = ON"))
+
+        admin_role = Role(name="admin", description="Admin")
+        teacher_role = Role(name="user", description="Teacher")
+        staff_role = Role(name="staff", description="Staff")
+        db.session.add_all([admin_role, teacher_role, staff_role])
+        db.session.commit()
+
+        self.teacher_role = teacher_role
+        self.admin_user = _make_admin(db.session)
+        self.client = self.app.test_client()
+
+    def _login_admin(self):
+        resp = self.client.post("/api/auth/login", json={
+            "email": self.admin_user.email, "password": "AdminPassword123!",
+        })
+        self.assertEqual(resp.status_code, 200)
+
+    def _login_as(self, email, password):
+        resp = self.client.post("/api/auth/login", json={"email": email, "password": password})
+        self.assertEqual(resp.status_code, 200)
+
+    def tearDown(self):
+        db.session.remove()
+        db.session.execute(db.text("PRAGMA foreign_keys = OFF"))
+        db.session.commit()
+        db.drop_all()
+        self.context.pop()
+
+    # -- authorization --
+
+    def test_teacher_cannot_access_review_queue(self):
+        teacher, _ = _make_submitted_teacher(db.session, "auth1")
+        self._login_as("teacher-auth1@example.com", "TeacherPassword1!")
+        resp = self.client.get("/api/admin/teachers/review")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_teacher_cannot_start_review(self):
+        teacher, _ = _make_submitted_teacher(db.session, "auth2")
+        self._login_as("teacher-auth2@example.com", "TeacherPassword1!")
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_teacher_cannot_verify(self):
+        teacher, _ = _make_submitted_teacher(db.session, "auth3")
+        self._login_as("teacher-auth3@example.com", "TeacherPassword1!")
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        self.assertEqual(resp.status_code, 403)
+
+    def test_unauthorised_staff_cannot_review(self):
+        staff_role = Role.query.filter_by(name="staff").one()
+        staff = User(email="staff@example.com", first_name="Staff", last_name="User", role=staff_role, is_active=True, is_verified=True)
+        staff.set_password("StaffPassword1!")
+        db.session.add(staff)
+        db.session.commit()
+        self._login_as("staff@example.com", "StaffPassword1!")
+        teacher, _ = _make_submitted_teacher(db.session, "auth4")
+        resp = self.client.get("/api/admin/teachers/review")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_staff_with_teachers_edit_perm_can_start_review(self):
+        staff_role = Role.query.filter_by(name="staff").one()
+        perm = Permission(key="teachers.edit", description="Can edit teachers")
+        db.session.add(perm)
+        db.session.flush()
+        staff_role.permissions.append(perm)
+        staff = User(email="staff-reviewer@example.com", first_name="Staff", last_name="Reviewer", role=staff_role, is_active=True, is_verified=True)
+        staff.set_password("StaffPassword1!")
+        db.session.add(staff)
+        db.session.commit()
+        self._login_as("staff-reviewer@example.com", "StaffPassword1!")
+        teacher, _ = _make_submitted_teacher(db.session, "auth5")
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_admin_can_access_review_queue(self):
+        _make_submitted_teacher(db.session, "q1")
+        self._login_admin()
+        resp = self.client.get("/api/admin/teachers/review")
+        self.assertEqual(resp.status_code, 200)
+
+    # -- review queue --
+
+    def test_review_queue_shows_submitted_profiles(self):
+        teacher, _ = _make_submitted_teacher(db.session, "q2")
+        self._login_admin()
+        resp = self.client.get("/api/admin/teachers/review")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        ids = [item["id"] for item in data["items"]]
+        self.assertIn(teacher.id, ids)
+
+    def test_review_queue_excludes_non_teacher_users(self):
+        _make_submitted_teacher(db.session, "q3")
+        customer = User(email="customer@example.com", first_name="Customer", last_name="User",
+                        role=self.teacher_role, is_active=True, is_verified=True, teacher_service_enabled=False)
+        customer.set_password("Pass123!")
+        db.session.add(customer)
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.get("/api/admin/teachers/review")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        ids = [item["id"] for item in data["items"]]
+        self.assertNotIn(customer.id, ids)
+
+    def test_review_queue_status_filter(self):
+        t1, p1 = _make_submitted_teacher(db.session, "f1")
+        p1.profile_status = "under_review"
+        p1.reviewed_by_id = self.admin_user.id
+        p1.reviewed_at = datetime.now(timezone.utc)
+        t2, p2 = _make_submitted_teacher(db.session, "f2")
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.get("/api/admin/teachers/review?status=submitted")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        ids = [item["id"] for item in data["items"]]
+        self.assertIn(t2.id, ids)
+        self.assertNotIn(t1.id, ids)
+
+    def test_review_queue_search_by_application_id(self):
+        teacher, _ = _make_submitted_teacher(db.session, "srch1")
+        self._login_admin()
+        resp = self.client.get(f"/api/admin/teachers/review?search={teacher.application_id}")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        ids = [item["id"] for item in data["items"]]
+        self.assertIn(teacher.id, ids)
+
+    def test_review_queue_search_by_name(self):
+        teacher, _ = _make_submitted_teacher(db.session, "srch2")
+        self._login_admin()
+        resp = self.client.get("/api/admin/teachers/review?search=Test")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        ids = [item["id"] for item in data["items"]]
+        self.assertIn(teacher.id, ids)
+
+    def test_review_queue_search_by_email(self):
+        teacher, _ = _make_submitted_teacher(db.session, "srch3")
+        self._login_admin()
+        resp = self.client.get("/api/admin/teachers/review?search=teacher-srch3")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        ids = [item["id"] for item in data["items"]]
+        self.assertIn(teacher.id, ids)
+
+    def test_review_queue_excludes_protected_paths(self):
+        _make_submitted_teacher(db.session, "qp1")
+        self._login_admin()
+        resp = self.client.get("/api/admin/teachers/review")
+        data = resp.get_json()
+        item = data["items"][0]
+        self.assertIsNone(item.get("storage_path"))
+        self.assertIsNone(item.get("cv_url"))
+        self.assertIsNone(item.get("certificate_url"))
+
+    # -- review detail --
+
+    def test_review_detail_includes_document_urls(self):
+        teacher, _ = _make_submitted_teacher(db.session, "det1")
+        self._login_admin()
+        resp = self.client.get(f"/api/admin/teachers/{teacher.id}/review")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("review", data)
+        self.assertIsNotNone(data["review"]["cv_url"])
+        self.assertIsNotNone(data["review"]["certificate_url"])
+        self.assertIsNotNone(data["review"]["cv_filename"])
+        self.assertIsNotNone(data["review"]["certificate_filename"])
+
+    # -- start review --
+
+    def test_start_review_transitions_to_under_review(self):
+        teacher, _ = _make_submitted_teacher(db.session, "sr1")
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        self.assertEqual(resp.status_code, 200)
+        db.session.refresh(teacher)
+        self.assertEqual(teacher.profile.profile_status, "under_review")
+        self.assertEqual(teacher.profile.reviewed_by_id, self.admin_user.id)
+
+    def test_start_review_creates_audit_event(self):
+        teacher, _ = _make_submitted_teacher(db.session, "sr2")
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        audit_entries = AuditLog.query.filter_by(action="teacher_profile_review_started").all()
+        self.assertEqual(len(audit_entries), 1)
+        self.assertEqual(audit_entries[0].actor_id, self.admin_user.id)
+
+    def test_start_review_does_not_issue_teacher_id(self):
+        teacher, _ = _make_submitted_teacher(db.session, "sr3")
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        db.session.refresh(teacher)
+        self.assertIsNone(teacher.teacher_id)
+
+    def test_start_review_idempotent(self):
+        teacher, _ = _make_submitted_teacher(db.session, "sr4")
+        self._login_admin()
+        resp1 = self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        self.assertEqual(resp1.status_code, 200)
+        resp2 = self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        self.assertEqual(resp2.status_code, 200)
+        audit_entries = AuditLog.query.filter_by(action="teacher_profile_review_started").all()
+        self.assertEqual(len(audit_entries), 1)
+
+    def test_start_review_rejects_non_submitted(self):
+        teacher, profile = _make_submitted_teacher(db.session, "sr5")
+        profile.profile_status = "complete"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_start_review_rejects_disabled_service(self):
+        teacher, _ = _make_submitted_teacher(db.session, "sr6", teacher_service_enabled=False)
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/start-review")
+        self.assertEqual(resp.status_code, 403)
+
+    # -- revision required --
+
+    def test_revision_required_transitions(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev1")
+        profile.profile_status = "under_review"
+        profile.reviewed_by_id = self.admin_user.id
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Please update your CV."})
+        self.assertEqual(resp.status_code, 200)
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "revision_required")
+        self.assertEqual(profile.review_notes, "Please update your CV.")
+
+    def test_revision_required_rejects_empty_note(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev2")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": ""})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_revision_required_rejects_whitespace_note(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev3")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "   "})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_revision_required_application_id_unchanged(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev4")
+        profile.profile_status = "under_review"
+        app_id = teacher.application_id
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Fix bio."})
+        db.session.refresh(teacher)
+        self.assertEqual(teacher.application_id, app_id)
+
+    def test_revision_required_teacher_can_edit_afterward(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev5")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Fix bio."})
+        self._login_as("teacher-rev5@example.com", "TeacherPassword1!")
+        resp = self.client.put("/api/me/profile", json={"bio": "Updated bio"})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_revision_required_teacher_can_replace_cv(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev6")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Upload new CV."})
+        self._login_as("teacher-rev6@example.com", "TeacherPassword1!")
+        resp = self.client.post("/api/me/uploads", data={
+            "file": (io.BytesIO(b"new cv"), "cv_new.pdf"),
+            "kind": "cv",
+        }, content_type="multipart/form-data")
+        self.assertEqual(resp.status_code, 201)
+
+    def test_revision_required_review_notes_preserved_after_edit(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev7")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Fix location."})
+        self._login_as("teacher-rev7@example.com", "TeacherPassword1!")
+        self.client.put("/api/me/profile", json={"location": "Kumasi"})
+        db.session.refresh(profile)
+        self.assertEqual(profile.review_notes, "Fix location.")
+
+    def test_revision_required_must_resubmit(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev8")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Fix bio."})
+        self._login_as("teacher-rev8@example.com", "TeacherPassword1!")
+        self.client.put("/api/me/profile", json={"bio": "Updated bio with requested corrections."})
+        resp = self.client.post("/api/me/profile/submit")
+        self.assertEqual(resp.status_code, 200)
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "submitted")
+
+    def test_revision_required_creates_audit_event(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev9")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Fix."})
+        audit_entries = AuditLog.query.filter_by(action="teacher_profile_revision_requested").all()
+        self.assertEqual(len(audit_entries), 1)
+
+    def test_revision_required_still_no_teacher_id(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rev10")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Fix."})
+        db.session.refresh(teacher)
+        self.assertIsNone(teacher.teacher_id)
+
+    # -- rejection --
+
+    def test_rejection_transitions(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rej1")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reject", json={"reason": "Documents appear altered."})
+        self.assertEqual(resp.status_code, 200)
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "rejected")
+        self.assertEqual(profile.review_notes, "Documents appear altered.")
+
+    def test_rejection_rejects_empty_reason(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rej2")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/reject", json={"reason": ""})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_rejection_application_id_unchanged(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rej3")
+        profile.profile_status = "under_review"
+        app_id = teacher.application_id
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/reject", json={"reason": "Missing documents."})
+        db.session.refresh(teacher)
+        self.assertEqual(teacher.application_id, app_id)
+
+    def test_rejection_teacher_id_not_issued(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rej4")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/reject", json={"reason": "Reason."})
+        db.session.refresh(teacher)
+        self.assertIsNone(teacher.teacher_id)
+
+    def test_rejection_blocks_resubmit(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rej5")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/reject", json={"reason": "Reason."})
+        self._login_as("teacher-rej5@example.com", "TeacherPassword1!")
+        resp = self.client.post("/api/me/profile/submit")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("rejected", resp.get_json().get("error", "").lower())
+
+    def test_rejection_creates_audit_event(self):
+        teacher, profile = _make_submitted_teacher(db.session, "rej6")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/reject", json={"reason": "Reason."})
+        audit_entries = AuditLog.query.filter_by(action="teacher_profile_rejected").all()
+        self.assertEqual(len(audit_entries), 1)
+
+    # -- visual verification --
+
+    def test_verify_transitions_and_issues_teacher_id(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver1")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        db.session.refresh(teacher)
+        self.assertEqual(profile.profile_status, "verified")
+        self.assertIsNotNone(teacher.teacher_id)
+        self.assertRegex(teacher.teacher_id, r"^RMX-TCH-\d{6}$")
+        self.assertEqual(data["teacher_id"], teacher.teacher_id)
+        self.assertEqual(data["application_id"], teacher.application_id)
+
+    def test_verify_rejects_missing_checklist_items(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver2")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True,
+        })
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("no_obvious_alteration_detected", resp.get_json().get("error", ""))
+
+    def test_verify_rejects_false_checklist_item(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver3")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": False,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_verify_rejects_non_under_review(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver4")
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_verify_incomplete_profile_rejected(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver5")
+        profile.profile_status = "under_review"
+        profile.location = None
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_verify_missing_cv_rejected(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver6")
+        profile.profile_status = "under_review"
+        profile.cv_file_id = None
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_verify_missing_certificate_rejected(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver7")
+        profile.profile_status = "under_review"
+        profile.certificate_file_id = None
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_verify_rejects_document_from_other_user(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver8")
+        profile.profile_status = "under_review"
+        other_cv = UploadedFile(
+            owner_id=self.admin_user.id, original_filename="other.pdf",
+            stored_filename="other_stored.pdf", storage_path="/tmp/other.pdf",
+            mime_type="application/pdf", size_bytes=100, category="cv",
+        )
+        db.session.add(other_cv)
+        db.session.flush()
+        profile.cv_file_id = other_cv.id
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("invalid", resp.get_json().get("error", "").lower())
+
+    def test_verify_creates_audit_events(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver9")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        verify_events = AuditLog.query.filter_by(action="teacher_profile_visually_verified").all()
+        self.assertEqual(len(verify_events), 1)
+        id_events = AuditLog.query.filter_by(action="teacher_id_issued").all()
+        self.assertEqual(len(id_events), 1)
+
+    def test_verify_application_id_unchanged(self):
+        teacher, profile = _make_submitted_teacher(db.session, "ver10")
+        profile.profile_status = "under_review"
+        app_id = teacher.application_id
+        db.session.commit()
+        self._login_admin()
+        self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json={
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        })
+        db.session.refresh(teacher)
+        self.assertEqual(teacher.application_id, app_id)
+
+    # -- idempotency --
+
+    def test_verify_idempotent_returns_same_teacher_id(self):
+        teacher, profile = _make_submitted_teacher(db.session, "idem1")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        req = {
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        }
+        resp1 = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json=req)
+        self.assertEqual(resp1.status_code, 200)
+        tid1 = resp1.get_json()["teacher_id"]
+        resp2 = self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json=req)
+        self.assertEqual(resp2.status_code, 200)
+        tid2 = resp2.get_json()["teacher_id"]
+        self.assertEqual(tid1, tid2)
+
+    def test_verify_idempotent_no_duplicate_audit_events(self):
+        teacher, profile = _make_submitted_teacher(db.session, "idem2")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        req = {
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        }
+        self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json=req)
+        self.client.post(f"/api/admin/teachers/{teacher.id}/verify", json=req)
+        verify_events = AuditLog.query.filter_by(action="teacher_profile_visually_verified").all()
+        self.assertEqual(len(verify_events), 1)
+        id_events = AuditLog.query.filter_by(action="teacher_id_issued").all()
+        self.assertEqual(len(id_events), 1)
+
+    # -- profile locks for new states --
+
+    def test_under_review_profile_edit_blocked(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock1")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_as("teacher-lock1@example.com", "TeacherPassword1!")
+        resp = self.client.put("/api/me/profile", json={"location": "Kumasi"})
+        self.assertEqual(resp.status_code, 423)
+
+    def test_under_review_upload_blocked(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock2")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_as("teacher-lock2@example.com", "TeacherPassword1!")
+        resp = self.client.post("/api/me/uploads", data={
+            "file": (io.BytesIO(b"content"), "cv_new.pdf"),
+            "kind": "cv",
+        }, content_type="multipart/form-data")
+        self.assertEqual(resp.status_code, 423)
+
+    def test_under_review_name_change_blocked(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock3")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_as("teacher-lock3@example.com", "TeacherPassword1!")
+        resp = self.client.put("/api/me/account", json={"first_name": "New", "last_name": "Name"})
+        self.assertEqual(resp.status_code, 423)
+
+    def test_verified_edit_blocked(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock4")
+        profile.profile_status = "verified"
+        db.session.commit()
+        self._login_as("teacher-lock4@example.com", "TeacherPassword1!")
+        resp = self.client.put("/api/me/profile", json={"bio": "New bio"})
+        self.assertEqual(resp.status_code, 423)
+
+    def test_verified_upload_blocked(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock5")
+        profile.profile_status = "verified"
+        db.session.commit()
+        self._login_as("teacher-lock5@example.com", "TeacherPassword1!")
+        resp = self.client.post("/api/me/uploads", data={
+            "file": (io.BytesIO(b"content"), "cv_new.pdf"),
+            "kind": "cv",
+        }, content_type="multipart/form-data")
+        self.assertEqual(resp.status_code, 423)
+
+    def test_rejected_edit_blocked(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock6")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_as("teacher-lock6@example.com", "TeacherPassword1!")
+        resp = self.client.put("/api/me/profile", json={"bio": "New bio"})
+        self.assertEqual(resp.status_code, 423)
+
+    def test_rejected_name_change_blocked(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock7")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_as("teacher-lock7@example.com", "TeacherPassword1!")
+        resp = self.client.put("/api/me/account", json={"first_name": "New", "last_name": "Name"})
+        self.assertEqual(resp.status_code, 423)
+
+    def test_rejected_upload_blocked(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock8")
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_as("teacher-lock8@example.com", "TeacherPassword1!")
+        resp = self.client.post("/api/me/uploads", data={
+            "file": (io.BytesIO(b"content"), "cv_new.pdf"),
+            "kind": "cv",
+        }, content_type="multipart/form-data")
+        self.assertEqual(resp.status_code, 423)
+
+    def test_locked_account_read_access_allowed(self):
+        teacher, profile = _make_submitted_teacher(db.session, "lock9")
+        profile.profile_status = "verified"
+        db.session.commit()
+        self._login_as("teacher-lock9@example.com", "TeacherPassword1!")
+        resp = self.client.get("/api/me/profile")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_invalid_status_filter_rejected(self):
+        self._login_admin()
+        resp = self.client.get("/api/admin/teachers/review?status=invalid")
+        self.assertEqual(resp.status_code, 400)
+
+    # -- inconsistent pre-existing teacher_id --
+
+    def _verify_payload(self):
+        return {
+            "required_documents_present": True, "documents_readable": True,
+            "identity_details_consistent": True, "qualifications_consistent": True,
+            "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
+        }
+
+    def test_verify_under_review_with_existing_teacher_id_returns_409(self):
+        """under_review + teacher_id already set is inconsistent → 409."""
+        teacher, profile = _make_submitted_teacher(db.session, "undrvid")
+        profile.profile_status = "under_review"
+        teacher.teacher_id = "RMX-TCH-000999"
+        teacher.teacher_id_issued_at = datetime.now(timezone.utc)
+        db.session.commit()
+        original_issued_at = teacher.teacher_id_issued_at
+        self._login_admin()
+        resp = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/verify", json=self._verify_payload()
+        )
+        self.assertEqual(resp.status_code, 409)
+        db.session.refresh(teacher)
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "under_review")
+        self.assertEqual(teacher.teacher_id, "RMX-TCH-000999")
+        self.assertEqual(teacher.teacher_id_issued_at, original_issued_at)
+        verify_events = AuditLog.query.filter_by(action="teacher_profile_visually_verified").all()
+        self.assertEqual(len(verify_events), 0)
+        issue_events = AuditLog.query.filter_by(action="teacher_id_issued").all()
+        self.assertEqual(len(issue_events), 0)
+
+    def test_verify_verified_preserves_teacher_id_issued_at(self):
+        """Verified + teacher_id returns idempotently preserving issued_at."""
+        teacher, profile = _make_submitted_teacher(db.session, "idem3")
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        resp1 = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/verify", json=self._verify_payload()
+        )
+        self.assertEqual(resp1.status_code, 200)
+        data1 = resp1.get_json()
+        db.session.refresh(teacher)
+        original_issued_at = teacher.teacher_id_issued_at
+        self.assertIsNotNone(original_issued_at)
+        resp2 = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/verify", json=self._verify_payload()
+        )
+        self.assertEqual(resp2.status_code, 200)
+        db.session.refresh(teacher)
+        self.assertEqual(teacher.teacher_id, data1["teacher_id"])
+        self.assertEqual(teacher.teacher_id_issued_at, original_issued_at)
+        verify_events = AuditLog.query.filter_by(action="teacher_profile_visually_verified").all()
+        self.assertEqual(len(verify_events), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -2,18 +2,19 @@
 
 Uses a counter table (TeacherIdCounter) for safe concurrent ID generation
 on both SQLite and PostgreSQL.  Each year has its own application-ID sequence
-so that RMX-APP-{YEAR}-{number} resets annually.  Teacher IDs use the same
-year row but a separate counter so they are independent of application IDs.
+so that RMX-APP-{YEAR}-{number} resets annually.
 
-These functions are implemented and tested but are not yet wired into the
-signup or review flows — that will happen in a later phase.
+Teacher IDs use a dedicated global counter (TeacherIdGlobalCounter) that holds
+a single row with a permanently incrementing sequence.  Because the approved
+Teacher ID format (RMX-TCH-NNNNNN) contains no year, the numeric portion must
+remain unique across all years and must never reset.
 """
 
 import re
 from datetime import datetime, timezone
 
 from .extensions import db
-from .models import TeacherIdCounter
+from .models import TeacherIdCounter, TeacherIdGlobalCounter
 
 APPLICATION_ID_PREFIX = "RMX-APP"
 TEACHER_ID_PREFIX = "RMX-TCH"
@@ -52,44 +53,47 @@ def _get_and_increment_application_seq(year):
     return _next_seq(counter, "last_application_seq")
 
 
-def _get_and_increment_teacher_seq(year):
-    counter = _counter_for_year(year)
-    return _next_seq(counter, "last_teacher_seq")
+def _get_global_teacher_counter():
+    """Return the single TeacherIdGlobalCounter row (``id = 1``), creating it if missing.
+
+    The table uses ``id = 1`` as a fixed primary key so the database
+    constraint itself guarantees at most one row.  Uses ``with_for_update``
+    so that PostgreSQL locks the row for the remainder of the transaction,
+    preventing two concurrent callers from reading the same sequence value.
+    """
+    counter = TeacherIdGlobalCounter.query.with_for_update().filter_by(id=1).first()
+    if not counter:
+        counter = TeacherIdGlobalCounter(id=1, last_teacher_seq=0)
+        db.session.add(counter)
+        db.session.flush()
+    return counter
 
 
-def generate_application_id(year_override=None):
+def generate_application_id():
     """Return the next application ID.
 
     Format: ``RMX-APP-{YYYY}-{000001..999999}``
 
     Safe under concurrent requests: the counter row is locked (PostgreSQL) or
     serialised (SQLite) so no two callers can receive the same ID.
-
-    ``year_override`` is for testing the year-rollover path.  Callers that
-    are not tests should omit it.
     """
     now = datetime.now(timezone.utc)
-    year = year_override if year_override is not None else now.year
-    seq = _get_and_increment_application_seq(year)
-    return f"{APPLICATION_ID_PREFIX}-{year}-{seq:0{_PAD}d}"
+    seq = _get_and_increment_application_seq(now.year)
+    return f"{APPLICATION_ID_PREFIX}-{now.year}-{seq:0{_PAD}d}"
 
 
-def generate_teacher_id(year_override=None):
+def generate_teacher_id():
     """Return the next permanent teacher ID.
 
     Format: ``RMX-TCH-{000001..999999}``
 
-    Uses the current year's counter row (creating it if it does not yet
-    exist).  The teacher counter is independent of the application counter
-    so the two sequences can advance at different rates.
-
-    ``year_override`` is for testing the year-rollover path.  Callers that
-    are not tests should omit it.
+    Uses a dedicated global counter (TeacherIdGlobalCounter) so the sequence
+    never resets across years.  Safe under concurrent requests.
     """
-    now = datetime.now(timezone.utc)
-    year = year_override if year_override is not None else now.year
-    seq = _get_and_increment_teacher_seq(year)
-    return f"{TEACHER_ID_PREFIX}-{seq:0{_PAD}d}"
+    counter = _get_global_teacher_counter()
+    counter.last_teacher_seq += 1
+    db.session.flush()
+    return f"{TEACHER_ID_PREFIX}-{counter.last_teacher_seq:0{_PAD}d}"
 
 
 def is_valid_application_id(value):
