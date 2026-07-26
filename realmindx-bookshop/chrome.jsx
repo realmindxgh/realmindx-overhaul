@@ -1076,7 +1076,7 @@ const ScrollToTopFab = ({ route }) => {
     };
   }, [route]);
 
-  if (!visible) return null;
+  if (!visible || route === 'checkout') return null;
   return (
     <button
       type="button"

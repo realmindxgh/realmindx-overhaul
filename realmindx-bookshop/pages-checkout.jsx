@@ -744,14 +744,14 @@ const CheckoutPage = ({ navigate }) => {
 
               <div className="bs-checkout-section-label"><span><Icon name="truck" size={17} /></span>Delivery Method</div>
               <button type="button" className={`bs-radio-card${method==='delivery'?' sel':''}`} aria-pressed={method === 'delivery'} onClick={() => setMethod('delivery')}>
-                <span className="bs-radio-dot" /><div><div className="bs-rc-title">Home Delivery</div><div className="bs-rc-sub">Within 48 hours, nationwide</div></div>
-                <div style={{ marginLeft:'auto', textAlign:'right' }}>
+                <span className="bs-radio-dot" /><div className="bs-rc-copy"><div className="bs-rc-title">Home Delivery</div><div className="bs-rc-sub">Within 48 hours, nationwide</div></div>
+                <div className="bs-rc-cost">
                   <span className="bs-rc-price">{selectedZone ? cedis(Number(selectedZone.fee)) : ''}</span>
-                  {selectedZone && Number(selectedZone.fee) > 0 && <div style={{ fontSize:11, color:'var(--bs-text-muted)', lineHeight:1.3 }}>Estimate only. Actual fee may vary.</div>}
+                  {selectedZone && Number(selectedZone.fee) > 0 && <div className="bs-rc-estimate">Estimate only. Actual fee may vary.</div>}
                 </div>
               </button>
               <button type="button" className={`bs-radio-card${method==='pickup'?' sel':''}`} aria-pressed={method === 'pickup'} onClick={() => setMethod('pickup')}>
-                <span className="bs-radio-dot" /><div><div className="bs-rc-title">Pickup at {pickupAddress}</div><div className="bs-rc-sub">Ready next working day</div></div><span className="bs-rc-price">Free</span>
+                <span className="bs-radio-dot" /><div className="bs-rc-copy"><div className="bs-rc-title">Pickup at {pickupAddress}</div><div className="bs-rc-sub">Ready next working day</div></div><span className="bs-rc-price">Free</span>
               </button>
 
               {method === 'delivery' && <>
@@ -926,13 +926,13 @@ const CheckoutPage = ({ navigate }) => {
               </div>
 
               <div className="bs-summary-row bs-total" style={{ fontSize:22, borderTop:'1px solid var(--bs-border)', paddingTop:14, marginTop:0 }}><span>Total</span><span>{cedis(total)}</span></div>
-              <TurnstileField className="bs-turnstile-wrap bs-checkout-turnstile" onVerify={setTurnstileToken} />
+              <TurnstileField className="bs-turnstile-wrap bs-checkout-turnstile" theme="light" onVerify={setTurnstileToken} />
               {orderError && <p className="bs-track-error" role="alert" style={{ marginTop:14 }}>{orderError}</p>}
               <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}>
                 <Icon name={paymentMethod === 'online' ? 'lock' : 'truck'} size={17} />
                 {placing
                   ? paymentMethod === 'online' ? 'Opening secure payment...' : 'Placing order...'
-                  : paymentMethod === 'online' ? `Pay ${cedis(total)} Online` : `Confirm Order · Pay ${cedis(total)} on Delivery`}
+                  : paymentMethod === 'online' ? `Pay ${cedis(total)} Online` : 'Confirm Order · Pay on Delivery'}
               </button>
               <AuthReturnActions navigate={navigate} />
               <div className="bs-trust-badges">
