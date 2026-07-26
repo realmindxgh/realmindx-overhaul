@@ -678,7 +678,7 @@ const CheckoutPage = ({ navigate }) => {
         canVisit={targetStep => targetStep === 0 || (targetStep === 1 && stepOneComplete)}
         onStepChange={targetStep => {
           if (targetStep === 0) setStep(0);
-          if (targetStep === 1 && stepOneComplete) setStep(1);
+          if (targetStep === 1 && stepOneComplete) continueToPayment();
         }}
       />
       <div className="bs-checkout-layout">

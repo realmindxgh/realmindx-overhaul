@@ -1668,6 +1668,8 @@
 .bs-step:disabled { cursor: default; }
 .bs-step.clickable { cursor: pointer; }
 .bs-step.clickable:hover .bs-step-num { transform: translateY(-2px) scale(1.04); box-shadow: 0 8px 18px rgba(20,54,112,.18); }
+.bs-step.clickable:active .bs-step-num { transform: scale(.96); }
+.bs-step.clickable:focus-visible { outline: 3px solid rgba(20,54,112,.22); outline-offset: 4px; }
 .bs-step-num { width: 42px; height: 42px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: #f5f7fb; color: #70809a; border: 1.5px solid #dce4ef; flex-shrink: 0; transition: all .24s ease; box-shadow: inset 0 1px 0 rgba(255,255,255,.85); }
 .bs-step-details .bs-step-num { background: #eef4ff; color: #2b5da8; }
 .bs-step-payment .bs-step-num { background: #f6f1ff; color: #7354a7; }
