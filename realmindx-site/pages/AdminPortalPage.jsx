@@ -5759,119 +5759,126 @@ const TeacherReviewView = ({ session }) => {
 
       {detail ? (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div role="dialog" aria-modal="true" aria-labelledby="review-detail-title" style={{ position: 'relative', background: '#fff', borderRadius: 18, padding: '34px 32px 30px', width: '100%', maxWidth: 840, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
-            <button className="admin-modal-close" type="button" onClick={closeDetail} aria-label="Close">
-              <Icon name="x" size={16} />
-            </button>
+          <div role="dialog" aria-modal="true" aria-labelledby="review-detail-title" style={{ background: '#fff', borderRadius: 18, width: '100%', maxWidth: 840, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
+            {/* Fixed header */}
+            <div style={{ padding: '20px 32px 16px', borderBottom: '1px solid var(--gray-200)', background: '#fff', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                <h3 id="review-detail-title" style={{ fontFamily: "'Montserrat',sans-serif", color: 'var(--navy)', margin: 0, fontSize: '1.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {[detail.first_name, detail.last_name].filter(Boolean).join(' ')}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail.email}</p>
+              </div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
+                <span className={`badge ${statusBadgeClass(profileStatus)}`} style={{ fontSize: '0.82rem', padding: '4px 12px' }}>{STATUS_LABELS[profileStatus] || profileStatus}</span>
+                <button type="button" onClick={closeDetail} aria-label="Close" style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid var(--gray-200)', background: 'var(--gray-50)', color: 'var(--gray-600)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon name="x" size={16} />
+                </button>
+              </div>
+            </div>
 
-            {detail._loading ? (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}><p>Loading detail...</p></div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-                  <div>
-                    <h3 id="review-detail-title" style={{ fontFamily: "'Montserrat',sans-serif", color: 'var(--navy)', margin: 0, fontSize: '1.25rem' }}>
-                      {[detail.first_name, detail.last_name].filter(Boolean).join(' ')}
-                    </h3>
-                    <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--gray-500)' }}>{detail.email}</p>
-                  </div>
-                  <span className={`badge ${statusBadgeClass(profileStatus)}`} style={{ fontSize: '0.82rem', padding: '4px 12px' }}>{STATUS_LABELS[profileStatus] || profileStatus}</span>
-                </div>
-
-                <div className="teacher-detail-section">
-                  <h4>Identity</h4>
-                  <div className="teacher-detail-grid">
-                    <DetailField label="Application ID" value={detail.application_id} />
-                    {detail.teacher_id ? <DetailField label="Teacher ID" value={detail.teacher_id} wide /> : null}
-                    <DetailField label="Full name" value={[detail.first_name, detail.last_name].filter(Boolean).join(' ')} />
-                    <DetailField label="Email" value={detail.email} />
-                    <DetailField label="Phone" value={detail.phone} />
-                  </div>
-                </div>
-
-                <div className="teacher-detail-section">
-                  <h4>Teaching Profile</h4>
-                  <div className="teacher-detail-grid">
-                    <DetailField label="Teaching subject" value={teachingSubject} />
-                    <DetailField label="Preferred level" value={preferredLevel} />
-                    <DetailField label="Employment type" value={preferredEmploymentType} />
-                    <DetailField label="Curriculum experience" value={curriculumExperience} wide />
-                    <DetailField label="Location" value={location} />
-                    {bio ? <DetailField label="Bio" value={bio} wide /> : null}
-                  </div>
-                </div>
-
-                <div className="teacher-detail-section">
-                  <h4>Review Status</h4>
-                  <div className="teacher-detail-grid">
-                    <DetailField label="Profile status" value={STATUS_LABELS[profileStatus] || profileStatus} />
-                    <DetailField label="Completion" value={detail.profile_completion != null ? `${detail.profile_completion}%` : '—'} />
-                    {detail.profile_missing_fields?.length ? (
-                      <DetailField label="Missing fields" value={detail.profile_missing_fields.join(', ')} wide />
-                    ) : null}
-                    <DetailField label="Submitted" value={detail.submitted_at ? new Date(detail.submitted_at).toLocaleDateString() : '—'} />
-                    <DetailField label="Reviewed" value={detail.reviewed_at ? new Date(detail.reviewed_at).toLocaleDateString() : '—'} />
-                    {detail.review_notes ? (
-                      <div className="teacher-detail-field is-wide">
-                        <div>Review notes</div>
-                        <span style={{ whiteSpace: 'pre-wrap' }}>{detail.review_notes}</span>
+            {/* Scrollable body */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <div style={{ padding: '24px 32px 30px' }}>
+                {detail._loading ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0' }}><p>Loading detail...</p></div>
+                ) : (
+                  <>
+                    <div className="teacher-detail-section">
+                      <h4>Identity</h4>
+                      <div className="teacher-detail-grid">
+                        <DetailField label="Application ID" value={detail.application_id} />
+                        {detail.teacher_id ? <DetailField label="Teacher ID" value={detail.teacher_id} wide /> : null}
+                        <DetailField label="Full name" value={[detail.first_name, detail.last_name].filter(Boolean).join(' ')} />
+                        <DetailField label="Email" value={detail.email} />
+                        <DetailField label="Phone" value={detail.phone} />
                       </div>
-                    ) : null}
-                    {detail.teacher_id_issued_at ? <DetailField label="Teacher ID issued" value={new Date(detail.teacher_id_issued_at).toLocaleDateString()} /> : null}
-                  </div>
-                </div>
-
-                <div className="teacher-detail-section">
-                  <h4>Documents</h4>
-                  <div className="teacher-detail-grid">
-                    {reviewDetail.cv_url ? (
-                      <div className="teacher-detail-field is-wide">
-                        <label>CV</label>
-                        <span>{reviewDetail.cv_filename || 'CV'}</span>
-                        <a href={reviewDetail.cv_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <Icon name="eye" size={14} /> View CV
-                        </a>
-                      </div>
-                    ) : <DetailField label="CV" value="Not uploaded" />}
-                    {reviewDetail.certificate_url ? (
-                      <div className="teacher-detail-field is-wide">
-                        <label>Certificate</label>
-                        <span>{reviewDetail.certificate_filename || 'Certificate'}</span>
-                        <a href={reviewDetail.certificate_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <Icon name="eye" size={14} /> View Certificate
-                        </a>
-                      </div>
-                    ) : <DetailField label="Certificate" value="Not uploaded" />}
-                  </div>
-                </div>
-
-                {detail.applications?.length ? (
-                  <div className="teacher-detail-section">
-                    <h4>Job Applications</h4>
-                    <div className="teacher-detail-grid">
-                      {detail.applications.map(app => (
-                        <DetailField key={app.id} label={app.job_title || `Application #${app.id}`} value={`${app.organisation || ''} — ${app.status}`} wide />
-                      ))}
                     </div>
-                  </div>
-                ) : null}
 
-                {detail.placements?.length ? (
-                  <div className="teacher-detail-section">
-                    <h4>Placements</h4>
-                    <div className="teacher-detail-grid">
-                      {detail.placements.map(pl => (
-                        <DetailField key={pl.id} label={pl.job_title || 'Placement'} value={`${pl.school_name} — ${pl.status}`} wide />
-                      ))}
+                    <div className="teacher-detail-section">
+                      <h4>Teaching Profile</h4>
+                      <div className="teacher-detail-grid">
+                        <DetailField label="Teaching subject" value={teachingSubject} />
+                        <DetailField label="Preferred level" value={preferredLevel} />
+                        <DetailField label="Employment type" value={preferredEmploymentType} />
+                        <DetailField label="Curriculum experience" value={curriculumExperience} wide />
+                        <DetailField label="Location" value={location} />
+                        {bio ? <DetailField label="Bio" value={bio} wide /> : null}
+                      </div>
                     </div>
-                  </div>
-                ) : null}
 
-                <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 20, marginTop: 8 }}>
-                  {showDetailActions()}
-                </div>
-              </>
-            )}
+                    <div className="teacher-detail-section">
+                      <h4>Review Status</h4>
+                      <div className="teacher-detail-grid">
+                        <DetailField label="Profile status" value={STATUS_LABELS[profileStatus] || profileStatus} />
+                        <DetailField label="Completion" value={detail.profile_completion != null ? `${detail.profile_completion}%` : '—'} />
+                        {detail.profile_missing_fields?.length ? (
+                          <DetailField label="Missing fields" value={detail.profile_missing_fields.join(', ')} wide />
+                        ) : null}
+                        <DetailField label="Submitted" value={detail.submitted_at ? new Date(detail.submitted_at).toLocaleDateString() : '—'} />
+                        <DetailField label="Reviewed" value={detail.reviewed_at ? new Date(detail.reviewed_at).toLocaleDateString() : '—'} />
+                        {detail.review_notes ? (
+                          <div className="teacher-detail-field is-wide">
+                            <div>Review notes</div>
+                            <span style={{ whiteSpace: 'pre-wrap' }}>{detail.review_notes}</span>
+                          </div>
+                        ) : null}
+                        {detail.teacher_id_issued_at ? <DetailField label="Teacher ID issued" value={new Date(detail.teacher_id_issued_at).toLocaleDateString()} /> : null}
+                      </div>
+                    </div>
+
+                    <div className="teacher-detail-section">
+                      <h4>Documents</h4>
+                      <div className="teacher-detail-grid">
+                        {reviewDetail.cv_url ? (
+                          <div className="teacher-detail-field is-wide">
+                            <label>CV</label>
+                            <span>{reviewDetail.cv_filename || 'CV'}</span>
+                            <a href={reviewDetail.cv_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <Icon name="eye" size={14} /> View CV
+                            </a>
+                          </div>
+                        ) : <DetailField label="CV" value="Not uploaded" />}
+                        {reviewDetail.certificate_url ? (
+                          <div className="teacher-detail-field is-wide">
+                            <label>Certificate</label>
+                            <span>{reviewDetail.certificate_filename || 'Certificate'}</span>
+                            <a href={reviewDetail.certificate_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <Icon name="eye" size={14} /> View Certificate
+                            </a>
+                          </div>
+                        ) : <DetailField label="Certificate" value="Not uploaded" />}
+                      </div>
+                    </div>
+
+                    {detail.applications?.length ? (
+                      <div className="teacher-detail-section">
+                        <h4>Job Applications</h4>
+                        <div className="teacher-detail-grid">
+                          {detail.applications.map(app => (
+                            <DetailField key={app.id} label={app.job_title || `Application #${app.id}`} value={`${app.organisation || ''} — ${app.status}`} wide />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {detail.placements?.length ? (
+                      <div className="teacher-detail-section">
+                        <h4>Placements</h4>
+                        <div className="teacher-detail-grid">
+                          {detail.placements.map(pl => (
+                            <DetailField key={pl.id} label={pl.job_title || 'Placement'} value={`${pl.school_name} — ${pl.status}`} wide />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 20, marginTop: 8 }}>
+                      {showDetailActions()}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
