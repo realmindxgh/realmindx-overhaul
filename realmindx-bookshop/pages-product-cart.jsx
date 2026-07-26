@@ -761,16 +761,16 @@ const CartPage = ({ navigate }) => {
                 <div className="bs-cart-item-title">{b.title}</div>
                 {!b.stock && <span className="bs-stock-warning">Out of stock</span>}
                 <div className="bs-pcard-desc" style={{ whiteSpace:'normal' }}>{b.desc}</div>
-              </div>
-              <div className="bs-cart-item-right">
-                <QtyStepper
-                  qty={b.qty}
-                  setQty={(q)=>setQty(b.id,q)}
-                  onMinimumDecrease={() => setPendingRemoval(b)}
-                  sm
-                />
-                <span className="bs-cart-subtotal">{cedis(b.price * b.qty)}</span>
-                <button className="bs-remove-btn" aria-label="Remove" onClick={() => remove(b.id)}><Icon name="trash" size={18} /></button>
+                <div className="bs-cart-item-right">
+                  <QtyStepper
+                    qty={b.qty}
+                    setQty={(q)=>setQty(b.id,q)}
+                    onMinimumDecrease={() => setPendingRemoval(b)}
+                    sm
+                  />
+                  <span className="bs-cart-subtotal">{cedis(b.price * b.qty)}</span>
+                  <button className="bs-remove-btn" aria-label="Remove" onClick={() => remove(b.id)}><Icon name="trash" size={18} /></button>
+                </div>
               </div>
             </div>
           ))}
@@ -804,7 +804,6 @@ const CartPage = ({ navigate }) => {
             )}
           </div>
           <AuthReturnActions navigate={navigate} route="cart" />
-          <div className="bs-secure-note"><Icon name="lock" size={14} /> Secure checkout powered by Paystack</div>
         </aside>
       </div>
 

@@ -880,6 +880,7 @@ const App = () => {
       <div className="bs">
         <Navbar route={route} navigate={navigate} />
         <div className="bs-mobile-shell">
+          {route !== 'home' && TAB_ROUTES.has(route) && <BookshopBackButton navigate={navigate} />}
           <div className="bs-tab-viewport">
             {persistentHomeRef.current && (
               <PersistentHomeTab navigate={navigate} isActive={route === 'home'} homeLoading={homeLoading} onLoadingChange={setHomeLoading} />
@@ -937,7 +938,7 @@ const App = () => {
           </div>
         )}
         <BookshopErrorBoundary>
-          {!TAB_ROUTES.has(route) && <BookshopBackButton navigate={navigate} />}
+          {route !== 'home' && <BookshopBackButton navigate={navigate} />}
           {page}
         </BookshopErrorBoundary>
       </main>

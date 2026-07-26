@@ -3080,7 +3080,7 @@ html {
   background: var(--yellow) !important;
   border-color: var(--yellow) !important;
   color: var(--navy) !important;
-  box-shadow: 0 10px 22px rgba(180, 127, 0, 0.18);
+  box-shadow: none !important;
 }
 
 .btn-primary:hover,
@@ -3095,7 +3095,7 @@ html {
   color: #fff !important;
   border: 1.5px solid var(--bs-navy) !important;
   background: var(--bs-navy) !important;
-  box-shadow: 0 10px 22px rgba(20, 54, 112, 0.16) !important;
+  box-shadow: none !important;
 }
 
 .bs .bs-btn-navy:not(:disabled):hover,
@@ -3762,17 +3762,40 @@ html {
 }
 
 .bs .bs-cart-clear-btn {
-  background: #ffd7d7 !important;
+  background: #fff !important;
+  border: 1.5px solid #ff7575 !important;
   border-color: #ff7575 !important;
   color: #b71f1f !important;
   box-shadow: none !important;
 }
 
 .bs .bs-cart-clear-btn:hover {
-  background: #ffcaca !important;
+  background: #fff7f7 !important;
   border-color: #f05252 !important;
   color: #991b1b !important;
   box-shadow: none !important;
+}
+
+.bs .bs-cart-wishlist-link {
+  border: 1.5px solid #111827 !important;
+  border-radius: 50% !important;
+  color: #111827 !important;
+}
+
+.bs .bs-wishlist-btn {
+  border: 1.5px solid #111827 !important;
+  border-radius: 50% !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.bs .bs-wishlist-btn.active {
+  border-color: #111827 !important;
+  color: #e11d48 !important;
+}
+
+.bs .bs-remove-btn {
+  color: #dc2626 !important;
 }
 
 #rmx-toast-root {
