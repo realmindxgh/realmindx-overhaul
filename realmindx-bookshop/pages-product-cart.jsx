@@ -698,19 +698,36 @@ const CartPage = ({ navigate }) => {
           <button type="button" className="bs-cart-clear-btn" onClick={clear}>
             <Icon name="trash" size={14} /> Clear cart
           </button>
-          <button
-            type="button"
-            className="bs-cart-invoice-btn"
-            disabled={selectedCount === 0 || generatingInvoice}
-            onClick={generateCartInvoice}
-          >
-            <Icon name="files" size={14} /> {generatingInvoice ? 'Generating...' : 'Generate Invoice'}
-          </button>
         </div>
       </div>
 
+      <div className={`bs-cart-savings-banner${selectedBulkSaving > 0 ? '' : ' is-invoice-only'}`}>
+          <span className="bs-cart-savings-icon"><Icon name={selectedBulkSaving > 0 ? 'gift' : 'files'} size={24} /></span>
+          <div className="bs-cart-savings-copy">
+            {selectedBulkSaving > 0 ? (
+              <>
+                <strong>Nice choice! You’re saving more with bulk pricing.</strong>
+                <span>You saved <b>{cedis(selectedBulkSaving)}</b> with your bulk discount.</span>
+              </>
+            ) : (
+              <>
+                <strong>Need a shareable copy of this cart?</strong>
+                <span>Generate a detailed invoice for your selected books.</span>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            className="bs-cart-savings-invoice"
+            disabled={selectedCount === 0 || generatingInvoice}
+            onClick={generateCartInvoice}
+          >
+            <Icon name="files" size={16} /> {generatingInvoice ? 'Generating...' : 'Generate Invoice'}
+          </button>
+      </div>
+
       <div className="bs-cart-layout">
-        <div>
+        <div className="bs-cart-items-card">
           {detailed.map((b, i) => (
             <div className={`bs-cart-item${b.selected ? '' : ' is-unselected'}`} key={b.id}>
               <button

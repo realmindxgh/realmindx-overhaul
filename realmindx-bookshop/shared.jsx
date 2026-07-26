@@ -51,6 +51,7 @@ const Icon = ({ name, size = 24, stroke = 1.8, className = '' }) => {
     box:      <><path d="M3 8l9-5 9 5v8l-9 5-9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></>,
     spark:    <path d="M12 2l2.4 6.5L21 9l-5 4.2L17.5 20 12 16.5 6.5 20 8 13.2 3 9l6.6-.5z"/>,
     tag:      <><path d="M20 13l-7 7-9-9V4h7l9 9z"/><circle cx="8.5" cy="8.5" r="1.5"/></>,
+    gift:     <><rect x="3" y="10" width="18" height="11" rx="1.5"/><path d="M12 10v11M3 14h18M5 10V7h14v3"/><path d="M12 7H8.5a2.5 2.5 0 1 1 2.2-3.7L12 7zm0 0h3.5a2.5 2.5 0 1 0-2.2-3.7L12 7z"/></>,
   };
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none"
