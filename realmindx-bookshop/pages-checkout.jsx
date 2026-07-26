@@ -109,21 +109,26 @@ import TurnstileField from '../src/lib/TurnstileField.jsx';
 import { GHANA_REGIONS, deliveryLocationAliases, deliveryLocationSearchText, normaliseLocationSearch } from '../src/lib/ghanaLocations.js';
 
 const StepBar = ({ step, canVisit = () => false, onStepChange = null }) => {
-  const labels = ['Basic information', 'Payment', 'Success'];
+  const stages = [
+    { label: 'Delivery details', icon: 'user', key: 'details' },
+    { label: 'Secure payment', icon: 'lock', key: 'payment' },
+    { label: 'Order confirmed', icon: 'check', key: 'success' },
+  ];
   return (
     <div className="bs-steps" aria-label="Checkout progress">
-      {labels.map((l, i) => (
-        <React.Fragment key={l}>
+      {stages.map((stage, i) => (
+        <React.Fragment key={stage.key}>
           <button
             type="button"
-            className={`bs-step${step === i ? ' active' : ''}${step > i ? ' done' : ''}${canVisit(i) && i !== step ? ' clickable' : ''}`}
+            className={`bs-step bs-step-${stage.key}${step === i ? ' active' : ''}${step > i ? ' done' : ''}${canVisit(i) && i !== step ? ' clickable' : ''}`}
             aria-current={step === i ? 'step' : undefined}
-            aria-label={`${l}${step > i ? ', completed' : step === i ? ', current step' : ''}`}
+            aria-label={`${stage.label}${step > i ? ', completed' : step === i ? ', current step' : ''}`}
+            title={stage.label}
             disabled={!onStepChange || !canVisit(i) || i === step}
             onClick={() => onStepChange?.(i)}
           >
-            <span className="bs-step-num">{step > i ? <Icon name="check" size={16} /> : i+1}</span>
-            <span className="bs-step-label">{l}</span>
+            <span className="bs-step-num" aria-hidden="true">{step > i ? <Icon name="check" size={17} /> : <Icon name={stage.icon} size={17} />}</span>
+            <span className="bs-step-label">{stage.label}</span>
           </button>
           {i < 2 && <span className={`bs-step-line${step > i ? ' done' : ''}`} />}
         </React.Fragment>
