@@ -6,6 +6,11 @@
 // synchronous getDemoSession() reads keep working unchanged.
 // Local mode (default): validates against the bundled demo
 // accounts exactly as before.
+//
+// SAFETY: The local demo-fallback MUST NOT activate on
+// production domains. If VITE_API_BASE_URL is absent on a
+// non-local hostname, callers receive a configuration error
+// rather than silently checking against bundled demo accounts.
 // ============================================================
 
 import { isApiMode, api } from './apiClient.js';
@@ -77,6 +82,17 @@ const invalidCredentials = (role) => {
   return err;
 };
 
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
+
+const guardProductionFallback = () => {
+  if (typeof window === 'undefined') return;
+  if (LOCAL_HOSTNAMES.has(window.location.hostname)) return;
+  throw new Error(
+    'Authentication is unavailable — the server configuration is incomplete. '
+    + 'Please contact RealMindX support.'
+  );
+};
+
 // role: 'admin' | 'user'
 export const signIn = async ({ email, password, role = 'user', remember = false, surface = '' }) => {
   if (isApiMode()) {
@@ -108,6 +124,7 @@ export const signIn = async ({ email, password, role = 'user', remember = false,
     saveDemoSession(session);
     return session;
   }
+  guardProductionFallback();
   const account = DEMO_ACCOUNTS[role];
   if (!account || !credentialsMatch(account, email, password)) {
     throw invalidCredentials(role);
@@ -118,6 +135,7 @@ export const signIn = async ({ email, password, role = 'user', remember = false,
 
 export const signInWithPhone = async ({ phone, password, role, remember = false }) => {
   if (!isApiMode()) {
+    guardProductionFallback();
     throw invalidCredentials(role);
   }
   const login = role === 'delivery_company_user'
@@ -140,7 +158,10 @@ export const signInWithPhone = async ({ phone, password, role, remember = false 
 };
 
 export const completeTwoFactorLogin = async ({ otp, role = 'user' }) => {
-  if (!isApiMode()) return getDemoSession();
+  if (!isApiMode()) {
+    guardProductionFallback();
+    return getDemoSession();
+  }
   const { user } = await api.completeTwoFactorLogin({ otp });
   const actualRole = user?.role?.name || user?.role;
   if (role === 'user' && actualRole && actualRole !== 'user') {
