@@ -73,12 +73,9 @@ class User(UserMixin, TimestampMixin, db.Model):
     locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
     terms_accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    application_id = db.Column(db.String(30), nullable=True, unique=True, index=True)
-    teacher_id = db.Column(db.String(30), nullable=True, unique=True, index=True)
-    teacher_id_issued_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     role = db.relationship("Role")
-    profile = db.relationship("UserProfile", uselist=False, back_populates="user", cascade="all, delete-orphan", foreign_keys=lambda: [UserProfile.user_id])
+    profile = db.relationship("UserProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
     direct_permissions = db.relationship("Permission", secondary=staff_permissions)
 
     def set_password(self, password, enable_login=True):
@@ -148,47 +145,8 @@ class UserProfile(TimestampMixin, db.Model):
     payout_bank_account_name = db.Column(db.String(160), nullable=True)
     payout_bank_account_number = db.Column(db.String(80), nullable=True)
     payout_notes = db.Column(db.Text, nullable=True)
-    profile_status = db.Column(db.String(30), default="incomplete", server_default="incomplete", nullable=False, index=True)
-    submitted_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    reviewed_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    review_notes = db.Column(db.Text, nullable=True)
 
-    user = db.relationship("User", back_populates="profile", foreign_keys=[user_id])
-    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_id])
-
-
-class TeacherIdCounter(TimestampMixin, db.Model):
-    """Safe sequential ID generation for teacher application and teacher IDs.
-
-    Each year has its own counter row so that application IDs like
-    RMX-APP-2026-000184 can reset annually. Teacher IDs use a global
-    (non-year-prefixed) counter stored in the same row for simplicity.
-    """
-
-    __tablename__ = "teacher_id_counters"
-
-    id = db.Column(db.Integer, primary_key=True)
-    year = db.Column(db.Integer, nullable=False, unique=True)
-    last_application_seq = db.Column(db.Integer, default=0, nullable=False)
-    last_teacher_seq = db.Column(db.Integer, default=0, nullable=False)
-
-
-class TeacherIdGlobalCounter(TimestampMixin, db.Model):
-    """Global counter for permanent Teacher IDs.
-
-    This table holds exactly one row (``id = 1``) with a global sequence
-    that never resets.  The primary-key constraint on ``id``, combined with
-    the convention that code always reads and writes ``id = 1``, guarantees
-    singleton semantics at the database level.  Teacher IDs
-    (``RMX-TCH-NNNNNN``) contain no year component, so the sequence must
-    remain unique across all years.
-    """
-
-    __tablename__ = "teacher_id_global_counter"
-
-    id = db.Column(db.Integer, primary_key=True)
-    last_teacher_seq = db.Column(db.Integer, default=0, nullable=False)
+    user = db.relationship("User", back_populates="profile")
 
 
 class UploadedFile(TimestampMixin, db.Model):

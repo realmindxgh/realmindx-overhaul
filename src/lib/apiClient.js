@@ -169,7 +169,6 @@ export const api = {
 
   updateProfile: (payload) => apiFetch('/me/profile', { method: 'PUT', body: payload }),
   fetchProfile: () => apiFetch('/me/profile'),
-  submitProfile: () => apiFetch('/me/profile/submit', { method: 'POST' }),
   updateAccount: (payload) => apiFetch('/me/account', { method: 'PUT', body: payload }),
   fetchCheckoutDetails: () => apiFetch('/me/checkout-details'),
   saveCheckoutDetails: (payload) => apiFetch('/me/checkout-details', { method: 'POST', body: payload }),
@@ -389,22 +388,6 @@ export const api = {
   adminDeliverySettlementExportUrl: (batchId, format) => `${API_BASE}/admin/delivery-settlements/${batchId}/export/${format}`,
   adminResetCompanyUserPassword: (companyUserId) => apiFetch(`/admin/delivery-company-users/${companyUserId}/reset-password`, { method: 'POST' }),
   adminResetInternalPassword: (collection, userId) => apiFetch(`/admin/${collection}/${userId}/reset-password`, { method: 'POST' }),
-
-  // admin - teacher review
-  fetchTeacherReviewQueue: (params = {}) => {
-    const sp = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') sp.set(key, value);
-    });
-    const suffix = sp.toString() ? `?${sp.toString()}` : '';
-    return apiFetch(`/admin/teachers/review${suffix}`);
-  },
-  fetchTeacherReviewDetail: (userId) => apiFetch(`/admin/teachers/${userId}/review`),
-  startTeacherReview: (userId) => apiFetch(`/admin/teachers/${userId}/start-review`, { method: 'POST' }),
-  requestTeacherRevision: (userId, note) => apiFetch(`/admin/teachers/${userId}/request-revision`, { method: 'POST', body: { note } }),
-  rejectTeacherProfile: (userId, reason) => apiFetch(`/admin/teachers/${userId}/reject`, { method: 'POST', body: { reason } }),
-  reopenTeacherReview: (userId, note) => apiFetch(`/admin/teachers/${userId}/reopen-review`, { method: 'POST', body: { note } }),
-  verifyTeacherProfile: (userId, checklist) => apiFetch(`/admin/teachers/${userId}/verify`, { method: 'POST', body: checklist }),
 
   // delivery company + rider portals
   deliveryCompanyLogin: (payload) => apiFetch('/delivery/company/login', { method: 'POST', body: payload, freshCsrf: true }),

@@ -41,13 +41,6 @@ def user_json(user):
         "profile_completion": profile_completion,
         "profile_missing_fields": profile_missing_fields,
         "terms_accepted_at": user.terms_accepted_at.isoformat() if user.terms_accepted_at else None,
-        "application_id": user.application_id,
-        "teacher_id": user.teacher_id,
-        "profile_status": getattr(profile, "profile_status", None) if profile else None,
-        "submitted_at": profile.submitted_at.isoformat() if profile and profile.submitted_at else None,
-        "reviewed_at": profile.reviewed_at.isoformat() if profile and profile.reviewed_at else None,
-        "reviewed_by_id": profile.reviewed_by_id if profile else None,
-        "review_notes": profile.review_notes if profile else None,
     }
 
 

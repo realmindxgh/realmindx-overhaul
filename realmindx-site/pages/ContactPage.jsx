@@ -54,22 +54,7 @@ const ContactPage = () => {
   const mapSrc = settings.contact_address
     ? `https://www.google.com/maps?q=${encodeURIComponent(settings.contact_address)}&output=embed`
     : settings.contact_map_embed;
-  const [form, setForm]       = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const subject = params.get('subject') || '';
-    const applicationId = params.get('application_id') || '';
-    const name = params.get('name') || '';
-    const nameParts = name.trim().split(/\s+/);
-    return {
-      ...INITIAL,
-      subject,
-      firstName: nameParts[0] || '',
-      lastName: nameParts.slice(1).join(' ') || '',
-      message: applicationId
-        ? `Re: Teacher Application ${applicationId} — Reconsideration Request`
-        : '',
-    };
-  });
+  const [form, setForm]       = useState(INITIAL);
   const [errors, setErrors]   = useState({});
   const [sent, setSent]       = useState(false);
   const [ticketReference, setTicketReference] = useState('');
