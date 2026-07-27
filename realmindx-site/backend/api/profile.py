@@ -11,7 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..audit import audit
 from ..checkout_details import checkout_detail_json, list_checkout_details, upsert_checkout_detail
-from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_email
 from ..extensions import db, limiter
 from ..location_data import canonical_delivery_locations, joined_location_ids, joined_location_names
 from ..models import CheckoutDetail, ContactChangeToken, JobAlertPreference, TeacherPlacement, UploadedFile, User, UserProfile
@@ -682,36 +682,38 @@ def upload_user_file():
 
 def _send_submission_email(user, profile):
     first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal?view=profile")
     body = (
         f"<p>Dear {escape(first_name)},</p>"
-        "<p>Thank you for submitting your profile for visual verification.</p>"
+        "<p>Thank you for submitting your teacher application. Your profile and documents have been received.</p>"
         f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
-        f"<p><strong>Submission date:</strong> {profile.submitted_at.strftime('%B %d, %Y at %H:%M') if profile.submitted_at else 'N/A'}</p>"
-        "<p>Your profile is now being queued for visual review by our team. "
-        "This is a manual process where an administrator will verify your documents "
-        "and confirm your teaching credentials.</p>"
+        f"<p><strong>Submission date:</strong> {profile.submitted_at.strftime('%B %d, %Y') if profile.submitted_at else 'N/A'}</p>"
+        "<p>Your application is now in the review queue. A RealMindX administrator will review your profile and documents.</p>"
         "<p>What happens next:</p>"
         "<ul>"
         "<li>An administrator will review your profile and documents</li>"
-        "<li>If everything is in order, your profile will be verified</li>"
-        "<li>If changes are needed, we will notify you with details</li>"
+        "<li>If everything is in order, your profile will be verified and a permanent Teacher ID will be issued</li>"
+        "<li>If changes are needed, we will notify you with details of what to update</li>"
         "</ul>"
-        "<p>You do not need to take any further action at this time. "
-        "You will receive an email once the review is complete.</p>"
-        "<p>Best regards,<br>The RealMindX Team</p>"
+        "<p>You do not need to take any further action at this time. You will receive an email once the review is complete or if corrections are requested.</p>"
     )
-    send_email(
-        OutboundEmail(
-            to=user.email,
-            subject="Teacher Profile Submitted for Review",
-            html=app_email_shell(
-                "Profile Submitted for Review",
-                body,
-                eyebrow="RealMindX Teacher Verification",
-                preheader="Your teaching profile has been submitted for visual verification.",
-            ),
+    try:
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Your Teacher Application Has Been Submitted",
+                html=app_email_shell(
+                    "Application Submitted",
+                    body,
+                    cta_label="View Dashboard",
+                    cta_url=dashboard_url,
+                    eyebrow="RealMindX Teacher Verification",
+                    preheader="Your teacher application has been submitted and is in the review queue.",
+                ),
+            )
         )
-    )
+    except Exception as exc:
+        current_app.logger.warning("Submission email failed for user %s: %s", user.id, exc)
 
 
 @profile_bp.post("/me/profile/submit")

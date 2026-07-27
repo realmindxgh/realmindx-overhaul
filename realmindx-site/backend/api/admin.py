@@ -46,6 +46,7 @@ from ..default_content import (
 from ..email_service import (
     EmailAttachment,
     OutboundEmail,
+    absolute_app_url,
     app_email_shell,
     bookshop_email_shell,
     bookshop_order_summary_table,
@@ -71,6 +72,7 @@ from ..delivery_service import (
 from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
 from ..profile_completion import teacher_profile_completion
+from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_email
 from ..sms_service import normalise_phone
 from ..teacher_ids import generate_teacher_id
 from ..bookshop_search import canonical_taxonomy_value
@@ -2053,6 +2055,125 @@ def teacher_review_detail(user_id):
     return jsonify(_review_detail(user))
 
 
+def _send_revision_required_email(user, note):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal?view=profile")
+    escaped_note = escape(note)
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        "<p>An administrator has reviewed your teacher application and requested some changes before it can proceed.</p>"
+        "<p><strong>What the administrator said:</strong></p>"
+        f"<blockquote style=\"border-left:3px solid #d1d5db;margin:12px 0;padding:8px 16px;color:#374151;white-space:pre-wrap\">{escaped_note}</blockquote>"
+        "<p>Your application has <strong>not</strong> been rejected. You can edit your profile and replace documents to address the items above.</p>"
+        "<p>After making the required changes, submit your updated profile so the administrator can continue the review.</p>"
+    )
+    try:
+        send_email(OutboundEmail(
+            to=user.email,
+            subject="Action Required: Update Your Teacher Application",
+            html=app_email_shell(
+                "Changes Requested",
+                body,
+                cta_label="Go to Dashboard",
+                cta_url=dashboard_url,
+                eyebrow="RealMindX Teacher Review",
+                preheader="An administrator has requested changes to your teacher application.",
+            ),
+        ))
+    except Exception as exc:
+        current_app.logger.warning("Revision-required email failed for user %s: %s", user.id, exc)
+
+
+def _send_rejection_email(user, reason):
+    first_name = user.first_name or "Teacher"
+    from urllib.parse import urlencode
+    contact_url = absolute_app_url(f"/contact?{urlencode({
+        'subject': 'Request for reconsideration of teacher application',
+        'application_id': user.application_id or '',
+        'name': first_name,
+    })}")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        "<p>Thank you for your interest in joining RealMindX as a teacher. After careful review of your application and documents, we are unable to proceed with your application at this time.</p>"
+        f"<p><strong>Reason:</strong></p>"
+        f"<blockquote style=\"border-left:3px solid #d1d5db;margin:12px 0;padding:8px 16px;color:#374151;white-space:pre-wrap\">{escape(reason)}</blockquote>"
+        "<p>Please note that ordinary resubmission of this application is not available.</p>"
+        "<p>If you believe the decision was made in error, or you have important new information that was not considered, you may contact RealMindX and quote your Application ID. RealMindX may reopen the application for another review where appropriate.</p>"
+    )
+    try:
+        send_email(OutboundEmail(
+            to=user.email,
+            subject="Update on Your RealMindX Teacher Application",
+            html=app_email_shell(
+                "Application Update",
+                body,
+                cta_label="Contact RealMindX",
+                cta_url=contact_url,
+                eyebrow="RealMindX Teacher Review",
+                preheader="An update is available on your teacher application.",
+            ),
+        ))
+    except Exception as exc:
+        current_app.logger.warning("Rejection email failed for user %s: %s", user.id, exc)
+
+
+def _send_reopened_email(user):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        "<p>Your teacher application has been reopened and is now back under review by a RealMindX administrator.</p>"
+        "<p>Please note that reopening your application does not mean it has been approved. It means your case will be assessed again.</p>"
+        "<p>You do not need to make any changes at this time unless RealMindX contacts you to request corrections.</p>"
+    )
+    try:
+        send_email(OutboundEmail(
+            to=user.email,
+            subject="Your Teacher Application Has Been Reopened",
+            html=app_email_shell(
+                "Application Reopened",
+                body,
+                cta_label="View Dashboard",
+                cta_url=dashboard_url,
+                eyebrow="RealMindX Teacher Review",
+                preheader="Your teacher application has been reopened for further review.",
+            ),
+        ))
+    except Exception as exc:
+        current_app.logger.warning("Reopen email failed for user %s: %s", user.id, exc)
+
+
+def _send_verification_email(user):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        f"<p><strong>Teacher ID:</strong> {escape(user.teacher_id or 'N/A')}</p>"
+        "<p>Congratulations! Your RealMindX teacher profile has been visually verified by our team. Your documents and teaching details have been reviewed and confirmed.</p>"
+        f"<p>Your permanent Teacher ID is <strong>{escape(user.teacher_id or 'N/A')}</strong>. Please keep this ID safe — it is your official RealMindX teacher reference and should be used in all future communications and placement records.</p>"
+        "<p>You can now access features available to verified teachers on the RealMindX platform.</p>"
+    )
+    try:
+        send_email(OutboundEmail(
+            to=user.email,
+            subject="Your RealMindX Teacher Profile Has Been Verified",
+            html=app_email_shell(
+                "Profile Verified",
+                body,
+                cta_label="View Dashboard",
+                cta_url=dashboard_url,
+                eyebrow="RealMindX Teacher Verification",
+                preheader=f"Your RealMindX Teacher ID is {user.teacher_id or 'N/A'}.",
+            ),
+        ))
+    except Exception as exc:
+        current_app.logger.warning("Verification email failed for user %s: %s", user.id, exc)
+
+
 @admin_bp.post("/teachers/<int:user_id>/start-review")
 @login_required
 @permission_required("teachers.edit")
@@ -2137,6 +2258,7 @@ def request_teacher_revision(user_id):
         "note": note,
     })
     db.session.commit()
+    _send_revision_required_email(user, note)
     return jsonify(
         profile_status="revision_required",
         review_notes=note,
@@ -2186,6 +2308,7 @@ def reject_teacher_profile(user_id):
         "reason": reason,
     })
     db.session.commit()
+    _send_rejection_email(user, reason)
     return jsonify(
         profile_status="rejected",
         review_notes=reason,
@@ -2237,6 +2360,7 @@ def reopen_teacher_review(user_id):
         "reopening_note": note,
     })
     db.session.commit()
+    _send_reopened_email(user)
     return jsonify(
         profile_status="under_review",
         application_id=user.application_id,
@@ -2343,6 +2467,7 @@ def verify_teacher_profile(user_id):
         })
 
     db.session.commit()
+    _send_verification_email(user)
     return jsonify(
         application_id=user.application_id,
         teacher_id=user.teacher_id,

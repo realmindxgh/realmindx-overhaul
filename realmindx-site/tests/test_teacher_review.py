@@ -25,6 +25,7 @@ class TeacherReviewTestConfig(Config):
     CORS_ORIGINS = ["http://localhost", "http://bookshop.localhost"]
     RATELIMIT_ENABLED = False
     WTF_CSRF_ENABLED = False
+    TURNSTILE_SECRET_KEY = ""
 
 
 def _make_submitted_teacher(session, email_suffix="1", teacher_service_enabled=True):
@@ -978,6 +979,369 @@ class TeacherReviewTests(unittest.TestCase):
         self.assertEqual(teacher.teacher_id_issued_at, original_issued_at)
         verify_events = AuditLog.query.filter_by(action="teacher_profile_visually_verified").all()
         self.assertEqual(len(verify_events), 1)
+
+
+class TeacherReviewEmailTests(unittest.TestCase):
+    """Email delivery tests for teacher-review milestones."""
+
+    def setUp(self):
+        self.app = create_app(TeacherReviewTestConfig)
+        self.context = self.app.app_context()
+        self.context.push()
+        db.create_all()
+        db.session.execute(db.text("PRAGMA foreign_keys = ON"))
+        admin_role = Role(name="admin", description="Admin")
+        teacher_role = Role(name="user", description="Teacher")
+        staff_role = Role(name="staff", description="Staff")
+        db.session.add_all([admin_role, teacher_role, staff_role])
+        db.session.commit()
+        self.admin_user = _make_admin(db.session)
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        db.session.remove()
+        self.context.pop()
+
+    # ── helpers ──
+
+    def _login_admin(self):
+        resp = self.client.post("/api/auth/login", json={
+            "email": self.admin_user.email, "password": "AdminPassword123!",
+        })
+        self.assertEqual(resp.status_code, 200)
+
+    def _login_as(self, email, password):
+        resp = self.client.post("/api/auth/login", json={"email": email, "password": password})
+        self.assertEqual(resp.status_code, 200)
+
+    def _make_rejected_teacher(self, session):
+        teacher, profile = _make_submitted_teacher(session, "email-reject-1")
+        profile.profile_status = "rejected"
+        profile.review_notes = "Documents do not meet our requirements."
+        session.commit()
+        return teacher, profile
+
+    def _make_under_review_teacher(self, session):
+        teacher, profile = _make_submitted_teacher(session, "email-ur-1")
+        profile.profile_status = "under_review"
+        session.commit()
+        return teacher, profile
+
+    @staticmethod
+    def _attach_cv_and_cert(session, teacher):
+        cv = UploadedFile(
+            owner_id=teacher.id, original_filename="cv.pdf", stored_filename="cv_stored.pdf",
+            storage_path="/tmp/cv.pdf", mime_type="application/pdf", size_bytes=100, category="cv",
+        )
+        cert = UploadedFile(
+            owner_id=teacher.id, original_filename="cert.pdf", stored_filename="cert_stored.pdf",
+            storage_path="/tmp/cert.pdf", mime_type="application/pdf", size_bytes=100, category="certificate",
+        )
+        session.add_all([cv, cert])
+        session.flush()
+        teacher.profile.cv_file_id = cv.id
+        teacher.profile.certificate_file_id = cert.id
+        session.commit()
+
+    # ── Account creation ──
+
+    @patch("backend.api.auth._send_teacher_account_created_email")
+    @patch("backend.api.auth._send_verification_otp")
+    def test_signup_sends_account_created_email(self, _otp, mock_email):
+        resp = self.client.post("/api/auth/signup", json={
+            "email": "newteacher@example.com",
+            "password": "StrongPass1!",
+            "first_name": "New",
+            "last_name": "Teacher",
+            "phone": "0241234567",
+            "accepted_terms": True,
+        })
+        self.assertEqual(resp.status_code, 201)
+        data = resp.get_json()
+        mock_email.assert_called_once()
+        user_arg = mock_email.call_args[0][0]
+        self.assertEqual(user_arg.email, "newteacher@example.com")
+        self.assertIsNotNone(user_arg.application_id)
+
+    @patch("backend.api.auth._send_teacher_account_created_email")
+    def test_non_teacher_signup_does_not_send_teacher_email(self, mock_email):
+        payload = {
+            "email": "bookshopuser@example.com",
+            "password": "StrongPass1!",
+            "first_name": "Bookshop",
+            "last_name": "User",
+            "phone": "0241234567",
+            "accepted_terms": True,
+            "surface": "bookshop",
+        }
+        resp = self.client.post("/api/auth/signup", json=payload)
+        self.assertEqual(resp.status_code, 201)
+        mock_email.assert_not_called()
+
+    @patch("backend.api.auth._send_teacher_account_created_email")
+    @patch("backend.api.auth._send_verification_otp")
+    def test_failed_signup_sends_no_email(self, _otp, mock_email):
+        resp = self.client.post("/api/auth/signup", json={
+            "email": "incomplete@example.com",
+            "password": "short",
+        })
+        self.assertEqual(resp.status_code, 400)
+        mock_email.assert_not_called()
+
+    @patch("backend.api.auth._send_teacher_account_created_email")
+    @patch("backend.api.auth._send_verification_otp")
+    def test_duplicate_email_signup_does_not_send(self, _otp, mock_email):
+        self.client.post("/api/auth/signup", json={
+            "email": "dup@example.com", "password": "StrongPass1!",
+            "first_name": "Dup", "accepted_terms": True, "phone": "0241234567",
+        })
+        mock_email.reset_mock()
+        resp2 = self.client.post("/api/auth/signup", json={
+            "email": "dup@example.com", "password": "StrongPass1!",
+            "first_name": "Dup", "accepted_terms": True, "phone": "0241234567",
+        })
+        self.assertEqual(resp2.status_code, 409)
+        mock_email.assert_not_called()
+
+    # ── Profile submission ──
+
+    @patch("backend.api.profile.send_email")
+    def test_submission_sends_one_email(self, mock_send):
+        teacher, profile = _make_submitted_teacher(db.session, "sub-email-1")
+        profile.profile_status = "complete"
+        db.session.commit()
+        self._login_as(teacher.email, "TeacherPassword1!")
+        resp = self.client.post(f"/api/me/profile/submit")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_send.call_count, 1)
+        msg = mock_send.call_args[0][0]
+        self.assertIn("Your Teacher Application Has Been Submitted", msg.subject)
+        self.assertIn(str(teacher.application_id), msg.html)
+
+    @patch("backend.api.profile.send_email")
+    def test_incomplete_submission_sends_no_email(self, mock_send):
+        teacher, profile = _make_submitted_teacher(db.session, "sub-email-2")
+        profile.profile_status = "incomplete"
+        profile.cv_file_id = None
+        db.session.commit()
+        self._login_as(teacher.email, "TeacherPassword1!")
+        resp = self.client.post(f"/api/me/profile/submit")
+        self.assertEqual(resp.status_code, 400)
+        mock_send.assert_not_called()
+
+    @patch("backend.api.profile.send_email")
+    def test_repeated_submission_does_not_duplicate_email(self, mock_send):
+        teacher, profile = _make_submitted_teacher(db.session, "sub-email-3")
+        profile.profile_status = "submitted"
+        db.session.commit()
+        self._login_as(teacher.email, "TeacherPassword1!")
+        resp = self.client.post(f"/api/me/profile/submit")
+        self.assertEqual(resp.status_code, 200)
+        mock_send.assert_not_called()
+
+    # ── Revision required ──
+
+    @patch("backend.api.admin.send_email")
+    def test_revision_sends_one_email(self, mock_send):
+        teacher, _ = self._make_under_review_teacher(db.session)
+        self._login_admin()
+        resp = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/request-revision",
+            json={"note": "Please upload a clearer CV."},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_send.call_count, 1)
+        msg = mock_send.call_args[0][0]
+        self.assertIn("Update Your Teacher Application", msg.subject)
+        self.assertIn(str(teacher.application_id), msg.html)
+        self.assertIn("clearer CV", msg.html)
+
+    @patch("backend.api.admin.send_email")
+    def test_revision_email_contains_application_id_and_note(self, mock_send):
+        teacher, _ = self._make_under_review_teacher(db.session)
+        self._login_admin()
+        self.client.post(
+            f"/api/admin/teachers/{teacher.id}/request-revision",
+            json={"note": "Certificate is blurry.\nPlease re-upload."},
+        )
+        msg = mock_send.call_args[0][0]
+        self.assertIn(str(teacher.application_id), msg.html)
+        self.assertIn("Certificate is blurry", msg.html)
+
+    @patch("backend.api.admin.send_email")
+    def test_revision_duplicate_does_not_send_second_email(self, mock_send):
+        teacher, _ = self._make_under_review_teacher(db.session)
+        self._login_admin()
+        self.client.post(
+            f"/api/admin/teachers/{teacher.id}/request-revision",
+            json={"note": "Fix your CV."},
+        )
+        mock_send.reset_mock()
+        resp2 = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/request-revision",
+            json={"note": "Fix your CV."},
+        )
+        self.assertEqual(resp2.status_code, 200)
+        mock_send.assert_not_called()
+
+    # ── Rejection ──
+
+    @patch("backend.api.admin.send_email")
+    def test_rejection_sends_one_email(self, mock_send):
+        teacher, _ = self._make_under_review_teacher(db.session)
+        self._login_admin()
+        resp = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/reject",
+            json={"reason": "Documents do not meet our standards."},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_send.call_count, 1)
+        msg = mock_send.call_args[0][0]
+        self.assertIn("Update on Your RealMindX Teacher Application", msg.subject)
+        self.assertIn(str(teacher.application_id), msg.html)
+        self.assertIn("Documents do not meet our standards", msg.html)
+        self.assertIn("reconsideration", msg.html)
+
+    @patch("backend.api.admin.send_email")
+    def test_rejection_duplicate_does_not_send_second_email(self, mock_send):
+        teacher, profile = self._make_under_review_teacher(db.session)
+        profile.profile_status = "rejected"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(
+            f"/api/admin/teachers/{teacher.id}/reject",
+            json={"reason": "Already rejected."},
+        )
+        mock_send.assert_not_called()
+
+    # ── Reopening ──
+
+    @patch("backend.api.admin.send_email")
+    def test_reopen_sends_one_email(self, mock_send):
+        teacher, _ = self._make_rejected_teacher(db.session)
+        self._login_admin()
+        resp = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/reopen-review",
+            json={"note": "Teacher provided new documentation."},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_send.call_count, 1)
+        msg = mock_send.call_args[0][0]
+        self.assertIn("Has Been Reopened", msg.subject)
+        self.assertIn(str(teacher.application_id), msg.html)
+        self.assertNotIn("approved", msg.subject.lower())
+
+    @patch("backend.api.admin.send_email")
+    def test_reopen_duplicate_does_not_send_second_email(self, mock_send):
+        teacher, profile = self._make_rejected_teacher(db.session)
+        profile.profile_status = "under_review"
+        db.session.commit()
+        self._login_admin()
+        self.client.post(
+            f"/api/admin/teachers/{teacher.id}/reopen-review",
+            json={"note": "Already reopened."},
+        )
+        mock_send.assert_not_called()
+
+    # ── Verification ──
+
+    def _verify_payload(self):
+        return {
+            "required_documents_present": True,
+            "documents_readable": True,
+            "identity_details_consistent": True,
+            "qualifications_consistent": True,
+            "teaching_details_consistent": True,
+            "no_obvious_alteration_detected": True,
+        }
+
+    @patch("backend.api.admin.send_email")
+    def test_verification_sends_one_email(self, mock_send):
+        teacher, profile = _make_submitted_teacher(db.session, "ver-email-1")
+        profile.profile_status = "under_review"
+        self._attach_cv_and_cert(db.session, teacher)
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/verify",
+            json=self._verify_payload(),
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_send.call_count, 1)
+        msg = mock_send.call_args[0][0]
+        self.assertIn("Has Been Verified", msg.subject)
+        self.assertIn(str(teacher.application_id), msg.html)
+        db.session.refresh(teacher)
+        self.assertIn(str(teacher.teacher_id), msg.html)
+
+    @patch("backend.api.admin.send_email")
+    def test_verification_duplicate_does_not_send_second_email(self, mock_send):
+        teacher, profile = _make_submitted_teacher(db.session, "ver-email-2")
+        profile.profile_status = "verified"
+        teacher.teacher_id = "RMX-TCH-999999"
+        teacher.teacher_id_issued_at = datetime.now(timezone.utc)
+        self._attach_cv_and_cert(db.session, teacher)
+        db.session.commit()
+        self._login_admin()
+        self.client.post(
+            f"/api/admin/teachers/{teacher.id}/verify",
+            json=self._verify_payload(),
+        )
+        mock_send.assert_not_called()
+
+    @patch("backend.api.admin.send_email")
+    def test_failed_verification_sends_no_email(self, mock_send):
+        teacher, profile = _make_submitted_teacher(db.session, "ver-email-3")
+        profile.profile_status = "under_review"
+        profile.cv_file_id = None
+        db.session.commit()
+        self._login_admin()
+        resp = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/verify",
+            json=self._verify_payload(),
+        )
+        self.assertEqual(resp.status_code, 400)
+        mock_send.assert_not_called()
+
+    # ── General safety ──
+
+    @patch("backend.api.admin.send_email")
+    def test_email_failure_does_not_rollback_status_change(self, mock_send):
+        mock_send.side_effect = RuntimeError("Email provider offline")
+        teacher, _ = self._make_under_review_teacher(db.session)
+        self._login_admin()
+        resp = self.client.post(
+            f"/api/admin/teachers/{teacher.id}/reject",
+            json={"reason": "Test rejection with email failure."},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["profile_status"], "rejected")
+        db.session.refresh(teacher)
+        self.assertEqual(teacher.profile.profile_status, "rejected")
+
+    @patch("backend.api.admin.send_email")
+    def test_review_notes_escaped_safely(self, mock_send):
+        teacher, _ = self._make_under_review_teacher(db.session)
+        self._login_admin()
+        self.client.post(
+            f"/api/admin/teachers/{teacher.id}/request-revision",
+            json={"note": "<script>alert('xss')</script>"},
+        )
+        msg = mock_send.call_args[0][0]
+        self.assertIn("&lt;script&gt;", msg.html)
+        self.assertNotIn("<script>", msg.html)
+
+    @patch("backend.api.admin.send_email")
+    def test_email_links_use_configured_base_url(self, mock_send):
+        teacher, _ = self._make_under_review_teacher(db.session)
+        self._login_admin()
+        self.client.post(
+            f"/api/admin/teachers/{teacher.id}/request-revision",
+            json={"note": "Please update."},
+        )
+        msg = mock_send.call_args[0][0]
+        self.assertIn("http://localhost", msg.html)
 
 
 if __name__ == "__main__":

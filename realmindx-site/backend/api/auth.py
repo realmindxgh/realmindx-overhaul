@@ -14,7 +14,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy.exc import IntegrityError
 
 from ..audit import audit
-from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_email
 from ..extensions import db, limiter
 from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, CheckoutDetail, ContactChangeToken, EmailVerificationToken, JobAlertPreference, PasswordResetToken, PlatformTermsAcceptance, Role, User, UserProfile
 from ..security import make_token, read_token, require_turnstile, seconds
@@ -186,6 +186,34 @@ def _consume_account_security_code(user_id, purpose, otp):
     return True
 
 
+def _send_teacher_account_created_email(user):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal?view=profile")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        "<p>Thank you for creating your RealMindX teacher account.</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        "<p>Please keep this Application ID safe. It is your reference number for your teacher application and all related correspondence with RealMindX.</p>"
+        "<p><strong>Next step:</strong> Complete your teaching profile and upload the required documents. Once your profile is complete, you can submit it for review.</p>"
+        "<p>If you need to contact RealMindX about your application, please quote your Application ID so we can assist you quickly.</p>"
+    )
+    try:
+        send_email(OutboundEmail(
+            to=user.email,
+            subject="Your RealMindX Teacher Application Has Been Created",
+            html=app_email_shell(
+                "Teacher Application Created",
+                body,
+                cta_label="Complete Your Profile",
+                cta_url=dashboard_url,
+                eyebrow="RealMindX Teacher Registration",
+                preheader=f"Your Application ID is {user.application_id or 'N/A'} — save it for future reference.",
+            ),
+        ))
+    except Exception as exc:
+        current_app.logger.warning("Teacher account-created email failed for %s: %s", user.id, exc)
+
+
 @auth_bp.post("/signup")
 @limiter.limit("8/hour")
 def signup():
@@ -247,6 +275,9 @@ def signup():
     _send_verification_otp(user)
     audit("user_signup", "user", user.id, {"email": email})
     db.session.commit()
+
+    if user.teacher_service_enabled and user.application_id:
+        _send_teacher_account_created_email(user)
 
     return jsonify(
         user=user_json(user),
