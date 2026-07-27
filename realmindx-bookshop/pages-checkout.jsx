@@ -1165,7 +1165,7 @@ const TrackPage = ({ navigate }) => {
                   </div>
                   <div className="bs-muted" style={{ fontSize:13 }}>
                     {order.delivery_tracking?.otp_required ? 'Have your delivery OTP ready when the rider arrives. ' : ''}
-                    Questions? <a href="https://wa.link/q5rjtp" style={{ color:'var(--bs-navy)', textDecoration:'underline' }}>Contact support</a>
+                    Questions? <a href="https://wa.link/q5rjtp" style={{ color:'#1976c9', textDecoration:'none' }}>Contact support</a>
                   </div>
                 </div>
               </div>

@@ -5509,7 +5509,7 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
         .admin-file-upload-icon { width: 42px; height: 42px; border-radius: 8px; background: #eaf1fb; color: var(--navy); display: grid; place-items: center; flex: 0 0 auto; }
         .admin-file-upload-copy { flex: 1 1 280px; min-width: 0; display: grid; gap: 3px; }
         .admin-file-upload-copy strong { color: var(--navy); font-size: 0.9rem; overflow-wrap: anywhere; }
-        .admin-file-upload-copy a { color: var(--navy); font-size: 0.78rem; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+        .admin-file-upload-copy a { color: #1976c9; font-size: 0.78rem; font-weight: 800; text-decoration: none; }
         .admin-file-upload-copy p { color: var(--gray-600); font-size: 0.76rem; line-height: 1.45; margin: 0; }
         .password-field .form-input { width: 100%; }
         .admin-stat { border: 0; text-align: left; cursor: pointer; }

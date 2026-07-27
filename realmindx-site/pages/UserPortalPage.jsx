@@ -2219,10 +2219,10 @@ const UserPortalPage = () => {
               textAlign: 'center', lineHeight: 1.6, marginBottom: 24,
             }}>
               Your account connects you to teaching opportunities, educational resources, and our bookshop. Please take a moment to read the full{' '}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--navy)', fontWeight: 700, textDecoration: 'underline' }}>
+              <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#1976c9', fontWeight: 700, textDecoration: 'none' }}>
                 Terms of Service
               </a>{' '}and{' '}
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--navy)', fontWeight: 700, textDecoration: 'underline' }}>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#1976c9', fontWeight: 700, textDecoration: 'none' }}>
                 Privacy Policy
               </a>.
             </p>

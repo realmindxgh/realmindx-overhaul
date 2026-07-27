@@ -1830,9 +1830,9 @@ input, textarea, select { font-family: inherit; }
 }
 
 .auth-footer-link a {
-  color: var(--navy);
+  color: #1976c9;
   font-weight: 700;
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 .auth-footer-link a:hover { color: var(--yellow-dark); }
@@ -1855,9 +1855,9 @@ input, textarea, select { font-family: inherit; }
 
 .forgot-link {
   font-size: 0.82rem;
-  color: var(--navy);
+  color: #1976c9;
   font-weight: 600;
-  text-decoration: underline;
+  text-decoration: none;
   float: right;
 }
 

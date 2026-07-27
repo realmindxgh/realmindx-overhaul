@@ -636,7 +636,7 @@ img, svg { display: block; max-width: 100%; }
   font-size: 15px;
   transition: gap 0.25s var(--ease);
 }
-.mission-link:hover { text-decoration: underline; }
+.mission-link:hover { text-decoration: none; }
 
 .mission-right {
   background: var(--navy-dark);
@@ -1741,9 +1741,8 @@ img, svg { display: block; max-width: 100%; }
   font-family: inherit;
   font-size: inherit;
   font-weight: 700;
-  color: var(--gold);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  color: #1976c9;
+  text-decoration: none;
   transition: color 0.2s var(--ease);
 }
 .text-link-button:hover { color: var(--gold-dark, #e6aa00); }

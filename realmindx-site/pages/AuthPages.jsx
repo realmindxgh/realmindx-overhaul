@@ -204,13 +204,13 @@ const InternalLoginPage = ({ role = 'admin' }) => {
 
           <p style={{ textAlign: 'center', marginTop: 24, fontSize: '0.82rem', color: 'var(--gray-600)' }}>
             {secondaryLabel}{' '}
-            <a href={secondaryHref} style={{ color: 'var(--navy)', fontWeight: 700, textDecoration: 'underline' }}>
+            <a href={secondaryHref} style={{ color: '#1976c9', fontWeight: 700, textDecoration: 'none' }}>
               {secondaryLink}
             </a>
           </p>
           <p style={{ textAlign: 'center', marginTop: 12, fontSize: '0.82rem', color: 'var(--gray-600)' }}>
             Looking for the teacher portal?{' '}
-            <a href="/portal" style={{ color: 'var(--navy)', fontWeight: 700, textDecoration: 'underline' }}>
+            <a href="/portal" style={{ color: '#1976c9', fontWeight: 700, textDecoration: 'none' }}>
               Go to User Portal
             </a>
           </p>
@@ -608,7 +608,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   <label className="form-label">
                     Password
                     <button type="button" className="forgot-link" onClick={() => switchMode('forgot')}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--navy)', fontWeight: 600, textDecoration: 'underline' }}>
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.82rem', color: '#1976c9', fontWeight: 600, textDecoration: 'none' }}>
                       Forgot password?
                     </button>
                   </label>
