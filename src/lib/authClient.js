@@ -73,10 +73,10 @@ export const syncSessionFromApi = async () => {
 const invalidCredentials = (role) => {
   const err = new Error(
     role === 'admin'
-      ? 'Invalid admin credentials for this local build.'
+      ? 'Invalid admin credentials.'
       : role === 'staff'
         ? 'Invalid staff credentials for this portal.'
-      : 'Invalid email or password for this local build.',
+      : 'Invalid email or password.',
   );
   err.code = 'invalid_credentials';
   return err;
