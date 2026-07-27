@@ -34,7 +34,22 @@ jobs:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
           VITE_PAYSTACK_PUBLIC_KEY: ${{ secrets.VITE_PAYSTACK_PUBLIC_KEY }}
           VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
-        run: npm run build
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "ERROR: VITE_API_BASE_URL is missing from the production build environment"
+            exit 1
+          fi
+          case "$VITE_API_BASE_URL" in
+            https://realmindxgh.com/api*)
+              echo "PASS: VITE_API_BASE_URL starts with expected prefix"
+              ;;
+            *)
+              echo "ERROR: VITE_API_BASE_URL does not start with expected prefix"
+              exit 1
+              ;;
+          esac
+          echo "Running production Vite build..."
+          npm run build
 
       # ── 4. Copy built frontend into place (we're already on the VPS) ──
       - name: Deploy frontend
