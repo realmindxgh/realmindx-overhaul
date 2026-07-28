@@ -305,7 +305,13 @@
   padding: 9px 10px;
   border-radius: 0;
 }
-@media (max-width: 1024px) { .bs-nav-cats-btn span { display: none; } }
+@media (max-width: 1024px) {
+  /* The desktop search field and full utility nav cannot coexist cleanly at tablet widths. */
+  .bs-nav-search-wrap { display: none; }
+  .bs-cats-search-wrap { display: block; }
+  .bs-nav-user-slot { display: none; }
+  .bs-nav-cats-btn span { display: none; }
+}
 @media (max-width: 768px) {
   .bs-nav-inner {
     max-width: 100%;
@@ -1762,8 +1768,8 @@
   transform: translateY(-50%);
   pointer-events: none;
 }
-.bs-field-control input,
-.bs-field-control select { padding-left: 46px; }
+.bs-field-control input { padding-left: 46px; }
+.bs-field-control select { padding-left: 15px; }
 .bs-field-control-textarea > span { top: 17px; transform: none; }
 .bs-field-control-textarea textarea { padding-left: 46px; }
 .bs-field-control:focus-within > span,

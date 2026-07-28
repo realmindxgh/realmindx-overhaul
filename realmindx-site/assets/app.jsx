@@ -1331,7 +1331,7 @@ export const Footer = () => {
             <a href="/privacy">Privacy Policy</a>
             <a href="/terms">Terms of Service</a>
             <a href="https://schoolms.realmindxgh.com/">SchoolMS</a>
-            <a href="https://bookshop.realmindxgh.com">bookshop.realmindxgh.com</a>
+            <a href="https://bookshop.realmindxgh.com">Bookshop</a>
             <a href="/donate">Donate</a>
           </div>
         </div>

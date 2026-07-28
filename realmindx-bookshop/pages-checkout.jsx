@@ -733,13 +733,13 @@ const CheckoutPage = ({ navigate }) => {
                 </div>
               )}
               <div className="bs-field-row">
-                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name *</label><div className="bs-field-control"><span><Icon name="user" size={18} /></span><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" /></div>{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
-                <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number *</label><div className="bs-field-control"><span><Icon name="phone" size={18} /></span><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." inputMode="tel" /></div>{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
+                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name *</label><div className="bs-field-control"><span><Icon name="pencil" size={18} /></span><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" /></div>{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
+                <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number *</label><div className="bs-field-control"><span><Icon name="pencil" size={18} /></span><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." inputMode="tel" /></div>{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
               </div>
-              <div className={`bs-field${errors.email?' err':''}`}><label>Email *</label><div className="bs-field-control"><span><Icon name="mail" size={18} /></span><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" inputMode="email" /></div>{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
+              <div className={`bs-field${errors.email?' err':''}`}><label>Email *</label><div className="bs-field-control"><span><Icon name="pencil" size={18} /></span><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" inputMode="email" /></div>{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
               <div className="bs-field-row">
-                <div className="bs-field"><label>Sex</label><div className="bs-field-control"><span><Icon name="user" size={18} /></span><select value={form.sex} onChange={set('sex')}><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></div></div>
-                <div className="bs-field"><label>Age range</label><div className="bs-field-control"><span><Icon name="clock" size={18} /></span><select value={form.ageRange} onChange={set('ageRange')}><option value="">Prefer not to say</option>{['under_18','18_24','25_34','35_44','45_54','55_64','65_plus'].map(value => <option key={value} value={value}>{value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())}</option>)}</select></div></div>
+                <div className="bs-field"><label>Sex</label><div className="bs-field-control"><select value={form.sex} onChange={set('sex')}><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></div></div>
+                <div className="bs-field"><label>Age range</label><div className="bs-field-control"><select value={form.ageRange} onChange={set('ageRange')}><option value="">Prefer not to say</option>{['under_18','18_24','25_34','35_44','45_54','55_64','65_plus'].map(value => <option key={value} value={value}>{value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())}</option>)}</select></div></div>
               </div>
 
               <div className="bs-checkout-section-label"><span><Icon name="truck" size={17} /></span>Delivery Method</div>
@@ -760,7 +760,7 @@ const CheckoutPage = ({ navigate }) => {
                   <div className="bs-field" style={{ marginTop:18 }}>
                     <label>Delivery Area *</label>
                     <div className="bs-zone-picker">
-                      <span className="bs-zone-input-icon"><Icon name="pin" size={18} /></span>
+                      <span className="bs-zone-input-icon"><Icon name="pencil" size={18} /></span>
                       <input
                         ref={zoneRef}
                         aria-invalid={Boolean(errors.zone)}
@@ -817,12 +817,12 @@ const CheckoutPage = ({ navigate }) => {
                   <div className="bs-field-row" style={{ marginTop:18 }}>
                     <div className={`bs-field${errors.city?' err':''}`}>
                       <label>Town / Area *</label>
-                      <div className="bs-field-control"><span><Icon name="pin" size={18} /></span><input value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" /></div>
+                      <div className="bs-field-control"><span><Icon name="pencil" size={18} /></span><input value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" /></div>
                       {errors.city && <div className="bs-field-error">{errors.city}</div>}
                     </div>
                     <div className={`bs-field${errors.region?' err':''}`}>
                       <label>Region *</label>
-                      <div className="bs-field-control"><span><Icon name="globe" size={18} /></span><select value={form.region} onChange={set('region')}>
+                      <div className="bs-field-control"><select value={form.region} onChange={set('region')}>
                         <option value="">Select region</option>
                         {GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}
                       </select></div>
@@ -832,10 +832,10 @@ const CheckoutPage = ({ navigate }) => {
                 )}
                 <div className="bs-field" style={{ marginTop:customDeliveryArea ? 0 : 18 }}>
                   <label>Landmark or delivery directions</label>
-                  <div className="bs-field-control bs-field-control-textarea"><span><Icon name="home" size={18} /></span><textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." /></div>
+                  <div className="bs-field-control bs-field-control-textarea"><span><Icon name="pencil" size={18} /></span><textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." /></div>
                   <p className="bs-field-help">We will contact you to confirm the precise landmark and delivery directions.</p>
                 </div>
-                {!customDeliveryArea && <div className="bs-field"><label>Region</label><div className="bs-field-control"><span><Icon name="globe" size={18} /></span><select value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div></div>}
+                {!customDeliveryArea && <div className="bs-field"><label>Region</label><div className="bs-field-control"><select value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div></div>}
               </>}
 
               {savedDetailsError && <p className="bs-saved-checkout-error">{savedDetailsError}</p>}

@@ -917,6 +917,7 @@ const App = () => {
     <div className="bs">
       <Navbar route={route} navigate={navigate} />
       <main className={mainClassName}>
+        {route !== 'home' && <BookshopBackButton navigate={navigate} />}
         {persistentHomeRef.current && (
           <div style={route !== 'home' ? { display: 'none' } : undefined}>
             <HomePage navigate={navigate} active={route === 'home'} onLoadingChange={setHomeLoading} />
@@ -938,7 +939,6 @@ const App = () => {
           </div>
         )}
         <BookshopErrorBoundary>
-          {route !== 'home' && <BookshopBackButton navigate={navigate} />}
           {page}
         </BookshopErrorBoundary>
       </main>
