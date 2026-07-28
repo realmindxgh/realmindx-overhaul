@@ -73,6 +73,8 @@ class User(UserMixin, TimestampMixin, db.Model):
     locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
     terms_accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    terms_version = db.Column(db.String(40), nullable=True)
+    privacy_version = db.Column(db.String(40), nullable=True)
     application_id = db.Column(db.String(30), nullable=True, unique=True, index=True)
     teacher_id = db.Column(db.String(30), nullable=True, unique=True, index=True)
     teacher_id_issued_at = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -109,7 +111,7 @@ class AuthIdentity(TimestampMixin, db.Model):
     provider = db.Column(db.String(50), nullable=False)
     provider_user_id = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), nullable=True)
-    user = db.relationship("User", backref="auth_identities")
+    user = db.relationship("User", backref=db.backref("auth_identities", cascade="all, delete-orphan"))
 
 
 class UserProfile(TimestampMixin, db.Model):
@@ -467,6 +469,32 @@ class DeliveryCompany(TimestampMixin, db.Model):
     default_delivery_payable = db.Column(db.Numeric(12, 2), nullable=True)
 
 
+class TermsAcceptance(TimestampMixin, db.Model):
+    """General platform terms acceptance for teacher/user portal accounts.
+
+    Each row records one acceptance event.  The authoritative check for
+    "has the user accepted the current version" queries for the most recent
+    row matching ``user_id + terms_type + terms_version``.
+
+    This is separate from ``PlatformTermsAcceptance``, which tracks delivery
+    portal terms for delivery companies and riders.
+    """
+
+    __tablename__ = "terms_acceptances"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    terms_type = db.Column(db.String(40), nullable=False)
+    terms_version = db.Column(db.String(40), nullable=False)
+    privacy_version = db.Column(db.String(40), nullable=True)
+    accepted_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    acceptance_source = db.Column(db.String(30), nullable=True)
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(500), nullable=True)
+
+    user = db.relationship("User", backref=db.backref("terms_acceptances", cascade="all, delete-orphan"))
+
+
 class DeliveryCompanyUser(TimestampMixin, db.Model):
     __tablename__ = "delivery_company_users"
     __table_args__ = (
@@ -523,7 +551,7 @@ class PlatformTermsAcceptance(TimestampMixin, db.Model):
     ip_address = db.Column(db.String(64), nullable=True)
     user_agent = db.Column(db.String(500), nullable=True)
 
-    user = db.relationship("User", backref="platform_terms_acceptances")
+    user = db.relationship("User", backref=db.backref("platform_terms_acceptances", cascade="all, delete-orphan"))
     delivery_company = db.relationship("DeliveryCompany", backref="platform_terms_acceptances")
     rider = db.relationship("DeliveryRider", backref="platform_terms_acceptances")
 

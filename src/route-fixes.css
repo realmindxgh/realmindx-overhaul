@@ -3819,6 +3819,14 @@ html {
 
 :root:root :is(.form-group > .form-input[type="search"], .bs form input[type="search"]) {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+:root:root :is(.form-group > .form-input[type="search"], .bs form input[type="search"])::-webkit-search-decoration,
+:root:root :is(.form-group > .form-input[type="search"], .bs form input[type="search"])::-webkit-search-cancel-button,
+:root:root :is(.form-group > .form-input[type="search"], .bs form input[type="search"])::-webkit-search-results-button,
+:root:root :is(.form-group > .form-input[type="search"], .bs form input[type="search"])::-webkit-search-results-decoration {
+  display: none !important;
 }
 
 :root:root :is(.form-group > .form-select, .bs form select) {
@@ -3836,26 +3844,34 @@ html {
   background-image: none !important;
 }
 
-/* Authentication panels use a later input background reset, so their icons
-   live on the field wrapper instead of the input background. */
-.auth-panel-form .form-group { position: relative; }
-.auth-panel-form .form-group::before {
-  content: '';
-  position: absolute;
-  z-index: 1;
-  left: 14px;
-  bottom: 14px;
-  width: 18px;
-  height: 18px;
-  pointer-events: none;
-  background: center / 18px 18px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1-4 1 1-4Z'/%3E%3C/svg%3E");
+/* ── Select arrow: hide native dropdown arrow ─────────────── */
+:root:root :is(.form-group > .form-select, .bs form select) {
+  -webkit-appearance: none !important;
+  appearance: none !important;
 }
-.auth-panel-form .form-group:has(input[type="email"])::before {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='20' height='16' x='2' y='4' rx='2'/%3E%3Cpath d='m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7'/%3E%3C/svg%3E");
+
+/* ── Read-only and disabled form controls ─────────────────── */
+:root:root :is(.form-input:disabled, .form-select:disabled, .form-textarea:disabled) {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+  background: var(--gray-100) !important;
 }
-.auth-panel-form .form-group:has(input[type="password"])::before {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='11' x='3' y='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E");
+:root:root :is(.form-input[readonly], .form-textarea[readonly]) {
+  background: var(--off-white) !important;
+  border-color: var(--gray-200) !important;
+  cursor: default !important;
 }
+
+/* ── Contact form mobile responsive ────────────────────────── */
+@media (max-width: 768px) {
+  .contact-form-side { padding: 36px 22px 44px !important; }
+  .contact-info-side { padding: 44px 22px 48px !important; }
+  .contact-info-item { margin-bottom: 24px; }
+}
+
+/* Authentication panels get icons via input background-image (shared rules above).
+   Remove the redundant ::before approach that caused doubled icons and uncentred
+   placement. */
 
 #rmx-toast-root {
   top: 18px !important;

@@ -518,7 +518,7 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
         { label: 'Applications Sent',  value: applications.length, sub: applications.length ? 'Total submitted' : 'None yet' },
         { label: 'Under Review',       value: pendingCount,        sub: pendingCount ? 'Awaiting school response' : 'None yet' },
         { label: 'Accepted',           value: acceptedCount,       sub: acceptedCount ? 'Schools want to meet you' : 'None yet' },
-        { label: 'Profile Complete',    value: `${user.profileComplete}%`,                                                            sub: user.profileComplete < 100 ? 'Finish your profile' : 'Fully complete' },
+        { label: 'Profile Complete',    value: `${user.profileComplete}%`,                                                            sub: user.profileComplete < 100 ? 'Finish your profile' : ['submitted','under_review'].includes(user.profileStatus) ? 'Under review' : user.profileStatus === 'verified' ? 'Verified' : user.profileStatus === 'complete' ? 'Ready to submit' : 'Fully complete' },
       ].map(s => (
         <div key={s.label} className="portal-stat-card">
           <div className="psc-label">{s.label}</div>
@@ -1758,6 +1758,7 @@ const UserPortalPage = () => {
   const [apiAlerts, setApiAlerts] = React.useState(null);
   const [portalLoading, setPortalLoading] = React.useState(isApiMode());
   const [portalLoadError, setPortalLoadError] = React.useState('');
+  const [accountStatus, setAccountStatus] = React.useState(null);
   const [avatarPreview, setAvatarPreview] = React.useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = React.useState(false);
   const [avatarUploading, setAvatarUploading] = React.useState(false);
@@ -1771,6 +1772,9 @@ const UserPortalPage = () => {
   const [termsModalOpen, setTermsModalOpen] = React.useState(false);
   const [termsAccepting, setTermsAccepting] = React.useState(false);
   const [termsError, setTermsError] = React.useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [deleteConfirming, setDeleteConfirming] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState('');
   const [profilePromptOpen, setProfilePromptOpen] = React.useState(false);
   const [submitModalOpen, setSubmitModalOpen] = React.useState(false);
   const [submitError, setSubmitError] = React.useState('');
@@ -1869,11 +1873,13 @@ const UserPortalPage = () => {
       fetchPortalData('/api/me/profile'),
       fetchPortalData('/api/me/applications'),
       fetchPortalData('/api/me/job-alerts'),
-    ]).then(([profileData, applicationData, alertData]) => {
+      fetchPortalData('/api/auth/me/status'),
+    ]).then(([profileData, applicationData, alertData, statusData]) => {
       if (cancelled) return;
       if (profileData.profile) setApiProfile(prev => ({ ...(prev || {}), ...profileData.profile }));
       setApiApplications(applicationData.items || []);
       setApiAlerts((alertData.items || (alertData.preferences ? [alertData.preferences] : [])).map(normaliseAlert).filter(Boolean));
+      setAccountStatus(statusData);
     }).catch(error => {
       if (!cancelled) setPortalLoadError(error.message || 'Please check your connection and try again.');
     }).finally(() => {
@@ -1946,19 +1952,31 @@ const UserPortalPage = () => {
     ? (profileSource.email || session.email || '')
     : (session.email || MOCK_USER.email);
   const initials = `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase() || 'RM';
+
+  // Use backend-calculated profile completion values, with fallback to frontend calc.
   const profileCompletion = isApiMode()
-    ? completionFromProfile({
+    ? (profileSource.profile_completion ?? completionFromProfile({
         ...profileSource,
         email,
         first_name: firstName,
         last_name: lastName,
-      })
+      }))
     : MOCK_USER.profileComplete;
+
+  const profileMissingFields = isApiMode()
+    ? (profileSource.profile_missing_fields || [])
+    : [];
+
+  // Determine if the teacher is "new" (needs onboarding/prompts):
+  // Not new if profile is submitted, under review, verified, rejected.
+  const isNewTeacher = !['submitted', 'under_review', 'verified', 'rejected'].includes(
+    profileSource.profile_status || ''
+  ) && profileCompletion < 100;
 
   // Merge: API profile takes precedence over session/mock data.
   const user = isApiMode()
     ? {
-        isNew: profileCompletion < 100,
+        isNew: isNewTeacher,
         firstName: firstName || 'Teacher',
         lastName,
         email,
@@ -1973,6 +1991,7 @@ const UserPortalPage = () => {
         subject: profileSource.teaching_subject || '',
         level: profileSource.preferred_level || '',
         profileComplete: profileCompletion,
+        profileMissingFields,
         emailVerified: Boolean(profileSource.is_verified),
         hasCV: Boolean(profileSource.cv_file_id),
         hasCerts: Boolean(profileSource.certificate_file_id),
@@ -2136,10 +2155,9 @@ const UserPortalPage = () => {
       const resp = await fetch('/api/auth/accept-terms', { method: 'POST', credentials: 'include' });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'Could not accept terms.');
-      setApiProfile(prev => ({ ...(prev || {}), terms_accepted_at: data.user?.terms_accepted_at }));
+      setApiProfile(prev => ({ ...(prev || {}), terms_accepted_at: data.user?.terms_accepted_at, terms_version: data.user?.terms_version }));
       setTermsModalOpen(false);
-      const completion = typeof profileCompletion === 'number' ? profileCompletion : 0;
-      if (completion < 100 && user) {
+      if (isNewTeacher && user) {
         setTimeout(() => setProfilePromptOpen(true), 600);
       }
     } catch (err) {
@@ -2149,21 +2167,28 @@ const UserPortalPage = () => {
     }
   };
 
-  const declineTerms = async () => {
-    setTermsAccepting(true);
-    setTermsError('');
+  const openDeleteConfirm = () => {
+    setDeleteConfirmOpen(true);
+    setDeleteError('');
+  };
+
+  const executeDelete = async () => {
+    setDeleteConfirming(true);
+    setDeleteError('');
     try {
       const resp = await fetch('/api/auth/decline-terms', { method: 'POST', credentials: 'include' });
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
-        throw new Error(data.error || 'Could not process your request.');
+        throw new Error(data.error || 'Could not delete account.');
       }
+      setDeleteConfirmOpen(false);
+      setTermsModalOpen(false);
       clearDemoSession();
       queueToast('Your account has been deleted.', 'success');
       window.location.href = '/';
     } catch (err) {
-      setTermsError(err.message);
-      setTermsAccepting(false);
+      setDeleteError(err.message);
+      setDeleteConfirming(false);
     }
   };
 
@@ -2376,30 +2401,74 @@ const UserPortalPage = () => {
               </a>.
             </p>
             {termsError && <p className="form-error" style={{ textAlign: 'center', marginBottom: 16 }}>{termsError}</p>}
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <div className="terms-actions">
               <button
-                className="btn btn-primary"
+                className="btn btn-primary terms-accept-btn"
                 type="button"
                 disabled={termsAccepting}
                 onClick={acceptTerms}
-                style={{ minWidth: 140 }}
               >
                 {termsAccepting ? 'Please wait...' : 'Accept'}
               </button>
               <button
-                className="btn"
+                className="btn terms-decline-btn"
                 type="button"
                 disabled={termsAccepting}
-                onClick={declineTerms}
-                style={{
-                  minWidth: 140,
-                  background: '#fee2e2',
-                  color: '#ef4444',
-                  border: '1px solid #fca5a5',
-                  fontWeight: 700,
-                }}
+                onClick={openDeleteConfirm}
               >
                 Decline & Delete Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(1, 17, 38, 0.8)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title" style={{
+            background: '#fff', borderRadius: 12,
+            width: 'min(440px, calc(100vw - 32px))',
+            padding: 36, position: 'relative',
+            boxShadow: '0 28px 90px rgba(1, 17, 38, 0.32)',
+          }}>
+            <h3 id="delete-confirm-title" style={{
+              fontFamily: "'Montserrat', sans-serif",
+              fontSize: '1.2rem', fontWeight: 900,
+              textAlign: 'center', color: '#ef4444',
+              marginBottom: 16,
+            }}>
+              Delete Your Account?
+            </h3>
+            <p style={{
+              fontSize: '0.88rem', color: 'var(--text-body)',
+              lineHeight: 1.6, marginBottom: 16,
+            }}>
+              This will permanently delete your account, profile, documents, applications,
+              and all associated data. Your email and phone number will be freed for new
+              registration. This action <strong>cannot be undone</strong>.
+            </p>
+            {deleteError && <p className="form-error" style={{ textAlign: 'center', marginBottom: 16 }}>{deleteError}</p>}
+            <div className="terms-actions">
+              <button
+                className="btn terms-delete-confirm-btn"
+                type="button"
+                disabled={deleteConfirming}
+                onClick={executeDelete}
+              >
+                {deleteConfirming ? 'Deleting...' : 'Yes, Delete My Account'}
+              </button>
+              <button
+                className="btn btn-outline"
+                type="button"
+                disabled={deleteConfirming}
+                onClick={() => { setDeleteConfirmOpen(false); setDeleteError(''); }}
+              >
+                Keep My Account
               </button>
             </div>
           </div>
@@ -2412,6 +2481,11 @@ const UserPortalPage = () => {
             <div style={{ marginBottom: 12 }}><Icon name="user" size={32} stroke={1.8} /></div>
             <h3 id="profile-prompt-title">Complete your profile</h3>
             <p>Your profile is <strong>{profileCompletion}%</strong> complete. Add your teaching details to help schools find and connect with you.</p>
+            {profileMissingFields.length > 0 && (
+              <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', marginTop: 8 }}>
+                Missing: {profileMissingFields.join(', ')}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 18 }}>
               <button className="btn btn-primary" type="button" onClick={() => { setProfilePromptOpen(false); setActiveView('profile'); }}>
                 Complete Profile
@@ -2471,6 +2545,41 @@ const UserPortalPage = () => {
       )}
 
       <style>{`
+        .terms-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          flex-wrap: wrap;
+        }
+        .terms-actions .btn {
+          flex: 0 1 auto;
+          min-width: 160px;
+        }
+        .terms-accept-btn {
+          min-width: 160px;
+        }
+        .terms-decline-btn {
+          background: #fee2e2;
+          color: #ef4444;
+          border: 1px solid #fca5a5;
+          font-weight: 700;
+        }
+        .terms-delete-confirm-btn {
+          background: #ef4444;
+          color: #fff;
+          border: 1px solid #dc2626;
+          font-weight: 700;
+        }
+        @media (max-width: 480px) {
+          .terms-actions {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .terms-actions .btn {
+            width: 100%;
+            min-width: 0;
+          }
+        }
         .profile-status-banner {
           display: flex;
           align-items: center;

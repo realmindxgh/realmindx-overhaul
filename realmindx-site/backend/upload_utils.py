@@ -1,3 +1,5 @@
+import os
+
 from pathlib import Path
 from uuid import uuid4
 
@@ -42,4 +44,20 @@ def save_upload(file_storage, category, owner_id=None, visibility="protected"):
     )
     db.session.add(uploaded)
     return uploaded
+
+
+def delete_uploaded_file_physical(uploaded_file):
+    """Remove the physical file from disk for a given UploadedFile row.
+
+    Does not delete the DB row — the caller is responsible for that.
+    Silently succeeds if the file does not exist on disk.
+    """
+    if not uploaded_file:
+        return
+    try:
+        path = uploaded_file.storage_path
+        if path and os.path.isfile(path):
+            os.remove(path)
+    except OSError:
+        current_app.logger.warning("Could not remove physical file: %s", uploaded_file.storage_path)
 

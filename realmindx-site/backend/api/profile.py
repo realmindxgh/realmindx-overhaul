@@ -43,6 +43,7 @@ def profile_json(profile):
     cv = db.session.get(UploadedFile, profile.cv_file_id) if profile.cv_file_id else None
     certificate = db.session.get(UploadedFile, profile.certificate_file_id) if profile.certificate_file_id else None
     placements = TeacherPlacement.query.filter_by(user_id=current_user.id).order_by(TeacherPlacement.accepted_at.desc()).all()
+    completion, missing = teacher_profile_completion(current_user)
     return {
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
@@ -77,6 +78,8 @@ def profile_json(profile):
         "years_of_experience": profile.years_of_experience,
         "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
         "profile_status": profile.profile_status,
+        "profile_completion": completion,
+        "profile_missing_fields": missing,
         "submitted_at": profile.submitted_at.isoformat() if profile.submitted_at else None,
         "review_notes": profile.review_notes,
         "placements": [{
