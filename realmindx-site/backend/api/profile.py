@@ -199,8 +199,10 @@ def update_profile():
                 pass
         else:
             profile.date_of_birth = None
-    if "phone" in payload and payload["phone"] != current_user.phone:
-        return jsonify(error="Phone changes require OTP verification in Account & Security."), 400
+    if "phone" in payload:
+        new_phone = payload["phone"] or None
+        if new_phone != current_user.phone:
+            return jsonify(error="Phone changes require OTP verification in Account & Security."), 400
     _sync_profile_to_alert_preference(profile)
 
     completion, missing = teacher_profile_completion(current_user)

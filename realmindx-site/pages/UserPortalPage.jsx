@@ -2067,7 +2067,6 @@ const UserPortalPage = () => {
   const openProfileEdit = (section = 'personal') => {
     setProfileError('');
     setProfileForm({
-      phone: profileSource.phone || '',
       sex: profileSource.sex || '',
       age_range: profileSource.age_range || '',
       location: profileSource.location || '',

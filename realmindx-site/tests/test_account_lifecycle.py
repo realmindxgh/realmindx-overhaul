@@ -1035,5 +1035,333 @@ class AccountLifecycleTests(unittest.TestCase):
         stale_resp = self.client.post("/api/auth/accept-terms")
         self.assertEqual(stale_resp.status_code, 401)
 
+class ProfilePartialUpdateTests(unittest.TestCase):
+    """Ensure profile partial updates do not trigger unrelated validations.
+
+    The critical bug: a teacher without a phone number (NULL in DB) who edited
+    their personal-info modal would send phone='' in the PUT /api/me/profile
+    payload; the backend compared '' != None and returned a 400 error about
+    phone OTP, blocking the save entirely.
+    """
+
+    def setUp(self):
+        self.app = create_app(AccountLifecycleTestConfig)
+        self.context = self.app.app_context()
+        self.context.push()
+        db.create_all()
+        db.session.execute(db.text("PRAGMA foreign_keys = ON"))
+
+        self.role = Role(name="user", description="Teacher")
+        db.session.add(self.role)
+        db.session.commit()
+
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        db.session.remove()
+        db.session.execute(db.text("PRAGMA foreign_keys = OFF"))
+        db.session.commit()
+        db.drop_all()
+        self.context.pop()
+
+    # ---- helpers ----
+
+    def _register_login(self, email="partial@teacher.com", phone=""):
+        """Register a verified user and log in."""
+        resp = self.client.post("/api/auth/signup", json={
+            "email": email,
+            "password": "TestPass123!",
+            "first_name": "Partial",
+            "last_name": "Update",
+            "phone": phone,
+            "sex": "male",
+            "age_range": "25_34",
+            "accepted_terms": True,
+            "surface": "teacher",
+            "turnstile_token": "bypass",
+        })
+        self.assertEqual(resp.status_code, 201)
+        user = User.query.filter_by(email=email).first()
+        user.is_verified = True
+        db.session.commit()
+
+        login = self.client.post("/api/auth/login", json={
+            "email": email,
+            "password": "TestPass123!",
+            "surface": "teacher",
+        })
+        self.assertEqual(login.status_code, 200)
+
+    def _profile(self):
+        return self.client.get("/api/me/profile").get_json().get("profile", {})
+
+    def _create_upload(self, filename="test.pdf"):
+        """Create and return an UploadedFile owned by the test user."""
+        user = User.query.filter_by(email="partial@teacher.com").first()
+        f = UploadedFile(
+            owner_id=user.id,
+            original_filename=filename,
+            stored_filename=filename,
+            storage_path=f"/tmp/{filename}",
+            mime_type="application/pdf",
+            size_bytes=100,
+            category="cv",
+        )
+        db.session.add(f)
+        db.session.flush()
+        db.session.commit()
+        return f.id
+
+    # ==============  PARTIAL UPDATE — CORE SCENARIOS  ==============
+
+    def test_update_bio_only_with_null_phone(self):
+        """User with NULL phone updates bio — must NOT trigger phone OTP."""
+        self._register_login(phone="")
+        user = User.query.filter_by(email="partial@teacher.com").first()
+        self.assertIsNone(user.phone)
+
+        resp = self.client.put("/api/me/profile", json={"bio": "Qualified maths teacher."})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data.get("profile", {}).get("bio"), "Qualified maths teacher.")
+
+    def test_update_location_only_with_null_phone(self):
+        """User with NULL phone updates location — must succeed."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={"location": "Kumasi"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual( self._profile().get("location"), "Kumasi")
+
+    def test_update_sex_and_age_range_with_null_phone(self):
+        """User with NULL phone updates sex + age range — must succeed."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={
+            "sex": "female",
+            "age_range": "35_44",
+        })
+        self.assertEqual(resp.status_code, 200)
+
+    def test_update_teaching_preferences_with_null_phone(self):
+        """User with NULL phone updates teaching fields — must succeed."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={
+            "teaching_subject": "English",
+            "preferred_level": "Junior High",
+            "preferred_employment_type": "Part-time",
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = self._profile()
+        self.assertEqual(data.get("preferred_employment_type"), "Part-time")
+
+    def test_update_curriculum_experience_with_null_phone(self):
+        """User with NULL phone updates curriculum experience — must succeed."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={
+            "curriculum_experience": "IGCSE",
+        })
+        self.assertEqual(resp.status_code, 200)
+
+    def test_update_years_of_experience_with_null_phone(self):
+        """User with NULL phone updates years_of_experience — must succeed."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={
+            "years_of_experience": 5,
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self._profile().get("years_of_experience"), 5)
+
+    def test_update_years_of_experience_blank_coerces_null(self):
+        """years_of_experience='' must be coerced to None, not crash."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={
+            "years_of_experience": "",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(self._profile().get("years_of_experience"))
+
+    def test_update_date_of_birth_with_null_phone(self):
+        """User with NULL phone updates date_of_birth — must succeed."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={
+            "date_of_birth": "1990-05-15",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self._profile().get("date_of_birth"), "1990-05-15")
+
+    def test_update_date_of_birth_blank_coerces_null(self):
+        """date_of_birth='' must be coerced to None, not crash."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={
+            "date_of_birth": "",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(self._profile().get("date_of_birth"))
+
+    # ==============  PHONE EDGE CASES IN update_profile  ==============
+
+    def test_phone_omitted_from_payload_does_not_alter_stored_phone(self):
+        """Omitting 'phone' entirely must preserve the stored value and succeed."""
+        self._register_login(phone="+233501234567")
+        stored_before = User.query.filter_by(email="partial@teacher.com").first().phone
+        resp = self.client.put("/api/me/profile", json={"location": "Cape Coast"})
+        self.assertEqual(resp.status_code, 200)
+        stored_after = User.query.filter_by(email="partial@teacher.com").first().phone
+        self.assertEqual(stored_after, stored_before)
+
+    def test_phone_payload_matches_stored_does_not_require_otp(self):
+        """Sending the same phone value must not trigger OTP error."""
+        self._register_login(phone="+233501234567")
+        user = User.query.filter_by(email="partial@teacher.com").first()
+        self.assertEqual(user.phone, "+233501234567")
+
+        resp = self.client.put("/api/me/profile", json={"phone": "+233501234567"})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_phone_payload_none_matches_stored_null(self):
+        """Sending phone: None for a user with NULL phone must succeed."""
+        self._register_login(phone="")
+        user = User.query.filter_by(email="partial@teacher.com").first()
+        self.assertIsNone(user.phone)
+
+        resp = self.client.put("/api/me/profile", json={"phone": None})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_phone_payload_empty_string_matches_stored_null(self):
+        """Sending phone: '' for a user with NULL phone must NOT trigger OTP error.
+
+        This is the exact scenario that was broken: the frontend sent phone=''
+        (from form initializer) for a user with phone=NULL in DB.
+        """
+        self._register_login(phone="")
+        user = User.query.filter_by(email="partial@teacher.com").first()
+        self.assertIsNone(user.phone)
+
+        resp = self.client.put("/api/me/profile", json={"phone": ""})
+        self.assertEqual(resp.status_code, 200)
+
+    def test_genuine_phone_change_requires_otp(self):
+        """A real phone change through update_profile must be rejected."""
+        self._register_login(phone="+233501234567")
+        resp = self.client.put("/api/me/profile", json={"phone": "+233509876543"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("OTP", resp.get_json().get("error", ""))
+
+    def test_genuine_phone_change_from_null_requires_otp(self):
+        """Setting a phone when it was NULL through update_profile must be rejected."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={"phone": "+233501234567"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("OTP", resp.get_json().get("error", ""))
+
+    # ==============  PROFILE COMPLETION / STATUS EDGE CASES  ==============
+
+    def test_partial_update_does_not_reset_profile_status(self):
+        """Updating a single field must not reset profile_status to incomplete."""
+        self._register_login(phone="")
+        profile = User.query.filter_by(email="partial@teacher.com").first().profile
+        profile.profile_status = "complete"
+        db.session.commit()
+
+        resp = self.client.put("/api/me/profile", json={"location": "Takoradi"})
+        self.assertEqual(resp.status_code, 200)
+        data = self._profile()
+        self.assertEqual(data.get("profile_status"), "complete",
+                         "Partial update must not reset profile_status")
+
+    def test_partial_update_completes_incomplete_profile_when_fields_filled(self):
+        """After filling all required fields, an incomplete profile auto-upgrades to complete."""
+        self._register_login(phone="")
+        profile = User.query.filter_by(email="partial@teacher.com").first().profile
+        profile.profile_status = "incomplete"
+        profile.cv_file_id = self._create_upload("cv.pdf")
+        profile.certificate_file_id = self._create_upload("cert.pdf")
+        db.session.commit()
+
+        # Fill remaining required completion fields (email already set)
+        resp = self.client.put("/api/me/profile", json={
+            "location": "Accra",
+            "teaching_subject": "Mathematics",
+            "preferred_level": "Senior High",
+            "preferred_employment_type": "Full-time",
+            "curriculum_experience": "WASSCE",
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = self._profile()
+        self.assertGreaterEqual(data.get("profile_completion", 0), 100,
+                                "Profile should be 100% complete after filling all fields")
+
+    def test_revision_required_upgrades_to_complete_on_partial_update(self):
+        """A profile in revision_required status upgrades to complete when fields are filled."""
+        self._register_login(phone="")
+        profile = User.query.filter_by(email="partial@teacher.com").first().profile
+        profile.profile_status = "revision_required"
+        profile.cv_file_id = self._create_upload("cv.pdf")
+        profile.certificate_file_id = self._create_upload("cert.pdf")
+        db.session.commit()
+
+        # Fill remaining required completion fields
+        resp = self.client.put("/api/me/profile", json={
+            "location": "Accra",
+            "teaching_subject": "Mathematics",
+            "preferred_level": "Senior High",
+            "preferred_employment_type": "Full-time",
+            "curriculum_experience": "WASSCE",
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = self._profile()
+        self.assertEqual(data.get("profile_status"), "complete",
+                         "revision_required should auto-upgrade to complete when fields filled")
+
+    # ==============  ACCOUNT-LEVEL FIELD HANDLING  ==============
+
+    def test_update_account_only_accepts_first_and_last_name(self):
+        """update_account endpoint must accept only first_name and last_name."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/account", json={
+            "first_name": "UpdatedFirst",
+            "last_name": "UpdatedLast",
+        })
+        self.assertEqual(resp.status_code, 200)
+        user = User.query.filter_by(email="partial@teacher.com").first()
+        self.assertEqual(user.first_name, "UpdatedFirst")
+
+    def test_update_account_rejects_phone(self):
+        """update_account endpoint must ignore or reject phone changes."""
+        self._register_login(phone="+233501234567")
+        resp = self.client.put("/api/me/account", json={
+            "first_name": "F",
+            "last_name": "L",
+            "phone": "+233509876543",
+        })
+        self.assertEqual(resp.status_code, 200)
+        user = User.query.filter_by(email="partial@teacher.com").first()
+        self.assertEqual(user.phone, "+233501234567",
+                         "Phone must not be changed via update_account")
+
+    # ==============  CONCURRENT SECTION SAVES  ==============
+
+    def test_multiple_partial_updates_accumulate(self):
+        """Sequential partial updates must accumulate correctly."""
+        self._register_login(phone="")
+        self.client.put("/api/me/profile", json={"location": "Accra"})
+        self.client.put("/api/me/profile", json={"teaching_subject": "English"})
+        self.client.put("/api/me/profile", json={"preferred_level": "Junior High"})
+        data = self._profile()
+        self.assertEqual(data.get("location"), "Accra")
+        self.assertEqual(data.get("teaching_subject"), "English")
+        self.assertEqual(data.get("preferred_level"), "Junior High")
+
+    def test_profile_after_partial_updates_matches_response(self):
+        """The returned profile from a partial update must match the stored profile."""
+        self._register_login(phone="")
+        resp = self.client.put("/api/me/profile", json={"location": "Accra"})
+        returned = resp.get_json()["profile"]
+
+        stored = self._profile()
+        for key in ("location", "phone", "email"):
+            self.assertEqual(stored.get(key), returned.get(key),
+                             f"Mismatch for {key}: stored={stored.get(key)!r} returned={returned.get(key)!r}")
+
+
 if __name__ == "__main__":
     unittest.main()
