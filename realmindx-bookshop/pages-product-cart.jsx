@@ -555,8 +555,9 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
 const AuthReturnActions = ({ navigate, route = 'cart' }) => (
   !isLoggedIn() ? (
     <div className="bs-auth-return-actions">
-      <p>Want your cart and order history saved?</p>
-      <div>
+      <span className="bs-cart-auth-icon"><Icon name="user" size={25} /></span>
+      <div className="bs-cart-auth-copy"><strong>Save your cart &amp; enjoy a faster checkout</strong><p>Sign in or create an account to keep your cart and view your order history.</p></div>
+      <div className="bs-cart-auth-buttons">
         <button type="button" onClick={() => { setBookshopAuthReturn(route); navigate('login'); }}>Sign in</button>
         <button type="button" onClick={() => { setBookshopAuthReturn(route); navigate('signup'); }}>Create account</button>
       </div>
@@ -743,20 +744,6 @@ const CartPage = ({ navigate }) => {
               <div className="bs-cart-item-mid">
                 <div className="bs-cart-meta-row">
                   <span className="bs-cat-badge">{b.catName}</span>
-                  <button
-                    type="button"
-                    className={`bs-cart-wishlist-link${wishlist?.has(b.id) ? ' active' : ''}`}
-                    aria-label={wishlist?.has(b.id) ? `Remove ${b.title} from wishlist` : `Save ${b.title} to wishlist`}
-                    aria-pressed={wishlist?.has(b.id)}
-                    title={wishlist?.has(b.id) ? 'Remove from wishlist' : 'Save to wishlist'}
-                    onClick={() => {
-                      const wasSaved = wishlist?.has(b.id);
-                      wishlist?.toggle(b.id);
-                      globalToast.success(wasSaved ? 'Removed from wishlist' : 'Saved to wishlist');
-                    }}
-                  >
-                    <Icon name="heart" size={16} />
-                  </button>
                 </div>
                 <div className="bs-cart-item-title">{b.title}</div>
                 {!b.stock && <span className="bs-stock-warning">Out of stock</span>}
@@ -776,36 +763,31 @@ const CartPage = ({ navigate }) => {
           ))}
         </div>
 
-        <aside className="bs-summary-card">
-          <h3 className="bs-h3">Order Summary</h3>
-          <div className="bs-summary-row"><span>Selected items</span><span>{selectedCount}</span></div>
-          <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(selectedSubtotal)}</span></div>
-          {/* Bulk Purchase Discount — automatic at each category's configured quantity */}
-          {selectedBulkSaving > 0 && selectedBulkDiscounts.map(d => (
-            <div key={d.id} className="bs-summary-row bs-discount" style={{ fontSize:13 }}>
-              <span style={{ maxWidth:220, lineHeight:1.4 }}>Bulk Purchase Discount ({d.pct}%)</span>
-              <span style={{ color:'var(--bs-success)', fontWeight:700 }}>-{cedis(d.saving)}</span>
+        <aside className="bs-summary-card bs-cart-summary-card">
+          <div className="bs-cart-summary-details">
+            <h3 className="bs-h3">Order Summary</h3>
+            <div className="bs-summary-row"><span>Selected items</span><span>{selectedCount}</span></div>
+            <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(selectedSubtotal)}</span></div>
+            {selectedBulkSaving > 0 && selectedBulkDiscounts.map(d => (
+              <div key={d.id} className="bs-summary-row bs-discount" style={{ fontSize:13 }}>
+                <span style={{ maxWidth:220, lineHeight:1.4 }}>Bulk Purchase Discount ({d.pct}%)</span>
+                <span style={{ color:'var(--bs-success)', fontWeight:700 }}>-{cedis(d.saving)}</span>
+              </div>
+            ))}
+            <div className="bs-summary-row"><span>Delivery</span><span className="bs-delivery-tbd">Calculated at checkout</span></div>
+            <div className="bs-summary-row bs-total"><span>Subtotal <small>(Excl. Delivery)</small></span><span>{cedis(cartTotal)}</span></div>
+          </div>
+          <div className="bs-cart-summary-actions">
+            <div className="bs-cart-cta-row">
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-flex" disabled={selectedCount === 0} onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
+              <button className="bs-btn bs-btn-navy bs-btn-lg bs-btn-flex" onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
+              {selectedCount === 0 && <button className="bs-btn bs-btn-outline-navy bs-btn-flex" onClick={selectAll}>Select all items</button>}
             </div>
-          ))}
-          {/* Delivery — only known after selecting a zone at checkout */}
-          <div className="bs-summary-row">
-            <span>Delivery</span>
-            <span className="bs-delivery-tbd">Calculated at checkout</span>
+            <div className="bs-cart-security-note"><span><Icon name="shield" size={20} /></span><div><strong>Secure checkout</strong><small>Your data is protected</small></div></div>
           </div>
-          <p style={{ fontSize:12, color:'var(--bs-muted)', marginBottom:4 }}>
-            Have a promo code? Apply it at checkout.
-          </p>
-          <div className="bs-summary-row bs-total"><span>Subtotal</span><span>{cedis(cartTotal)}</span></div>
-          <div className="bs-cart-cta-row" style={{ marginTop:18 }}>
-            <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-flex" disabled={selectedCount === 0} onClick={() => navigate('checkout')}>Proceed to Checkout <Icon name="arrow" size={16} /></button>
-            <button className="bs-btn bs-btn-navy bs-btn-lg bs-btn-flex" onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
-            {selectedCount === 0 && (
-              <button className="bs-btn bs-btn-outline-navy bs-btn-flex" onClick={selectAll}>Select all items</button>
-            )}
-          </div>
-          <AuthReturnActions navigate={navigate} route="cart" />
         </aside>
       </div>
+      <AuthReturnActions navigate={navigate} route="cart" />
 
       {/* You might also like */}
       {suggestions.length > 0 && (
