@@ -1212,7 +1212,7 @@ const InvoiceDocumentPreview = ({ invoice, documentLabel, documentId }) => {
         <div><span>Subtotal</span><strong>{cedis(invoice.subtotal_amount || 0)}</strong></div>
         {(invoice.bulk_discount_amount || 0) > 0 && <div><span>Bulk purchase discount</span><strong>-{cedis(invoice.bulk_discount_amount)}</strong></div>}
         {(invoice.promo_discount_amount || 0) > 0 && <div><span>Promo {invoice.promo_code || ''}</span><strong>-{cedis(invoice.promo_discount_amount)}</strong></div>}
-        <div><span>Delivery</span><strong>{isReceipt ? cedis(invoice.delivery_fee || 0) : 'Calculated at checkout'}</strong></div>
+        <div><span>Delivery</span><strong>{Number(invoice.delivery_fee || 0) > 0 ? cedis(invoice.delivery_fee) : 'Calculated at checkout'}</strong></div>
         <div className="grand"><span>{isReceipt ? 'Total' : 'Total before delivery'}</span><strong>{cedis(invoice.total_amount || 0)}</strong></div>
       </div>
     </div>
@@ -1357,7 +1357,7 @@ const InvoicePage = ({ navigate }) => {
               <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(invoice.subtotal_amount || 0)}</span></div>
               {(invoice.bulk_discount_amount || 0) > 0 && <div className="bs-summary-row bs-discount"><span>Bulk purchase discount</span><span>-{cedis(invoice.bulk_discount_amount)}</span></div>}
               {(invoice.promo_discount_amount || 0) > 0 && <div className="bs-summary-row bs-discount"><span>Promo {invoice.promo_code || ''}</span><span>-{cedis(invoice.promo_discount_amount)}</span></div>}
-              <div className="bs-summary-row"><span>Delivery</span><span>{cedis(invoice.delivery_fee || 0)}</span></div>
+              <div className="bs-summary-row"><span>Delivery</span><span>{Number(invoice.delivery_fee || 0) > 0 ? cedis(invoice.delivery_fee) : 'Calculated at checkout'}</span></div>
               <div className="bs-summary-row bs-total"><span>Total</span><span>{cedis(invoice.total_amount || 0)}</span></div>
               <div className="bs-invoice-download-action">
                 <a className="bs-btn bs-btn-gold bs-btn-lg" href={downloadUrl}>

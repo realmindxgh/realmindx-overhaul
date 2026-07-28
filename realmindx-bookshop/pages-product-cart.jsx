@@ -744,6 +744,20 @@ const CartPage = ({ navigate }) => {
               <div className="bs-cart-item-mid">
                 <div className="bs-cart-meta-row">
                   <span className="bs-cat-badge">{b.catName}</span>
+                  <button
+                    type="button"
+                    className={`bs-cart-wishlist-link${wishlist?.has(b.id) ? ' active' : ''}`}
+                    aria-label={wishlist?.has(b.id) ? `Remove ${b.title} from wishlist` : `Save ${b.title} to wishlist`}
+                    aria-pressed={wishlist?.has(b.id)}
+                    title={wishlist?.has(b.id) ? 'Remove from wishlist' : 'Save to wishlist'}
+                    onClick={() => {
+                      const wasSaved = wishlist?.has(b.id);
+                      wishlist?.toggle(b.id);
+                      globalToast.success(wasSaved ? 'Removed from wishlist' : 'Saved to wishlist');
+                    }}
+                  >
+                    <Icon name="heart" size={16} />
+                  </button>
                 </div>
                 <div className="bs-cart-item-title">{b.title}</div>
                 {!b.stock && <span className="bs-stock-warning">Out of stock</span>}
