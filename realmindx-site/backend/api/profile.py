@@ -465,7 +465,11 @@ def request_contact_change():
                 )
             ), 409
         raise
-    delivered = True if delivery_channel == "whatsapp_inbound" else _send_contact_change_code(field, target, code, channel)
+    if delivery_channel == "whatsapp_inbound":
+        delivered = True
+    else:
+        result = _send_contact_change_code(field, target, code, channel)
+        delivered = result.status in ("accepted", "sent", "mocked")
     if not delivered:
         db.session.rollback()
         current_app.logger.warning("Could not deliver %s verification code for user %s", field, current_user.id)

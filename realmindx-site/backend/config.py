@@ -90,6 +90,11 @@ class Config:
     MAIL_USERNAME = os.getenv("MAIL_USERNAME", "")
     MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
 
+    ENV = os.getenv("FLASK_ENV", "development")
+    COMMUNICATION_MODE = os.getenv("COMMUNICATION_MODE", "").strip().lower() or (
+        "mock" if os.getenv("FLASK_ENV", "development") != "production" else "live"
+    )
+
     TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "")
 
     # Arkesel SMS (Ghana) — set these when ready; SMS is silently skipped if blank

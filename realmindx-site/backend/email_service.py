@@ -1,5 +1,6 @@
 import base64
 import smtplib
+import uuid
 from dataclasses import dataclass
 from decimal import Decimal
 from email.message import EmailMessage as SmtpEmailMessage
@@ -8,6 +9,13 @@ from urllib.parse import urlsplit
 
 import requests
 from flask import current_app
+
+from .communications import (
+    CommunicationResult,
+    mask_destination,
+    record_attempt,
+    resolve_communication_mode,
+)
 
 
 @dataclass
@@ -598,12 +606,78 @@ def bookshop_email_shell(
 </html>"""
 
 
-def send_email(message: OutboundEmail):
+def _email_attempt(
+    channel: str,
+    purpose: str,
+    recipient_user_id: int | None,
+    masked_dst: str | None,
+    template_name: str | None,
+    provider: str,
+    mode: str,
+    status: str,
+    provider_message_id: str | None = None,
+    error_code: str | None = None,
+):
+    record_attempt(
+        channel=channel,
+        purpose=purpose,
+        recipient_user_id=recipient_user_id,
+        masked_destination=masked_dst,
+        template_name=template_name,
+        provider=provider,
+        mode=mode,
+        status=status,
+        provider_message_id=provider_message_id,
+        error_code=error_code,
+    )
+
+
+def send_email(
+    message: OutboundEmail,
+    *,
+    purpose: str = "transactional",
+    recipient_user_id: int | None = None,
+    template_name: str | None = None,
+) -> CommunicationResult:
+    mode = resolve_communication_mode()
+    masked_dst = mask_destination("email", message.to)
+
+    purpose = purpose or "transactional"
+
+    if mode == "disabled":
+        _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "none", mode, "disabled")
+        return CommunicationResult(
+            channel="email", purpose=purpose, provider="none", mode=mode,
+            status="disabled",
+            error_code="mode_disabled",
+            error_message="Email delivery is disabled in this environment.",
+            recipient_user_id=recipient_user_id,
+            masked_destination=masked_dst,
+            template_name=template_name,
+        )
+
+    if mode == "mock":
+        mock_id = f"mock-{uuid.uuid4().hex}"
+        _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "mock", mode, "mocked", provider_message_id=mock_id)
+        current_app.logger.info("[email mock] %s -> %s (subject=%s)", purpose, masked_dst, message.subject)
+        return CommunicationResult(
+            channel="email", purpose=purpose, provider="mock", mode=mode,
+            status="mocked",
+            provider_message_id=mock_id,
+            error_message="Mock mode — no real email was sent.",
+            recipient_user_id=recipient_user_id,
+            masked_destination=masked_dst,
+            template_name=template_name,
+        )
+
     from_email = message.from_email or current_app.config["DEFAULT_FROM_EMAIL"]
     reply_to = message.reply_to or current_app.config["DEFAULT_REPLY_TO_EMAIL"]
     resend_key = current_app.config.get("RESEND_API_KEY")
     attachments = message.attachments or []
+    primary_error = None
+    final_result = None
 
+    # --- Resend API ---
     if resend_key:
         try:
             payload = {
@@ -629,37 +703,105 @@ def send_email(message: OutboundEmail):
                 timeout=15,
             )
             response.raise_for_status()
-            return {"provider": "resend", "status": "sent", "id": response.json().get("id")}
+            provider_id = response.json().get("id")
+            _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "resend", mode, "accepted", provider_message_id=provider_id)
+            current_app.logger.info("[email resend] %s accepted for %s", purpose, masked_dst)
+            return CommunicationResult(
+                channel="email", purpose=purpose, provider="resend", mode=mode,
+                status="accepted",
+                provider_message_id=provider_id,
+                recipient_user_id=recipient_user_id,
+                masked_destination=masked_dst,
+                template_name=template_name,
+            )
+        except requests.RequestException as exc:
+            primary_error = "provider_rejected"
+            error_msg = str(exc)
+            status_code = getattr(exc.response, "status_code", None) if hasattr(exc, "response") else None
+            if status_code == 401:
+                error_msg = "Resend API key rejected (unauthorized). Check RESEND_API_KEY."
+                primary_error = "invalid_credentials"
+            elif status_code == 422:
+                error_msg = "Resend rejected the email content (422)."
+            elif isinstance(exc, requests.Timeout):
+                error_msg = "Resend request timed out."
+                primary_error = "timeout"
+            current_app.logger.warning("[email resend] %s: %s", primary_error, masked_dst)
         except Exception as exc:
-            current_app.logger.warning("Resend delivery failed (%s): %s -> %s", exc, message.subject, message.to)
+            primary_error = "provider_error"
+            error_msg = str(exc)[:200]
+            current_app.logger.warning("[email resend] unexpected error: %s", error_msg)
+    else:
+        primary_error = "missing_credentials"
+        error_msg = "RESEND_API_KEY is not configured."
 
+    # --- SMTP fallback ---
     mail_server = current_app.config.get("MAIL_SERVER")
     mail_username = current_app.config.get("MAIL_USERNAME")
     mail_password = current_app.config.get("MAIL_PASSWORD")
+    smtp_configured = bool(mail_server and mail_username and mail_password)
 
-    if mail_server and mail_username and mail_password:
-        smtp_message = SmtpEmailMessage()
-        smtp_message["From"] = from_email
-        smtp_message["To"] = message.to
-        smtp_message["Subject"] = message.subject
-        smtp_message["Reply-To"] = reply_to
-        smtp_message.set_content(message.text or message.subject)
-        smtp_message.add_alternative(message.html, subtype="html")
-        for attachment in attachments:
-            maintype, _, subtype = (attachment.content_type or "application/octet-stream").partition("/")
-            smtp_message.add_attachment(
-                attachment.content,
-                maintype=maintype or "application",
-                subtype=subtype or "octet-stream",
-                filename=attachment.filename,
+    if smtp_configured:
+        try:
+            smtp_message = SmtpEmailMessage()
+            smtp_message["From"] = from_email
+            smtp_message["To"] = message.to
+            smtp_message["Subject"] = message.subject
+            smtp_message["Reply-To"] = reply_to
+            smtp_message.set_content(message.text or message.subject)
+            smtp_message.add_alternative(message.html, subtype="html")
+            for attachment in attachments:
+                maintype, _, subtype = (attachment.content_type or "application/octet-stream").partition("/")
+                smtp_message.add_attachment(
+                    attachment.content,
+                    maintype=maintype or "application",
+                    subtype=subtype or "octet-stream",
+                    filename=attachment.filename,
+                )
+
+            with smtplib.SMTP(mail_server, current_app.config["MAIL_PORT"], timeout=15) as smtp:
+                if current_app.config.get("MAIL_USE_TLS"):
+                    smtp.starttls()
+                smtp.login(mail_username, mail_password)
+                smtp.send_message(smtp_message)
+            _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "smtp", mode, "accepted")
+            current_app.logger.info("[email smtp] %s accepted for %s", purpose, masked_dst)
+            return CommunicationResult(
+                channel="email", purpose=purpose, provider="smtp", mode=mode,
+                status="accepted",
+                recipient_user_id=recipient_user_id,
+                masked_destination=masked_dst,
+                template_name=template_name,
             )
+        except smtplib.SMTPAuthenticationError:
+            primary_error = "invalid_credentials"
+            error_msg = "SMTP authentication failed. Check MAIL_USERNAME and MAIL_PASSWORD."
+            current_app.logger.warning("[email smtp] authentication failed")
+        except smtplib.SMTPException as exc:
+            primary_error = "provider_error"
+            error_msg = str(exc)[:200]
+            current_app.logger.warning("[email smtp] delivery failed: %s", error_msg)
+        except Exception as exc:
+            primary_error = "provider_error"
+            error_msg = str(exc)[:200]
+            current_app.logger.warning("[email smtp] unexpected error: %s", error_msg)
 
-        with smtplib.SMTP(mail_server, current_app.config["MAIL_PORT"], timeout=15) as smtp:
-            if current_app.config.get("MAIL_USE_TLS"):
-                smtp.starttls()
-            smtp.login(mail_username, mail_password)
-            smtp.send_message(smtp_message)
-        return {"provider": "smtp", "status": "sent"}
+    if not smtp_configured and not resend_key:
+        primary_error = "missing_credentials"
+        error_msg = "No email provider is configured. Set RESEND_API_KEY or SMTP settings."
 
-    current_app.logger.info("Email disabled locally: %s -> %s", message.subject, message.to)
-    return {"provider": "disabled", "status": "skipped"}
+    if not primary_error:
+        primary_error = "provider_error"
+        error_msg = "Email delivery failed — all providers attempted."
+
+    _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "none", mode, "failed", error_code=primary_error)
+    return CommunicationResult(
+        channel="email", purpose=purpose, provider="none", mode=mode,
+        status="failed",
+        error_code=primary_error,
+        error_message=error_msg,
+        retryable=True,
+        recipient_user_id=recipient_user_id,
+        masked_destination=masked_dst,
+        template_name=template_name,
+    )

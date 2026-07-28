@@ -1101,3 +1101,28 @@ class PasswordResetToken(TimestampMixin, db.Model):
     token_hash = db.Column(db.String(255), nullable=False, index=True)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     used_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+
+class CommunicationAttempt(TimestampMixin, db.Model):
+    """Durable record of every outbound communication attempt."""
+
+    __tablename__ = "communication_attempts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    channel = db.Column(db.String(20), nullable=False, index=True)
+    purpose = db.Column(db.String(40), nullable=False, index=True)
+    recipient_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    masked_destination = db.Column(db.String(120), nullable=True)
+    template_name = db.Column(db.String(80), nullable=True)
+    provider = db.Column(db.String(30), nullable=False)
+    provider_message_id = db.Column(db.String(120), nullable=True, index=True)
+    mode = db.Column(db.String(12), nullable=False)
+    status = db.Column(db.String(20), nullable=False, index=True)
+    error_code = db.Column(db.String(60), nullable=True)
+    retry_count = db.Column(db.Integer, default=0)
+    initiated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    batch_id = db.Column(db.String(40), nullable=True, index=True)
+    requested_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    delivered_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    failed_at = db.Column(db.DateTime(timezone=True), nullable=True)

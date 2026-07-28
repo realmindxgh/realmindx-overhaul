@@ -82,10 +82,10 @@ class AccountLifecycleTests(unittest.TestCase):
         self.client = self.app.test_client()
 
     def tearDown(self):
-        db.session.remove()
         db.session.execute(db.text("PRAGMA foreign_keys = OFF"))
         db.session.commit()
         db.drop_all()
+        db.session.remove()
         self.context.pop()
 
     def _register_user(self, email="new@teacher.com", password="TestPass123!", surface="teacher"):
@@ -1058,10 +1058,10 @@ class ProfilePartialUpdateTests(unittest.TestCase):
         self.client = self.app.test_client()
 
     def tearDown(self):
-        db.session.remove()
         db.session.execute(db.text("PRAGMA foreign_keys = OFF"))
         db.session.commit()
         db.drop_all()
+        db.session.remove()
         self.context.pop()
 
     # ---- helpers ----

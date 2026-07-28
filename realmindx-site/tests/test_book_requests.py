@@ -1,7 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SITE_ROOT = Path(__file__).resolve().parents[1]
@@ -71,7 +71,7 @@ class BookRequestTests(unittest.TestCase):
         payload.update(overrides)
         return payload
 
-    @patch("backend.book_requests.send_sms", return_value=True)
+    @patch("backend.book_requests.send_sms", return_value=Mock(status="accepted"))
     @patch("backend.book_requests.send_email", return_value={"status": "sent"})
     def test_submission_acknowledgement_deduplication_and_audit(self, _email, _sms):
         created = self.client.post("/api/bookshop/book-requests", json=self._payload())
@@ -95,7 +95,7 @@ class BookRequestTests(unittest.TestCase):
         self.assertIn("book_request_duplicate_reused", actions)
         self.assertEqual(AnalyticsEvent.query.filter_by(event_type="book_request_submitted").count(), 2)
 
-    @patch("backend.book_requests.send_sms", return_value=True)
+    @patch("backend.book_requests.send_sms", return_value=Mock(status="accepted"))
     @patch("backend.book_requests.send_email", return_value={"status": "sent"})
     def test_validation_and_phone_only_acknowledgement(self, email_mock, sms_mock):
         missing = self.client.post("/api/bookshop/book-requests", json=self._payload(email="", phone=""))
@@ -116,7 +116,7 @@ class BookRequestTests(unittest.TestCase):
         self.assertEqual(row.acknowledgement_email_status, "failed")
         self.assertTrue(AuditLog.query.filter_by(action="book_request_acknowledgement").first())
 
-    @patch("backend.book_requests.send_sms", return_value=True)
+    @patch("backend.book_requests.send_sms", return_value=Mock(status="accepted"))
     @patch("backend.book_requests.send_email", return_value={"status": "sent"})
     def test_permissions_availability_notifications_and_readable_audit(self, email_mock, sms_mock):
         request_response = self.client.post("/api/bookshop/book-requests", json=self._payload())
@@ -158,7 +158,7 @@ class BookRequestTests(unittest.TestCase):
         self.assertEqual(available_event["actor"], "Admin")
         self.assertEqual(available_event["entity_type"], "Book requests")
 
-    @patch("backend.book_requests.send_sms", side_effect=[False, True])
+    @patch("backend.book_requests.send_sms", side_effect=[Mock(status="failed"), Mock(status="accepted")])
     @patch("backend.book_requests.send_email", return_value={"status": "sent"})
     def test_retry_only_retries_failed_channel(self, email_mock, _sms_mock):
         created = self.client.post("/api/bookshop/book-requests", json=self._payload())
