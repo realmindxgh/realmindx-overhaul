@@ -727,6 +727,8 @@ const Navbar = ({ route, navigate }) => {
             <form className="bs-nav-search" onSubmit={submitSearch} autoComplete="off">
               <Icon name="search" size={19} className="bs-search-icn" />
               <input
+                type="search"
+                data-form-icon="none"
                 value={q}
                 onChange={e => {
                   setQ(e.target.value);
@@ -786,6 +788,8 @@ const Navbar = ({ route, navigate }) => {
                   <form className="bs-cats-search-form" onSubmit={submitSearch} autoComplete="off">
                     <Icon name="search" size={18} className="bs-search-icn" />
                     <input
+                      type="search"
+                      data-form-icon="none"
                       ref={catsSearchRef}
                       value={q}
                       onChange={event => {
