@@ -411,7 +411,13 @@ def _send_whatsapp_webhook_replies(results):
         reply_text = _reply_text_for_result(result)
         if not reply_text or not result.get("from"):
             continue
-        wam_result = send_whatsapp_text(result["from"], reply_text)
+        wam_result = send_whatsapp_text(
+            result["from"],
+            reply_text,
+            purpose="transactional",
+            recipient_user_id=result.get("user_id"),
+            template_name="whatsapp_verification_reply",
+        )
         if wam_result.status == "mocked":
             result["reply_status"] = "mocked"
         else:

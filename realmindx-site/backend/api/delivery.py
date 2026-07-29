@@ -468,16 +468,21 @@ def company_settlement_dispute(batch_id):
     if admin_email:
         admin_url = f"{current_app.config['BASE_URL'].rstrip('/')}/admin/dashboard"
         try:
-            send_email(OutboundEmail(
-                to=admin_email,
-                subject=f"Delivery settlement dispute: {batch.reference}",
-                html=app_email_shell(
-                    "Delivery settlement disputed",
-                    f"<p>{escape(batch.company.name)} raised a dispute for settlement <strong>{escape(batch.reference)}</strong>.</p><p>{escape(batch.dispute_notes or '')}</p>",
-                    cta_label="Review settlement", cta_url=admin_url,
+            send_email(
+                OutboundEmail(
+                    to=admin_email,
+                    subject=f"Delivery settlement dispute: {batch.reference}",
+                    html=app_email_shell(
+                        "Delivery settlement disputed",
+                        f"<p>{escape(batch.company.name)} raised a dispute for settlement <strong>{escape(batch.reference)}</strong>.</p><p>{escape(batch.dispute_notes or '')}</p>",
+                        cta_label="Review settlement", cta_url=admin_url,
+                    ),
+                    text=f"{batch.company.name} disputed {batch.reference}: {batch.dispute_notes}. {admin_url}",
                 ),
-                text=f"{batch.company.name} disputed {batch.reference}: {batch.dispute_notes}. {admin_url}",
-            ))
+                purpose="admin_alert",
+                recipient_user_id=None,
+                template_name="delivery_settlement_dispute",
+            )
         except Exception:
             current_app.logger.exception("Could not send settlement dispute notification for %s", batch.reference)
     return jsonify(settlement=batch_json(batch, include_lines=True, include_events=True))

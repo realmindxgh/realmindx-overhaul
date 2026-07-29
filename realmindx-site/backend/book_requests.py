@@ -88,19 +88,30 @@ def send_acknowledgement(row):
         <p>Your request reference is <strong>{escape(row.reference)}</strong>.</p>
         """
         try:
-            email_status = _email_status(send_email(OutboundEmail(
-                to=row.email,
-                subject=f"We received your book request - {row.reference}",
-                html=bookshop_email_shell("Book request received", body, preheader=f"We are working on {row.requested_title}."),
-                from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
-            )))
+            email_status = _email_status(send_email(
+                OutboundEmail(
+                    to=row.email,
+                    subject=f"We received your book request - {row.reference}",
+                    html=bookshop_email_shell("Book request received", body, preheader=f"We are working on {row.requested_title}."),
+                    from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
+                ),
+                purpose="transactional",
+                recipient_user_id=None,
+                template_name="book_request_acknowledgement",
+            ))
         except Exception:
             current_app.logger.exception("Book request acknowledgement email failed for %s", row.reference)
             email_status = "failed"
     elif row.phone:
         try:
-            sms_result = send_sms(row.phone, f"RealMindX Bookshop received your request for {row.requested_title}. Reference: {row.reference}. We will contact you when it is available.")
-            sms_status = "sent" if sms_result.status in ("accepted", "sent") else "failed"
+            sms_result = send_sms(
+                row.phone,
+                f"RealMindX Bookshop received your request for {row.requested_title}. Reference: {row.reference}. We will contact you when it is available.",
+                purpose="transactional",
+                recipient_user_id=None,
+                template_name="book_request_acknowledgement",
+            )
+            sms_status = _email_status(sms_result)
         except Exception:
             current_app.logger.exception("Book request acknowledgement SMS failed for %s", row.reference)
             sms_status = "failed"
@@ -198,19 +209,30 @@ def send_available_notification(row, retry=False):
         <p>You requested <strong>{escape(row.requested_title)}</strong> under reference {escape(row.reference)}.</p>
         """
         try:
-            email_status = _email_status(send_email(OutboundEmail(
-                to=row.email,
-                subject=f"Your requested book is now available - {row.reference}",
-                html=bookshop_email_shell("Your book is available", body, cta_label="Buy Now", cta_url=row.product_url, preheader=f"{row.product.name} is ready to order."),
-                from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
-            )))
+            email_status = _email_status(send_email(
+                OutboundEmail(
+                    to=row.email,
+                    subject=f"Your requested book is now available - {row.reference}",
+                    html=bookshop_email_shell("Your book is available", body, cta_label="Buy Now", cta_url=row.product_url, preheader=f"{row.product.name} is ready to order."),
+                    from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
+                ),
+                purpose="transactional",
+                recipient_user_id=None,
+                template_name="book_request_available",
+            ))
         except Exception:
             current_app.logger.exception("Book availability email failed for %s", row.reference)
             email_status = "failed"
     if row.phone and (not retry or sms_status != "sent"):
         try:
-            sms_result = send_sms(row.phone, f"Good news! {row.product.name} is now available at RealMindX Bookshop. Buy now: {row.product_url}")
-            sms_status = "sent" if sms_result.status in ("accepted", "sent") else "failed"
+            sms_result = send_sms(
+                row.phone,
+                f"Good news! {row.product.name} is now available at RealMindX Bookshop. Buy now: {row.product_url}",
+                purpose="transactional",
+                recipient_user_id=None,
+                template_name="book_request_available",
+            )
+            sms_status = _email_status(sms_result)
         except Exception:
             current_app.logger.exception("Book availability SMS failed for %s", row.reference)
             sms_status = "failed"

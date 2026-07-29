@@ -267,7 +267,16 @@ def send_portal_access_notification(profile, account_kind, temporary_password=DE
         f"Your RealMindX {label} account is ready. Login: {phone}. "
         f"Temporary password: {temporary_password}. Open {portal_url} and change it on first login."
     )
-    sms_sent = bool(phone and send_sms(phone, sms_text).status in ("accepted", "sent"))
+    sms_status = "unavailable"
+    if phone:
+        sms_result = send_sms(
+            phone,
+            sms_text,
+            purpose="security",
+            recipient_user_id=getattr(profile, "user_id", None),
+            template_name="delivery_portal_access",
+        )
+        sms_status = _communication_status(sms_result)
 
     email = (getattr(company, "contact_email", None) or "").strip().lower()
     email_status = "unavailable"
@@ -282,24 +291,29 @@ def send_portal_access_notification(profile, account_kind, temporary_password=DE
             "<p>The account holder must change this temporary password immediately after signing in.</p>"
         )
         try:
-            result = send_email(OutboundEmail(
-                to=email,
-                subject=f"RealMindX {label.title()} account created",
-                html=bookshop_email_shell(
-                    f"{label.title()} account ready",
-                    body,
-                    cta_label="Open delivery portal",
-                    cta_url=portal_url,
-                    eyebrow="RealMindX Bookshop Delivery",
-                    preheader=f"Portal access has been created for {name}.",
+            result = send_email(
+                OutboundEmail(
+                    to=email,
+                    subject=f"RealMindX {label.title()} account created",
+                    html=bookshop_email_shell(
+                        f"{label.title()} account ready",
+                        body,
+                        cta_label="Open delivery portal",
+                        cta_url=portal_url,
+                        eyebrow="RealMindX Bookshop Delivery",
+                        preheader=f"Portal access has been created for {name}.",
+                    ),
+                    text=(
+                        f"RealMindX {label.title()} account for {name}. Phone: {phone}. "
+                        f"Temporary password: {temporary_password}. Portal: {portal_url}. "
+                        "The password must be changed on first login."
+                    ),
+                    from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
                 ),
-                text=(
-                    f"RealMindX {label.title()} account for {name}. Phone: {phone}. "
-                    f"Temporary password: {temporary_password}. Portal: {portal_url}. "
-                    "The password must be changed on first login."
-                ),
-                from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
-            ))
+                purpose="security",
+                recipient_user_id=getattr(profile, "user_id", None),
+                template_name="delivery_portal_access",
+            )
             email_status = _communication_status(result)
         except Exception as exc:
             current_app.logger.warning(
@@ -310,7 +324,7 @@ def send_portal_access_notification(profile, account_kind, temporary_password=DE
             email_status = "failed"
 
     return {
-        "sms": "sent" if sms_sent else "failed",
+        "sms": sms_status,
         "email": email_status,
         "email_to": email or None,
     }
@@ -333,24 +347,40 @@ def log_delivery_event(delivery, event_type, actor_type, actor_id=None, from_sta
     return event
 
 
-def _send_delivery_update_email(to, subject, title, body, preheader, cta_label="Track your order", cta_url=None):
+def _send_delivery_update_email(
+    to,
+    subject,
+    title,
+    body,
+    preheader,
+    cta_label="Track your order",
+    cta_url=None,
+    *,
+    recipient_user_id=None,
+    template_name="delivery_update",
+):
     if not to:
         return "unavailable"
     try:
-        result = send_email(OutboundEmail(
-            to=to,
-            subject=subject,
-            html=bookshop_email_shell(
-                title,
-                body,
-                cta_label=cta_label,
-                cta_url=cta_url or f"{current_app.config.get('BOOKSHOP_URL', '').rstrip('/')}/track",
-                eyebrow="RealMindX Bookshop Delivery",
-                preheader=preheader,
+        result = send_email(
+            OutboundEmail(
+                to=to,
+                subject=subject,
+                html=bookshop_email_shell(
+                    title,
+                    body,
+                    cta_label=cta_label,
+                    cta_url=cta_url or f"{current_app.config.get('BOOKSHOP_URL', '').rstrip('/')}/track",
+                    eyebrow="RealMindX Bookshop Delivery",
+                    preheader=preheader,
+                ),
+                text=preheader,
+                from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
             ),
-            text=preheader,
-            from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
-        ))
+            purpose="transactional",
+            recipient_user_id=recipient_user_id,
+            template_name=template_name,
+        )
         return _communication_status(result)
     except Exception as exc:
         current_app.logger.warning(
@@ -399,13 +429,24 @@ def _notify_customer_status(delivery, status):
     title, text = notice
     phone = normalise_phone(getattr(order, "phone", "") or "")
     email = (getattr(order, "email", "") or "").strip().lower()
-    sms_status = "sent" if phone and send_sms(phone, text).status in ("accepted", "sent") else ("unavailable" if not phone else "failed")
+    if phone:
+        sms_status = _communication_status(send_sms(
+            phone,
+            text,
+            purpose="transactional",
+            recipient_user_id=order.user_id,
+            template_name=f"delivery_customer_{status}",
+        ))
+    else:
+        sms_status = "unavailable"
     email_status = _send_delivery_update_email(
         email,
         f"{title}: {order.order_reference}",
         title,
         f"<p>Hello {escape(order.customer_name or 'there')},</p><p>{escape(text)}</p>",
         text,
+        recipient_user_id=order.user_id,
+        template_name=f"delivery_customer_{status}",
     )
     event_type = "customer_notification_sent" if "sent" in {sms_status, email_status} else "customer_notification_failed"
     log_delivery_event(
@@ -425,8 +466,16 @@ def _notify_delivery_partner(delivery):
     text = f"New RealMindX delivery {order.order_reference} has been assigned to {company.name}. Open the company portal to review it."
     sent_phones = 0
     for manager in getattr(company, "company_users", []) or []:
-        if manager.is_active and manager.user and manager.user.is_active and send_sms(manager.phone, text).status in ("accepted", "sent"):
-            sent_phones += 1
+        if manager.is_active and manager.user and manager.user.is_active:
+            result = send_sms(
+                manager.phone,
+                text,
+                purpose="transactional",
+                recipient_user_id=manager.user_id,
+                template_name="delivery_partner_assignment",
+            )
+            if result.status in ("queued", "accepted", "sent", "delivered"):
+                sent_phones += 1
     email = (company.contact_email or "").strip().lower()
     email_status = _send_delivery_update_email(
         email,
@@ -437,6 +486,8 @@ def _notify_delivery_partner(delivery):
         text,
         cta_label="Open delivery company portal",
         cta_url=f"{current_app.config['DELIVERY_URL'].rstrip('/')}/manager/",
+        recipient_user_id=None,
+        template_name="delivery_partner_assignment",
     )
     log_delivery_event(
         delivery,
@@ -453,7 +504,13 @@ def _notify_assigned_rider(delivery):
     if not rider or not order:
         return
     text = f"RealMindX delivery {order.order_reference} has been assigned to you. Open the rider portal for delivery details."
-    status = "sent" if send_sms(rider.phone, text).status in ("accepted", "sent") else "failed"
+    status = _communication_status(send_sms(
+        rider.phone,
+        text,
+        purpose="transactional",
+        recipient_user_id=rider.user_id,
+        template_name="delivery_rider_assignment",
+    ))
     log_delivery_event(
         delivery,
         "rider_notification_sent" if status == "sent" else "rider_notification_failed",
@@ -646,7 +703,13 @@ def send_delivery_otp(delivery, otp, code):
     sms_status = "unavailable"
     email_status = "unavailable"
     if phone:
-        sms_status = "sent" if send_sms(phone, text).status in ("accepted", "sent") else "failed"
+        sms_status = _communication_status(send_sms(
+            phone,
+            text,
+            purpose="security",
+            recipient_user_id=order.user_id,
+            template_name="delivery_otp",
+        ))
         if sms_status == "sent":
             channels.append("sms")
     if email:
@@ -675,7 +738,10 @@ def send_delivery_otp(delivery, otp, code):
                     ),
                     text=text,
                     from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
-                )
+                ),
+                purpose="security",
+                recipient_user_id=order.user_id,
+                template_name="delivery_otp",
             )
             email_status = _communication_status(result)
         except Exception as exc:

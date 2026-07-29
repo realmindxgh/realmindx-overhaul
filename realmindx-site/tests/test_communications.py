@@ -1,3 +1,4 @@
+import ast
 import sys
 import json
 import unittest
@@ -892,6 +893,80 @@ class NewsletterUnsubscribeEndpointTests(unittest.TestCase):
         row = NewsletterSubscriber.query.filter_by(email="subscriber@example.com").first()
         self.assertFalse(row.is_active)
         self.assertEqual(row.communication_status, "unsubscribed")
+
+
+class CommunicationCallerMetadataTests(unittest.TestCase):
+    def test_every_application_caller_supplies_attempt_metadata(self):
+        tracked = {"send_email", "send_sms", "send_whatsapp_text", "send_whatsapp_otp"}
+        service_files = {"email_service.py", "sms_service.py", "whatsapp_service.py"}
+        required = {"purpose", "recipient_user_id", "template_name"}
+        missing = []
+
+        for path in sorted((SITE_ROOT / "backend").rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            if path.name in service_files:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                if isinstance(node.func, ast.Name):
+                    call_name = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    call_name = node.func.attr
+                else:
+                    continue
+                if call_name not in tracked:
+                    continue
+                supplied = {keyword.arg for keyword in node.keywords if keyword.arg}
+                absent = sorted(required - supplied)
+                if absent:
+                    missing.append(
+                        f"{path.relative_to(SITE_ROOT)}:{node.lineno} "
+                        f"{call_name}: {', '.join(absent)}"
+                    )
+
+        self.assertEqual(missing, [], "\n".join(missing))
+
+
+class ReminderDeliveryResultTests(unittest.TestCase):
+    def setUp(self):
+        self.app = create_app(CommunicationTestConfig)
+        self.context = self.app.app_context()
+        self.context.push()
+        db.create_all()
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.context.pop()
+
+    @patch("backend.api.bookshop._send_cart_invoice_email")
+    def test_mocked_cart_invoice_reminder_is_not_marked_sent(self, mock_send):
+        from backend.api.bookshop import send_due_cart_invoice_reminders
+        from backend.models import CartInvoice
+
+        mock_send.return_value = CommunicationResult(
+            channel="email",
+            purpose="service_reminder",
+            provider="mock",
+            mode="mock",
+            status="mocked",
+            template_name="cart_invoice_reminder",
+        )
+        invoice = CartInvoice(
+            invoice_id="INV-REMINDER-MOCK",
+            status="emailed",
+            emailed_at=datetime.now(timezone.utc) - timedelta(days=4),
+            recipients=["recipient@example.com"],
+        )
+        db.session.add(invoice)
+        db.session.commit()
+
+        sent = send_due_cart_invoice_reminders()
+
+        db.session.refresh(invoice)
+        self.assertEqual(sent, 0)
+        self.assertIsNone(invoice.reminder_3d_sent_at)
 
 
 if __name__ == "__main__":

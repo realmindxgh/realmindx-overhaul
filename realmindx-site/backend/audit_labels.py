@@ -14,7 +14,9 @@ ACTION_LABELS = {
     "bulk_price_adjust": "Updated several product prices",
     "cancel_delivery_assignment": "Cancelled a delivery assignment",
     "cart_invoice_emailed": "Emailed a cart invoice",
+    "cart_invoice_email_attempted": "Attempted cart invoice email delivery",
     "cart_invoice_reminder_sent": "Sent a cart invoice reminder",
+    "cart_invoice_reminder_attempted": "Attempted cart invoice reminder delivery",
     "change_password": "Changed their password",
     "password_changed": "Changed their password",
     "password_reset_confirmed": "Completed a password reset",
@@ -73,6 +75,8 @@ ACTION_LABELS = {
     "platform_terms_viewed": "Viewed the current platform terms",
     "profile_updated": "Updated a profile",
     "reply_contact_message": "Replied to a contact message",
+    "reply_contact_message_failed": "Could not deliver a contact message reply",
+    "reply_contact_message_mocked": "Recorded a contact message reply in mock mode",
     "resend_delivery_otp": "Resent a customer's delivery code",
     "reset_admin_password": "Reset an administrator's password",
     "reset_delivery_company_user_password": "Reset a delivery company manager's password",
@@ -142,6 +146,19 @@ AREA_LABELS = {
 
 def readable_audit_action(action, details=None):
     details = details or {}
+    if action in {"cart_invoice_email_attempted", "cart_invoice_reminder_attempted"}:
+        noun = "cart invoice" if action == "cart_invoice_email_attempted" else "cart invoice reminder"
+        if details.get("accepted") and not details.get("failed") and not details.get("mocked"):
+            return f"Sent a {noun}"
+        if details.get("mocked") and not details.get("accepted") and not details.get("failed"):
+            return f"Recorded a {noun} in mock mode"
+        return f"Could not fully deliver a {noun}"
+    if action == "send_newsletter_campaign":
+        if details.get("sent"):
+            return "Sent a newsletter campaign"
+        if details.get("mocked") and not details.get("failed"):
+            return "Recorded a newsletter campaign in mock mode"
+        return "Could not deliver a newsletter campaign"
     if action == "book_request_acknowledgement" and "sent" not in {details.get("email"), details.get("sms")}:
         return "Could not send the book request confirmation"
     if action in {"book_request_availability_notification", "book_request_notification_retried"} and "sent" not in {details.get("email"), details.get("sms")}:

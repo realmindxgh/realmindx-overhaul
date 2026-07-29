@@ -8,7 +8,7 @@ current_user; for public (unauthenticated) actions pass actor_email
 so the log still has a useful identifier.
 """
 
-from flask import g, request
+from flask import g, has_request_context, request
 from flask_login import current_user
 
 from .extensions import db
@@ -17,6 +17,8 @@ from .models import AuditLog
 
 def _get_ip():
     """Return the best available client IP, respecting common proxy headers."""
+    if not has_request_context():
+        return ""
     for header in ("X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"):
         value = request.headers.get(header)
         if value:
@@ -45,13 +47,10 @@ def audit(
     actor_email  : fallback identifier when no authenticated user exists
     """
     actor_id = None
-    try:
-        if current_user.is_authenticated:
-            actor_id = current_user.id
-            if not actor_email:
-                actor_email = current_user.email
-    except RuntimeError:
-        pass  # outside request context (e.g. CLI)
+    if has_request_context() and getattr(current_user, "is_authenticated", False):
+        actor_id = current_user.id
+        if not actor_email:
+            actor_email = current_user.email
 
     row = AuditLog(
         actor_id=actor_id,
@@ -62,7 +61,5 @@ def audit(
         ip_address=_get_ip(),
     )
     db.session.add(row)
-    try:
+    if has_request_context():
         g.audit_logged = True
-    except RuntimeError:
-        pass

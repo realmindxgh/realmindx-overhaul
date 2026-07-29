@@ -292,23 +292,28 @@ def _send_internal_account_access_email(user, role_name):
         "<p>You must change this password immediately after your first sign-in.</p>"
     )
     try:
-        result = send_email(OutboundEmail(
-            to=user.email,
-            subject=f"Your RealMindX {role_label} account",
-            html=app_email_shell(
-                f"{role_label} account ready",
-                body,
-                cta_label=f"Open {role_label} sign in",
-                cta_url=login_url,
-                eyebrow="RealMindX Secure Access",
-                preheader=f"Your RealMindX {role_label.lower()} account is ready.",
+        result = send_email(
+            OutboundEmail(
+                to=user.email,
+                subject=f"Your RealMindX {role_label} account",
+                html=app_email_shell(
+                    f"{role_label} account ready",
+                    body,
+                    cta_label=f"Open {role_label} sign in",
+                    cta_url=login_url,
+                    eyebrow="RealMindX Secure Access",
+                    preheader=f"Your RealMindX {role_label.lower()} account is ready.",
+                ),
+                text=(
+                    f"Your RealMindX {role_label} account is ready. Email: {user.email}. "
+                    f"Temporary password: {DEFAULT_TEMPORARY_PASSWORD}. Login: {login_url}. "
+                    "Change the password on first sign-in."
+                ),
             ),
-            text=(
-                f"Your RealMindX {role_label} account is ready. Email: {user.email}. "
-                f"Temporary password: {DEFAULT_TEMPORARY_PASSWORD}. Login: {login_url}. "
-                "Change the password on first sign-in."
-            ),
-        ))
+            purpose="security",
+            recipient_user_id=user.id,
+            template_name="internal_account_access",
+        )
         return result.status
     except Exception as exc:
         current_app.logger.warning(
@@ -1056,7 +1061,10 @@ def dispatch_job_alerts(job):
                         job_url,
                         preheader=f"{job.title} matches your saved teaching preferences.",
                     ),
-                )
+                ),
+                purpose="service_reminder",
+                recipient_user_id=user.id,
+                template_name="job_alert_match",
             )
         except Exception:
             current_app.logger.exception("Job alert delivery failed for user %s and job %s", user.id, job.id)
@@ -4278,16 +4286,21 @@ def admin_mark_delivery_settlement_paid(batch_id):
     if company_email:
         portal_url = f"{current_app.config['DELIVERY_URL'].rstrip('/')}/manager/"
         try:
-            send_email(OutboundEmail(
-                to=company_email,
-                subject=f"Delivery settlement confirmed: {batch.reference}",
-                html=app_email_shell(
-                    "Delivery settlement confirmed",
-                    f"<p>Settlement <strong>{escape(batch.reference)}</strong> has been marked settled.</p><p>Payment reference: <strong>{escape(batch.payment_reference)}</strong>.</p>",
-                    cta_label="Open delivery company portal", cta_url=portal_url,
+            send_email(
+                OutboundEmail(
+                    to=company_email,
+                    subject=f"Delivery settlement confirmed: {batch.reference}",
+                    html=app_email_shell(
+                        "Delivery settlement confirmed",
+                        f"<p>Settlement <strong>{escape(batch.reference)}</strong> has been marked settled.</p><p>Payment reference: <strong>{escape(batch.payment_reference)}</strong>.</p>",
+                        cta_label="Open delivery company portal", cta_url=portal_url,
+                    ),
+                    text=f"Settlement {batch.reference} has been marked settled. Payment reference: {batch.payment_reference}. {portal_url}",
                 ),
-                text=f"Settlement {batch.reference} has been marked settled. Payment reference: {batch.payment_reference}. {portal_url}",
-            ))
+                purpose="transactional",
+                recipient_user_id=None,
+                template_name="delivery_settlement_paid",
+            )
         except Exception:
             current_app.logger.exception("Could not send settlement confirmation for %s", batch.reference)
     return jsonify(settlement=batch_json(batch, include_lines=True, include_events=True))
@@ -4703,7 +4716,13 @@ def _send_order_status_sms(order, status, cancel_reason=""):
     }
     msg = messages.get(status)
     if msg:
-        send_sms(order.phone, msg)
+        send_sms(
+            order.phone,
+            msg,
+            purpose="transactional",
+            recipient_user_id=order.user_id,
+            template_name=f"bookshop_order_status_{status}",
+        )
 
 
 def _send_order_status_email(order, status, cancel_reason=""):
@@ -4845,20 +4864,25 @@ def _send_order_status_email(order, status, cancel_reason=""):
             except Exception:
                 current_app.logger.exception("Could not build receipt PDF for order %s.", ref)
 
-        send_email(OutboundEmail(
-            to=order.email,
-            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-            subject=info["subject"],
-            html=bookshop_email_shell(
-                info["title"],
-                info["body"],
-                cta_label=info.get("cta_label"),
-                cta_url=info.get("cta_url"),
-                eyebrow="RealMindX Bookshop",
-                preheader=info["subject"],
+        send_email(
+            OutboundEmail(
+                to=order.email,
+                from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+                subject=info["subject"],
+                html=bookshop_email_shell(
+                    info["title"],
+                    info["body"],
+                    cta_label=info.get("cta_label"),
+                    cta_url=info.get("cta_url"),
+                    eyebrow="RealMindX Bookshop",
+                    preheader=info["subject"],
+                ),
+                attachments=attachments,
             ),
-            attachments=attachments,
-        ))
+            purpose="transactional",
+            recipient_user_id=order.user_id,
+            template_name=f"bookshop_order_status_{status}",
+        )
     except Exception as exc:
         current_app.logger.warning("Order status email failed (error=%s)", type(exc).__name__)
 
@@ -5287,7 +5311,7 @@ def reply_to_message(message_id):
     is_bookshop = (row.source or "").lower() == "bookshop"
     _shell = bookshop_email_shell if is_bookshop else app_email_shell
     _eyebrow = "RealMindX Bookshop" if is_bookshop else "RealMindX Education"
-    send_email(
+    result = send_email(
         OutboundEmail(
             to=row.email,
             subject=f"Re: [{ticket_reference}] {row.subject}",
@@ -5303,8 +5327,43 @@ def reply_to_message(message_id):
                 eyebrow=_eyebrow,
                 preheader=f"A reply to your enquiry ref {ticket_reference}.",
             ),
-        )
+        ),
+        purpose="transactional",
+        recipient_user_id=None,
+        template_name="contact_message_reply",
     )
+    if result.status == "mocked":
+        log_action(
+            "reply_contact_message_mocked",
+            "contact_message",
+            row.id,
+            {"ticket_reference": ticket_reference},
+        )
+        db.session.commit()
+        return jsonify(
+            id=row.id,
+            status=row.status,
+            ticket_reference=ticket_reference,
+            delivery_status="mocked",
+            message="Reply recorded in mock mode; no email was sent.",
+        ), 202
+    if result.status not in ("queued", "accepted", "sent", "delivered"):
+        log_action(
+            "reply_contact_message_failed",
+            "contact_message",
+            row.id,
+            {
+                "ticket_reference": ticket_reference,
+                "delivery_status": result.status,
+                "error_code": result.error_code,
+            },
+        )
+        db.session.commit()
+        return jsonify(
+            error="The reply could not be delivered. The message was not marked replied.",
+            code="reply_delivery_failed",
+            delivery_status=result.status,
+        ), 503
     row.status = "replied"
     log_action("reply_contact_message", "contact_message", row.id, {"ticket_reference": ticket_reference})
     db.session.commit()
@@ -5580,6 +5639,8 @@ def send_newsletter_campaign():
         ).order_by(NewsletterSubscriber.email.asc()).all()
 
     sent = 0
+    mocked = 0
+    failed = 0
     for subscriber in subscribers:
         if subscriber.email in seen:
             continue
@@ -5589,7 +5650,7 @@ def send_newsletter_campaign():
         if not subscriber.unsubscribe_token:
             subscriber.unsubscribe_token = secrets.token_urlsafe(32)
         unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
-        send_email(
+        result = send_email(
             OutboundEmail(
                 to=subscriber.email,
                 subject=subject,
@@ -5608,13 +5669,38 @@ def send_newsletter_campaign():
                         f'<a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe</a>.'
                     ),
                 ),
-            )
+            ),
+            purpose="marketing",
+            recipient_user_id=None,
+            template_name="newsletter_campaign",
         )
-        sent += 1
+        if result.status == "mocked":
+            mocked += 1
+        elif result.status in ("queued", "accepted", "sent", "delivered"):
+            sent += 1
+        else:
+            failed += 1
 
-    log_action("send_newsletter_campaign", "newsletter", None, {"subject": subject, "brand": brand, "sender": sender, "sent": sent})
+    log_action(
+        "send_newsletter_campaign",
+        "newsletter",
+        None,
+        {
+            "subject": subject,
+            "brand": brand,
+            "sender": sender,
+            "sent": sent,
+            "mocked": mocked,
+            "failed": failed,
+        },
+    )
     db.session.commit()
-    return jsonify(message=f"Newsletter sent to {sent} subscriber(s).", sent=sent)
+    return jsonify(
+        message=f"Newsletter accepted for {sent} subscriber(s).",
+        sent=sent,
+        mocked=mocked,
+        failed=failed,
+    )
 
 
 @admin_bp.put("/newsletters/<int:subscriber_id>")

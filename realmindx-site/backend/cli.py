@@ -412,6 +412,10 @@ def register_cli(app):
             f"Sent {result['affiliate_count']} affiliate statement(s) "
             f"covering {result['usage_count']} completed promo sale(s)."
         )
+        if result.get("mocked"):
+            click.echo(f"Recorded {result['mocked']} statement(s) in mock mode; no email was sent.")
+        if result.get("failed"):
+            click.echo(f"Failed to deliver {result['failed']} statement(s).")
 
     @app.cli.command("send-cart-invoice-reminders")
     def send_cart_invoice_reminders_command():
@@ -651,6 +655,7 @@ def register_cli(app):
                 result = send_email(
                     OutboundEmail(to=send_test, subject="RealMindX health check", html="<p>This is a health check test message.</p>"),
                     purpose="admin_alert",
+                    recipient_user_id=None,
                     template_name="health_check",
                 )
                 click.echo(f"  Result: {result.status} (provider={result.provider})")
@@ -676,7 +681,13 @@ def register_cli(app):
                 from ..sms_service import send_sms
                 click.echo("")
                 click.echo(f"Sending test SMS to {send_test}...")
-                result = send_sms(send_test, "RealMindX health check message", purpose="admin_alert")
+                result = send_sms(
+                    send_test,
+                    "RealMindX health check message",
+                    purpose="admin_alert",
+                    recipient_user_id=None,
+                    template_name="health_check",
+                )
                 click.echo(f"  Result: {result.status} (provider={result.provider})")
                 if result.status == "failed":
                     click.echo(f"  Error: {result.error_message}")
@@ -700,7 +711,13 @@ def register_cli(app):
                 from ..whatsapp_service import send_whatsapp_text
                 click.echo("")
                 click.echo(f"Sending test WhatsApp message to {send_test}...")
-                result = send_whatsapp_text(send_test, "RealMindX health check message", purpose="admin_alert")
+                result = send_whatsapp_text(
+                    send_test,
+                    "RealMindX health check message",
+                    purpose="admin_alert",
+                    recipient_user_id=None,
+                    template_name="health_check",
+                )
                 click.echo(f"  Result: {result.status} (provider={result.provider})")
                 if result.status == "failed":
                     click.echo(f"  Error: {result.error_message}")

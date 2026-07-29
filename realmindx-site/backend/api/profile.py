@@ -234,11 +234,20 @@ def _mask_destination(field, value):
 def _send_contact_change_code(field, target, code, channel="sms"):
     if field == "phone":
         if channel == "whatsapp":
-            return send_whatsapp_otp(target, code)
+            return send_whatsapp_otp(
+                target,
+                code,
+                purpose="security",
+                recipient_user_id=current_user.id,
+                template_name="contact_change_phone_otp",
+            )
         return send_sms(
             target,
             f"Your RealMindX verification code is {code}. It expires in 15 minutes. "
             "Do not share this code.",
+            purpose="security",
+            recipient_user_id=current_user.id,
+            template_name="contact_change_phone_otp",
         )
     first_name = current_user.first_name or "there"
     body = (
@@ -262,7 +271,10 @@ def _send_contact_change_code(field, target, code, channel="sms"):
                 eyebrow="RealMindX Account Security",
                 preheader=f"Your verification code is {code}. It expires in 15 minutes.",
             ),
-        )
+        ),
+        purpose="security",
+        recipient_user_id=current_user.id,
+        template_name="contact_change_email_otp",
     )
 
 

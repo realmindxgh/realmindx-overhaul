@@ -877,25 +877,30 @@ def request_password_reset():
         )
         reset_url = f"{reset_base_url.rstrip('/')}/reset-password?token={token}"
         first_name = user.first_name or "there"
-        send_email(OutboundEmail(
-            to=user.email,
-            subject="Create your RealMindX password" if setup_password else "Reset your RealMindX password",
-            html=app_email_shell(
-                "Create your password" if setup_password else "Password reset request",
-                (
-                    f"<p>Hello {escape(first_name)},</p>"
-                    f"<p>We received a request to {'create' if setup_password else 'reset'} the password for your RealMindX account. "
-                    "If this was you, click the button below to set a secure password. "
-                    "The link is valid for <strong>one hour</strong>.</p>"
-                    f"<p>If you did not request this password {'creation' if setup_password else 'reset'}, you can safely ignore this email. "
-                    "Your account remains secure and no changes have been made.</p>"
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Create your RealMindX password" if setup_password else "Reset your RealMindX password",
+                html=app_email_shell(
+                    "Create your password" if setup_password else "Password reset request",
+                    (
+                        f"<p>Hello {escape(first_name)},</p>"
+                        f"<p>We received a request to {'create' if setup_password else 'reset'} the password for your RealMindX account. "
+                        "If this was you, click the button below to set a secure password. "
+                        "The link is valid for <strong>one hour</strong>.</p>"
+                        f"<p>If you did not request this password {'creation' if setup_password else 'reset'}, you can safely ignore this email. "
+                        "Your account remains secure and no changes have been made.</p>"
+                    ),
+                    "Create My Password" if setup_password else "Reset My Password",
+                    reset_url,
+                    eyebrow="RealMindX Account Security",
+                    preheader="Create your password. This link expires in one hour." if setup_password else "Reset your password. This link expires in one hour.",
                 ),
-                "Create My Password" if setup_password else "Reset My Password",
-                reset_url,
-                eyebrow="RealMindX Account Security",
-                preheader="Create your password. This link expires in one hour." if setup_password else "Reset your password. This link expires in one hour.",
             ),
-        ))
+            purpose="security",
+            recipient_user_id=user.id,
+            template_name="password_setup" if setup_password else "password_reset",
+        )
     return jsonify(message="If the email exists, reset instructions have been sent.")
 
 
