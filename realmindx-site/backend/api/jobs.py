@@ -72,7 +72,10 @@ def apply_for_job(job_id):
                 "Application received",
                 f"<p>Your application for <strong>{job.title}</strong> has been received.</p>",
             ),
-        )
+        ),
+        purpose="transactional",
+        recipient_user_id=current_user.id,
+        template_name="job_application_received",
     )
     return jsonify(application_id=application.id, status=application.status), 201
 

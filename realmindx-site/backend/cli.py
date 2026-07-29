@@ -1,5 +1,5 @@
 import click
-from datetime import date
+from datetime import date, datetime, timezone
 from markupsafe import escape
 from flask import current_app
 from sqlalchemy import or_
@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 from .delivery_locations import format_location_aliases, normalize_location_key, split_location_aliases
 from .extensions import db
 from .image_variants import ensure_product_image_variants, product_image_variant_status
-from .models import DeliveryZone, Permission, Product, Role, User, UserProfile
+from .models import ContactChangeToken, DeliveryZone, Permission, Product, Role, User, UserProfile
 from .promo_affiliates import send_monthly_promo_statements
 from .email_service import OutboundEmail, app_email_shell, send_email
 
@@ -412,6 +412,10 @@ def register_cli(app):
             f"Sent {result['affiliate_count']} affiliate statement(s) "
             f"covering {result['usage_count']} completed promo sale(s)."
         )
+        if result.get("mocked"):
+            click.echo(f"Recorded {result['mocked']} statement(s) in mock mode; no email was sent.")
+        if result.get("failed"):
+            click.echo(f"Failed to deliver {result['failed']} statement(s).")
 
     @app.cli.command("send-cart-invoice-reminders")
     def send_cart_invoice_reminders_command():
@@ -436,26 +440,37 @@ def register_cli(app):
             User.profile_reminder_sent_year.is_(None),
             User.profile_reminder_sent_year != today.year,
         )).all()
-        sent = 0
+        accepted = 0
+        mocked = 0
+        skipped = 0
         portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal/profile"
         for user in users:
-            result = send_email(OutboundEmail(
-                to=user.email,
-                subject="Please review your RealMindX teaching profile",
-                html=app_email_shell(
-                    "Keep your teaching profile current",
-                    f"<p>Hello {escape(user.first_name or 'Teacher')},</p><p>Schools make better matches when your subjects, experience, location, availability, age range, and other profile details are current. Please review your RealMindX profile for the new school year.</p>",
-                    "Review My Profile", portal_url,
-                    eyebrow="Annual Teacher Profile Review",
-                    preheader="Update your profile to improve future job matches.",
+            result = send_email(
+                OutboundEmail(
+                    to=user.email,
+                    subject="Please review your RealMindX teaching profile",
+                    html=app_email_shell(
+                        "Keep your teaching profile current",
+                        f"<p>Hello {escape(user.first_name or 'Teacher')},</p><p>Schools make better matches when your subjects, experience, location, availability, age range, and other profile details are current. Please review your RealMindX profile for the new school year.</p>",
+                        "Review My Profile", portal_url,
+                        eyebrow="Annual Teacher Profile Review",
+                        preheader="Update your profile to improve future job matches.",
+                    ),
+                    text=f"Review and update your RealMindX teaching profile: {portal_url}",
                 ),
-                text=f"Review and update your RealMindX teaching profile: {portal_url}",
-            ))
-            if result.get("status") == "sent":
+                purpose="service_reminder",
+                recipient_user_id=user.id,
+                template_name="annual_profile_reminder",
+            )
+            if result.status in ("accepted", "sent"):
                 user.profile_reminder_sent_year = today.year
-                sent += 1
+                accepted += 1
+            elif result.status == "mocked":
+                mocked += 1
+            else:
+                skipped += 1
         db.session.commit()
-        click.echo(f"Sent {sent} teacher profile reminder(s) for {today.year}.")
+        click.echo(f"Annual reminders: {accepted} accepted, {mocked} mocked, {skipped} skipped (for {today.year}).")
 
     @app.cli.command("backfill-product-image-variants")
     @click.option("--dry-run", is_flag=True, help="List product image work without creating files or updating rows.")
@@ -599,3 +614,247 @@ def register_cli(app):
             f"Skipped {skipped} already current zones. "
             f"Go to Admin > Bookshop > Delivery Prices to set the fees."
         )
+
+    @app.cli.command("communications-health")
+    @click.argument("channel", default="email")
+    @click.option("--send-test", default=None, help="Send a real test message to this recipient (use with caution).")
+    def communications_health_command(channel, send_test):
+        """Check communication provider configuration without sending by default."""
+        from ..communications import resolve_communication_mode, CommunicationAttempt
+
+        mode = resolve_communication_mode()
+        click.echo(f"Communication mode: {mode}")
+        click.echo("")
+
+        if channel == "email":
+            resend_key = current_app.config.get("RESEND_API_KEY", "")
+            mail_server = current_app.config.get("MAIL_SERVER", "")
+            mail_username = current_app.config.get("MAIL_USERNAME", "")
+            mail_password = current_app.config.get("MAIL_PASSWORD", "")
+            from_email = current_app.config.get("DEFAULT_FROM_EMAIL", "")
+
+            click.echo("Email provider configuration:")
+            click.echo(f"  Resend API key: {'SET' if resend_key else 'NOT SET'}")
+            click.echo(f"  SMTP server: {'SET' if mail_server else 'NOT SET'}")
+            click.echo(f"  SMTP username: {'SET' if mail_username else 'NOT SET'}")
+            click.echo(f"  SMTP password: {'SET' if bool(mail_password) else 'NOT SET'}")
+            click.echo(f"  Default from: {from_email}")
+
+            recent = CommunicationAttempt.query.filter_by(
+                channel="email",
+            ).order_by(CommunicationAttempt.requested_at.desc()).limit(5).all()
+            click.echo("")
+            click.echo("Recent email attempts (last 5):")
+            for a in recent:
+                click.echo(f"  [{a.status}] {a.purpose} -> {a.masked_destination} ({a.provider}, {a.mode})")
+
+            if send_test:
+                from ..email_service import send_email, OutboundEmail
+                click.echo("")
+                click.echo(f"Sending test email to {send_test}...")
+                result = send_email(
+                    OutboundEmail(to=send_test, subject="RealMindX health check", html="<p>This is a health check test message.</p>"),
+                    purpose="admin_alert",
+                    recipient_user_id=None,
+                    template_name="health_check",
+                )
+                click.echo(f"  Result: {result.status} (provider={result.provider})")
+                if result.status == "failed":
+                    click.echo(f"  Error: {result.error_message}")
+
+        elif channel == "sms":
+            api_key = current_app.config.get("ARKESEL_API_KEY", "")
+            sender_id = current_app.config.get("ARKESEL_SENDER_ID", "RealMindX")
+            click.echo("SMS provider configuration (Arkesel):")
+            click.echo(f"  API key: {'SET' if api_key else 'NOT SET'}")
+            click.echo(f"  Sender ID: {sender_id}")
+
+            recent = CommunicationAttempt.query.filter_by(
+                channel="sms",
+            ).order_by(CommunicationAttempt.requested_at.desc()).limit(5).all()
+            click.echo("")
+            click.echo("Recent SMS attempts (last 5):")
+            for a in recent:
+                click.echo(f"  [{a.status}] {a.purpose} -> {a.masked_destination} ({a.provider})")
+
+            if send_test:
+                from ..sms_service import send_sms
+                click.echo("")
+                click.echo(f"Sending test SMS to {send_test}...")
+                result = send_sms(
+                    send_test,
+                    "RealMindX health check message",
+                    purpose="admin_alert",
+                    recipient_user_id=None,
+                    template_name="health_check",
+                )
+                click.echo(f"  Result: {result.status} (provider={result.provider})")
+                if result.status == "failed":
+                    click.echo(f"  Error: {result.error_message}")
+
+        elif channel == "whatsapp":
+            access_token = current_app.config.get("WHATSAPP_ACCESS_TOKEN", "")
+            phone_number_id = current_app.config.get("WHATSAPP_PHONE_NUMBER_ID", "")
+            click.echo("WhatsApp provider configuration (Meta Cloud API):")
+            click.echo(f"  Access token: {'SET' if access_token else 'NOT SET'}")
+            click.echo(f"  Phone number ID: {'SET' if phone_number_id else 'NOT SET'}")
+
+            recent = CommunicationAttempt.query.filter_by(
+                channel="whatsapp",
+            ).order_by(CommunicationAttempt.requested_at.desc()).limit(5).all()
+            click.echo("")
+            click.echo("Recent WhatsApp attempts (last 5):")
+            for a in recent:
+                click.echo(f"  [{a.status}] {a.purpose} -> {a.masked_destination} ({a.provider})")
+
+            if send_test:
+                from ..whatsapp_service import send_whatsapp_text
+                click.echo("")
+                click.echo(f"Sending test WhatsApp message to {send_test}...")
+                result = send_whatsapp_text(
+                    send_test,
+                    "RealMindX health check message",
+                    purpose="admin_alert",
+                    recipient_user_id=None,
+                    template_name="health_check",
+                )
+                click.echo(f"  Result: {result.status} (provider={result.provider})")
+                if result.status == "failed":
+                    click.echo(f"  Error: {result.error_message}")
+        else:
+            click.echo(f"Unknown channel: {channel}. Use email, sms, or whatsapp.")
+
+    @app.cli.command("whatsapp-health")
+    @click.option("--meta-check/--no-meta-check", default=False, help="Query Meta Graph API (read-only). Requires network access.")
+    def whatsapp_health_command(meta_check):
+        """Report WhatsApp Cloud API configuration and recent activity. Never sends messages or alters Meta config."""
+        from .whatsapp_service import WHATSAPP_VERIFICATION_PHRASE
+        from .models import WhatsAppWebhookEvent
+
+        cfg = current_app.config
+        click.echo("=== WhatsApp Health Check ===")
+        click.echo("")
+
+        click.echo("--- Required Environment Variables ---")
+        for key in ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID",
+                     "WHATSAPP_BUSINESS_ACCOUNT_ID", "WHATSAPP_APP_ID",
+                     "WHATSAPP_APP_SECRET", "WHATSAPP_WEBHOOK_VERIFY_TOKEN"]:
+            val = cfg.get(key, "")
+            click.echo(f"  {key}: {'SET' if val else 'MISSING'}")
+
+        click.echo("")
+        click.echo("--- Optional Environment Variables ---")
+        for key in ["WHATSAPP_BUSINESS_PHONE_E164", "WHATSAPP_GRAPH_API_VERSION",
+                     "WHATSAPP_OTP_TEMPLATE_NAME", "WHATSAPP_OTP_TEMPLATE_LANGUAGE"]:
+            val = cfg.get(key, "")
+            if val:
+                click.echo(f"  {key}: {val}")
+            else:
+                click.echo(f"  {key}: MISSING")
+
+        from .sms_service import normalise_phone
+        business_phone = normalise_phone(cfg.get("WHATSAPP_BUSINESS_PHONE_E164", "")) or "+233257125229"
+        support_phone = normalise_phone(cfg.get("WHATSAPP_SUPPORT_PHONE_E164", "")) or "+233201166122"
+        click.echo(f"  WHATSAPP_BUSINESS_PHONE_E164: {business_phone}")
+        click.echo(f"  WHATSAPP_SUPPORT_PHONE_E164: {support_phone}")
+        click.echo(f"  WHATSAPP_SUPPORT_PHONE_DISPLAY: {cfg.get('WHATSAPP_SUPPORT_PHONE_DISPLAY', 'N/A')}")
+        click.echo(f"  WHATSAPP_PHONE_VERIFICATION_ENABLED: {cfg.get('WHATSAPP_PHONE_VERIFICATION_ENABLED', False)}")
+        click.echo(f"  WHATSAPP_PHONE_VERIFICATION_ALLOW_ALL: {cfg.get('WHATSAPP_PHONE_VERIFICATION_ALLOW_ALL', False)}")
+        click.echo(f"  WHATSAPP_INBOUND_CHALLENGE_ENABLED: {cfg.get('WHATSAPP_INBOUND_CHALLENGE_ENABLED', True)}")
+        click.echo(f"  WHATSAPP_CHALLENGE_PREFIX: {cfg.get('WHATSAPP_CHALLENGE_PREFIX', '(not set)')}")
+
+        click.echo("")
+        click.echo("--- Verification Phrase ---")
+        click.echo(f"  Expected inbound phrase: {WHATSAPP_VERIFICATION_PHRASE}")
+        prefix = cfg.get("WHATSAPP_CHALLENGE_PREFIX", "").strip()
+        if prefix:
+            click.echo(f"  Also accepted (prefix + optional code): {prefix} [CODE]")
+
+        click.echo("")
+        click.echo("--- Recent Webhook Events (last 20) ---")
+        events = WhatsAppWebhookEvent.query.order_by(WhatsAppWebhookEvent.created_at.desc()).limit(20).all()
+        if events:
+            for ev in events:
+                sender_masked = ev.sender[:6] + "****" + ev.sender[-2:] if ev.sender and len(ev.sender) > 8 else ev.sender
+                click.echo(f"  [{ev.created_at}] {ev.status} from={sender_masked} msg_id={ev.message_id}")
+                if ev.text_preview:
+                    click.echo(f"    text: {ev.text_preview[:60]}")
+        else:
+            click.echo("  (no events recorded)")
+
+        click.echo("")
+        click.echo("--- Active Pending Challenges ---")
+        now = datetime.now(timezone.utc)
+        pending = ContactChangeToken.query.filter(
+            ContactChangeToken.field == "phone",
+            ContactChangeToken.delivery_channel == "whatsapp_inbound",
+            ContactChangeToken.status == "pending",
+            ContactChangeToken.expires_at >= now,
+        ).order_by(ContactChangeToken.created_at.desc()).limit(10).all()
+        if pending:
+            for ch in pending:
+                target_masked = ch.target_value[:6] + "****" + ch.target_value[-2:] if ch.target_value and len(ch.target_value) > 8 else ch.target_value
+                click.echo(f"  id={ch.id} user={ch.user_id} target={target_masked} expires={ch.expires_at}")
+        else:
+            click.echo("  (none)")
+
+        if meta_check:
+            click.echo("")
+            click.echo("--- Meta Graph API Check (read-only) ---")
+            import json, urllib.request
+            token = cfg.get("WHATSAPP_ACCESS_TOKEN", "")
+            waba_id = cfg.get("WHATSAPP_BUSINESS_ACCOUNT_ID", "")
+            pnid = cfg.get("WHATSAPP_PHONE_NUMBER_ID", "")
+            api_ver = cfg.get("WHATSAPP_GRAPH_API_VERSION", "v23.0")
+
+            def graph_get(path):
+                url = f"https://graph.facebook.com/{api_ver}/{path}"
+                try:
+                    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+                    with urllib.request.urlopen(req, timeout=20) as r:
+                        return json.loads(r.read().decode()), r.status
+                except Exception as e:
+                    return {"error": str(e)}, 0
+
+            if pnid:
+                data, status = graph_get(f"{pnid}?fields=id,display_phone_number,code_verification_status,platform_type,webhook_configuration")
+                click.echo(f"  Phone number status ({pnid[:8]}...):")
+                if status == 200:
+                    click.echo(f"    display_phone_number: {data.get('display_phone_number')}")
+                    click.echo(f"    code_verification_status: {data.get('code_verification_status')}")
+                    click.echo(f"    platform_type: {data.get('platform_type')}")
+                    wc = data.get("webhook_configuration") or {}
+                    click.echo(f"    webhook URL: {wc.get('application', 'N/A')}")
+                else:
+                    click.echo(f"    Error: {data.get('error', {}).get('message', data.get('error', 'unknown'))}")
+
+            if waba_id:
+                data, status = graph_get(f"{waba_id}/subscribed_apps")
+                click.echo(f"  WABA subscription ({waba_id[:8]}...):")
+                if status == 200:
+                    apps = data.get("data") or []
+                    click.echo(f"    Subscribed apps: {len(apps)}")
+                    for entry in apps:
+                        nested = entry.get("whatsapp_business_api_data") or {}
+                        click.echo(f"      {nested.get('name', entry.get('id', '?'))} (id={nested.get('id', '?')})")
+                else:
+                    click.echo(f"    Error: {data.get('error', {}).get('message', data.get('error', 'unknown'))}")
+        else:
+            click.echo("")
+            click.echo("  (use --meta-check to query Meta Graph API)")
+
+        click.echo("")
+        click.echo("--- Recommendations ---")
+        token = cfg.get("WHATSAPP_ACCESS_TOKEN", "")
+        pnid = cfg.get("WHATSAPP_PHONE_NUMBER_ID", "")
+        app_secret = cfg.get("WHATSAPP_APP_SECRET", "")
+        if not token:
+            click.echo("  - Set WHATSAPP_ACCESS_TOKEN in .env")
+        if not pnid:
+            click.echo("  - Set WHATSAPP_PHONE_NUMBER_ID in .env")
+        if not app_secret:
+            click.echo("  - Set WHATSAPP_APP_SECRET in .env (webhook signature validation)")
+        if not events:
+            click.echo("  - No webhook events received. Check Meta WABA subscription and phone number registration.")
+        click.echo("  - The webhook endpoint must be reachable at: https://realmindxgh.com/api/webhooks/whatsapp")
+        click.echo("  - Verify GET challenge: https://realmindxgh.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=YOUR_TOKEN&hub.challenge=test")

@@ -20,6 +20,14 @@ from werkzeug.utils import secure_filename
 
 from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
 from ..audit_labels import AREA_LABELS, readable_audit_action, readable_audit_summary
+from ..communications import (
+    CommunicationResult,
+    generate_batch_id,
+    mask_destination,
+    record_attempt,
+    resolve_communication_mode,
+)
+from ..profile_completion import account_status as canonical_account_status
 from ..book_requests import (
     BookRequestError,
     mark_available,
@@ -46,6 +54,7 @@ from ..default_content import (
 from ..email_service import (
     EmailAttachment,
     OutboundEmail,
+    absolute_app_url,
     app_email_shell,
     bookshop_email_shell,
     bookshop_order_summary_table,
@@ -72,6 +81,7 @@ from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
 from ..profile_completion import teacher_profile_completion
 from ..sms_service import normalise_phone
+from ..teacher_ids import generate_teacher_id
 from ..bookshop_search import canonical_taxonomy_value
 
 
@@ -282,26 +292,36 @@ def _send_internal_account_access_email(user, role_name):
         "<p>You must change this password immediately after your first sign-in.</p>"
     )
     try:
-        result = send_email(OutboundEmail(
-            to=user.email,
-            subject=f"Your RealMindX {role_label} account",
-            html=app_email_shell(
-                f"{role_label} account ready",
-                body,
-                cta_label=f"Open {role_label} sign in",
-                cta_url=login_url,
-                eyebrow="RealMindX Secure Access",
-                preheader=f"Your RealMindX {role_label.lower()} account is ready.",
+        result = send_email(
+            OutboundEmail(
+                to=user.email,
+                subject=f"Your RealMindX {role_label} account",
+                html=app_email_shell(
+                    f"{role_label} account ready",
+                    body,
+                    cta_label=f"Open {role_label} sign in",
+                    cta_url=login_url,
+                    eyebrow="RealMindX Secure Access",
+                    preheader=f"Your RealMindX {role_label.lower()} account is ready.",
+                ),
+                text=(
+                    f"Your RealMindX {role_label} account is ready. Email: {user.email}. "
+                    f"Temporary password: {DEFAULT_TEMPORARY_PASSWORD}. Login: {login_url}. "
+                    "Change the password on first sign-in."
+                ),
             ),
-            text=(
-                f"Your RealMindX {role_label} account is ready. Email: {user.email}. "
-                f"Temporary password: {DEFAULT_TEMPORARY_PASSWORD}. Login: {login_url}. "
-                "Change the password on first sign-in."
-            ),
-        ))
-        return result.get("status", "failed")
+            purpose="security",
+            recipient_user_id=user.id,
+            template_name="internal_account_access",
+        )
+        return result.status
     except Exception as exc:
-        current_app.logger.warning("Internal account email failed for user %s: %s", user.id, exc)
+        current_app.logger.warning(
+            "Access email failed for %s (role=%s, error=%s)",
+            mask_destination("email", user.email),
+            role_name,
+            type(exc).__name__,
+        )
         return "failed"
 
 
@@ -1041,13 +1061,29 @@ def dispatch_job_alerts(job):
                         job_url,
                         preheader=f"{job.title} matches your saved teaching preferences.",
                     ),
-                )
+                ),
+                purpose="service_reminder",
+                recipient_user_id=user.id,
+                template_name="job_alert_match",
             )
         except Exception:
             current_app.logger.exception("Job alert delivery failed for user %s and job %s", user.id, job.id)
             continue
-        if result.get("status") != "sent":
-            current_app.logger.warning("Job alert was not sent for user %s and job %s: %s", user.id, job.id, result)
+        if result.status == "mocked":
+            current_app.logger.info(
+                "Job alert recorded in mock mode for user %s and job %s",
+                user.id,
+                job.id,
+            )
+            continue
+        if result.status not in ("queued", "accepted", "sent", "delivered"):
+            current_app.logger.warning(
+                "Job alert was not sent for user %s and job %s (status=%s, error_code=%s)",
+                user.id,
+                job.id,
+                result.status,
+                result.error_code,
+            )
             continue
         preference.last_sent_at = datetime.now(timezone.utc)
         log_action("job_alert_email_sent", "job_alert_preference", preference.id, {
@@ -1487,96 +1523,171 @@ def bookshop_accounts():
     return jsonify(items=items)
 
 
-def _profile_reminder_items(user, missing):
+REMINDER_COOLDOWN_HOURS = 24  # configurable; prevents repeated clicks from flooding a teacher
+
+
+def _reminder_eligibility(user) -> dict:
+    """Check a single teacher's eligibility for a profile reminder.
+
+    Returns a dict with keys:
+      eligible (bool)
+      reason (str | None) — why they are ineligible
+      status_data (dict | None) — canonical status if eligible
+    """
+    if not user:
+        return {"eligible": False, "reason": "user_not_found", "status_data": None}
+    if not getattr(user, "is_active", False):
+        return {"eligible": False, "reason": "account_disabled", "status_data": None}
+    if not getattr(user, "email", None):
+        return {"eligible": False, "reason": "missing_email", "status_data": None}
+    role_name = getattr(user.role, "name", None) if user.role else None
+    if role_name not in ("user", None):
+        return {"eligible": False, "reason": "not_teacher_role", "status_data": None}
+    if not getattr(user, "teacher_service_enabled", False):
+        return {"eligible": False, "reason": "teacher_service_disabled", "status_data": None}
+
+    status = canonical_account_status(user)
+    completion = status.get("completion_percentage", 0)
+    profile_status = status.get("profile_status", "incomplete")
+
+    # Already submitted / under review / verified → no reminder needed
+    if profile_status in ("submitted", "under_review", "verified"):
+        return {"eligible": False, "reason": f"profile_{profile_status}", "status_data": status}
+    # Complete (100%) with nothing missing → no reminder needed
+    # But if phone isn't verified they still need a reminder.
+    if completion >= 100 and profile_status != "revision_required":
+        if getattr(user, "phone_verified", False):
+            return {"eligible": False, "reason": "profile_complete", "status_data": status}
+    # Revision required is still eligible — they need to fix something
+    return {"eligible": True, "reason": None, "status_data": status}
+
+
+def _reminder_cooldown_active(user) -> bool:
+    """Check if a reminder was sent recently (within REMINDER_COOLDOWN_HOURS)."""
+    from ..models import CommunicationAttempt
+
+    hours = current_app.config.get("REMINDER_COOLDOWN_HOURS", REMINDER_COOLDOWN_HOURS)
+    cutoff = datetime.now(timezone.utc).timestamp() - (hours * 3600)
+    recent = CommunicationAttempt.query.filter(
+        CommunicationAttempt.recipient_user_id == user.id,
+        CommunicationAttempt.purpose == "service_reminder",
+        CommunicationAttempt.channel == "email",
+        CommunicationAttempt.status.in_(["queued", "accepted", "sent", "delivered"]),
+        CommunicationAttempt.requested_at >= datetime.fromtimestamp(cutoff, tz=timezone.utc),
+    ).first()
+    return recent is not None
+
+
+def _build_reminder_items(user, missing, status_data):
+    """Build the list of missing items shown in the reminder email.
+
+    Only includes items users can actually fix. Does not tell a user without
+    a phone number to 'Verify your phone number'.
+    """
     items = list(missing or [])
-    if not getattr(user, "phone_verified", False):
-        items.append("Verify your phone number")
+    phone = getattr(user, "phone", None)
+    phone_verified = getattr(user, "phone_verified", False)
+    if not phone_verified:
+        if phone:
+            items.append("Verify your phone number")
+        else:
+            items.append("Add and verify a phone number")
     return items
 
 
 def _send_teacher_profile_reminder(user):
-    completion, missing = teacher_profile_completion(user)
-    reminder_items = _profile_reminder_items(user, missing)
-    if not reminder_items:
-        return {"status": "skipped", "reason": "complete", "profile_completion": completion}
+    """Send one profile-reminder email. Returns a structured dict for batch aggregation."""
+    from ..models import CommunicationAttempt
+
+    eligibility = _reminder_eligibility(user)
+    if not eligibility["eligible"]:
+        return {
+            "status": "skipped",
+            "reason": eligibility["reason"],
+            "user_id": user.id,
+            "masked_email": mask_destination("email", user.email or ""),
+        }
+
+    if _reminder_cooldown_active(user):
+        return {
+            "status": "skipped",
+            "reason": "reminder_cooldown",
+            "user_id": user.id,
+            "masked_email": mask_destination("email", user.email or ""),
+        }
+
+    status_data = eligibility["status_data"]
+    completion = status_data.get("completion_percentage", 0)
+    missing = status_data.get("missing_requirements", [])
+    reminder_items = _build_reminder_items(user, missing, status_data)
 
     portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
     missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
     missing_text = "\n".join(f"- {item}" for item in reminder_items)
-    result = send_email(OutboundEmail(
-        to=user.email,
-        subject="You are almost ready for better-matched teaching opportunities",
-        html=app_email_shell(
-            "Complete your profile and unlock better job matches",
-            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
-            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
-            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
-            "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
-            "Finish My Profile",
-            portal_url,
-            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
+
+    result = send_email(
+        OutboundEmail(
+            to=user.email,
+            subject="You are almost ready for better-matched teaching opportunities",
+            html=app_email_shell(
+                "Complete your profile and unlock better job matches",
+                f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+                f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
+                "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
+                f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
+                "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
+                "Finish My Profile",
+                portal_url,
+                preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
+            ),
+            text=(
+                "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
+                f"Remaining items:\n{missing_text}\n\n"
+                f"Finish here: {portal_url}"
+            ),
         ),
-        text=(
-            "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
-            f"Remaining items:\n{missing_text}\n\n"
-            f"Finish here: {portal_url}"
-        ),
-    ))
-    if result.get("status") != "sent":
-        return {"status": "failed", "profile_completion": completion, "missing_fields": reminder_items}
-    log_action("send_teacher_profile_reminder", "user", user.id, {
-        "email": user.email,
-        "profile_completion": completion,
-        "missing_fields": reminder_items,
-    })
+        purpose="service_reminder",
+        recipient_user_id=user.id,
+        template_name="profile_reminder",
+    )
+
+    if result.status == "mocked":
+        log_action("mock_teacher_profile_reminder", "user", user.id, {
+            "email": user.email,
+            "profile_completion": completion,
+            "missing_fields": reminder_items,
+            "provider_status": result.status,
+        })
+        return {
+            "status": "mocked",
+            "profile_completion": completion,
+            "missing_fields": reminder_items,
+            "user_id": user.id,
+            "masked_email": mask_destination("email", user.email or ""),
+        }
+    if result.status in ("queued", "accepted", "sent", "delivered"):
+        log_action("send_teacher_profile_reminder", "user", user.id, {
+            "email": user.email,
+            "profile_completion": completion,
+            "missing_fields": reminder_items,
+            "provider_status": result.status,
+        })
+        return {
+            "status": "accepted",
+            "provider_status": result.status,
+            "profile_completion": completion,
+            "missing_fields": reminder_items,
+            "user_id": user.id,
+            "masked_email": mask_destination("email", user.email or ""),
+        }
+
     return {
-        "status": "sent",
+        "status": "failed",
+        "reason": result.error_code or "provider_error",
         "profile_completion": completion,
         "missing_fields": reminder_items,
-    }
-
-
-def _send_teacher_profile_reminder(user):
-    completion, missing = teacher_profile_completion(user)
-    reminder_items = _profile_reminder_items(user, missing)
-    if not reminder_items:
-        return {"status": "skipped", "reason": "complete", "profile_completion": completion}
-
-    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
-    missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
-    missing_text = "\n".join(f"- {item}" for item in reminder_items)
-    result = send_email(OutboundEmail(
-        to=user.email,
-        subject="You are almost ready for better-matched teaching opportunities",
-        html=app_email_shell(
-            "Complete your profile and unlock better job matches",
-            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
-            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
-            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
-            "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
-            "Finish My Profile",
-            portal_url,
-            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
-        ),
-        text=(
-            "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
-            f"Remaining items:\n{missing_text}\n\n"
-            f"Finish here: {portal_url}"
-        ),
-    ))
-    if result.get("status") != "sent":
-        return {"status": "failed", "profile_completion": completion, "missing_fields": reminder_items}
-    log_action("send_teacher_profile_reminder", "user", user.id, {
-        "email": user.email,
-        "profile_completion": completion,
-        "missing_fields": reminder_items,
-    })
-    return {
-        "status": "sent",
-        "profile_completion": completion,
-        "missing_fields": reminder_items,
+        "user_id": user.id,
+        "masked_email": mask_destination("email", user.email or ""),
     }
 
 
@@ -1591,38 +1702,40 @@ def send_profile_reminders_batch():
             Role.name == "user",
             User.teacher_service_enabled.is_(True),
             User.is_active.is_(True),
-            User.is_verified.is_(True),
         )
         .order_by(User.created_at.desc())
         .all()
     )
-    sent = []
-    skipped = 0
+    batch_id = generate_batch_id()
+    accepted = 0
+    mocked = 0
     failed = []
+    skipped = []
+    eligible_count = 0
+
     for user in rows:
         result = _send_teacher_profile_reminder(user)
-        if result["status"] == "sent":
-            sent.append(user.email)
+        if result["status"] == "accepted":
+            accepted += 1
+        elif result["status"] == "mocked":
+            mocked += 1
         elif result["status"] == "failed":
-            failed.append(user.email)
+            failed.append({"user_id": result.get("user_id"), "reason": result.get("reason", "provider_error")})
         else:
-            skipped += 1
-    if sent:
-        db.session.commit()
+            skipped.append({"user_id": result.get("user_id"), "reason": result.get("reason", "skipped")})
 
-    message = (
-        f"Profile reminders sent to {len(sent)} teacher{'s' if len(sent) != 1 else ''}."
-        if sent else
-        "No teachers need a profile reminder right now."
-    )
-    if failed:
-        message += f" {len(failed)} could not be delivered."
+    eligible_count = accepted + mocked + len(failed)
+
     return jsonify(
-        message=message,
-        sent_count=len(sent),
-        skipped_count=skipped,
-        failed_count=len(failed),
-        failed_emails=failed[:10],
+        eligible=eligible_count,
+        attempted=accepted + mocked + len(failed),
+        accepted=accepted,
+        mocked=mocked,
+        failed=len(failed),
+        skipped=len(skipped),
+        failures=failed[:20],
+        skips=skipped[:20],
+        batch_id=batch_id,
     )
 
 
@@ -1631,49 +1744,47 @@ def send_profile_reminders_batch():
 @permission_required("teachers.edit")
 def send_profile_reminder(user_id):
     user = db.get_or_404(User, user_id)
-    if user.role and user.role.name in ("admin", "staff"):
-        return jsonify(error="Profile reminders can only be sent to teacher accounts."), 403
-    if not user.is_active:
-        return jsonify(error="Enable this teacher account before sending a profile reminder."), 409
+    role_name = getattr(user.role, "name", None) if user.role else None
+
+    eligibility = _reminder_eligibility(user)
+    if not eligibility["eligible"]:
+        reason_map = {
+            "profile_complete": "This teacher's profile is already complete.",
+            "profile_submitted": "This teacher's profile has already been submitted.",
+            "profile_under_review": "This teacher's profile is under review.",
+            "profile_verified": "This teacher's profile is verified.",
+            "account_disabled": "Enable this teacher account before sending a profile reminder.",
+            "teacher_service_disabled": "Teacher services are not enabled for this account.",
+            "not_teacher_role": "Profile reminders can only be sent to teacher accounts.",
+            "missing_email": "This teacher does not have a valid email address.",
+        }
+        msg = reason_map.get(eligibility["reason"], "This teacher is not eligible for a profile reminder.")
+        return jsonify(error=msg), 409
+
+    if _reminder_cooldown_active(user):
+        return jsonify(error="A profile reminder was recently sent to this teacher. Please wait before sending another."), 429
+
     result = _send_teacher_profile_reminder(user)
-    if result["status"] == "skipped":
-        return jsonify(error="This teacher's profile and phone verification are already complete."), 409
-    if result["status"] != "sent":
-        return jsonify(error="The reminder could not be delivered. Check the email service and try again."), 502
-    db.session.commit()
-    return jsonify(message=f"Profile reminder sent to {user.email}.", profile_completion=result["profile_completion"])
+    mode = resolve_communication_mode()
 
-    completion, missing = teacher_profile_completion(user)
-    if completion >= 100:
-        return jsonify(error="This teacher's profile is already complete."), 409
+    if result["status"] == "mocked":
+        return jsonify(
+            message="Reminder recorded in local mock mode. No real email was sent.",
+            profile_completion=result.get("profile_completion"),
+            mode=mode,
+        )
 
-    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
-    missing_html = "".join(f"<li>{escape(item)}</li>" for item in missing)
-    result = send_email(OutboundEmail(
-        to=user.email,
-        subject="You are almost ready for better-matched teaching opportunities",
-        html=app_email_shell(
-            "Complete your profile and unlock better job matches",
-            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
-            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
-            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
-            "<p>Finishing your profile only takes a moment and gives you a better chance of seeing the right roles.</p>",
-            "Finish My Profile",
-            portal_url,
-            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
-        ),
-        text=f"Complete your RealMindX teaching profile to receive tailored jobs: {portal_url}",
-    ))
-    if result.get("status") != "sent":
-        return jsonify(error="The reminder could not be delivered. Check the email service and try again."), 502
-    log_action("send_teacher_profile_reminder", "user", user.id, {
-        "email": user.email,
-        "profile_completion": completion,
-        "missing_fields": missing,
-    })
-    db.session.commit()
-    return jsonify(message=f"Profile reminder sent to {user.email}.", profile_completion=completion)
+    if result["status"] == "accepted":
+        return jsonify(
+            message=f"Profile reminder accepted for {user.email}.",
+            profile_completion=result.get("profile_completion"),
+            mode=mode,
+        )
+
+    if result["status"] == "failed":
+        return jsonify(error=result.get("reason", "The reminder could not be delivered.")), 502
+
+    return jsonify(error="Unexpected reminder status."), 500
 
 
 PAYOUT_FIELDS = [
@@ -1877,6 +1988,637 @@ def get_user(user_id):
         for placement in placements
     ]
     return jsonify(data)
+
+
+def _review_queue_item(user):
+    profile = getattr(user, "profile", None)
+    completion, _ = teacher_profile_completion(user)
+    cv_exists = bool(profile and profile.cv_file_id)
+    certificate_exists = bool(profile and profile.certificate_file_id)
+    return {
+        "id": user.id,
+        "application_id": user.application_id,
+        "teacher_id": user.teacher_id,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "phone": user.phone,
+        "profile_status": profile.profile_status if profile else None,
+        "profile_completion": completion,
+        "submitted_at": profile.submitted_at.isoformat() if profile and profile.submitted_at else None,
+        "reviewed_at": profile.reviewed_at.isoformat() if profile and profile.reviewed_at else None,
+        "reviewed_by_id": profile.reviewed_by_id if profile else None,
+        "teaching_subject": profile.teaching_subject if profile else None,
+        "preferred_level": profile.preferred_level if profile else None,
+        "location": profile.location if profile else None,
+        "cv_present": cv_exists,
+        "certificate_present": certificate_exists,
+    }
+
+
+def _review_detail(user):
+    profile = getattr(user, "profile", None)
+    completion, missing = teacher_profile_completion(user)
+    data = user_json(user)
+    data["profile_completion"] = completion
+    data["profile_missing_fields"] = missing
+    if profile:
+        def _file_payload(file_id):
+            if not file_id:
+                return {"url": None, "filename": None}
+            f = db.session.get(UploadedFile, file_id)
+            if not f:
+                return {"url": None, "filename": None}
+            return {
+                "url": f"/uploads/{f.visibility}/{f.category}/{f.stored_filename}",
+                "filename": f.original_filename,
+            }
+        cv_file = _file_payload(profile.cv_file_id)
+        certificate_file = _file_payload(profile.certificate_file_id)
+        data["review"] = {
+            "location": profile.location,
+            "teaching_subject": profile.teaching_subject,
+            "preferred_level": profile.preferred_level,
+            "preferred_employment_type": profile.preferred_employment_type,
+            "available_from": profile.available_from,
+            "curriculum_experience": profile.curriculum_experience,
+            "bio": profile.bio,
+            "cv_url": cv_file["url"],
+            "cv_filename": cv_file["filename"],
+            "certificate_url": certificate_file["url"],
+            "certificate_filename": certificate_file["filename"],
+            "profile_status": profile.profile_status,
+            "submitted_at": profile.submitted_at.isoformat() if profile.submitted_at else None,
+            "reviewed_at": profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+            "reviewed_by_id": profile.reviewed_by_id,
+            "review_notes": profile.review_notes,
+        }
+    else:
+        data["review"] = None
+    applications = (
+        JobApplication.query
+        .options(joinedload(JobApplication.job))
+        .filter_by(user_id=user.id)
+        .order_by(JobApplication.updated_at.desc(), JobApplication.created_at.desc())
+        .all()
+    )
+    data["applications"] = [
+        {
+            "id": app.id,
+            "job_id": app.job_id,
+            "status": app.status,
+            "cover_note": app.cover_note,
+            "created_at": app.created_at.isoformat() if app.created_at else None,
+            "updated_at": app.updated_at.isoformat() if app.updated_at else None,
+            "job_title": app.job.title if app.job else None,
+            "organisation": app.job.organisation if app.job else None,
+        }
+        for app in applications
+    ]
+    placements = (
+        TeacherPlacement.query
+        .filter_by(user_id=user.id)
+        .order_by(TeacherPlacement.accepted_at.desc(), TeacherPlacement.created_at.desc())
+        .all()
+    )
+    data["placements"] = [
+        {
+            "id": p.id,
+            "application_id": p.application_id,
+            "job_id": p.job_id,
+            "school_name": p.school_name,
+            "job_title": p.job_title,
+            "status": p.status,
+            "accepted_at": p.accepted_at.isoformat() if p.accepted_at else None,
+            "started_at": p.started_at.isoformat() if p.started_at else None,
+            "ended_at": p.ended_at.isoformat() if p.ended_at else None,
+            "notes": p.notes,
+        }
+        for p in placements
+    ]
+    return data
+
+
+@admin_bp.get("/teachers/review")
+@login_required
+@permission_required("teachers.view")
+def teacher_review_queue():
+    """List teacher profiles in the review lifecycle."""
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = max(1, min(100, request.args.get("per_page", 50, type=int)))
+    status_filter = request.args.get("status")
+    search = request.args.get("search", "").strip()
+
+    valid_statuses = {"submitted", "under_review", "revision_required", "verified", "rejected"}
+    if status_filter and status_filter not in valid_statuses:
+        return jsonify(error=f"Invalid status. Choose from: {', '.join(sorted(valid_statuses))}"), 400
+
+    query = (
+        User.query
+        .join(User.role)
+        .join(UserProfile, UserProfile.user_id == User.id, isouter=True)
+        .filter(Role.name == "user")
+    )
+
+    if status_filter:
+        query = query.filter(UserProfile.profile_status == status_filter)
+    else:
+        query = query.filter(UserProfile.profile_status.in_(valid_statuses))
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            db.or_(
+                User.first_name.ilike(search_pattern),
+                User.last_name.ilike(search_pattern),
+                User.email.ilike(search_pattern),
+                User.phone.ilike(search_pattern),
+                User.application_id.ilike(search_pattern),
+                User.teacher_id.ilike(search_pattern),
+                db.func.concat(User.first_name, " ", User.last_name).ilike(search_pattern),
+            )
+        )
+
+    total = query.count()
+    rows = query.order_by(UserProfile.submitted_at.desc().nullslast(), User.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    return jsonify(
+        items=[_review_queue_item(u) for u in rows.items],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=rows.pages,
+    )
+
+
+@admin_bp.get("/teachers/<int:user_id>/review")
+@login_required
+@permission_required("teachers.view")
+def teacher_review_detail(user_id):
+    """Return a single teacher's complete review record."""
+    user = db.get_or_404(User, user_id)
+    if user.role and user.role.name != "user":
+        return jsonify(error="Only teacher accounts can be reviewed."), 403
+    return jsonify(_review_detail(user))
+
+
+def _send_revision_required_email(user, note):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal?view=profile")
+    escaped_note = escape(note)
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        "<p>An administrator has reviewed your teacher application and requested some changes before it can proceed.</p>"
+        "<p><strong>What the administrator said:</strong></p>"
+        f"<blockquote style=\"border-left:3px solid #d1d5db;margin:12px 0;padding:8px 16px;color:#374151;white-space:pre-wrap\">{escaped_note}</blockquote>"
+        "<p>Your application has <strong>not</strong> been rejected. You can edit your profile and replace documents to address the items above.</p>"
+        "<p>After making the required changes, submit your updated profile so the administrator can continue the review.</p>"
+    )
+    try:
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Action Required: Update Your Teacher Application",
+                html=app_email_shell(
+                    "Changes Requested",
+                    body,
+                    cta_label="Go to Dashboard",
+                    cta_url=dashboard_url,
+                    eyebrow="RealMindX Teacher Review",
+                    preheader="An administrator has requested changes to your teacher application.",
+                ),
+            ),
+            purpose="transactional",
+            recipient_user_id=user.id,
+            template_name="teacher_profile_revision_required",
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "Revision-required email failed for user %s (error=%s)",
+            user.id,
+            type(exc).__name__,
+        )
+
+
+def _send_rejection_email(user, reason):
+    first_name = user.first_name or "Teacher"
+    from urllib.parse import urlencode
+    contact_url = absolute_app_url(f"/contact?{urlencode({
+        'subject': 'Request for reconsideration of teacher application',
+        'application_id': user.application_id or '',
+        'name': first_name,
+    })}")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        "<p>Thank you for your interest in joining RealMindX as a teacher. After careful review of your application and documents, we are unable to proceed with your application at this time.</p>"
+        f"<p><strong>Reason:</strong></p>"
+        f"<blockquote style=\"border-left:3px solid #d1d5db;margin:12px 0;padding:8px 16px;color:#374151;white-space:pre-wrap\">{escape(reason)}</blockquote>"
+        "<p>Please note that ordinary resubmission of this application is not available.</p>"
+        "<p>If you believe the decision was made in error, or you have important new information that was not considered, you may contact RealMindX and quote your Application ID. RealMindX may reopen the application for another review where appropriate.</p>"
+    )
+    try:
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Update on Your RealMindX Teacher Application",
+                html=app_email_shell(
+                    "Application Update",
+                    body,
+                    cta_label="Contact RealMindX",
+                    cta_url=contact_url,
+                    eyebrow="RealMindX Teacher Review",
+                    preheader="An update is available on your teacher application.",
+                ),
+            ),
+            purpose="transactional",
+            recipient_user_id=user.id,
+            template_name="teacher_profile_rejected",
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "Rejection email failed for user %s (error=%s)",
+            user.id,
+            type(exc).__name__,
+        )
+
+
+def _send_reopened_email(user):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        "<p>Your teacher application has been reopened and is now back under review by a RealMindX administrator.</p>"
+        "<p>Please note that reopening your application does not mean it has been approved. It means your case will be assessed again.</p>"
+        "<p>You do not need to make any changes at this time unless RealMindX contacts you to request corrections.</p>"
+    )
+    try:
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Your Teacher Application Has Been Reopened",
+                html=app_email_shell(
+                    "Application Reopened",
+                    body,
+                    cta_label="View Dashboard",
+                    cta_url=dashboard_url,
+                    eyebrow="RealMindX Teacher Review",
+                    preheader="Your teacher application has been reopened for further review.",
+                ),
+            ),
+            purpose="transactional",
+            recipient_user_id=user.id,
+            template_name="teacher_profile_reopened",
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "Reopen email failed for user %s (error=%s)",
+            user.id,
+            type(exc).__name__,
+        )
+
+
+def _send_verification_email(user):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        f"<p><strong>Teacher ID:</strong> {escape(user.teacher_id or 'N/A')}</p>"
+        "<p>Congratulations! Your RealMindX teacher profile has been visually verified by our team. Your documents and teaching details have been reviewed and confirmed.</p>"
+        f"<p>Your permanent Teacher ID is <strong>{escape(user.teacher_id or 'N/A')}</strong>. Please keep this ID safe — it is your official RealMindX teacher reference and should be used in all future communications and placement records.</p>"
+        "<p>You can now access features available to verified teachers on the RealMindX platform.</p>"
+    )
+    try:
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Your RealMindX Teacher Profile Has Been Verified",
+                html=app_email_shell(
+                    "Profile Verified",
+                    body,
+                    cta_label="View Dashboard",
+                    cta_url=dashboard_url,
+                    eyebrow="RealMindX Teacher Verification",
+                    preheader=f"Your RealMindX Teacher ID is {user.teacher_id or 'N/A'}.",
+                ),
+            ),
+            purpose="transactional",
+            recipient_user_id=user.id,
+            template_name="teacher_profile_verified",
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "Verification email failed for user %s (error=%s)",
+            user.id,
+            type(exc).__name__,
+        )
+
+
+@admin_bp.post("/teachers/<int:user_id>/start-review")
+@login_required
+@permission_required("teachers.edit")
+def start_teacher_review(user_id):
+    """Move a submitted profile to under_review."""
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+    profile = user.profile
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "under_review":
+        return jsonify(
+            profile_status="under_review",
+            reviewed_by_id=profile.reviewed_by_id,
+            reviewed_at=profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+            message="Review has already been started for this profile."
+        ), 200
+
+    if profile.profile_status != "submitted":
+        return jsonify(error=f"Cannot start review: current status is '{profile.profile_status}'."), 400
+
+    profile.profile_status = "under_review"
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+
+    log_action("teacher_profile_review_started", "user", user.id, {
+        "application_id": user.application_id,
+        "previous_status": "submitted",
+        "new_status": "under_review",
+    })
+    db.session.commit()
+    return jsonify(
+        profile_status="under_review",
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
+
+
+@admin_bp.post("/teachers/<int:user_id>/request-revision")
+@login_required
+@permission_required("teachers.edit")
+def request_teacher_revision(user_id):
+    """Move an under_review profile to revision_required with notes."""
+    payload = request.get_json(silent=True) or {}
+    note = (payload.get("note") or "").strip()
+    if not note:
+        return jsonify(error="A review note explaining the required corrections is required."), 400
+
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+    profile = user.profile
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "revision_required":
+        return jsonify(
+            profile_status="revision_required",
+            message="Revision has already been requested for this profile."
+        ), 200
+
+    if profile.profile_status != "under_review":
+        return jsonify(error=f"Cannot request revision: current status is '{profile.profile_status}'."), 400
+
+    profile.profile_status = "revision_required"
+    profile.review_notes = note
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+
+    log_action("teacher_profile_revision_requested", "user", user.id, {
+        "application_id": user.application_id,
+        "previous_status": "under_review",
+        "new_status": "revision_required",
+        "note": note,
+    })
+    db.session.commit()
+    _send_revision_required_email(user, note)
+    return jsonify(
+        profile_status="revision_required",
+        review_notes=note,
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
+
+
+@admin_bp.post("/teachers/<int:user_id>/reject")
+@login_required
+@permission_required("teachers.edit")
+def reject_teacher_profile(user_id):
+    """Move an under_review profile to rejected with a reason."""
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or "").strip()
+    if not reason:
+        return jsonify(error="A rejection reason is required."), 400
+
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+    profile = user.profile
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "rejected":
+        return jsonify(
+            profile_status="rejected",
+            message="This profile has already been rejected."
+        ), 200
+
+    if profile.profile_status != "under_review":
+        return jsonify(error=f"Cannot reject: current status is '{profile.profile_status}'."), 400
+
+    profile.profile_status = "rejected"
+    profile.review_notes = reason
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+
+    log_action("teacher_profile_rejected", "user", user.id, {
+        "application_id": user.application_id,
+        "previous_status": "under_review",
+        "new_status": "rejected",
+        "reason": reason,
+    })
+    db.session.commit()
+    _send_rejection_email(user, reason)
+    return jsonify(
+        profile_status="rejected",
+        review_notes=reason,
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
+
+
+@admin_bp.post("/teachers/<int:user_id>/reopen-review")
+@login_required
+@permission_required("teachers.edit")
+def reopen_teacher_review(user_id):
+    """Reopen a rejected teacher application for another review."""
+    payload = request.get_json(silent=True) or {}
+    note = (payload.get("note") or "").strip()
+    if not note:
+        return jsonify(error="A note explaining why this case is being reopened is required."), 400
+
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+    profile = user.profile
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "under_review":
+        return jsonify(
+            profile_status="under_review",
+            reviewed_by_id=profile.reviewed_by_id,
+            reviewed_at=profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+            message="This application has already been reopened."
+        ), 200
+
+    if profile.profile_status != "rejected":
+        return jsonify(error=f"Cannot reopen: current status is '{profile.profile_status}'."), 400
+
+    profile.profile_status = "under_review"
+    profile.review_notes = note
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+
+    log_action("teacher_profile_review_reopened", "user", user.id, {
+        "application_id": user.application_id,
+        "previous_status": "rejected",
+        "new_status": "under_review",
+        "reopening_note": note,
+    })
+    db.session.commit()
+    _send_reopened_email(user)
+    return jsonify(
+        profile_status="under_review",
+        application_id=user.application_id,
+        teacher_id=user.teacher_id,
+        review_notes=note,
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
+
+
+@admin_bp.post("/teachers/<int:user_id>/verify")
+@login_required
+@permission_required("teachers.edit")
+def verify_teacher_profile(user_id):
+    """Complete visual verification and issue a permanent Teacher ID."""
+    payload = request.get_json(silent=True) or {}
+
+    required_checks = [
+        "required_documents_present",
+        "documents_readable",
+        "identity_details_consistent",
+        "qualifications_consistent",
+        "teaching_details_consistent",
+        "no_obvious_alteration_detected",
+    ]
+    checklist = {}
+    for key in required_checks:
+        val = payload.get(key)
+        if val is not True:
+            return jsonify(error=f"Confirmation '{key}' must be true to proceed with verification."), 400
+        checklist[key] = val
+
+    user = db.get_or_404(User, user_id)
+    if not user.teacher_service_enabled:
+        return jsonify(error="Teacher service is not enabled for this account."), 403
+
+    # Lock both the profile and the user row for the full transaction.
+    profile = db.session.query(UserProfile).with_for_update().filter_by(user_id=user.id).first()
+    if not profile:
+        return jsonify(error="Teacher profile not found."), 404
+
+    user_lock = db.session.query(User).with_for_update().filter_by(id=user.id).first()
+    user = user_lock or user
+
+    if profile.profile_status == "under_review" and user.teacher_id:
+        return jsonify(
+            error="Inconsistent state: profile is under review but already has a Teacher ID. "
+                  "Contact support to resolve this before proceeding."
+        ), 409
+
+    if profile.profile_status == "verified" and user.teacher_id:
+        return jsonify(
+            application_id=user.application_id,
+            teacher_id=user.teacher_id,
+            profile_status="verified",
+            reviewed_by_id=profile.reviewed_by_id,
+            reviewed_at=profile.reviewed_at.isoformat() if profile.reviewed_at else None,
+            message="This profile has already been verified."
+        ), 200
+
+    if profile.profile_status not in ("under_review", "verified"):
+        return jsonify(error=f"Cannot verify: current status is '{profile.profile_status}'."), 400
+
+    completion, _ = teacher_profile_completion(user)
+    if completion < 100:
+        return jsonify(error="Profile must be 100% complete before verification."), 400
+
+    if not profile.cv_file_id:
+        return jsonify(error="CV is missing."), 400
+    cv = db.session.get(UploadedFile, profile.cv_file_id)
+    if not cv or cv.owner_id != user.id:
+        return jsonify(error="CV file record is invalid."), 400
+
+    if not profile.certificate_file_id:
+        return jsonify(error="Certificate is missing."), 400
+    cert = db.session.get(UploadedFile, profile.certificate_file_id)
+    if not cert or cert.owner_id != user.id:
+        return jsonify(error="Certificate file record is invalid."), 400
+
+    if user.teacher_id:
+        existing_id = user.teacher_id
+        issued_now = False
+    else:
+        existing_id = generate_teacher_id()
+        issued_now = True
+
+    profile.profile_status = "verified"
+    profile.reviewed_at = datetime.now(timezone.utc)
+    profile.reviewed_by_id = current_user.id
+    user.teacher_id = existing_id
+    user.teacher_id_issued_at = datetime.now(timezone.utc)
+
+    log_action("teacher_profile_visually_verified", "user", user.id, {
+        "application_id": user.application_id,
+        "teacher_id": user.teacher_id,
+        "previous_status": "under_review",
+        "new_status": "verified",
+        "checklist": checklist,
+    })
+    if issued_now:
+        log_action("teacher_id_issued", "user", user.id, {
+            "application_id": user.application_id,
+            "teacher_id": user.teacher_id,
+        })
+
+    db.session.commit()
+    _send_verification_email(user)
+    return jsonify(
+        application_id=user.application_id,
+        teacher_id=user.teacher_id,
+        profile_status="verified",
+        reviewed_by_id=profile.reviewed_by_id,
+        reviewed_at=profile.reviewed_at.isoformat(),
+    ), 200
 
 
 @admin_bp.post("/uploads")
@@ -3544,16 +4286,21 @@ def admin_mark_delivery_settlement_paid(batch_id):
     if company_email:
         portal_url = f"{current_app.config['DELIVERY_URL'].rstrip('/')}/manager/"
         try:
-            send_email(OutboundEmail(
-                to=company_email,
-                subject=f"Delivery settlement confirmed: {batch.reference}",
-                html=app_email_shell(
-                    "Delivery settlement confirmed",
-                    f"<p>Settlement <strong>{escape(batch.reference)}</strong> has been marked settled.</p><p>Payment reference: <strong>{escape(batch.payment_reference)}</strong>.</p>",
-                    cta_label="Open delivery company portal", cta_url=portal_url,
+            send_email(
+                OutboundEmail(
+                    to=company_email,
+                    subject=f"Delivery settlement confirmed: {batch.reference}",
+                    html=app_email_shell(
+                        "Delivery settlement confirmed",
+                        f"<p>Settlement <strong>{escape(batch.reference)}</strong> has been marked settled.</p><p>Payment reference: <strong>{escape(batch.payment_reference)}</strong>.</p>",
+                        cta_label="Open delivery company portal", cta_url=portal_url,
+                    ),
+                    text=f"Settlement {batch.reference} has been marked settled. Payment reference: {batch.payment_reference}. {portal_url}",
                 ),
-                text=f"Settlement {batch.reference} has been marked settled. Payment reference: {batch.payment_reference}. {portal_url}",
-            ))
+                purpose="transactional",
+                recipient_user_id=None,
+                template_name="delivery_settlement_paid",
+            )
         except Exception:
             current_app.logger.exception("Could not send settlement confirmation for %s", batch.reference)
     return jsonify(settlement=batch_json(batch, include_lines=True, include_events=True))
@@ -3969,7 +4716,13 @@ def _send_order_status_sms(order, status, cancel_reason=""):
     }
     msg = messages.get(status)
     if msg:
-        send_sms(order.phone, msg)
+        send_sms(
+            order.phone,
+            msg,
+            purpose="transactional",
+            recipient_user_id=order.user_id,
+            template_name=f"bookshop_order_status_{status}",
+        )
 
 
 def _send_order_status_email(order, status, cancel_reason=""):
@@ -4111,22 +4864,27 @@ def _send_order_status_email(order, status, cancel_reason=""):
             except Exception:
                 current_app.logger.exception("Could not build receipt PDF for order %s.", ref)
 
-        send_email(OutboundEmail(
-            to=order.email,
-            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-            subject=info["subject"],
-            html=bookshop_email_shell(
-                info["title"],
-                info["body"],
-                cta_label=info.get("cta_label"),
-                cta_url=info.get("cta_url"),
-                eyebrow="RealMindX Bookshop",
-                preheader=info["subject"],
+        send_email(
+            OutboundEmail(
+                to=order.email,
+                from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+                subject=info["subject"],
+                html=bookshop_email_shell(
+                    info["title"],
+                    info["body"],
+                    cta_label=info.get("cta_label"),
+                    cta_url=info.get("cta_url"),
+                    eyebrow="RealMindX Bookshop",
+                    preheader=info["subject"],
+                ),
+                attachments=attachments,
             ),
-            attachments=attachments,
-        ))
+            purpose="transactional",
+            recipient_user_id=order.user_id,
+            template_name=f"bookshop_order_status_{status}",
+        )
     except Exception as exc:
-        current_app.logger.warning("Order status email failed: %s", exc)
+        current_app.logger.warning("Order status email failed (error=%s)", type(exc).__name__)
 
 
 @admin_bp.delete("/orders/<int:order_id>")
@@ -4553,7 +5311,7 @@ def reply_to_message(message_id):
     is_bookshop = (row.source or "").lower() == "bookshop"
     _shell = bookshop_email_shell if is_bookshop else app_email_shell
     _eyebrow = "RealMindX Bookshop" if is_bookshop else "RealMindX Education"
-    send_email(
+    result = send_email(
         OutboundEmail(
             to=row.email,
             subject=f"Re: [{ticket_reference}] {row.subject}",
@@ -4569,8 +5327,43 @@ def reply_to_message(message_id):
                 eyebrow=_eyebrow,
                 preheader=f"A reply to your enquiry ref {ticket_reference}.",
             ),
-        )
+        ),
+        purpose="transactional",
+        recipient_user_id=None,
+        template_name="contact_message_reply",
     )
+    if result.status == "mocked":
+        log_action(
+            "reply_contact_message_mocked",
+            "contact_message",
+            row.id,
+            {"ticket_reference": ticket_reference},
+        )
+        db.session.commit()
+        return jsonify(
+            id=row.id,
+            status=row.status,
+            ticket_reference=ticket_reference,
+            delivery_status="mocked",
+            message="Reply recorded in mock mode; no email was sent.",
+        ), 202
+    if result.status not in ("queued", "accepted", "sent", "delivered"):
+        log_action(
+            "reply_contact_message_failed",
+            "contact_message",
+            row.id,
+            {
+                "ticket_reference": ticket_reference,
+                "delivery_status": result.status,
+                "error_code": result.error_code,
+            },
+        )
+        db.session.commit()
+        return jsonify(
+            error="The reply could not be delivered. The message was not marked replied.",
+            code="reply_delivery_failed",
+            delivery_status=result.status,
+        ), 503
     row.status = "replied"
     log_action("reply_contact_message", "contact_message", row.id, {"ticket_reference": ticket_reference})
     db.session.commit()
@@ -4846,6 +5639,8 @@ def send_newsletter_campaign():
         ).order_by(NewsletterSubscriber.email.asc()).all()
 
     sent = 0
+    mocked = 0
+    failed = 0
     for subscriber in subscribers:
         if subscriber.email in seen:
             continue
@@ -4855,7 +5650,7 @@ def send_newsletter_campaign():
         if not subscriber.unsubscribe_token:
             subscriber.unsubscribe_token = secrets.token_urlsafe(32)
         unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
-        send_email(
+        result = send_email(
             OutboundEmail(
                 to=subscriber.email,
                 subject=subject,
@@ -4874,13 +5669,38 @@ def send_newsletter_campaign():
                         f'<a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe</a>.'
                     ),
                 ),
-            )
+            ),
+            purpose="marketing",
+            recipient_user_id=None,
+            template_name="newsletter_campaign",
         )
-        sent += 1
+        if result.status == "mocked":
+            mocked += 1
+        elif result.status in ("queued", "accepted", "sent", "delivered"):
+            sent += 1
+        else:
+            failed += 1
 
-    log_action("send_newsletter_campaign", "newsletter", None, {"subject": subject, "brand": brand, "sender": sender, "sent": sent})
+    log_action(
+        "send_newsletter_campaign",
+        "newsletter",
+        None,
+        {
+            "subject": subject,
+            "brand": brand,
+            "sender": sender,
+            "sent": sent,
+            "mocked": mocked,
+            "failed": failed,
+        },
+    )
     db.session.commit()
-    return jsonify(message=f"Newsletter sent to {sent} subscriber(s).", sent=sent)
+    return jsonify(
+        message=f"Newsletter accepted for {sent} subscriber(s).",
+        sent=sent,
+        mocked=mocked,
+        failed=failed,
+    )
 
 
 @admin_bp.put("/newsletters/<int:subscriber_id>")

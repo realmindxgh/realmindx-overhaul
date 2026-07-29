@@ -1,7 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 SITE_ROOT = Path(__file__).resolve().parents[1]
 if str(SITE_ROOT) not in sys.path:
@@ -93,7 +93,7 @@ class JobAlertMatchingTests(unittest.TestCase):
         self.assertFalse(_matches_job_alert(self.job, pref, user))
 
     @patch("backend.api.admin.log_action")
-    @patch("backend.api.admin.send_email", return_value={"provider": "test", "status": "sent"})
+    @patch("backend.api.admin.send_email", return_value=Mock(status="sent"))
     def test_dispatch_only_complete_exact_matches_and_deduplicates(self, send_email_mock, _log_action_mock):
         exact_user, _ = self.add_teacher("skgasante@gmail.com")
         self.add_teacher("shadyvigilante@gmail.com", complete=False)
@@ -117,7 +117,7 @@ class JobAlertMatchingTests(unittest.TestCase):
         self.assertIn("View Job &amp; Apply", message.html)
         self.assertIn("https://realmindxgh.com/logo-white.png", message.html)
 
-    @patch("backend.api.admin.send_email", return_value={"provider": "disabled", "status": "skipped"})
+    @patch("backend.api.admin.send_email", return_value=Mock(status="skipped"))
     def test_skipped_delivery_is_not_counted_as_sent(self, send_email_mock):
         self.add_teacher("skgasante@gmail.com")
         self.assertEqual(dispatch_job_alerts(self.job), 0)

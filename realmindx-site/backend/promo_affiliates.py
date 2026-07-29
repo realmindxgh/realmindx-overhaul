@@ -126,7 +126,7 @@ def usage_snapshot(usage):
 
 def send_promo_usage_notification(snapshot):
     if not snapshot.affiliate_email:
-        return
+        return "unavailable"
     body = f"""
     <p>Hello {escape(snapshot.affiliate_name)},</p>
     <p>Your promo code <strong>{escape(snapshot.code)}</strong> was used on an order that has now been marked complete.</p>
@@ -138,20 +138,27 @@ def send_promo_usage_notification(snapshot):
     </div>
     <p>Delivery fees are not included in commission calculations.</p>
     """
-    send_email(OutboundEmail(
-        to=snapshot.affiliate_email,
-        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"Promo code sale completed: {snapshot.code}",
-        html=bookshop_email_shell(
-            "Promo code sale completed",
-            body,
-            preheader=f"{snapshot.code} earned {_money_label(snapshot.commission_amount).replace('&#8373;', '')}",
+    result = send_email(
+        OutboundEmail(
+            to=snapshot.affiliate_email,
+            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+            subject=f"Promo code sale completed: {snapshot.code}",
+            html=bookshop_email_shell(
+                "Promo code sale completed",
+                body,
+                preheader=f"{snapshot.code} earned {_money_label(snapshot.commission_amount).replace('&#8373;', '')}",
+            ),
         ),
-    ))
-    usage = db.session.get(PromoCodeUsage, snapshot.usage_id)
-    if usage and not usage.notified_at:
-        usage.notified_at = datetime.now(timezone.utc)
-        db.session.commit()
+        purpose="transactional",
+        recipient_user_id=None,
+        template_name="promo_usage_completed",
+    )
+    if result.status in ("queued", "accepted", "sent", "delivered"):
+        usage = db.session.get(PromoCodeUsage, snapshot.usage_id)
+        if usage and not usage.notified_at:
+            usage.notified_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return result.status
 
 
 def send_monthly_promo_statements(year, month):
@@ -178,6 +185,9 @@ def send_monthly_promo_statements(year, month):
         grouped[row.affiliate_email].append(row)
 
     sent = 0
+    mocked = 0
+    failed = 0
+    sent_usage_count = 0
     now = datetime.now(timezone.utc)
     for email, usages in grouped.items():
         name = usages[0].affiliate_name or "there"
@@ -216,19 +226,35 @@ def send_monthly_promo_statements(year, month):
         </table>
         <p style="margin-top:18px;">Delivery fees are excluded from this statement.</p>
         """
-        send_email(OutboundEmail(
-            to=email,
-            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-            subject=f"RealMindX Bookshop promo statement - {start.strftime('%B %Y')}",
-            html=bookshop_email_shell(
-                "Monthly promo statement",
-                body,
-                preheader=f"{len(usages)} completed promo sale{'s' if len(usages) != 1 else ''}",
+        result = send_email(
+            OutboundEmail(
+                to=email,
+                from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+                subject=f"RealMindX Bookshop promo statement - {start.strftime('%B %Y')}",
+                html=bookshop_email_shell(
+                    "Monthly promo statement",
+                    body,
+                    preheader=f"{len(usages)} completed promo sale{'s' if len(usages) != 1 else ''}",
+                ),
             ),
-        ))
-        for row in usages:
-            row.statement_sent_at = now
-        sent += 1
-    if sent:
+            purpose="transactional",
+            recipient_user_id=None,
+            template_name="monthly_promo_statement",
+        )
+        if result.status == "mocked":
+            mocked += 1
+        elif result.status in ("queued", "accepted", "sent", "delivered"):
+            for row in usages:
+                row.statement_sent_at = now
+            sent += 1
+            sent_usage_count += len(usages)
+        else:
+            failed += 1
+    if grouped:
         db.session.commit()
-    return {"affiliate_count": sent, "usage_count": len(rows)}
+    return {
+        "affiliate_count": sent,
+        "usage_count": sent_usage_count,
+        "mocked": mocked,
+        "failed": failed,
+    }

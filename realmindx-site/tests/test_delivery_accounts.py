@@ -2,7 +2,7 @@ import sys
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from werkzeug.security import generate_password_hash
 
@@ -118,8 +118,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(accepted.status_code, 200)
         return accepted.get_json()
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=True)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
     def test_online_delivery_creates_snapshot_settlement_once(self, _sms, _email):
         company, _ = create_company({"name": "Online Settlement", "default_delivery_payable": 25})
         self.assertEqual(float(company.default_delivery_payable), 25)
@@ -148,8 +148,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(float(line.customer_delivery_fee), 25)
         self.assertEqual(float(line.company_payable), 25)
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=True)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
     def test_admin_settlement_exports_adjustment_and_payment_controls(self, _sms, _email):
         admin_role = Role(name="admin", description="Admin")
         admin = User(email="settlement-admin@example.com", first_name="Admin", role=admin_role, is_verified=True, is_active=True)
@@ -175,8 +175,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(settled.get_json()["settlement"]["status"], "settled")
         self.assertEqual(client.post(f"/api/admin/delivery-settlements/{batch_id}/mark-paid", json={"payment_reference": "PAY-002", "payment_date": "2026-07-10"}).status_code, 409)
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=True)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
     def test_pay_on_delivery_and_free_delivery_settlement_math(self, _sms, _email):
         company, _ = create_company({"name": "COD Settlement", "default_delivery_payable": 25})
         rider = create_rider(company, {"name": "COD Rider", "phone": "0240202020"})
@@ -208,8 +208,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(float(free_line.amount_due_company), 25)
         self.assertEqual(free_line.promotion_payer, "realmindx")
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=True)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
     def test_company_cannot_read_another_company_settlement(self, _sms, _email):
         company_one, _ = create_company({"name": "Settlement One"})
         company_two, manager_two = create_company({"name": "Settlement Two", "manager_name": "Second Manager", "manager_phone": "0240303030"})
@@ -228,8 +228,8 @@ class DeliveryAccountTests(unittest.TestCase):
         batch_id = DeliverySettlementLine.query.filter_by(delivery_id=delivery.id).one().batch_id
         self.assertEqual(client.get(f"/api/delivery/company/settlements/{batch_id}").status_code, 404)
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=False)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="failed"))
     def test_external_delivery_status_is_system_managed(self, _sms, _email):
         admin_role = Role(name="admin", description="Admin")
         admin = User(email="status-admin@example.com", first_name="Admin", role=admin_role, is_verified=True, is_active=True)
@@ -247,8 +247,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.get_json()["code"], "external_delivery_status_managed")
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=True)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
     def test_delivery_accounts_use_default_temporary_password(self, _sms, _email):
         company, manager = create_company({
             "name": "Fast Delivery",
@@ -268,8 +268,8 @@ class DeliveryAccountTests(unittest.TestCase):
             create_rider(company, {"name": "Duplicate Rider", "phone": "233 24 222 2222"})
         self.assertEqual(duplicate.exception.code, "duplicate_phone")
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=True)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
     def test_pickup_sends_otp_through_sms_and_email(self, _sms, _email):
         company, _ = create_company({"name": "OTP Delivery", "contact_email": "dispatch@example.com"})
         rider = create_rider(company, {"name": "OTP Rider", "phone": "0243333333"})
@@ -324,8 +324,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(reset.get_json()["temporary_password"], DEFAULT_TEMPORARY_PASSWORD)
         self.assertTrue(rider_one.user.must_change_password)
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "failed"})
-    @patch("backend.delivery_service.send_sms", return_value=False)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="failed"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="failed"))
     def test_notification_failure_keeps_delivery_out_for_delivery(self, _sms, _email):
         company, _ = create_company({"name": "Offline Notifications"})
         rider = create_rider(company, {"name": "Offline Rider", "phone": "0248888888"})
@@ -342,8 +342,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(otp.send_status, "failed")
         self.assertTrue(any(event.event_type == "notification_failed" for event in delivery.events))
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=True)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
     def test_wrong_and_expired_otp_protection(self, _sms, _email):
         company, _ = create_company({"name": "Protected OTP"})
         rider = create_rider(company, {"name": "Protected Rider", "phone": "0249999999"})
@@ -395,8 +395,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.get_json()["code"], "inactive_account")
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=True)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
     def test_rider_terms_gate_scope_and_otp_resend(self, _sms, _email):
         company, _ = create_company({"name": "Rider Terms Company"})
         rider = create_rider(company, {"name": "Terms Rider", "phone": "0207654321"})
@@ -429,7 +429,7 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(active_otp(delivery).resend_count, 1)
         self.assertEqual(client.post(f"/api/delivery/rider/deliveries/{other_delivery.id}/resend-otp").status_code, 404)
 
-    @patch("backend.cli.send_email", return_value={"status": "sent"})
+    @patch("backend.cli.send_email", return_value=Mock(status="sent"))
     def test_annual_teacher_reminder_includes_never_reminded_accounts(self, email_mock):
         role = Role(name="user", description="Teacher")
         teacher = User(email="teacher-reminder@example.com", first_name="Ama", role=role, is_active=True, is_verified=True)
@@ -462,8 +462,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(payload["bookshop"]["customer_demographics"]["sex"][0]["label"], "Female")
         self.assertEqual(payload["registered_user_demographics"]["age_ranges"][0]["label"], "25-34")
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=False)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="failed"))
     def test_tracking_uses_delivery_milestone_times(self, _sms, _email):
         company, _ = create_company({"name": "Timeline Company"})
         order = self._order("RMX-TEST-TIMELINE")
@@ -484,8 +484,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertTrue(payload["status_times"]["preparing_at"].startswith("2026-07-09T09:15:00"))
         self.assertTrue(payload["delivery_tracking"]["assigned_at"].startswith("2026-07-10T01:30:00"))
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=False)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="failed"))
     def test_partner_assignment_email_uses_company_portal_cta(self, _sms, email_mock):
         company, _ = create_company({"name": "CTA Company", "contact_email": "dispatch@example.com"})
         order = self._order("RMX-TEST-CTA")
@@ -500,8 +500,8 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertIn("https://delivery.realmindxgh.com/manager/", partner_email.html)
         self.assertNotIn("Track your order", partner_email.html)
 
-    @patch("backend.delivery_service.send_email", return_value={"status": "sent"})
-    @patch("backend.delivery_service.send_sms", return_value=False)
+    @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
+    @patch("backend.delivery_service.send_sms", return_value=Mock(status="failed"))
     def test_admin_can_open_company_detail_with_delivery(self, _sms, _email):
         admin_role = Role(name="admin", description="Admin")
         admin = User(email="detail-admin@example.com", first_name="Admin", role=admin_role, is_verified=True, is_active=True)

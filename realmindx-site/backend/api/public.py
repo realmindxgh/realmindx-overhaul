@@ -20,6 +20,7 @@ from ..default_content import (
 )
 from ..analytics import queue_analytics_event, queue_analytics_events
 from ..audit import audit
+from ..communications import mask_destination
 from ..contacts import MARKETING_ACTIVE, UNSUBSCRIBED, upsert_contact
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
@@ -487,47 +488,62 @@ def contact():
     notification_subject = f"[{ticket_reference}] New RealMindX enquiry: {subject}"
 
     # Notify the primary inbox
-    send_email(OutboundEmail(
-        to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
-        subject=notification_subject,
-        html=notification_html,
-        reply_to=email,
-    ))
-    # Also CC the Gmail inbox so nothing is missed
-    admin_gmail = current_app.config.get("ADMIN_CC_EMAIL", "")
-    if admin_gmail and admin_gmail.lower() != current_app.config["DEFAULT_REPLY_TO_EMAIL"].lower():
-        send_email(OutboundEmail(
-            to=admin_gmail,
+    send_email(
+        OutboundEmail(
+            to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
             subject=notification_subject,
             html=notification_html,
             reply_to=email,
-        ))
+        ),
+        purpose="admin_alert",
+        recipient_user_id=None,
+        template_name="contact_message_admin_alert",
+    )
+    # Also CC the Gmail inbox so nothing is missed
+    admin_gmail = current_app.config.get("ADMIN_CC_EMAIL", "")
+    if admin_gmail and admin_gmail.lower() != current_app.config["DEFAULT_REPLY_TO_EMAIL"].lower():
+        send_email(
+            OutboundEmail(
+                to=admin_gmail,
+                subject=notification_subject,
+                html=notification_html,
+                reply_to=email,
+            ),
+            purpose="admin_alert",
+            recipient_user_id=None,
+            template_name="contact_message_admin_alert",
+        )
 
     first_name = (name.split()[0] if name else "there")
     # Anonymous donors do not provide a destination for an acknowledgement.
     if not is_anonymous_donation:
-        send_email(OutboundEmail(
-            to=email,
-            subject=f"We have received your message, {escape(first_name)} (ref {ticket_reference})",
-            html=_email_shell(
-                "We have received your message!",
-                (
-                    f"<p>Hello {escape(first_name)},</p>"
-                    f"<p>Thank you for reaching out to RealMindX. We really appreciate you getting in touch, "
-                    f"and we want you to know your message has been received and is in the hands of our team.</p>"
-                    f"<div style='background:#f5f8fc;border-left:4px solid #ffcc01;border-radius:6px;"
-                    f"padding:14px 18px;margin:20px 0;'>"
-                    f"<p style='margin:0;'><strong>Your reference:</strong> {escape(ticket_reference)}</p>"
-                    f"<p style='margin:6px 0 0;'><strong>Subject:</strong> {escape(subject)}</p>"
-                    f"</div>"
-                    f"<p>One of our team members will get back to you within <strong>one business day</strong>. "
-                    f"If your enquiry is urgent, feel free to reply to this email or reach us directly on WhatsApp.</p>"
-                    f"<p>We look forward to speaking with you!</p>"
+        send_email(
+            OutboundEmail(
+                to=email,
+                subject=f"We have received your message, {escape(first_name)} (ref {ticket_reference})",
+                html=_email_shell(
+                    "We have received your message!",
+                    (
+                        f"<p>Hello {escape(first_name)},</p>"
+                        f"<p>Thank you for reaching out to RealMindX. We really appreciate you getting in touch, "
+                        f"and we want you to know your message has been received and is in the hands of our team.</p>"
+                        f"<div style='background:#f5f8fc;border-left:4px solid #ffcc01;border-radius:6px;"
+                        f"padding:14px 18px;margin:20px 0;'>"
+                        f"<p style='margin:0;'><strong>Your reference:</strong> {escape(ticket_reference)}</p>"
+                        f"<p style='margin:6px 0 0;'><strong>Subject:</strong> {escape(subject)}</p>"
+                        f"</div>"
+                        f"<p>One of our team members will get back to you within <strong>one business day</strong>. "
+                        f"If your enquiry is urgent, feel free to reply to this email or reach us directly on WhatsApp.</p>"
+                        f"<p>We look forward to speaking with you!</p>"
+                    ),
+                    eyebrow=_eyebrow,
+                    preheader=f"Reference {ticket_reference}. We will be in touch within one business day.",
                 ),
-                eyebrow=_eyebrow,
-                preheader=f"Reference {ticket_reference}. We will be in touch within one business day.",
             ),
-        ))
+            purpose="transactional",
+            recipient_user_id=None,
+            template_name="contact_message_acknowledgement",
+        )
     return jsonify(message="Message received. We will get back to you shortly.", ticket_reference=ticket_reference), 201
 
 
@@ -566,7 +582,10 @@ def newsletter():
                 "You are subscribed",
                 "<p>Thanks for joining RealMindX updates. We will only send useful education, jobs, and bookshop updates.</p>",
             ),
-        )
+        ),
+        purpose="marketing",
+        recipient_user_id=None,
+        template_name="newsletter_welcome",
     )
     return jsonify(status=status, message="Newsletter subscription saved.")
 
@@ -639,7 +658,10 @@ def initialize_donation_paystack():
         response.raise_for_status()
         data = response.json().get("data") or {}
     except requests.RequestException:
-        current_app.logger.exception("Paystack donation initialization failed for %s", email)
+        current_app.logger.exception(
+            "Paystack donation initialization failed for %s",
+            mask_destination("email", email),
+        )
         return jsonify(error="Could not open Paystack. Please try again or use WhatsApp."), 502
     return jsonify(payment=data, reference=reference)
 

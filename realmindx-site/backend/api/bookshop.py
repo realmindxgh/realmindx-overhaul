@@ -996,25 +996,30 @@ def _send_cart_invoice_email(invoice, recipient, *, reminder=False):
         Please do not reply to this email. Use the contact channels in the footer for questions, stock checks, or delivery support.
       </p>
     """
-    send_email(OutboundEmail(
-        to=recipient,
-        subject=f"{'Reminder: ' if reminder else ''}RealMindX Bookshop invoice {invoice.invoice_id}",
-        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        html=bookshop_email_shell(
-            title,
-            body_html,
-            "Verify Invoice" if reminder else "Continue to Checkout",
-            lookup_url if reminder else checkout_url,
-            eyebrow="RealMindX Bookshop Reminder" if reminder else "RealMindX Bookshop Invoice",
-            preheader=f"Invoice {invoice.invoice_id} for GH₵{float(invoice.total_amount or 0):,.2f}.",
-            footer_note="This mailbox is not monitored. Please contact RealMindX through the phone, WhatsApp, email, or website links above.",
+    return send_email(
+        OutboundEmail(
+            to=recipient,
+            subject=f"{'Reminder: ' if reminder else ''}RealMindX Bookshop invoice {invoice.invoice_id}",
+            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+            html=bookshop_email_shell(
+                title,
+                body_html,
+                "Verify Invoice" if reminder else "Continue to Checkout",
+                lookup_url if reminder else checkout_url,
+                eyebrow="RealMindX Bookshop Reminder" if reminder else "RealMindX Bookshop Invoice",
+                preheader=f"Invoice {invoice.invoice_id} for GH₵{float(invoice.total_amount or 0):,.2f}.",
+                footer_note="This mailbox is not monitored. Please contact RealMindX through the phone, WhatsApp, email, or website links above.",
+            ),
+            attachments=[EmailAttachment(
+                filename=f"{invoice.invoice_id}.pdf",
+                content=pdf_stream.getvalue(),
+                content_type="application/pdf",
+            )],
         ),
-        attachments=[EmailAttachment(
-            filename=f"{invoice.invoice_id}.pdf",
-            content=pdf_stream.getvalue(),
-            content_type="application/pdf",
-        )],
-    ))
+        purpose="service_reminder" if reminder else "transactional",
+        recipient_user_id=None,
+        template_name="cart_invoice_reminder" if reminder else "cart_invoice",
+    )
 
 
 def send_due_cart_invoice_reminders(now=None):
@@ -1026,7 +1031,10 @@ def send_due_cart_invoice_reminders(now=None):
         CartInvoice.emailed_at.isnot(None),
     ).all()
     for invoice in candidates:
-        age = now - invoice.emailed_at
+        emailed_at = invoice.emailed_at
+        if emailed_at.tzinfo is None:
+            emailed_at = emailed_at.replace(tzinfo=timezone.utc)
+        age = now - emailed_at
         recipients = list(invoice.recipients or [])
         if not recipients:
             continue
@@ -1034,17 +1042,30 @@ def send_due_cart_invoice_reminders(now=None):
         should_send_10d = age >= timedelta(days=10) and not invoice.reminder_10d_sent_at
         if not should_send_3d and not should_send_10d:
             continue
+        accepted = 0
+        mocked = 0
+        failed = 0
         for recipient in recipients:
-            _send_cart_invoice_email(invoice, recipient, reminder=True)
-            sent += 1
-        if should_send_3d:
-            invoice.reminder_3d_sent_at = now
-        if should_send_10d:
-            invoice.reminder_10d_sent_at = now
-        audit("cart_invoice_reminder_sent", "cart_invoice", invoice.id, {
+            result = _send_cart_invoice_email(invoice, recipient, reminder=True)
+            if result.status == "mocked":
+                mocked += 1
+            elif result.status in ("queued", "accepted", "sent", "delivered"):
+                accepted += 1
+                sent += 1
+            else:
+                failed += 1
+        if accepted == len(recipients):
+            if should_send_3d:
+                invoice.reminder_3d_sent_at = now
+            if should_send_10d:
+                invoice.reminder_10d_sent_at = now
+        audit("cart_invoice_reminder_attempted", "cart_invoice", invoice.id, {
             "invoice_id": invoice.invoice_id,
             "recipients": len(recipients),
             "stage": "10d" if should_send_10d else "3d",
+            "accepted": accepted,
+            "mocked": mocked,
+            "failed": failed,
         })
     db.session.commit()
     return sent
@@ -1080,8 +1101,9 @@ def email_cart_invoice():
     invoice = _create_cart_invoice_from_items(items)
     now = datetime.now(timezone.utc)
     invoice.recipients = recipients
-    invoice.emailed_at = now
-    invoice.status = "emailed"
+    accepted = 0
+    mocked = 0
+    failed = 0
     for recipient in recipients:
         upsert_contact(
             recipient,
@@ -1090,17 +1112,43 @@ def email_cart_invoice():
             tags=["bookshop", "invoice"],
             last_invoice_generated_at=now,
         )
-        _send_cart_invoice_email(invoice, recipient)
-    audit("cart_invoice_emailed", "cart_invoice", invoice.id, {
+        result = _send_cart_invoice_email(invoice, recipient)
+        if result.status == "mocked":
+            mocked += 1
+        elif result.status in ("queued", "accepted", "sent", "delivered"):
+            accepted += 1
+        else:
+            failed += 1
+    if accepted == len(recipients):
+        invoice.emailed_at = now
+        invoice.status = "emailed"
+    audit("cart_invoice_email_attempted", "cart_invoice", invoice.id, {
         "invoice_id": invoice.invoice_id,
         "recipients": len(recipients),
         "total": float(invoice.total_amount or 0),
+        "accepted": accepted,
+        "mocked": mocked,
+        "failed": failed,
     })
     db.session.commit()
-    response = jsonify(invoice=cart_invoice_json(invoice), recipients=recipients, message="Invoice emailed successfully.")
+    if accepted == len(recipients):
+        message = "Invoice email accepted for delivery."
+        status_code = 201
+    elif mocked == len(recipients):
+        message = "Invoice recorded in mock mode; no email was sent."
+        status_code = 202
+    else:
+        message = "Invoice created, but one or more emails could not be delivered."
+        status_code = 503
+    response = jsonify(
+        invoice=cart_invoice_json(invoice),
+        recipients=recipients,
+        message=message,
+        delivery={"accepted": accepted, "mocked": mocked, "failed": failed},
+    )
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
     response.headers["Cache-Control"] = "private, no-store"
-    return response, 201
+    return response, status_code
 
 
 @bookshop_bp.get("/invoices/<string:invoice_id>")
@@ -1263,7 +1311,10 @@ def _send_order_placed_notifications(order):
             f"Hi {first_name}, your RealMindX Bookshop order {order.order_reference} "
             f"has been placed. {payment_sentence}"
             f"Our team will contact you within 1 business day to arrange receipt of your package. "
-            f"Reply STOP to opt out."
+            f"Reply STOP to opt out.",
+            purpose="transactional",
+            recipient_user_id=order.user_id,
+            template_name="bookshop_order_placed",
         )
 
     order_summary_html = bookshop_order_summary_table(order)
@@ -1296,47 +1347,57 @@ def _send_order_placed_notifications(order):
         else "<p>Your order is now placed. Payment will be collected when your order is delivered or collected.</p>"
     )
 
-    send_email(OutboundEmail(
-        to=order.email,
-        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"Your RealMindX Bookshop order has been placed: {order.order_reference}",
-        html=bookshop_email_shell(
-            "Your order has been placed!",
-            f"""
-            <p>Hello {escape(first_name)},</p>
-            {payment_confirmation}
+    send_email(
+        OutboundEmail(
+            to=order.email,
+            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+            subject=f"Your RealMindX Bookshop order has been placed: {order.order_reference}",
+            html=bookshop_email_shell(
+                "Your order has been placed!",
+                f"""
+                <p>Hello {escape(first_name)},</p>
+                {payment_confirmation}
 
-            {customer_order_meta_html}
-            {order_summary_html}
+                {customer_order_meta_html}
+                {order_summary_html}
 
-            <p>Our team will contact you within <strong>1 business day</strong> with the next fulfilment update.</p>
-            <p>If you need anything sooner, contact us on any of the channels below and we&rsquo;ll help right away.</p>
-            <p>We appreciate your trust in RealMindX and look forward to fulfilling your order.</p>
-            """,
-            cta_label="Visit the Bookshop",
-            cta_url=current_app.config.get("BOOKSHOP_URL", ""),
-            eyebrow="RealMindX Bookshop",
-            preheader=f"Order {order.order_reference} placed. We will be in touch within 1 business day.",
+                <p>Our team will contact you within <strong>1 business day</strong> with the next fulfilment update.</p>
+                <p>If you need anything sooner, contact us on any of the channels below and we&rsquo;ll help right away.</p>
+                <p>We appreciate your trust in RealMindX and look forward to fulfilling your order.</p>
+                """,
+                cta_label="Visit the Bookshop",
+                cta_url=current_app.config.get("BOOKSHOP_URL", ""),
+                eyebrow="RealMindX Bookshop",
+                preheader=f"Order {order.order_reference} placed. We will be in touch within 1 business day.",
+            ),
         ),
-    ))
+        purpose="transactional",
+        recipient_user_id=order.user_id,
+        template_name="bookshop_order_placed",
+    )
 
     staff_subject_prefix = "Paid bookshop order" if paid_online else "New bookshop order"
-    send_email(OutboundEmail(
-        to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
-        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-        subject=f"{staff_subject_prefix} {order.order_reference} from {order.customer_name}",
-        html=bookshop_email_shell(
-            f"New order from {escape(order.customer_name)}",
-            f"""
-            <p>A new order has been placed via the RealMindX Bookshop.</p>
-            {staff_order_meta_html}
-            {order_summary_html}
-            """,
-            cta_label="View in Admin Dashboard",
-            cta_url=f"{current_app.config['BASE_URL']}/admin/dashboard",
-            eyebrow="RealMindX Internal: New Order Alert",
+    send_email(
+        OutboundEmail(
+            to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
+            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+            subject=f"{staff_subject_prefix} {order.order_reference} from {order.customer_name}",
+            html=bookshop_email_shell(
+                f"New order from {escape(order.customer_name)}",
+                f"""
+                <p>A new order has been placed via the RealMindX Bookshop.</p>
+                {staff_order_meta_html}
+                {order_summary_html}
+                """,
+                cta_label="View in Admin Dashboard",
+                cta_url=f"{current_app.config['BASE_URL']}/admin/dashboard",
+                eyebrow="RealMindX Internal: New Order Alert",
+            ),
         ),
-    ))
+        purpose="admin_alert",
+        recipient_user_id=None,
+        template_name="bookshop_order_admin_alert",
+    )
 
 
 def _send_order_placed_notifications_safely(order):
@@ -1778,7 +1839,10 @@ def bulk_order():
             from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
             subject="New RealMindX bulk order enquiry",
             html=bookshop_email_shell("Bulk order enquiry", f"<p><strong>{name}</strong> ({email}) requested:</p><p>{details}</p>"),
-        )
+        ),
+        purpose="admin_alert",
+        recipient_user_id=None,
+        template_name="bookshop_bulk_order_enquiry",
     )
     audit("bulk_order_enquiry", "bulk_order", None, {"name": name, "email": email}, actor_email=email)
     queue_analytics_event(

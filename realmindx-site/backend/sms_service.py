@@ -1,16 +1,20 @@
 """
 SMS service via Arkesel v1 API.
 
-To activate:
-    Add to realmindx-site/.env:
-        ARKESEL_API_KEY=***REMOVED-ARKESEL-API-KEY***
-        ARKESEL_SENDER_ID=RealMindX
-
-Completely silent when key is not set — emails are never affected.
+Returns CommunicationResult from .communications instead of bare True/False.
 """
+
+import uuid
 
 import requests
 from flask import current_app
+
+from .communications import (
+    CommunicationResult,
+    mask_destination,
+    record_attempt,
+    resolve_communication_mode,
+)
 
 
 def normalise_phone(phone: str) -> str | None:
@@ -20,28 +24,85 @@ def normalise_phone(phone: str) -> str | None:
     p = phone.strip().replace(" ", "").replace("-", "")
     if p.startswith("+233"):
         p = "233" + p[4:]
+    elif p.startswith("00"):
+        p = p[2:]
+        if p.startswith("233"):
+            p = p
+        else:
+            return None
     elif p.startswith("0") and len(p) == 10:
         p = "233" + p[1:]
     elif not p.startswith("233"):
-        p = "233" + p  # best-effort for numbers without country code
+        return None
     return f"+{p}" if len(p) == 12 and p.isdigit() else None
 
 
-def send_sms(phone: str, message: str, sender_id: str | None = None) -> bool:
-    """
-    Send a single SMS via Arkesel v1 GET API.
-    Returns True if sent, False if skipped or failed. Never raises.
-    """
-    api_key = current_app.config.get("ARKESEL_API_KEY", "")
-    if not api_key:
-        current_app.logger.debug("[sms] ARKESEL_API_KEY not set — skipping SMS to %s", phone)
-        return False
-
+def send_sms(
+    phone: str,
+    message: str,
+    sender_id: str | None = None,
+    *,
+    purpose: str = "security",
+    recipient_user_id: int | None = None,
+    template_name: str | None = None,
+) -> CommunicationResult:
+    mode = resolve_communication_mode()
+    masked_dst = mask_destination("sms", phone)
     normalised = normalise_phone(phone)
     to = normalised.lstrip("+") if normalised else None
+
+    if mode == "disabled":
+        record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "none", mode, "disabled")
+        return CommunicationResult(
+            channel="sms", purpose=purpose, provider="none", mode=mode,
+            status="disabled",
+            error_code="mode_disabled",
+            error_message="SMS delivery is disabled in this environment.",
+            recipient_user_id=recipient_user_id,
+            masked_destination=masked_dst,
+            template_name=template_name,
+        )
+
+    if mode == "mock":
+        mock_id = f"mock-{uuid.uuid4().hex}"
+        record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "mock", mode, "mocked", provider_message_id=mock_id)
+        current_app.logger.info("[sms mock] %s -> %s", purpose, masked_dst)
+        return CommunicationResult(
+            channel="sms", purpose=purpose, provider="mock", mode=mode,
+            status="mocked",
+            provider_message_id=mock_id,
+            error_message="Mock mode — no real SMS was sent.",
+            recipient_user_id=recipient_user_id,
+            masked_destination=masked_dst,
+            template_name=template_name,
+        )
+
+    api_key = current_app.config.get("ARKESEL_API_KEY", "")
+    if not api_key:
+        record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "arkesel", mode, "failed", error_code="missing_credentials")
+        return CommunicationResult(
+            channel="sms", purpose=purpose, provider="arkesel", mode=mode,
+            status="failed",
+            error_code="missing_credentials",
+            error_message="ARKESEL_API_KEY is not configured.",
+            retryable=False,
+            recipient_user_id=recipient_user_id,
+            masked_destination=masked_dst,
+            template_name=template_name,
+        )
+
     if not to:
-        current_app.logger.warning("[sms] Invalid phone number: %s", phone)
-        return False
+        record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "arkesel", mode, "failed", error_code="invalid_recipient")
+        return CommunicationResult(
+            channel="sms", purpose=purpose, provider="arkesel", mode=mode,
+            status="failed",
+            error_code="invalid_recipient",
+            error_message=f"Invalid phone number: {masked_dst}",
+            retryable=False,
+            recipient_user_id=recipient_user_id,
+            masked_destination=masked_dst,
+            template_name=template_name,
+        )
 
     sender = sender_id or current_app.config.get("ARKESEL_SENDER_ID", "RealMindX")
 
@@ -58,13 +119,59 @@ def send_sms(phone: str, message: str, sender_id: str | None = None) -> bool:
             timeout=10,
         )
         data = response.json()
-        # Arkesel v1 returns {"code": "ok", ...} on success
         if str(data.get("code", "")).lower() == "ok":
-            current_app.logger.info("[sms] Sent to %s via Arkesel", to)
-            return True
+            balance = data.get("balance")
+            current_app.logger.info("[sms] Accepted by Arkesel for %s (balance=%s)", masked_dst, balance)
+            record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "arkesel", mode, "accepted")
+            return CommunicationResult(
+                channel="sms", purpose=purpose, provider="arkesel", mode=mode,
+                status="accepted",
+                recipient_user_id=recipient_user_id,
+                masked_destination=masked_dst,
+                template_name=template_name,
+            )
         else:
-            current_app.logger.warning("[sms] Arkesel rejected (to=%s): %s", to, data)
-            return False
-    except Exception as exc:
-        current_app.logger.warning("[sms] Failed to send SMS to %s: %s", to, exc)
-        return False
+            err_code = str(data.get("code", "unknown"))
+            err_msg = str(data.get("message", data.get("reason", "Arkesel rejected the request")))
+            current_app.logger.warning("[sms] Arkesel rejected (to=%s, code=%s)", masked_dst, err_code)
+            record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "arkesel", mode, "rejected", error_code=err_code)
+            return CommunicationResult(
+                channel="sms", purpose=purpose, provider="arkesel", mode=mode,
+                status="rejected",
+                error_code=err_code,
+                error_message=err_msg,
+                retryable=False,
+                recipient_user_id=recipient_user_id,
+                masked_destination=masked_dst,
+                template_name=template_name,
+            )
+    except requests.Timeout:
+        current_app.logger.warning("[sms] Arkesel request timed out for %s", masked_dst)
+        record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "arkesel", mode, "failed", error_code="timeout")
+        return CommunicationResult(
+            channel="sms", purpose=purpose, provider="arkesel", mode=mode,
+            status="failed",
+            error_code="timeout",
+            error_message="Arkesel request timed out.",
+            retryable=True,
+            recipient_user_id=recipient_user_id,
+            masked_destination=masked_dst,
+            template_name=template_name,
+        )
+    except requests.RequestException as exc:
+        current_app.logger.warning(
+            "[sms] Arkesel request failed for %s (error=%s)",
+            masked_dst,
+            type(exc).__name__,
+        )
+        record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "arkesel", mode, "failed", error_code="provider_error")
+        return CommunicationResult(
+            channel="sms", purpose=purpose, provider="arkesel", mode=mode,
+            status="failed",
+            error_code="provider_error",
+            error_message="Arkesel request failed.",
+            retryable=True,
+            recipient_user_id=recipient_user_id,
+            masked_destination=masked_dst,
+            template_name=template_name,
+        )

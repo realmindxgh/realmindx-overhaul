@@ -11,13 +11,18 @@ from flask_login import current_user, login_required, login_user, logout_user
 from flask_wtf.csrf import generate_csrf
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from sqlalchemy.exc import IntegrityError
+
 from ..audit import audit
-from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_email
 from ..extensions import db, limiter
-from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, CheckoutDetail, ContactChangeToken, EmailVerificationToken, JobAlertPreference, PasswordResetToken, PlatformTermsAcceptance, Role, User, UserProfile
+from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, BookRequest, BookshopPaymentIntent, CheckoutDetail, CommunicationAttempt, ContactChangeToken, ContactMessage, DeliverySettlementBatch, EmailVerificationToken, Job, JobAlertPreference, NewsletterSubscriber, Order, OrderDelivery, PasswordResetToken, PlatformTermsAcceptance, Role, TermsAcceptance, UploadedFile, User, UserProfile, WhatsAppWebhookEvent
+from ..profile_completion import CURRENT_TERMS_VERSION, account_status
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
+from ..upload_utils import delete_uploaded_file_physical
 from ..sms_service import normalise_phone
+from ..teacher_ids import generate_application_id
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -40,6 +45,22 @@ PROVIDER_LABELS = {
     "google": "Google",
     "microsoft": "Microsoft",
 }
+
+_SECURITY_EMAIL_STARTED_STATUSES = frozenset({"queued", "accepted", "sent", "delivered"})
+
+
+def _security_email_started(result):
+    status = getattr(result, "status", None)
+    if status in _SECURITY_EMAIL_STARTED_STATUSES:
+        return True
+    return status == "mocked" and current_app.config.get("ENV") != "production"
+
+
+def _security_email_failure_payload():
+    return {
+        "error": "We could not send the security email. Please try again shortly.",
+        "code": "security_email_delivery_failed",
+    }
 
 
 def _social_login_providers(user):
@@ -90,13 +111,12 @@ def _send_verification_otp(user):
     now = datetime.now(timezone.utc)
     code = f"{secrets.randbelow(1_000_000):06d}"
     EmailVerificationToken.query.filter_by(user_id=user.id, used_at=None).update({"used_at": now})
-    db.session.add(
-        EmailVerificationToken(
-            user_id=user.id,
-            token_hash=generate_password_hash(code),
-            expires_at=now + timedelta(minutes=15),
-        )
+    token = EmailVerificationToken(
+        user_id=user.id,
+        token_hash=generate_password_hash(code),
+        expires_at=now + timedelta(minutes=15),
     )
+    db.session.add(token)
     first_name = user.first_name or "there"
     body = (
         f"<p>Hello {escape(first_name)},</p>"
@@ -112,16 +132,24 @@ def _send_verification_otp(user):
         "<p style='font-size:13px;color:#6b80a0;'>Didn&rsquo;t create a RealMindX account? "
         "You can safely ignore this email. No action is needed.</p>"
     )
-    send_email(OutboundEmail(
-        to=user.email,
-        subject=f"Your RealMindX verification code: {code}",
-        html=app_email_shell(
-            "Verify your account",
-            body,
-            eyebrow="RealMindX Account Security",
-            preheader=f"Your verification code is {code}. It expires in 15 minutes.",
+    result = send_email(
+        OutboundEmail(
+            to=user.email,
+            subject=f"Your RealMindX verification code: {code}",
+            html=app_email_shell(
+                "Verify your account",
+                body,
+                eyebrow="RealMindX Account Security",
+                preheader=f"Your verification code is {code}. It expires in 15 minutes.",
+            ),
         ),
-    ))
+        purpose="security",
+        recipient_user_id=user.id,
+        template_name="email_verification_otp",
+    )
+    if not _security_email_started(result):
+        token.used_at = now
+    return result
 
 
 @auth_bp.get("/csrf-token")
@@ -137,14 +165,13 @@ def _send_account_security_code(user, purpose, title):
         purpose=purpose,
         used_at=None,
     ).update({"used_at": now})
-    db.session.add(
-        AccountSecurityCode(
-            user_id=user.id,
-            purpose=purpose,
-            token_hash=generate_password_hash(code),
-            expires_at=now + timedelta(minutes=10),
-        )
+    token = AccountSecurityCode(
+        user_id=user.id,
+        purpose=purpose,
+        token_hash=generate_password_hash(code),
+        expires_at=now + timedelta(minutes=10),
     )
+    db.session.add(token)
     first_name = user.first_name or "there"
     body = (
         f"<p>Hello {escape(first_name)},</p>"
@@ -159,11 +186,19 @@ def _send_account_security_code(user, purpose, title):
         "<p style='font-size:13px;color:#6b80a0;'>If you did not request this action, "
         "change your password and contact RealMindX support.</p>"
     )
-    send_email(OutboundEmail(
-        to=user.email,
-        subject=f"RealMindX security code: {code}",
-        html=app_email_shell(title, body, eyebrow="RealMindX Account Security"),
-    ))
+    result = send_email(
+        OutboundEmail(
+            to=user.email,
+            subject=f"RealMindX security code: {code}",
+            html=app_email_shell(title, body, eyebrow="RealMindX Account Security"),
+        ),
+        purpose="security",
+        recipient_user_id=user.id,
+        template_name=purpose,
+    )
+    if not _security_email_started(result):
+        token.used_at = now
+    return result
 
 
 def _consume_account_security_code(user_id, purpose, otp):
@@ -181,6 +216,43 @@ def _consume_account_security_code(user_id, purpose, otp):
         return False
     code.used_at = now
     return True
+
+
+def _send_teacher_account_created_email(user):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal?view=profile")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        "<p>Thank you for creating your RealMindX teacher account.</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        "<p>Please keep this Application ID safe. It is your reference number for your teacher application and all related correspondence with RealMindX.</p>"
+        "<p><strong>Next step:</strong> Complete your teaching profile and upload the required documents. Once your profile is complete, you can submit it for review.</p>"
+        "<p>If you need to contact RealMindX about your application, please quote your Application ID so we can assist you quickly.</p>"
+    )
+    try:
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Your RealMindX Teacher Application Has Been Created",
+                html=app_email_shell(
+                    "Teacher Application Created",
+                    body,
+                    cta_label="Complete Your Profile",
+                    cta_url=dashboard_url,
+                    eyebrow="RealMindX Teacher Registration",
+                    preheader=f"Your Application ID is {user.application_id or 'N/A'} — save it for future reference.",
+                ),
+            ),
+            purpose="transactional",
+            recipient_user_id=user.id,
+            template_name="teacher_account_created",
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "Teacher account-created email failed for user %s (error=%s)",
+            user.id,
+            type(exc).__name__,
+        )
 
 
 @auth_bp.post("/signup")
@@ -211,6 +283,7 @@ def signup():
 
     role = Role.query.filter_by(name="user").first() or Role(name="user", description="Public account")
     db.session.add(role)
+    now = datetime.now(timezone.utc)
     user = User(
         email=email,
         first_name=first_name,
@@ -219,17 +292,63 @@ def signup():
         sex=(payload.get("sex") or "").strip() or None,
         age_range=(payload.get("age_range") or "").strip() or None,
         role=role,
-        terms_accepted_at=datetime.now(timezone.utc),
+        terms_accepted_at=now,
+        terms_version=CURRENT_TERMS_VERSION,
+        privacy_version=CURRENT_TERMS_VERSION,
         teacher_service_enabled=str(payload.get("surface") or "teacher").strip().lower() != "bookshop",
         bookshop_service_enabled=str(payload.get("surface") or "teacher").strip().lower() == "bookshop",
     )
     user.set_password(password)
     db.session.add(user)
+    for _attempt in range(2):
+        try:
+            user.application_id = generate_application_id()
+            break
+        except IntegrityError:
+            db.session.rollback()
+            if _attempt == 1:
+                current_app.logger.exception("Failed to generate application ID after retry")
+                return jsonify(error="Could not complete registration. Please try again."), 500
+            db.session.add(user)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Failed to generate application ID")
+            return jsonify(error="Could not complete registration. Please try again."), 500
     db.session.flush()
     db.session.add(UserProfile(user_id=user.id))
-    _send_verification_otp(user)
+    terms_acceptance = TermsAcceptance(
+        user_id=user.id,
+        terms_type="platform_terms",
+        terms_version=CURRENT_TERMS_VERSION,
+        privacy_version=CURRENT_TERMS_VERSION,
+        accepted_at=now,
+        acceptance_source="registration",
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent", "")[:500],
+    )
+    db.session.add(terms_acceptance)
+    email_result = _send_verification_otp(user)
     audit("user_signup", "user", user.id, {"email": email})
+    if not _security_email_started(email_result):
+        audit(
+            "user_signup_verification_email_failed",
+            "user",
+            user.id,
+            {
+                "delivery_status": getattr(email_result, "status", "failed"),
+                "error_code": getattr(email_result, "error_code", None),
+            },
+        )
+        db.session.commit()
+        return jsonify(
+            **_security_email_failure_payload(),
+            account_created=True,
+            verification_required=True,
+        ), 503
     db.session.commit()
+
+    if user.teacher_service_enabled and user.application_id:
+        _send_teacher_account_created_email(user)
 
     return jsonify(
         user=user_json(user),
@@ -313,7 +432,23 @@ def login():
         return jsonify(error="This account is inactive. Contact the administrator."), 403
 
     if _public_account_requires_verification(user):
-        _send_verification_otp(user)
+        email_result = _send_verification_otp(user)
+        if not _security_email_started(email_result):
+            audit(
+                "user_login_verification_email_failed",
+                "user",
+                user.id,
+                {
+                    "delivery_status": getattr(email_result, "status", "failed"),
+                    "error_code": getattr(email_result, "error_code", None),
+                },
+            )
+            db.session.commit()
+            return jsonify(
+                **_security_email_failure_payload(),
+                verification_required=True,
+                email=user.email,
+            ), 503
         db.session.commit()
         return jsonify(
             error="Please verify your email before signing in. A fresh code has been sent.",
@@ -322,7 +457,24 @@ def login():
         ), 403
 
     if user.two_factor_enabled:
-        _send_account_security_code(user, "login_two_factor", "Complete your RealMindX sign in")
+        email_result = _send_account_security_code(
+            user,
+            "login_two_factor",
+            "Complete your RealMindX sign in",
+        )
+        if not _security_email_started(email_result):
+            session.pop("pending_two_factor_login", None)
+            audit(
+                "user_login_two_factor_email_failed",
+                "user",
+                user.id,
+                {
+                    "delivery_status": getattr(email_result, "status", "failed"),
+                    "error_code": getattr(email_result, "error_code", None),
+                },
+            )
+            db.session.commit()
+            return jsonify(**_security_email_failure_payload()), 503
         session["pending_two_factor_login"] = {
             "user_id": user.id,
             "remember": bool(payload.get("remember")),
@@ -443,7 +595,21 @@ def request_two_factor_change():
         return jsonify(error="Two-factor authentication is already disabled."), 400
     purpose = f"two_factor_{action}"
     title = f"{action.capitalize()} two-factor authentication"
-    _send_account_security_code(current_user, purpose, title)
+    email_result = _send_account_security_code(current_user, purpose, title)
+    if not _security_email_started(email_result):
+        session.pop("pending_two_factor_change", None)
+        audit(
+            "two_factor_change_email_failed",
+            "user",
+            current_user.id,
+            {
+                "action": action,
+                "delivery_status": getattr(email_result, "status", "failed"),
+                "error_code": getattr(email_result, "error_code", None),
+            },
+        )
+        db.session.commit()
+        return jsonify(**_security_email_failure_payload()), 503
     session["pending_two_factor_change"] = {"user_id": current_user.id, "action": action}
     audit("two_factor_change_requested", "user", current_user.id, {"action": action})
     db.session.commit()
@@ -476,6 +642,13 @@ def confirm_two_factor_change():
     )
 
 
+@auth_bp.get("/me/status")
+def me_status():
+    if not current_user.is_authenticated:
+        return jsonify({"account_exists": False, "terms_accepted": False, "requires_terms_acceptance": False}), 200
+    return jsonify(account_status(current_user))
+
+
 @auth_bp.get("/me")
 def me():
     if not current_user.is_authenticated:
@@ -486,8 +659,28 @@ def me():
 @auth_bp.post("/accept-terms")
 @login_required
 def accept_terms():
-    current_user.terms_accepted_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    current_user.terms_accepted_at = now
+    current_user.terms_version = CURRENT_TERMS_VERSION
+    current_user.privacy_version = CURRENT_TERMS_VERSION
     from ..extensions import db
+    existing = TermsAcceptance.query.filter_by(
+        user_id=current_user.id,
+        terms_type="platform_terms",
+        terms_version=CURRENT_TERMS_VERSION,
+    ).first()
+    if not existing:
+        acceptance = TermsAcceptance(
+            user_id=current_user.id,
+            terms_type="platform_terms",
+            terms_version=CURRENT_TERMS_VERSION,
+            privacy_version=CURRENT_TERMS_VERSION,
+            accepted_at=now,
+            acceptance_source="user_accept",
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent", "")[:500],
+        )
+        db.session.add(acceptance)
     db.session.commit()
     return jsonify(message="Terms accepted.", user=user_json(current_user))
 
@@ -500,7 +693,29 @@ def decline_terms():
     actor_email = user.email
     try:
         audit("user_declined_terms", "user", actor_id, {"email": actor_email})
+
+        # -- RETAIN financial/audit records: clear user references --
+        BookshopPaymentIntent.query.filter_by(user_id=user.id).update({"user_id": None})
+        WhatsAppWebhookEvent.query.filter_by(user_id=user.id).update({"user_id": None})
         AuditLog.query.filter_by(actor_id=user.id).update({"actor_id": None})
+        CommunicationAttempt.query.filter_by(recipient_user_id=user.id).update({"recipient_user_id": None})
+        CommunicationAttempt.query.filter_by(initiated_by=user.id).update({"initiated_by": None})
+
+        # -- RETAIN orders: clear user reference (never delete a paid order) --
+        Order.query.filter_by(user_id=user.id).update({"user_id": None})
+
+        # -- Clear user references in shared/admin/operational records --
+        ContactMessage.query.filter_by(assigned_to=user.id).update({"assigned_to": None})
+        Job.query.filter_by(created_by_id=user.id).update({"created_by_id": None})
+        OrderDelivery.query.filter_by(assigned_by_id=user.id).update({"assigned_by_id": None})
+        DeliverySettlementBatch.query.filter_by(settled_by_id=user.id).update({"settled_by_id": None})
+        DeliverySettlementBatch.query.filter_by(prepared_by_id=user.id).update({"prepared_by_id": None})
+        BookRequest.query.filter_by(resolved_by_id=user.id).update({"resolved_by_id": None})
+
+        # -- Anonymise newsletter subscription if it matches the account email --
+        NewsletterSubscriber.query.filter_by(email=user.email).delete()
+
+        # -- DELETE volatile session/token data --
         AnalyticsEvent.query.filter_by(user_id=user.id).delete()
         CheckoutDetail.query.filter_by(user_id=user.id).delete()
         ContactChangeToken.query.filter_by(user_id=user.id).delete()
@@ -508,10 +723,39 @@ def decline_terms():
         AccountSecurityCode.query.filter_by(user_id=user.id).delete()
         PasswordResetToken.query.filter_by(user_id=user.id).delete()
         JobAlertPreference.query.filter_by(user_id=user.id).delete()
-        AuthIdentity.query.filter_by(user_id=user.id).delete()
-        PlatformTermsAcceptance.query.filter_by(user_id=user.id).delete()
+
+        # -- COLLECT file paths before any DB mutation --
+        uploaded = UploadedFile.query.filter_by(owner_id=user.id).all()
+        file_paths = [(uf.id, uf.storage_path) for uf in uploaded if uf.storage_path]
+
+        # -- DELETE upload DB rows --
+        for uf in uploaded:
+            db.session.delete(uf)
+
+        # -- DELETE user (cascade removes profile, auth_identities, terms_acceptances, etc.) --
         db.session.delete(user)
+
+        # -- COMMIT transaction first (safe point) --
         db.session.commit()
+
+        # -- DELETE physical files AFTER commit --
+        failed = []
+        for fid, path in file_paths:
+            import os
+            if path and os.path.isfile(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    failed.append((fid, path))
+                    current_app.logger.warning("Could not remove physical file id=%s path=%s", fid, path)
+
+        if failed:
+            current_app.logger.info(
+                "User %s deletion: %d file(s) could not be removed. "
+                "Paths available for retry cleanup: %s",
+                actor_id, len(failed), [p for _, p in failed],
+            )
+
         logout_user()
         return jsonify(message="Account deleted.")
     except Exception:
@@ -535,7 +779,7 @@ def verify_email_otp():
     if not user:
         return jsonify(error="Account not found."), 404
     if user.is_verified:
-        return jsonify(message="Email is already verified.", user=user_json(user))
+        return jsonify(error="Email is already verified. Verification codes cannot be reused."), 409
     now = datetime.now(timezone.utc)
     token = (
         EmailVerificationToken.query
@@ -573,7 +817,22 @@ def resend_verification_otp():
         return jsonify(message="Internal admin and staff accounts do not use OTP verification.")
     if user.is_verified:
         return jsonify(message="This email is already verified.")
-    _send_verification_otp(user)
+    email_result = _send_verification_otp(user)
+    if not _security_email_started(email_result):
+        audit(
+            "user_verification_email_resend_failed",
+            "user",
+            user.id,
+            {
+                "delivery_status": getattr(email_result, "status", "failed"),
+                "error_code": getattr(email_result, "error_code", None),
+            },
+        )
+        db.session.commit()
+        return jsonify(
+            **_security_email_failure_payload(),
+            verification_required=True,
+        ), 503
     db.session.commit()
     return jsonify(message="A fresh verification code has been sent.")
 
@@ -618,25 +877,30 @@ def request_password_reset():
         )
         reset_url = f"{reset_base_url.rstrip('/')}/reset-password?token={token}"
         first_name = user.first_name or "there"
-        send_email(OutboundEmail(
-            to=user.email,
-            subject="Create your RealMindX password" if setup_password else "Reset your RealMindX password",
-            html=app_email_shell(
-                "Create your password" if setup_password else "Password reset request",
-                (
-                    f"<p>Hello {escape(first_name)},</p>"
-                    f"<p>We received a request to {'create' if setup_password else 'reset'} the password for your RealMindX account. "
-                    "If this was you, click the button below to set a secure password. "
-                    "The link is valid for <strong>one hour</strong>.</p>"
-                    f"<p>If you did not request this password {'creation' if setup_password else 'reset'}, you can safely ignore this email. "
-                    "Your account remains secure and no changes have been made.</p>"
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Create your RealMindX password" if setup_password else "Reset your RealMindX password",
+                html=app_email_shell(
+                    "Create your password" if setup_password else "Password reset request",
+                    (
+                        f"<p>Hello {escape(first_name)},</p>"
+                        f"<p>We received a request to {'create' if setup_password else 'reset'} the password for your RealMindX account. "
+                        "If this was you, click the button below to set a secure password. "
+                        "The link is valid for <strong>one hour</strong>.</p>"
+                        f"<p>If you did not request this password {'creation' if setup_password else 'reset'}, you can safely ignore this email. "
+                        "Your account remains secure and no changes have been made.</p>"
+                    ),
+                    "Create My Password" if setup_password else "Reset My Password",
+                    reset_url,
+                    eyebrow="RealMindX Account Security",
+                    preheader="Create your password. This link expires in one hour." if setup_password else "Reset your password. This link expires in one hour.",
                 ),
-                "Create My Password" if setup_password else "Reset My Password",
-                reset_url,
-                eyebrow="RealMindX Account Security",
-                preheader="Create your password. This link expires in one hour." if setup_password else "Reset your password. This link expires in one hour.",
             ),
-        ))
+            purpose="security",
+            recipient_user_id=user.id,
+            template_name="password_setup" if setup_password else "password_reset",
+        )
     return jsonify(message="If the email exists, reset instructions have been sent.")
 
 

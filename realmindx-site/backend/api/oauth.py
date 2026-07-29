@@ -149,6 +149,8 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
         if not role:
             role = Role(name="user", description="Public account")
             db.session.add(role)
+        from ..profile_completion import CURRENT_TERMS_VERSION
+        from ..models import TermsAcceptance
         terms_now = datetime.now(timezone.utc) if session.get("oauth_terms_accepted") else None
         user = User(
             email=(email or f"{provider}_{provider_user_id}@noemail.local").lower(),
@@ -157,6 +159,8 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
             role=role,
             is_verified=True,
             terms_accepted_at=terms_now,
+            terms_version=CURRENT_TERMS_VERSION if terms_now else None,
+            privacy_version=CURRENT_TERMS_VERSION if terms_now else None,
             teacher_service_enabled=session.get("oauth_surface", "main") != "bookshop",
             bookshop_service_enabled=session.get("oauth_surface", "main") == "bookshop",
         )
@@ -164,6 +168,15 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
         db.session.add(user)
         db.session.flush()
         db.session.add(UserProfile(user_id=user.id))
+        if terms_now:
+            db.session.add(TermsAcceptance(
+                user_id=user.id,
+                terms_type="platform_terms",
+                terms_version=CURRENT_TERMS_VERSION,
+                privacy_version=CURRENT_TERMS_VERSION,
+                accepted_at=terms_now,
+                acceptance_source="oauth_signup",
+            ))
         created = True
 
     # Create the AuthIdentity link

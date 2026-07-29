@@ -73,9 +73,14 @@ class User(UserMixin, TimestampMixin, db.Model):
     locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
     terms_accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    terms_version = db.Column(db.String(40), nullable=True)
+    privacy_version = db.Column(db.String(40), nullable=True)
+    application_id = db.Column(db.String(30), nullable=True, unique=True, index=True)
+    teacher_id = db.Column(db.String(30), nullable=True, unique=True, index=True)
+    teacher_id_issued_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     role = db.relationship("Role")
-    profile = db.relationship("UserProfile", uselist=False, back_populates="user", cascade="all, delete-orphan")
+    profile = db.relationship("UserProfile", uselist=False, back_populates="user", cascade="all, delete-orphan", foreign_keys=lambda: [UserProfile.user_id])
     direct_permissions = db.relationship("Permission", secondary=staff_permissions)
 
     def set_password(self, password, enable_login=True):
@@ -106,7 +111,7 @@ class AuthIdentity(TimestampMixin, db.Model):
     provider = db.Column(db.String(50), nullable=False)
     provider_user_id = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), nullable=True)
-    user = db.relationship("User", backref="auth_identities")
+    user = db.relationship("User", backref=db.backref("auth_identities", cascade="all, delete-orphan"))
 
 
 class UserProfile(TimestampMixin, db.Model):
@@ -145,8 +150,47 @@ class UserProfile(TimestampMixin, db.Model):
     payout_bank_account_name = db.Column(db.String(160), nullable=True)
     payout_bank_account_number = db.Column(db.String(80), nullable=True)
     payout_notes = db.Column(db.Text, nullable=True)
+    profile_status = db.Column(db.String(30), default="incomplete", server_default="incomplete", nullable=False, index=True)
+    submitted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    review_notes = db.Column(db.Text, nullable=True)
 
-    user = db.relationship("User", back_populates="profile")
+    user = db.relationship("User", back_populates="profile", foreign_keys=[user_id])
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_id])
+
+
+class TeacherIdCounter(TimestampMixin, db.Model):
+    """Safe sequential ID generation for teacher application and teacher IDs.
+
+    Each year has its own counter row so that application IDs like
+    RMX-APP-2026-000184 can reset annually. Teacher IDs use a global
+    (non-year-prefixed) counter stored in the same row for simplicity.
+    """
+
+    __tablename__ = "teacher_id_counters"
+
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, nullable=False, unique=True)
+    last_application_seq = db.Column(db.Integer, default=0, nullable=False)
+    last_teacher_seq = db.Column(db.Integer, default=0, nullable=False)
+
+
+class TeacherIdGlobalCounter(TimestampMixin, db.Model):
+    """Global counter for permanent Teacher IDs.
+
+    This table holds exactly one row (``id = 1``) with a global sequence
+    that never resets.  The primary-key constraint on ``id``, combined with
+    the convention that code always reads and writes ``id = 1``, guarantees
+    singleton semantics at the database level.  Teacher IDs
+    (``RMX-TCH-NNNNNN``) contain no year component, so the sequence must
+    remain unique across all years.
+    """
+
+    __tablename__ = "teacher_id_global_counter"
+
+    id = db.Column(db.Integer, primary_key=True)
+    last_teacher_seq = db.Column(db.Integer, default=0, nullable=False)
 
 
 class UploadedFile(TimestampMixin, db.Model):
@@ -425,6 +469,32 @@ class DeliveryCompany(TimestampMixin, db.Model):
     default_delivery_payable = db.Column(db.Numeric(12, 2), nullable=True)
 
 
+class TermsAcceptance(TimestampMixin, db.Model):
+    """General platform terms acceptance for teacher/user portal accounts.
+
+    Each row records one acceptance event.  The authoritative check for
+    "has the user accepted the current version" queries for the most recent
+    row matching ``user_id + terms_type + terms_version``.
+
+    This is separate from ``PlatformTermsAcceptance``, which tracks delivery
+    portal terms for delivery companies and riders.
+    """
+
+    __tablename__ = "terms_acceptances"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    terms_type = db.Column(db.String(40), nullable=False)
+    terms_version = db.Column(db.String(40), nullable=False)
+    privacy_version = db.Column(db.String(40), nullable=True)
+    accepted_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    acceptance_source = db.Column(db.String(30), nullable=True)
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(500), nullable=True)
+
+    user = db.relationship("User", backref=db.backref("terms_acceptances", cascade="all, delete-orphan"))
+
+
 class DeliveryCompanyUser(TimestampMixin, db.Model):
     __tablename__ = "delivery_company_users"
     __table_args__ = (
@@ -481,7 +551,7 @@ class PlatformTermsAcceptance(TimestampMixin, db.Model):
     ip_address = db.Column(db.String(64), nullable=True)
     user_agent = db.Column(db.String(500), nullable=True)
 
-    user = db.relationship("User", backref="platform_terms_acceptances")
+    user = db.relationship("User", backref=db.backref("platform_terms_acceptances", cascade="all, delete-orphan"))
     delivery_company = db.relationship("DeliveryCompany", backref="platform_terms_acceptances")
     rider = db.relationship("DeliveryRider", backref="platform_terms_acceptances")
 
@@ -1031,3 +1101,28 @@ class PasswordResetToken(TimestampMixin, db.Model):
     token_hash = db.Column(db.String(255), nullable=False, index=True)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     used_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+
+class CommunicationAttempt(TimestampMixin, db.Model):
+    """Durable record of every outbound communication attempt."""
+
+    __tablename__ = "communication_attempts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    channel = db.Column(db.String(20), nullable=False, index=True)
+    purpose = db.Column(db.String(40), nullable=False, index=True)
+    recipient_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    masked_destination = db.Column(db.String(120), nullable=True)
+    template_name = db.Column(db.String(80), nullable=True)
+    provider = db.Column(db.String(30), nullable=False)
+    provider_message_id = db.Column(db.String(120), nullable=True, index=True)
+    mode = db.Column(db.String(12), nullable=False)
+    status = db.Column(db.String(20), nullable=False, index=True)
+    error_code = db.Column(db.String(60), nullable=True)
+    retry_count = db.Column(db.Integer, default=0)
+    initiated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    batch_id = db.Column(db.String(40), nullable=True, index=True)
+    requested_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    delivered_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    failed_at = db.Column(db.DateTime(timezone=True), nullable=True)
