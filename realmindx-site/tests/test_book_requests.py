@@ -72,7 +72,7 @@ class BookRequestTests(unittest.TestCase):
         return payload
 
     @patch("backend.book_requests.send_sms", return_value=Mock(status="accepted"))
-    @patch("backend.book_requests.send_email", return_value={"status": "sent"})
+    @patch("backend.book_requests.send_email", return_value=Mock(status="accepted"))
     def test_submission_acknowledgement_deduplication_and_audit(self, _email, _sms):
         created = self.client.post("/api/bookshop/book-requests", json=self._payload())
         self.assertEqual(created.status_code, 201)
@@ -96,7 +96,7 @@ class BookRequestTests(unittest.TestCase):
         self.assertEqual(AnalyticsEvent.query.filter_by(event_type="book_request_submitted").count(), 2)
 
     @patch("backend.book_requests.send_sms", return_value=Mock(status="accepted"))
-    @patch("backend.book_requests.send_email", return_value={"status": "sent"})
+    @patch("backend.book_requests.send_email", return_value=Mock(status="accepted"))
     def test_validation_and_phone_only_acknowledgement(self, email_mock, sms_mock):
         missing = self.client.post("/api/bookshop/book-requests", json=self._payload(email="", phone=""))
         self.assertEqual(missing.status_code, 400)
@@ -117,7 +117,7 @@ class BookRequestTests(unittest.TestCase):
         self.assertTrue(AuditLog.query.filter_by(action="book_request_acknowledgement").first())
 
     @patch("backend.book_requests.send_sms", return_value=Mock(status="accepted"))
-    @patch("backend.book_requests.send_email", return_value={"status": "sent"})
+    @patch("backend.book_requests.send_email", return_value=Mock(status="accepted"))
     def test_permissions_availability_notifications_and_readable_audit(self, email_mock, sms_mock):
         request_response = self.client.post("/api/bookshop/book-requests", json=self._payload())
         request_id = request_response.get_json()["request"]["id"]
@@ -159,7 +159,7 @@ class BookRequestTests(unittest.TestCase):
         self.assertEqual(available_event["entity_type"], "Book requests")
 
     @patch("backend.book_requests.send_sms", side_effect=[Mock(status="failed"), Mock(status="accepted")])
-    @patch("backend.book_requests.send_email", return_value={"status": "sent"})
+    @patch("backend.book_requests.send_email", return_value=Mock(status="accepted"))
     def test_retry_only_retries_failed_channel(self, email_mock, _sms_mock):
         created = self.client.post("/api/bookshop/book-requests", json=self._payload())
         request_id = created.get_json()["request"]["id"]

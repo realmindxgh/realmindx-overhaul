@@ -293,7 +293,7 @@ def send_portal_access_notification(profile, account_kind, temporary_password=DE
                 ),
                 from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
             ))
-            email_status = result.get("status", "failed")
+            email_status = "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
         except Exception as exc:
             current_app.logger.warning("Delivery portal account email failed for %s: %s", phone, exc)
             email_status = "failed"
@@ -662,7 +662,7 @@ def send_delivery_otp(delivery, otp, code):
                     from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
                 )
             )
-            email_status = result.get("status", "failed")
+            email_status = "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
         except Exception as exc:
             current_app.logger.warning("Delivery OTP email failed for %s: %s", email, exc)
             email_status = "failed"

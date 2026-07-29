@@ -72,7 +72,7 @@ def request_json(row, include_private=False):
 
 
 def _email_status(result):
-    return "sent" if isinstance(result, dict) and result.get("status") == "sent" else "failed"
+    return "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
 
 
 def send_acknowledgement(row):
