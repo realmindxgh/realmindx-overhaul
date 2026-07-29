@@ -133,7 +133,7 @@ def send_sms(
         else:
             err_code = str(data.get("code", "unknown"))
             err_msg = str(data.get("message", data.get("reason", "Arkesel rejected the request")))
-            current_app.logger.warning("[sms] Arkesel rejected (to=%s, code=%s): %s", masked_dst, err_code, err_msg)
+            current_app.logger.warning("[sms] Arkesel rejected (to=%s, code=%s)", masked_dst, err_code)
             record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "arkesel", mode, "rejected", error_code=err_code)
             return CommunicationResult(
                 channel="sms", purpose=purpose, provider="arkesel", mode=mode,
@@ -159,13 +159,17 @@ def send_sms(
             template_name=template_name,
         )
     except requests.RequestException as exc:
-        current_app.logger.warning("[sms] Arkesel request failed for %s: %s", masked_dst, exc)
+        current_app.logger.warning(
+            "[sms] Arkesel request failed for %s (error=%s)",
+            masked_dst,
+            type(exc).__name__,
+        )
         record_attempt("sms", purpose, recipient_user_id, masked_dst, template_name, "arkesel", mode, "failed", error_code="provider_error")
         return CommunicationResult(
             channel="sms", purpose=purpose, provider="arkesel", mode=mode,
             status="failed",
             error_code="provider_error",
-            error_message=str(exc)[:200],
+            error_message="Arkesel request failed.",
             retryable=True,
             recipient_user_id=recipient_user_id,
             masked_destination=masked_dst,

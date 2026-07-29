@@ -43,6 +43,22 @@ PROVIDER_LABELS = {
     "microsoft": "Microsoft",
 }
 
+_SECURITY_EMAIL_STARTED_STATUSES = frozenset({"queued", "accepted", "sent", "delivered"})
+
+
+def _security_email_started(result):
+    status = getattr(result, "status", None)
+    if status in _SECURITY_EMAIL_STARTED_STATUSES:
+        return True
+    return status == "mocked" and current_app.config.get("ENV") != "production"
+
+
+def _security_email_failure_payload():
+    return {
+        "error": "We could not send the security email. Please try again shortly.",
+        "code": "security_email_delivery_failed",
+    }
+
 
 def _social_login_providers(user):
     if not user:
@@ -92,13 +108,12 @@ def _send_verification_otp(user):
     now = datetime.now(timezone.utc)
     code = f"{secrets.randbelow(1_000_000):06d}"
     EmailVerificationToken.query.filter_by(user_id=user.id, used_at=None).update({"used_at": now})
-    db.session.add(
-        EmailVerificationToken(
-            user_id=user.id,
-            token_hash=generate_password_hash(code),
-            expires_at=now + timedelta(minutes=15),
-        )
+    token = EmailVerificationToken(
+        user_id=user.id,
+        token_hash=generate_password_hash(code),
+        expires_at=now + timedelta(minutes=15),
     )
+    db.session.add(token)
     first_name = user.first_name or "there"
     body = (
         f"<p>Hello {escape(first_name)},</p>"
@@ -114,16 +129,24 @@ def _send_verification_otp(user):
         "<p style='font-size:13px;color:#6b80a0;'>Didn&rsquo;t create a RealMindX account? "
         "You can safely ignore this email. No action is needed.</p>"
     )
-    send_email(OutboundEmail(
-        to=user.email,
-        subject=f"Your RealMindX verification code: {code}",
-        html=app_email_shell(
-            "Verify your account",
-            body,
-            eyebrow="RealMindX Account Security",
-            preheader=f"Your verification code is {code}. It expires in 15 minutes.",
+    result = send_email(
+        OutboundEmail(
+            to=user.email,
+            subject=f"Your RealMindX verification code: {code}",
+            html=app_email_shell(
+                "Verify your account",
+                body,
+                eyebrow="RealMindX Account Security",
+                preheader=f"Your verification code is {code}. It expires in 15 minutes.",
+            ),
         ),
-    ))
+        purpose="security",
+        recipient_user_id=user.id,
+        template_name="email_verification_otp",
+    )
+    if not _security_email_started(result):
+        token.used_at = now
+    return result
 
 
 @auth_bp.get("/csrf-token")
@@ -139,14 +162,13 @@ def _send_account_security_code(user, purpose, title):
         purpose=purpose,
         used_at=None,
     ).update({"used_at": now})
-    db.session.add(
-        AccountSecurityCode(
-            user_id=user.id,
-            purpose=purpose,
-            token_hash=generate_password_hash(code),
-            expires_at=now + timedelta(minutes=10),
-        )
+    token = AccountSecurityCode(
+        user_id=user.id,
+        purpose=purpose,
+        token_hash=generate_password_hash(code),
+        expires_at=now + timedelta(minutes=10),
     )
+    db.session.add(token)
     first_name = user.first_name or "there"
     body = (
         f"<p>Hello {escape(first_name)},</p>"
@@ -161,11 +183,19 @@ def _send_account_security_code(user, purpose, title):
         "<p style='font-size:13px;color:#6b80a0;'>If you did not request this action, "
         "change your password and contact RealMindX support.</p>"
     )
-    send_email(OutboundEmail(
-        to=user.email,
-        subject=f"RealMindX security code: {code}",
-        html=app_email_shell(title, body, eyebrow="RealMindX Account Security"),
-    ))
+    result = send_email(
+        OutboundEmail(
+            to=user.email,
+            subject=f"RealMindX security code: {code}",
+            html=app_email_shell(title, body, eyebrow="RealMindX Account Security"),
+        ),
+        purpose="security",
+        recipient_user_id=user.id,
+        template_name=purpose,
+    )
+    if not _security_email_started(result):
+        token.used_at = now
+    return result
 
 
 def _consume_account_security_code(user_id, purpose, otp):
@@ -243,8 +273,24 @@ def signup():
         user_agent=request.headers.get("User-Agent", "")[:500],
     )
     db.session.add(terms_acceptance)
-    _send_verification_otp(user)
+    email_result = _send_verification_otp(user)
     audit("user_signup", "user", user.id, {"email": email})
+    if not _security_email_started(email_result):
+        audit(
+            "user_signup_verification_email_failed",
+            "user",
+            user.id,
+            {
+                "delivery_status": getattr(email_result, "status", "failed"),
+                "error_code": getattr(email_result, "error_code", None),
+            },
+        )
+        db.session.commit()
+        return jsonify(
+            **_security_email_failure_payload(),
+            account_created=True,
+            verification_required=True,
+        ), 503
     db.session.commit()
 
     return jsonify(
@@ -329,7 +375,23 @@ def login():
         return jsonify(error="This account is inactive. Contact the administrator."), 403
 
     if _public_account_requires_verification(user):
-        _send_verification_otp(user)
+        email_result = _send_verification_otp(user)
+        if not _security_email_started(email_result):
+            audit(
+                "user_login_verification_email_failed",
+                "user",
+                user.id,
+                {
+                    "delivery_status": getattr(email_result, "status", "failed"),
+                    "error_code": getattr(email_result, "error_code", None),
+                },
+            )
+            db.session.commit()
+            return jsonify(
+                **_security_email_failure_payload(),
+                verification_required=True,
+                email=user.email,
+            ), 503
         db.session.commit()
         return jsonify(
             error="Please verify your email before signing in. A fresh code has been sent.",
@@ -338,7 +400,24 @@ def login():
         ), 403
 
     if user.two_factor_enabled:
-        _send_account_security_code(user, "login_two_factor", "Complete your RealMindX sign in")
+        email_result = _send_account_security_code(
+            user,
+            "login_two_factor",
+            "Complete your RealMindX sign in",
+        )
+        if not _security_email_started(email_result):
+            session.pop("pending_two_factor_login", None)
+            audit(
+                "user_login_two_factor_email_failed",
+                "user",
+                user.id,
+                {
+                    "delivery_status": getattr(email_result, "status", "failed"),
+                    "error_code": getattr(email_result, "error_code", None),
+                },
+            )
+            db.session.commit()
+            return jsonify(**_security_email_failure_payload()), 503
         session["pending_two_factor_login"] = {
             "user_id": user.id,
             "remember": bool(payload.get("remember")),
@@ -459,7 +538,21 @@ def request_two_factor_change():
         return jsonify(error="Two-factor authentication is already disabled."), 400
     purpose = f"two_factor_{action}"
     title = f"{action.capitalize()} two-factor authentication"
-    _send_account_security_code(current_user, purpose, title)
+    email_result = _send_account_security_code(current_user, purpose, title)
+    if not _security_email_started(email_result):
+        session.pop("pending_two_factor_change", None)
+        audit(
+            "two_factor_change_email_failed",
+            "user",
+            current_user.id,
+            {
+                "action": action,
+                "delivery_status": getattr(email_result, "status", "failed"),
+                "error_code": getattr(email_result, "error_code", None),
+            },
+        )
+        db.session.commit()
+        return jsonify(**_security_email_failure_payload()), 503
     session["pending_two_factor_change"] = {"user_id": current_user.id, "action": action}
     audit("two_factor_change_requested", "user", current_user.id, {"action": action})
     db.session.commit()
@@ -627,7 +720,7 @@ def verify_email_otp():
     if not user:
         return jsonify(error="Account not found."), 404
     if user.is_verified:
-        return jsonify(message="Email is already verified.", user=user_json(user))
+        return jsonify(error="Email is already verified. Verification codes cannot be reused."), 409
     now = datetime.now(timezone.utc)
     token = (
         EmailVerificationToken.query
@@ -665,7 +758,22 @@ def resend_verification_otp():
         return jsonify(message="Internal admin and staff accounts do not use OTP verification.")
     if user.is_verified:
         return jsonify(message="This email is already verified.")
-    _send_verification_otp(user)
+    email_result = _send_verification_otp(user)
+    if not _security_email_started(email_result):
+        audit(
+            "user_verification_email_resend_failed",
+            "user",
+            user.id,
+            {
+                "delivery_status": getattr(email_result, "status", "failed"),
+                "error_code": getattr(email_result, "error_code", None),
+            },
+        )
+        db.session.commit()
+        return jsonify(
+            **_security_email_failure_payload(),
+            verification_required=True,
+        ), 503
     db.session.commit()
     return jsonify(message="A fresh verification code has been sent.")
 

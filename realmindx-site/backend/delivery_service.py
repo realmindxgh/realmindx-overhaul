@@ -5,6 +5,7 @@ from flask import current_app
 from markupsafe import escape
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from .communications import mask_destination
 from .email_service import OutboundEmail, bookshop_email_shell, send_email
 from .extensions import db
 from .models import (
@@ -60,6 +61,12 @@ OTP_OVERRIDE_REASONS = {
 OTP_EXPIRY_HOURS = 48
 OTP_MAX_ATTEMPTS = 5
 OTP_RESEND_COOLDOWN_SECONDS = 120
+
+
+def _communication_status(result):
+    if result.status == "mocked":
+        return "mocked"
+    return "sent" if result.status in ("queued", "accepted", "sent", "delivered") else "failed"
 
 
 class DeliveryError(Exception):
@@ -293,9 +300,13 @@ def send_portal_access_notification(profile, account_kind, temporary_password=DE
                 ),
                 from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
             ))
-            email_status = "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
+            email_status = _communication_status(result)
         except Exception as exc:
-            current_app.logger.warning("Delivery portal account email failed for %s: %s", phone, exc)
+            current_app.logger.warning(
+                "Delivery portal account email failed for %s (error=%s)",
+                mask_destination("sms", phone or ""),
+                type(exc).__name__,
+            )
             email_status = "failed"
 
     return {
@@ -340,9 +351,13 @@ def _send_delivery_update_email(to, subject, title, body, preheader, cta_label="
             text=preheader,
             from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
         ))
-        return "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
+        return _communication_status(result)
     except Exception as exc:
-        current_app.logger.warning("Delivery update email failed for %s: %s", to, exc)
+        current_app.logger.warning(
+            "Delivery update email failed for %s (error=%s)",
+            mask_destination("email", to),
+            type(exc).__name__,
+        )
         return "failed"
 
 
@@ -662,9 +677,13 @@ def send_delivery_otp(delivery, otp, code):
                     from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
                 )
             )
-            email_status = "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
+            email_status = _communication_status(result)
         except Exception as exc:
-            current_app.logger.warning("Delivery OTP email failed for %s: %s", email, exc)
+            current_app.logger.warning(
+                "Delivery OTP email failed for %s (error=%s)",
+                mask_destination("email", email),
+                type(exc).__name__,
+            )
             email_status = "failed"
         if email_status == "sent":
             channels.append("email")

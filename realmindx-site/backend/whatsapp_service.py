@@ -183,13 +183,17 @@ def _whatsapp_send(
             template_name=template_name,
         )
     except requests.RequestException as exc:
-        current_app.logger.warning("[whatsapp] Meta request failed for %s: %s", masked_dst, exc)
+        current_app.logger.warning(
+            "[whatsapp] Meta request failed for %s (error=%s)",
+            masked_dst,
+            type(exc).__name__,
+        )
         record_attempt("whatsapp", purpose, recipient_user_id, masked_dst, template_name, "meta", mode, "failed", error_code="provider_error")
         return CommunicationResult(
             channel="whatsapp", purpose=purpose, provider="meta", mode=mode,
             status="failed",
             error_code="provider_error",
-            error_message=str(exc)[:200],
+            error_message="WhatsApp API request failed.",
             retryable=True,
             recipient_user_id=recipient_user_id,
             masked_destination=masked_dst,

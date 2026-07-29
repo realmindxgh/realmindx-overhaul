@@ -20,6 +20,7 @@ from ..default_content import (
 )
 from ..analytics import queue_analytics_event, queue_analytics_events
 from ..audit import audit
+from ..communications import mask_destination
 from ..contacts import MARKETING_ACTIVE, UNSUBSCRIBED, upsert_contact
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
@@ -639,7 +640,10 @@ def initialize_donation_paystack():
         response.raise_for_status()
         data = response.json().get("data") or {}
     except requests.RequestException:
-        current_app.logger.exception("Paystack donation initialization failed for %s", email)
+        current_app.logger.exception(
+            "Paystack donation initialization failed for %s",
+            mask_destination("email", email),
+        )
         return jsonify(error="Could not open Paystack. Please try again or use WhatsApp."), 502
     return jsonify(payment=data, reference=reference)
 

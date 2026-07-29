@@ -309,7 +309,12 @@ def _send_internal_account_access_email(user, role_name):
         ))
         return result.status
     except Exception as exc:
-        current_app.logger.warning("Access email failed for %s (role=%s): %s", user.email, role, exc)
+        current_app.logger.warning(
+            "Access email failed for %s (role=%s, error=%s)",
+            mask_destination("email", user.email),
+            role_name,
+            type(exc).__name__,
+        )
         return "failed"
 
 
@@ -1054,8 +1059,21 @@ def dispatch_job_alerts(job):
         except Exception:
             current_app.logger.exception("Job alert delivery failed for user %s and job %s", user.id, job.id)
             continue
-        if result.status not in ("accepted", "sent", "mocked"):
-            current_app.logger.warning("Job alert was not sent for user %s and job %s: %s", user.id, job.id, result)
+        if result.status == "mocked":
+            current_app.logger.info(
+                "Job alert recorded in mock mode for user %s and job %s",
+                user.id,
+                job.id,
+            )
+            continue
+        if result.status not in ("queued", "accepted", "sent", "delivered"):
+            current_app.logger.warning(
+                "Job alert was not sent for user %s and job %s (status=%s, error_code=%s)",
+                user.id,
+                job.id,
+                result.status,
+                result.error_code,
+            )
             continue
         preference.last_sent_at = datetime.now(timezone.utc)
         log_action("job_alert_email_sent", "job_alert_preference", preference.id, {
@@ -1544,7 +1562,7 @@ def _reminder_cooldown_active(user) -> bool:
         CommunicationAttempt.recipient_user_id == user.id,
         CommunicationAttempt.purpose == "service_reminder",
         CommunicationAttempt.channel == "email",
-        CommunicationAttempt.status.in_(["accepted", "mocked", "sent"]),
+        CommunicationAttempt.status.in_(["queued", "accepted", "sent", "delivered"]),
         CommunicationAttempt.requested_at >= datetime.fromtimestamp(cutoff, tz=timezone.utc),
     ).first()
     return recent is not None
@@ -1623,7 +1641,21 @@ def _send_teacher_profile_reminder(user):
         template_name="profile_reminder",
     )
 
-    if result.status in ("mocked", "accepted", "sent"):
+    if result.status == "mocked":
+        log_action("mock_teacher_profile_reminder", "user", user.id, {
+            "email": user.email,
+            "profile_completion": completion,
+            "missing_fields": reminder_items,
+            "provider_status": result.status,
+        })
+        return {
+            "status": "mocked",
+            "profile_completion": completion,
+            "missing_fields": reminder_items,
+            "user_id": user.id,
+            "masked_email": mask_destination("email", user.email or ""),
+        }
+    if result.status in ("queued", "accepted", "sent", "delivered"):
         log_action("send_teacher_profile_reminder", "user", user.id, {
             "email": user.email,
             "profile_completion": completion,
@@ -1631,7 +1663,8 @@ def _send_teacher_profile_reminder(user):
             "provider_status": result.status,
         })
         return {
-            "status": result.status,
+            "status": "accepted",
+            "provider_status": result.status,
             "profile_completion": completion,
             "missing_fields": reminder_items,
             "user_id": user.id,
@@ -4194,7 +4227,7 @@ def _send_order_status_email(order, status, cancel_reason=""):
             attachments=attachments,
         ))
     except Exception as exc:
-        current_app.logger.warning("Order status email failed: %s", exc)
+        current_app.logger.warning("Order status email failed (error=%s)", type(exc).__name__)
 
 
 @admin_bp.delete("/orders/<int:order_id>")

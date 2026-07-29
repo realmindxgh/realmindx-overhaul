@@ -12,7 +12,14 @@ if str(SITE_ROOT) not in sys.path:
 from backend import create_app
 from backend.config import Config
 from backend.extensions import db
-from backend.models import CommunicationAttempt, Role, User, UserProfile
+from backend.models import (
+    AccountSecurityCode,
+    CommunicationAttempt,
+    EmailVerificationToken,
+    Role,
+    User,
+    UserProfile,
+)
 from backend.communications import (
     CommunicationResult,
     CommunicationMode,
@@ -339,6 +346,145 @@ class EmailServiceTests(unittest.TestCase):
         self.assertEqual(result.purpose, "transactional")
 
 
+class SecurityEmailDeliveryTests(unittest.TestCase):
+    def setUp(self):
+        self.app = create_app(CommunicationTestConfig)
+        self.context = self.app.app_context()
+        self.context.push()
+        db.create_all()
+        role = Role(name="user", description="Teacher")
+        self.user = User(
+            email="security@example.com",
+            first_name="Security",
+            last_name="User",
+            role=role,
+            is_active=True,
+            is_verified=False,
+        )
+        self.user.set_password("Password123!")
+        db.session.add_all([role, self.user])
+        db.session.commit()
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.context.pop()
+
+    def test_verification_resend_records_attempt_and_keeps_mock_code_active_in_development(self):
+        response = self.client.post(
+            "/api/auth/resend-verification-otp",
+            json={"email": self.user.email},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        token = EmailVerificationToken.query.filter_by(user_id=self.user.id).one()
+        self.assertIsNone(token.used_at)
+        attempt = CommunicationAttempt.query.filter_by(
+            recipient_user_id=self.user.id,
+            template_name="email_verification_otp",
+        ).one()
+        self.assertEqual(attempt.purpose, "security")
+        self.assertEqual(attempt.status, "mocked")
+
+    def test_live_provider_failure_returns_503_and_invalidates_code(self):
+        self.app.config["COMMUNICATION_MODE"] = "live"
+
+        response = self.client.post(
+            "/api/auth/resend-verification-otp",
+            json={"email": self.user.email},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        payload = response.get_json()
+        self.assertEqual(payload["code"], "security_email_delivery_failed")
+        self.assertNotIn("requires_verification", payload)
+        token = EmailVerificationToken.query.filter_by(user_id=self.user.id).one()
+        self.assertIsNotNone(token.used_at)
+        attempt = CommunicationAttempt.query.filter_by(
+            recipient_user_id=self.user.id,
+            template_name="email_verification_otp",
+        ).one()
+        self.assertEqual(attempt.status, "failed")
+        self.assertEqual(attempt.error_code, "missing_credentials")
+
+    def test_production_mock_mode_cannot_claim_security_email_delivery(self):
+        self.app.config["ENV"] = "production"
+        self.app.config["COMMUNICATION_MODE"] = "mock"
+
+        response = self.client.post(
+            "/api/auth/resend-verification-otp",
+            json={"email": self.user.email},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        token = EmailVerificationToken.query.filter_by(user_id=self.user.id).one()
+        self.assertIsNotNone(token.used_at)
+        attempt = CommunicationAttempt.query.filter_by(
+            recipient_user_id=self.user.id,
+            template_name="email_verification_otp",
+        ).one()
+        self.assertEqual(attempt.status, "mocked")
+
+    @patch("backend.api.auth.secrets.randbelow", return_value=123456)
+    def test_wrong_expired_and_replayed_verification_codes_are_rejected(self, _randbelow):
+        requested = self.client.post(
+            "/api/auth/resend-verification-otp",
+            json={"email": self.user.email},
+        )
+        self.assertEqual(requested.status_code, 200)
+
+        wrong = self.client.post(
+            "/api/auth/verify-email-otp",
+            json={"email": self.user.email, "otp": "000000"},
+        )
+        self.assertEqual(wrong.status_code, 400)
+
+        token = EmailVerificationToken.query.filter_by(user_id=self.user.id).one()
+        token.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.session.commit()
+        expired = self.client.post(
+            "/api/auth/verify-email-otp",
+            json={"email": self.user.email, "otp": "123456"},
+        )
+        self.assertEqual(expired.status_code, 400)
+
+        token.expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+        db.session.commit()
+        accepted = self.client.post(
+            "/api/auth/verify-email-otp",
+            json={"email": self.user.email, "otp": "123456"},
+        )
+        self.assertEqual(accepted.status_code, 200)
+        self.assertIsNotNone(token.used_at)
+
+        replay = self.client.post(
+            "/api/auth/verify-email-otp",
+            json={"email": self.user.email, "otp": "123456"},
+        )
+        self.assertEqual(replay.status_code, 409)
+
+    def test_two_factor_login_provider_failure_does_not_create_pending_session(self):
+        self.user.is_verified = True
+        self.user.two_factor_enabled = True
+        db.session.commit()
+        self.app.config["COMMUNICATION_MODE"] = "live"
+
+        response = self.client.post(
+            "/api/auth/login",
+            json={"email": self.user.email, "password": "Password123!"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        code = AccountSecurityCode.query.filter_by(
+            user_id=self.user.id,
+            purpose="login_two_factor",
+        ).one()
+        self.assertIsNotNone(code.used_at)
+        with self.client.session_transaction() as session_state:
+            self.assertNotIn("pending_two_factor_login", session_state)
+
+
 class SmsServiceTests(unittest.TestCase):
     def setUp(self):
         self.app = create_app(CommunicationTestConfig)
@@ -661,7 +807,7 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
             recipient_user_id=self.teacher.id,
             masked_destination="j***@example.com",
             template_name="profile_reminder",
-            provider="mock", mode="mock", status="mocked",
+            provider="resend", mode="live", status="accepted",
         )
         db.session.commit()
         resp = self.client.post(f"/api/admin/users/{self.teacher.id}/profile-reminder", json={})

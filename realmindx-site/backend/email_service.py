@@ -659,7 +659,7 @@ def send_email(
     if mode == "mock":
         mock_id = f"mock-{uuid.uuid4().hex}"
         _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "mock", mode, "mocked", provider_message_id=mock_id)
-        current_app.logger.info("[email mock] %s -> %s (subject=%s)", purpose, masked_dst, message.subject)
+        current_app.logger.info("[email mock] %s -> %s", purpose, masked_dst)
         return CommunicationResult(
             channel="email", purpose=purpose, provider="mock", mode=mode,
             status="mocked",
@@ -716,7 +716,7 @@ def send_email(
             )
         except requests.RequestException as exc:
             primary_error = "provider_rejected"
-            error_msg = str(exc)
+            error_msg = "Resend request failed."
             status_code = getattr(exc.response, "status_code", None) if hasattr(exc, "response") else None
             if status_code == 401:
                 error_msg = "Resend API key rejected (unauthorized). Check RESEND_API_KEY."
@@ -729,8 +729,8 @@ def send_email(
             current_app.logger.warning("[email resend] %s: %s", primary_error, masked_dst)
         except Exception as exc:
             primary_error = "provider_error"
-            error_msg = str(exc)[:200]
-            current_app.logger.warning("[email resend] unexpected error: %s", error_msg)
+            error_msg = "Resend encountered an unexpected provider error."
+            current_app.logger.warning("[email resend] unexpected error: %s", type(exc).__name__)
     else:
         primary_error = "missing_credentials"
         error_msg = "RESEND_API_KEY is not configured."
@@ -779,12 +779,12 @@ def send_email(
             current_app.logger.warning("[email smtp] authentication failed")
         except smtplib.SMTPException as exc:
             primary_error = "provider_error"
-            error_msg = str(exc)[:200]
-            current_app.logger.warning("[email smtp] delivery failed: %s", error_msg)
+            error_msg = "SMTP delivery failed."
+            current_app.logger.warning("[email smtp] delivery failed: %s", type(exc).__name__)
         except Exception as exc:
             primary_error = "provider_error"
-            error_msg = str(exc)[:200]
-            current_app.logger.warning("[email smtp] unexpected error: %s", error_msg)
+            error_msg = "SMTP encountered an unexpected provider error."
+            current_app.logger.warning("[email smtp] unexpected error: %s", type(exc).__name__)
 
     if not smtp_configured and not resend_key:
         primary_error = "missing_credentials"

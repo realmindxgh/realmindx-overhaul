@@ -134,8 +134,7 @@ def _verify_signature(raw_body):
     expected = "sha256=" + hmac.new(app_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
     match = hmac.compare_digest(header, expected)
     if not match:
-        preview = raw_body[:80] if raw_body else b""
-        current_app.logger.warning("[whatsapp] Signature mismatch (header=%s... body_preview=%s)", header[:20], preview)
+        current_app.logger.warning("[whatsapp] Signature mismatch")
     return match
 
 
@@ -413,7 +412,14 @@ def _send_whatsapp_webhook_replies(results):
         if not reply_text or not result.get("from"):
             continue
         wam_result = send_whatsapp_text(result["from"], reply_text)
-        result["reply_status"] = "sent" if wam_result.status in ("accepted", "sent", "mocked") else "failed"
+        if wam_result.status == "mocked":
+            result["reply_status"] = "mocked"
+        else:
+            result["reply_status"] = (
+                "sent"
+                if wam_result.status in ("queued", "accepted", "sent", "delivered")
+                else "failed"
+            )
 
 
 def _can_view_whatsapp_diagnostics():

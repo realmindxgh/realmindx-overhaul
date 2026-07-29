@@ -467,10 +467,12 @@ def request_contact_change():
         raise
     if delivery_channel == "whatsapp_inbound":
         delivered = True
+        mocked = False
     else:
         result = _send_contact_change_code(field, target, code, channel)
-        delivered = result.status in ("accepted", "sent", "mocked")
-    if not delivered:
+        delivered = result.status in ("queued", "accepted", "sent", "delivered")
+        mocked = result.status == "mocked" and current_app.config.get("ENV") != "production"
+    if not delivered and not mocked:
         db.session.rollback()
         current_app.logger.warning("Could not deliver %s verification code for user %s", field, current_user.id)
         channel_label = "WhatsApp" if channel == "whatsapp" else field
@@ -503,11 +505,24 @@ def request_contact_change():
             manual_entry_allowed=False,
             message=f"Open WhatsApp and send the prefilled verification message to {business_number} from {masked}.",
         )
+    if mocked:
+        return jsonify(
+            challenge_id=challenge.id,
+            field=field,
+            channel=channel,
+            delivery_channel=delivery_channel,
+            delivery_status="mocked",
+            destination=masked,
+            expires_in_seconds=900,
+            next_request_in_seconds=45 + (30 * len(recent_challenges)),
+            message="Verification request recorded in local mock mode. No real message was sent.",
+        ), 202
     return jsonify(
         challenge_id=challenge.id,
         field=field,
         channel=channel,
         delivery_channel=delivery_channel,
+        delivery_status="accepted",
         destination=masked,
         expires_in_seconds=900,
         next_request_in_seconds=45 + (30 * len(recent_challenges)),
@@ -722,7 +737,11 @@ def _send_submission_email(user, profile):
             )
         )
     except Exception as exc:
-        current_app.logger.warning("Submission email failed for user %s: %s", user.id, exc)
+        current_app.logger.warning(
+            "Submission email failed for user %s (error=%s)",
+            user.id,
+            type(exc).__name__,
+        )
 
 
 @profile_bp.post("/me/profile/submit")
