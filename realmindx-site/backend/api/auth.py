@@ -14,7 +14,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
-from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, BookRequest, BookshopPaymentIntent, CheckoutDetail, ContactChangeToken, ContactMessage, DeliverySettlementBatch, EmailVerificationToken, Job, JobAlertPreference, NewsletterSubscriber, Order, OrderDelivery, PasswordResetToken, PlatformTermsAcceptance, Role, TermsAcceptance, UploadedFile, User, UserProfile, WhatsAppWebhookEvent
+from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, BookRequest, BookshopPaymentIntent, CheckoutDetail, CommunicationAttempt, ContactChangeToken, ContactMessage, DeliverySettlementBatch, EmailVerificationToken, Job, JobAlertPreference, NewsletterSubscriber, Order, OrderDelivery, PasswordResetToken, PlatformTermsAcceptance, Role, TermsAcceptance, UploadedFile, User, UserProfile, WhatsAppWebhookEvent
 from ..profile_completion import CURRENT_TERMS_VERSION, account_status
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
@@ -641,6 +641,8 @@ def decline_terms():
         BookshopPaymentIntent.query.filter_by(user_id=user.id).update({"user_id": None})
         WhatsAppWebhookEvent.query.filter_by(user_id=user.id).update({"user_id": None})
         AuditLog.query.filter_by(actor_id=user.id).update({"actor_id": None})
+        CommunicationAttempt.query.filter_by(recipient_user_id=user.id).update({"recipient_user_id": None})
+        CommunicationAttempt.query.filter_by(initiated_by=user.id).update({"initiated_by": None})
 
         # -- RETAIN orders: clear user reference (never delete a paid order) --
         Order.query.filter_by(user_id=user.id).update({"user_id": None})

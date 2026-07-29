@@ -18,11 +18,12 @@ from backend import create_app
 from backend.config import Config
 from backend.extensions import db
 from backend.models import (
-    BookRequest, BookshopPaymentIntent, ContactMessage, DeliverySettlementBatch,
-    Job, JobAlertPreference, NewsletterSubscriber, Order, OrderDelivery,
+    BookRequest, BookshopPaymentIntent, CommunicationAttempt, ContactMessage,
+    DeliverySettlementBatch, Job, JobAlertPreference, NewsletterSubscriber, Order, OrderDelivery,
     Role, TermsAcceptance, UploadedFile, User, UserProfile,
     WhatsAppWebhookEvent,
 )
+from backend.communications import record_attempt
 from backend.profile_completion import CURRENT_TERMS_VERSION, account_status, teacher_profile_completion
 
 
@@ -750,6 +751,32 @@ class AccountLifecycleTests(unittest.TestCase):
         retained = db.session.get(WhatsAppWebhookEvent, event_id)
         self.assertIsNotNone(retained, "WhatsApp webhook event must be retained")
         self.assertIsNone(retained.user_id, "WhatsApp webhook user_id must be set to None")
+
+    def test_communication_attempt_retained_and_anonymised_after_deletion(self):
+        """CommunicationAttempt audit rows survive deletion without user foreign keys."""
+        self._register_user()
+        self._login()
+        user = User.query.filter_by(email="new@teacher.com").first()
+        attempt_id = record_attempt(
+            channel="email",
+            purpose="security",
+            recipient_user_id=user.id,
+            masked_destination="ne*@teacher.com",
+            template_name="email_verification_otp",
+            provider="mock",
+            mode="mock",
+            status="mocked",
+            initiated_by=user.id,
+        )
+        db.session.commit()
+
+        response = self.client.post("/api/auth/decline-terms")
+
+        self.assertEqual(response.status_code, 200)
+        retained = db.session.get(CommunicationAttempt, attempt_id)
+        self.assertIsNotNone(retained)
+        self.assertIsNone(retained.recipient_user_id)
+        self.assertIsNone(retained.initiated_by)
 
     def test_order_retained_after_deletion(self):
         """Orders must be retained with user_id set to None after account deletion."""
