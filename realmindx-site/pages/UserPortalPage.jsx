@@ -373,19 +373,24 @@ const Sidebar = ({ active, setActive, user, sidebarOpen, setSidebarOpen, applica
 );
 
 /* â”€â”€ DASHBOARD VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const DashboardView = ({ user, setActive, onAction, applications = [], alerts = [], onPreviewAvatar }) => {
+const DashboardView = ({ user, setActive, onAction, applications = [], alerts = [], onPreviewAvatar, setSubmitModalOpen }) => {
   const pendingCount = applications.filter(a => ['pending', 'reviewed', 'shortlisted'].includes(a.status)).length;
   const acceptedCount = applications.filter(a => a.status === 'accepted').length;
   const activeAlerts = alerts.filter(a => a.active !== false);
   const recentApplications = applications.slice(0, 3);
 
   return (
-  <div>
+    <div>
     {/* Welcome card */}
     <div className="welcome-card">
       <div className="welcome-content">
         <p className="welcome-greeting">Welcome back</p>
         <h2>Hello, {user.firstName}.</h2>
+        {user.applicationId ? (
+          <p className="application-id-display" style={{ fontSize: '0.8rem', color: 'var(--gray-500)', marginTop: 4 }}>
+            Application ID: <strong>{user.applicationId}</strong>
+          </p>
+        ) : null}
         <p>
           {user.isNew
             ? 'Your portal is almost ready. Complete your profile to start applying for teaching jobs.'
@@ -415,13 +420,105 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
       </div>
     </div>
 
+    {/* Profile status banner */}
+    {user.profileStatus === 'submitted' ? (
+      <div className="profile-status-banner status-submitted">
+        <span className="profile-status-icon">&#10003;</span>
+        <div className="profile-status-text">
+          <strong>Profile Submitted</strong>
+          <span>Your profile has been submitted and is awaiting administrator review.</span>
+          {user.applicationId ? <span className="profile-status-meta">Application ID: {user.applicationId}</span> : null}
+          {user.submittedAt ? <span className="profile-status-meta">Submitted: {new Date(user.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</span> : null}
+        </div>
+      </div>
+    ) : user.profileStatus === 'under_review' ? (
+      <div className="profile-status-banner status-under-review">
+        <span className="profile-status-icon">&#10003;</span>
+        <div className="profile-status-text">
+          <strong>Application Under Review</strong>
+          <span>Your teacher application is currently being reviewed by RealMindX.</span>
+          {user.applicationId ? <span className="profile-status-meta">Application ID: {user.applicationId}</span> : null}
+          <span style={{ marginTop: 10, display: 'block', fontSize: '0.85rem', lineHeight: 1.5 }}>
+            If your application was recently reopened, this means it has been returned for another assessment. You do not need to make changes unless RealMindX requests corrections.
+          </span>
+        </div>
+      </div>
+    ) : user.profileStatus === 'complete' ? (
+      <div className="profile-status-banner status-complete">
+        <span className="profile-status-icon">&#10003;</span>
+        <div className="profile-status-text">
+          <strong>Profile Complete</strong>
+          <span>Your profile is complete and ready to be submitted for visual review.</span>
+        </div>
+        <button className="btn btn-primary profile-submit-btn" onClick={() => setSubmitModalOpen(true)}>Submit for Review</button>
+      </div>
+    ) : user.profileStatus === 'revision_required' ? (
+      <div className="profile-status-banner status-revision">
+        <span className="profile-status-icon">&#9888;</span>
+        <div className="profile-status-text">
+          <strong>Changes Requested</strong>
+          <span>{user.reviewNotes || 'An administrator has requested changes to your profile. Please review and update.'}</span>
+          <span style={{ marginTop: 10, display: 'block', fontSize: '0.85rem', lineHeight: 1.5 }}>
+            Please review the requested changes above, edit your profile to address them, and submit your updated profile for further review.
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn btn-primary profile-submit-btn" onClick={() => setActive('profile')}>Edit Profile</button>
+          <button className="btn btn-outline profile-submit-btn" onClick={() => setActive('profile')}>Review Documents</button>
+          {user.profileComplete >= 100 ? (
+            <button className="btn btn-outline profile-submit-btn" onClick={() => setSubmitModalOpen(true)}>Submit Updated Profile</button>
+          ) : (
+            <span style={{ fontSize: '0.78rem', color: '#92400e' }}>
+              Complete all required fields ({user.profileComplete}%) before submitting.
+            </span>
+          )}
+        </div>
+      </div>
+    ) : user.profileStatus === 'rejected' ? (
+      <div className="profile-status-banner status-rejected">
+        <span className="profile-status-icon">&#10007;</span>
+        <div className="profile-status-text">
+          <strong>Application Not Approved</strong>
+          {user.applicationId ? <span className="profile-status-meta">Application ID: {user.applicationId}</span> : null}
+          <span style={{ marginTop: 6, display: 'block', lineHeight: 1.5 }}>
+            {user.reviewNotes || 'Your application was not approved at this time.'}
+          </span>
+          <span style={{ marginTop: 10, display: 'block', fontSize: '0.85rem', lineHeight: 1.5 }}>
+            If you believe there has been an error or have new information that may affect the review of your application, please contact our team.
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+          <button className="btn btn-outline profile-submit-btn" onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(user.applicationId);
+              queueToast('success', 'Application ID copied to clipboard.');
+            } catch {
+              queueToast('error', 'Could not copy automatically. Please select and copy the Application ID above.');
+            }
+          }}>Copy Application ID</button>
+          <a className="btn btn-primary profile-submit-btn" href={`/contact?${new URLSearchParams({ subject: 'Request for reconsideration of teacher application', application_id: user.applicationId, name: `${user.firstName} ${user.lastName}` }).toString()}`}>
+            Contact RealMindX
+          </a>
+        </div>
+      </div>
+    ) : user.profileStatus === 'incomplete' ? (
+      <div className="profile-status-banner status-incomplete">
+        <span className="profile-status-icon">&#9888;</span>
+        <div className="profile-status-text">
+          <strong>Profile Incomplete</strong>
+          <span>Complete your profile before you can submit it for review.</span>
+        </div>
+        <button className="btn btn-outline profile-submit-btn" onClick={() => setActive('profile')}>Complete Profile</button>
+      </div>
+    ) : null}
+
     {/* Stats */}
     <div className="portal-stats-grid">
       {[
         { label: 'Applications Sent',  value: applications.length, sub: applications.length ? 'Total submitted' : 'None yet' },
         { label: 'Under Review',       value: pendingCount,        sub: pendingCount ? 'Awaiting school response' : 'None yet' },
         { label: 'Accepted',           value: acceptedCount,       sub: acceptedCount ? 'Schools want to meet you' : 'None yet' },
-        { label: 'Profile Complete',    value: `${user.profileComplete}%`,                                                            sub: user.profileComplete < 100 ? 'Finish your profile' : 'Fully complete' },
+        { label: 'Profile Complete',    value: `${user.profileComplete}%`,                                                            sub: user.profileComplete < 100 ? 'Finish your profile' : ['submitted','under_review'].includes(user.profileStatus) ? 'Under review' : user.profileStatus === 'verified' ? 'Verified' : user.profileStatus === 'complete' ? 'Ready to submit' : 'Fully complete' },
       ].map(s => (
         <div key={s.label} className="portal-stat-card">
           <div className="psc-label">{s.label}</div>
@@ -563,6 +660,29 @@ const ProfileView = ({ user, onUploadAvatar, onEditProfile, onContactUpdated, av
             <span className="completion-pct">{user.profileComplete}%</span>
             <span className="completion-label">complete</span>
           </div>
+          {user.profileStatus === 'submitted' && (
+            <div style={{ marginTop: 8, fontSize: '0.82rem', color: '#166534', background: '#dcfce7', borderRadius: 6, padding: '8px 12px' }}>
+              Profile submitted for review on {user.submittedAt ? new Date(user.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Unknown date'}
+            </div>
+          )}
+          {user.profileStatus === 'revision_required' && (
+            <div style={{ marginTop: 8, fontSize: '0.82rem', color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '8px 12px' }}>
+              Changes requested: {user.reviewNotes || 'Please review and update your profile.'}
+            </div>
+          )}
+          {user.profileStatus === 'rejected' && (
+            <div style={{ marginTop: 8, fontSize: '0.82rem', color: '#991b1b', background: '#fee2e2', borderRadius: 6, padding: '8px 12px' }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Application Not Approved</div>
+              {user.applicationId ? <div style={{ marginBottom: 4 }}>Application ID: <strong>{user.applicationId}</strong></div> : null}
+              <div style={{ marginBottom: 4, whiteSpace: 'pre-wrap' }}>{user.reviewNotes || 'Your application was not approved at this time.'}</div>
+              <div style={{ marginTop: 6, fontSize: '0.78rem' }}>
+                If you believe there has been an error or have new information that may affect the review of your application, please&nbsp;
+                <a href={`/contact?${new URLSearchParams({ subject: 'Request for reconsideration of teacher application', application_id: user.applicationId, name: `${user.firstName} ${user.lastName}` }).toString()}`}>
+                  contact our team
+                </a>.
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -572,7 +692,7 @@ const ProfileView = ({ user, onUploadAvatar, onEditProfile, onContactUpdated, av
       <div className="profile-section-card">
         <h3>
           Personal Information
-          <button type="button" className="profile-edit-link" onClick={() => onEditProfile?.('personal')}>Edit</button>
+          {user.profileStatus !== 'submitted' && <button type="button" className="profile-edit-link" onClick={() => onEditProfile?.('personal')}>Edit</button>}
         </h3>
         {[
           { label: 'First Name',    value: user.firstName  },
@@ -600,7 +720,7 @@ const ProfileView = ({ user, onUploadAvatar, onEditProfile, onContactUpdated, av
       <div className="profile-section-card">
         <h3>
           Teaching Preferences
-          <button type="button" className="profile-edit-link" onClick={() => onEditProfile?.('teaching')}>Edit</button>
+          {user.profileStatus !== 'submitted' && <button type="button" className="profile-edit-link" onClick={() => onEditProfile?.('teaching')}>Edit</button>}
         </h3>
         {[
           { label: 'Teaching Subject',    value: user.subject  },
@@ -621,11 +741,11 @@ const ProfileView = ({ user, onUploadAvatar, onEditProfile, onContactUpdated, av
       <div className="profile-section-card">
         <h3>
           Next of Kin
-          <button type="button" className="profile-edit-link" onClick={() => onEditProfile?.('kin')}>
+          {user.profileStatus !== 'submitted' && <button type="button" className="profile-edit-link" onClick={() => onEditProfile?.('kin')}>
             {[user.nextOfKinName, user.nextOfKinRelationship, user.nextOfKinPhone, user.nextOfKinEmail].some(Boolean)
               ? 'Edit'
               : 'Add'}
-          </button>
+          </button>}
         </h3>
         {[
           { label: 'Full Name',     value: user.nextOfKinName },
@@ -1150,6 +1270,12 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
       </p>
     </div>
 
+    {user.profileStatus === 'submitted' && (
+      <div style={{ background: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: 8, padding: '12px 16px', marginBottom: 20, fontSize: '0.85rem', color: '#166534' }}>
+        Your profile has been submitted for review. Documents cannot be replaced until the review is complete.
+      </div>
+    )}
+
     <div className="profile-sections-grid">
       {/* CV Video Tutorial */}
       <CvTutorialCard />
@@ -1632,6 +1758,7 @@ const UserPortalPage = () => {
   const [apiAlerts, setApiAlerts] = React.useState(null);
   const [portalLoading, setPortalLoading] = React.useState(isApiMode());
   const [portalLoadError, setPortalLoadError] = React.useState('');
+  const [accountStatus, setAccountStatus] = React.useState(null);
   const [avatarPreview, setAvatarPreview] = React.useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = React.useState(false);
   const [avatarUploading, setAvatarUploading] = React.useState(false);
@@ -1645,7 +1772,13 @@ const UserPortalPage = () => {
   const [termsModalOpen, setTermsModalOpen] = React.useState(false);
   const [termsAccepting, setTermsAccepting] = React.useState(false);
   const [termsError, setTermsError] = React.useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [deleteConfirming, setDeleteConfirming] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState('');
   const [profilePromptOpen, setProfilePromptOpen] = React.useState(false);
+  const [submitModalOpen, setSubmitModalOpen] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (!isApiMode()) {
@@ -1740,11 +1873,13 @@ const UserPortalPage = () => {
       fetchPortalData('/api/me/profile'),
       fetchPortalData('/api/me/applications'),
       fetchPortalData('/api/me/job-alerts'),
-    ]).then(([profileData, applicationData, alertData]) => {
+      fetchPortalData('/api/auth/me/status'),
+    ]).then(([profileData, applicationData, alertData, statusData]) => {
       if (cancelled) return;
       if (profileData.profile) setApiProfile(prev => ({ ...(prev || {}), ...profileData.profile }));
       setApiApplications(applicationData.items || []);
       setApiAlerts((alertData.items || (alertData.preferences ? [alertData.preferences] : [])).map(normaliseAlert).filter(Boolean));
+      setAccountStatus(statusData);
     }).catch(error => {
       if (!cancelled) setPortalLoadError(error.message || 'Please check your connection and try again.');
     }).finally(() => {
@@ -1778,6 +1913,22 @@ const UserPortalPage = () => {
     }
   }, [sessionChecked, apiProfile]);
 
+  const handleSubmitProfile = React.useCallback(async () => {
+    setSubmitError('');
+    setSubmitting(true);
+    try {
+      const result = await api.submitProfile();
+      setSubmitModalOpen(false);
+      queueToast('Your profile has been submitted for review.', 'success');
+      if (result.profile_status) setApiProfile(prev => ({ ...(prev || {}), profile_status: result.profile_status, submitted_at: result.submitted_at }));
+      if (result.submitted_at) setApiProfile(prev => ({ ...(prev || {}), submitted_at: result.submitted_at }));
+    } catch (err) {
+      setSubmitError(err.message || 'Failed to submit profile. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }, []);
+
   if (!sessionChecked || !session) return <AuthLoadingScreen />;
   if (['admin', 'staff'].includes(session.role)) return null;
   if (portalLoading) return <PortalLoadingState />;
@@ -1801,19 +1952,31 @@ const UserPortalPage = () => {
     ? (profileSource.email || session.email || '')
     : (session.email || MOCK_USER.email);
   const initials = `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase() || 'RM';
+
+  // Use backend-calculated profile completion values, with fallback to frontend calc.
   const profileCompletion = isApiMode()
-    ? completionFromProfile({
+    ? (profileSource.profile_completion ?? completionFromProfile({
         ...profileSource,
         email,
         first_name: firstName,
         last_name: lastName,
-      })
+      }))
     : MOCK_USER.profileComplete;
+
+  const profileMissingFields = isApiMode()
+    ? (profileSource.profile_missing_fields || [])
+    : [];
+
+  // Determine if the teacher is "new" (needs onboarding/prompts):
+  // Not new if profile is submitted, under review, verified, rejected.
+  const isNewTeacher = !['submitted', 'under_review', 'verified', 'rejected'].includes(
+    profileSource.profile_status || ''
+  ) && profileCompletion < 100;
 
   // Merge: API profile takes precedence over session/mock data.
   const user = isApiMode()
     ? {
-        isNew: profileCompletion < 100,
+        isNew: isNewTeacher,
         firstName: firstName || 'Teacher',
         lastName,
         email,
@@ -1828,6 +1991,7 @@ const UserPortalPage = () => {
         subject: profileSource.teaching_subject || '',
         level: profileSource.preferred_level || '',
         profileComplete: profileCompletion,
+        profileMissingFields,
         emailVerified: Boolean(profileSource.is_verified),
         hasCV: Boolean(profileSource.cv_file_id),
         hasCerts: Boolean(profileSource.certificate_file_id),
@@ -1848,6 +2012,10 @@ const UserPortalPage = () => {
         nextOfKinRelationship: profileSource.next_of_kin_relationship || '',
         nextOfKinEmail: profileSource.next_of_kin_email || '',
         placements: profileSource.placements || [],
+        applicationId: profileSource.application_id || '',
+        profileStatus: profileSource.profile_status || '',
+        submittedAt: profileSource.submitted_at || '',
+        reviewNotes: profileSource.review_notes || '',
       }
     : {
         ...MOCK_USER,
@@ -1899,7 +2067,6 @@ const UserPortalPage = () => {
   const openProfileEdit = (section = 'personal') => {
     setProfileError('');
     setProfileForm({
-      phone: profileSource.phone || '',
       sex: profileSource.sex || '',
       age_range: profileSource.age_range || '',
       location: profileSource.location || '',
@@ -1987,10 +2154,9 @@ const UserPortalPage = () => {
       const resp = await fetch('/api/auth/accept-terms', { method: 'POST', credentials: 'include' });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'Could not accept terms.');
-      setApiProfile(prev => ({ ...(prev || {}), terms_accepted_at: data.user?.terms_accepted_at }));
+      setApiProfile(prev => ({ ...(prev || {}), terms_accepted_at: data.user?.terms_accepted_at, terms_version: data.user?.terms_version }));
       setTermsModalOpen(false);
-      const completion = typeof profileCompletion === 'number' ? profileCompletion : 0;
-      if (completion < 100 && user) {
+      if (isNewTeacher && user) {
         setTimeout(() => setProfilePromptOpen(true), 600);
       }
     } catch (err) {
@@ -2000,21 +2166,28 @@ const UserPortalPage = () => {
     }
   };
 
-  const declineTerms = async () => {
-    setTermsAccepting(true);
-    setTermsError('');
+  const openDeleteConfirm = () => {
+    setDeleteConfirmOpen(true);
+    setDeleteError('');
+  };
+
+  const executeDelete = async () => {
+    setDeleteConfirming(true);
+    setDeleteError('');
     try {
       const resp = await fetch('/api/auth/decline-terms', { method: 'POST', credentials: 'include' });
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
-        throw new Error(data.error || 'Could not process your request.');
+        throw new Error(data.error || 'Could not delete account.');
       }
+      setDeleteConfirmOpen(false);
+      setTermsModalOpen(false);
       clearDemoSession();
       queueToast('Your account has been deleted.', 'success');
       window.location.href = '/';
     } catch (err) {
-      setTermsError(err.message);
-      setTermsAccepting(false);
+      setDeleteError(err.message);
+      setDeleteConfirming(false);
     }
   };
 
@@ -2025,7 +2198,7 @@ const UserPortalPage = () => {
       case 'applications': return <ApplicationsView applications={applications} />;
       case 'alerts':       return <AlertsView initialAlerts={alerts} user={user} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;
       case 'settings':     return <SettingsView onNavigate={setActiveView} />;
-      default:             return <DashboardView user={user} setActive={setActiveView} onAction={handleChecklistAction} applications={applications} alerts={alerts} onPreviewAvatar={() => setAvatarPreview(true)} />;
+      default:             return <DashboardView user={user} setActive={setActiveView} onAction={handleChecklistAction} applications={applications} alerts={alerts} onPreviewAvatar={() => setAvatarPreview(true)} setSubmitModalOpen={setSubmitModalOpen} />;
     }
   };
 
@@ -2227,30 +2400,74 @@ const UserPortalPage = () => {
               </a>.
             </p>
             {termsError && <p className="form-error" style={{ textAlign: 'center', marginBottom: 16 }}>{termsError}</p>}
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <div className="terms-actions">
               <button
-                className="btn btn-primary"
+                className="btn btn-primary terms-accept-btn"
                 type="button"
                 disabled={termsAccepting}
                 onClick={acceptTerms}
-                style={{ minWidth: 140 }}
               >
                 {termsAccepting ? 'Please wait...' : 'Accept'}
               </button>
               <button
-                className="btn"
+                className="btn terms-decline-btn"
                 type="button"
                 disabled={termsAccepting}
-                onClick={declineTerms}
-                style={{
-                  minWidth: 140,
-                  background: '#fee2e2',
-                  color: '#ef4444',
-                  border: '1px solid #fca5a5',
-                  fontWeight: 700,
-                }}
+                onClick={openDeleteConfirm}
               >
                 Decline & Delete Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(1, 17, 38, 0.8)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title" style={{
+            background: '#fff', borderRadius: 12,
+            width: 'min(440px, calc(100vw - 32px))',
+            padding: 36, position: 'relative',
+            boxShadow: '0 28px 90px rgba(1, 17, 38, 0.32)',
+          }}>
+            <h3 id="delete-confirm-title" style={{
+              fontFamily: "'Montserrat', sans-serif",
+              fontSize: '1.2rem', fontWeight: 900,
+              textAlign: 'center', color: '#ef4444',
+              marginBottom: 16,
+            }}>
+              Delete Your Account?
+            </h3>
+            <p style={{
+              fontSize: '0.88rem', color: 'var(--text-body)',
+              lineHeight: 1.6, marginBottom: 16,
+            }}>
+              This will permanently delete your account, profile, documents, applications,
+              and all associated data. Your email and phone number will be freed for new
+              registration. This action <strong>cannot be undone</strong>.
+            </p>
+            {deleteError && <p className="form-error" style={{ textAlign: 'center', marginBottom: 16 }}>{deleteError}</p>}
+            <div className="terms-actions">
+              <button
+                className="btn terms-delete-confirm-btn"
+                type="button"
+                disabled={deleteConfirming}
+                onClick={executeDelete}
+              >
+                {deleteConfirming ? 'Deleting...' : 'Yes, Delete My Account'}
+              </button>
+              <button
+                className="btn btn-outline"
+                type="button"
+                disabled={deleteConfirming}
+                onClick={() => { setDeleteConfirmOpen(false); setDeleteError(''); }}
+              >
+                Keep My Account
               </button>
             </div>
           </div>
@@ -2263,6 +2480,11 @@ const UserPortalPage = () => {
             <div style={{ marginBottom: 12 }}><Icon name="user" size={32} stroke={1.8} /></div>
             <h3 id="profile-prompt-title">Complete your profile</h3>
             <p>Your profile is <strong>{profileCompletion}%</strong> complete. Add your teaching details to help schools find and connect with you.</p>
+            {profileMissingFields.length > 0 && (
+              <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', marginTop: 8 }}>
+                Missing: {profileMissingFields.join(', ')}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 18 }}>
               <button className="btn btn-primary" type="button" onClick={() => { setProfilePromptOpen(false); setActiveView('profile'); }}>
                 Complete Profile
@@ -2289,6 +2511,26 @@ const UserPortalPage = () => {
         </div>
       )}
 
+      {submitModalOpen && (
+        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSubmitModalOpen(false); }}>
+          <div className="avatar-preview-modal" role="dialog" aria-modal="true" aria-labelledby="submit-profile-title">
+            <div style={{ marginBottom: 12 }}><Icon name="check" size={32} stroke={1.8} /></div>
+            <h3 id="submit-profile-title">Submit Profile for Review</h3>
+            <p>Once submitted, your profile will be <strong>locked</strong> and reviewed by an administrator. You will not be able to edit your profile or replace documents until the review is complete.</p>
+            {user.applicationId ? (
+              <p style={{ fontSize: '0.85rem', color: 'var(--gray-600)', marginTop: 8 }}>
+                Application ID: <strong>{user.applicationId}</strong>
+              </p>
+            ) : null}
+            {submitError && <p className="form-error" style={{ textAlign: 'center', marginBottom: 8 }}>{submitError}</p>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 18 }}>
+              <button className="btn btn-primary" type="button" disabled={submitting} onClick={handleSubmitProfile}>{submitting ? 'Submitting...' : 'Confirm Submission'}</button>
+              <button className="btn" type="button" disabled={submitting} onClick={() => setSubmitModalOpen(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {profileEditSection && (
         <ProfileEditModal
           section={profileEditSection}
@@ -2302,6 +2544,131 @@ const UserPortalPage = () => {
       )}
 
       <style>{`
+        .terms-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          flex-wrap: wrap;
+        }
+        .terms-actions .btn {
+          flex: 0 1 auto;
+          min-width: 160px;
+        }
+        .terms-accept-btn {
+          min-width: 160px;
+        }
+        .terms-decline-btn {
+          background: #fee2e2;
+          color: #ef4444;
+          border: 1px solid #fca5a5;
+          font-weight: 700;
+        }
+        .terms-delete-confirm-btn {
+          background: #ef4444;
+          color: #fff;
+          border: 1px solid #dc2626;
+          font-weight: 700;
+        }
+        @media (max-width: 480px) {
+          .terms-actions {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .terms-actions .btn {
+            width: 100%;
+            min-width: 0;
+          }
+        }
+        .profile-status-banner {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 14px 20px;
+          border-radius: 10px;
+          margin-bottom: 20px;
+          font-size: 0.88rem;
+          line-height: 1.45;
+        }
+        .profile-status-banner .profile-status-icon {
+          font-size: 1.3rem;
+          flex-shrink: 0;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+        }
+        .profile-status-banner .profile-status-text {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .profile-status-banner .profile-status-meta {
+          font-size: 0.8rem;
+          opacity: 0.8;
+        }
+        .profile-submit-btn {
+          flex-shrink: 0;
+          white-space: nowrap;
+        }
+        .status-submitted {
+          background: #dcfce7;
+          border: 1px solid #bbf7d0;
+          color: #166534;
+        }
+        .status-submitted .profile-status-icon {
+          background: #bbf7d0;
+        }
+        .status-under-review {
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          color: #1e40af;
+        }
+        .status-under-review .profile-status-icon {
+          background: #bfdbfe;
+        }
+        .status-complete {
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          color: #1e40af;
+        }
+        .status-complete .profile-status-icon {
+          background: #bfdbfe;
+        }
+        .status-revision {
+          background: #fef3c7;
+          border: 1px solid #fde68a;
+          color: #92400e;
+        }
+        .status-revision .profile-status-icon {
+          background: #fde68a;
+        }
+        .status-incomplete {
+          background: #f3f4f6;
+          border: 1px solid #e5e7eb;
+          color: #4b5563;
+        }
+        .status-incomplete .profile-status-icon {
+          background: #e5e7eb;
+        }
+        .status-rejected {
+          background: #fee2e2;
+          border: 1px solid #fecaca;
+          color: #991b1b;
+        }
+        .status-rejected .profile-status-icon {
+          background: #fecaca;
+        }
+        @media (max-width: 640px) {
+          .profile-status-banner {
+            flex-wrap: wrap;
+          }
+          .profile-submit-btn {
+            width: 100%;
+          }
+        }
         @media (max-width: 768px) {
           .mobile-menu-toggle { display: flex !important; }
           .sidebar-overlay { display: block !important; }

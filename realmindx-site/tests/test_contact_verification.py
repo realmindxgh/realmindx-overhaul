@@ -33,8 +33,9 @@ class ContactVerificationTestConfig(Config):
     WHATSAPP_OTP_TEMPLATE_NAME = "realmindx_verification_code"
     WHATSAPP_OTP_TEMPLATE_LANGUAGE = "en_US"
     WHATSAPP_GRAPH_API_VERSION = "v23.0"
-    WHATSAPP_APP_SECRET = ""
+    WHATSAPP_APP_SECRET = "test-meta-secret"
     WHATSAPP_PHONE_VERIFICATION_ENABLED = True
+    COMMUNICATION_MODE = "live"
     WHATSAPP_PHONE_VERIFICATION_ALLOW_ALL = True
     WHATSAPP_PHONE_VERIFICATION_TEST_EMAILS = "contact@example.com"
     FACEBOOK_APP_SECRET = ""
@@ -65,6 +66,14 @@ class ContactVerificationTests(unittest.TestCase):
             json={"email": user.email, "password": "Password123!"},
         )
         self.assertEqual(response.status_code, 200)
+
+    def _signed_post(self, path, payload=None):
+        if payload is None:
+            payload = {"entry": [{"changes": [{"value": {"metadata": {"phone_number_id": "123456789"}}}]}]}
+        raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        sig = hmac.new(self.app.config["WHATSAPP_APP_SECRET"].encode("utf-8"), raw, hashlib.sha256).hexdigest()
+        return self.client.post(path, data=raw, content_type="application/json",
+                                headers={"X-Hub-Signature-256": f"sha256={sig}"})
 
     def tearDown(self):
         db.session.remove()
@@ -127,7 +136,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("WhatsApp challenge", response.get_json()["error"])
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_verifies_matching_sender(self, reply_mock):
         challenge = self.client.post(
             "/api/me/contact-change/request",
@@ -149,7 +158,7 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
+        webhook = self._signed_post("/api/webhooks/whatsapp", payload)
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.get_json()["results"][0]["status"], "verified")
         self.assertEqual(webhook.get_json()["results"][0]["reply_status"], "sent")
@@ -172,7 +181,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertIsNotNone(challenge_row.verified_at)
         self.assertIsNone(challenge_row.active_lock_key)
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_accepts_valid_meta_signature(self, reply_mock):
         self.app.config["WHATSAPP_APP_SECRET"] = "test-meta-secret"
         challenge = self.client.post(
@@ -212,7 +221,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertEqual(webhook.get_json()["results"][0]["status"], "verified")
         reply_mock.assert_called_once()
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_rejects_verification_phrase_from_wrong_sender(self, reply_mock):
         challenge = self.client.post(
             "/api/me/contact-change/request",
@@ -234,7 +243,7 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
+        webhook = self._signed_post("/api/webhooks/whatsapp", payload)
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.get_json()["results"][0]["status"], "verification_no_active_request")
         self.assertEqual(webhook.get_json()["results"][0]["reply_status"], "sent")
@@ -245,7 +254,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertEqual(status_data["status"], "pending")
         self.assertFalse(status_data["wrong_number"])
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_rejects_verification_phrase_without_active_request(self, reply_mock):
         payload = {
             "entry": [{
@@ -263,7 +272,7 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
+        webhook = self._signed_post("/api/webhooks/whatsapp", payload)
 
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.get_json()["results"][0]["status"], "verification_no_active_request")
@@ -271,7 +280,7 @@ class ContactVerificationTests(unittest.TestCase):
         reply_mock.assert_called_once()
         self.assertIn("could not find an active RealMindX verification request", reply_mock.call_args.args[1])
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_verifies_multiple_numbers_concurrently(self, reply_mock):
         second_user = User(
             email="second@example.com",
@@ -319,7 +328,7 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
+        webhook = self._signed_post("/api/webhooks/whatsapp", payload)
 
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual([result["status"] for result in webhook.get_json()["results"]], ["verified", "verified"])
@@ -417,7 +426,7 @@ class ContactVerificationTests(unittest.TestCase):
             db.session.commit()
         db.session.rollback()
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_does_not_verify_ordinary_hi_with_active_request(self, reply_mock):
         challenge = self.client.post(
             "/api/me/contact-change/request",
@@ -439,7 +448,7 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
+        webhook = self._signed_post("/api/webhooks/whatsapp", payload)
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.get_json()["results"][0]["status"], "fallback_redirect")
         self.assertEqual(webhook.get_json()["results"][0]["reply_status"], "sent")
@@ -453,7 +462,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertFalse(user.phone_verified)
         self.assertIsNone(user.phone_verified_at)
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_replies_once_for_recently_verified_number(self, reply_mock):
         user = User.query.filter_by(email="contact@example.com").one()
         verified_at = datetime.now(timezone.utc) - timedelta(minutes=5)
@@ -477,9 +486,9 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        first = self.client.post("/api/webhooks/whatsapp", json=payload)
+        first = self._signed_post("/api/webhooks/whatsapp", payload)
         payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"] = "wamid.already-2"
-        second = self.client.post("/api/webhooks/whatsapp", json=payload)
+        second = self._signed_post("/api/webhooks/whatsapp", payload)
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
@@ -490,7 +499,7 @@ class ContactVerificationTests(unittest.TestCase):
         db.session.expire_all()
         self.assertEqual(User.query.filter_by(email="contact@example.com").one().phone_verified_at, verified_at.replace(tzinfo=None))
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_replies_to_expired_code(self, reply_mock):
         challenge = self.client.post(
             "/api/me/contact-change/request",
@@ -515,7 +524,7 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
+        webhook = self._signed_post("/api/webhooks/whatsapp", payload)
 
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.get_json()["results"][0]["status"], "verification_failed")
@@ -527,7 +536,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertEqual(expired_row.status, "expired")
         self.assertIsNone(expired_row.active_lock_key)
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_treats_old_verified_number_as_ordinary_enquiry(self, reply_mock):
         user = User.query.filter_by(email="contact@example.com").one()
         user.phone = "+233240000000"
@@ -550,14 +559,14 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
+        webhook = self._signed_post("/api/webhooks/whatsapp", payload)
 
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.get_json()["results"][0]["status"], "fallback_redirect")
         reply_mock.assert_called_once()
         self.assertIn("Thank you for contacting RealMindX Education Ltd.", reply_mock.call_args.args[1])
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_is_idempotent_by_incoming_message_id(self, reply_mock):
         challenge = self.client.post(
             "/api/me/contact-change/request",
@@ -579,8 +588,8 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        first = self.client.post("/api/webhooks/whatsapp", json=payload)
-        second = self.client.post("/api/webhooks/whatsapp", json=payload)
+        first = self._signed_post("/api/webhooks/whatsapp", payload)
+        second = self._signed_post("/api/webhooks/whatsapp", payload)
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
@@ -589,7 +598,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertEqual(reply_mock.call_count, 1)
         self.assertEqual(WhatsAppWebhookEvent.query.filter_by(message_id="wamid.duplicate").count(), 1)
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_replies_once_to_ordinary_text(self, reply_mock):
         payload = {
             "entry": [{
@@ -607,9 +616,9 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        first = self.client.post("/api/webhooks/whatsapp", json=payload)
+        first = self._signed_post("/api/webhooks/whatsapp", payload)
         payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"] = "wamid.chat-again"
-        second = self.client.post("/api/webhooks/whatsapp", json=payload)
+        second = self._signed_post("/api/webhooks/whatsapp", payload)
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
@@ -620,7 +629,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertIn("used only for automatic phone-number verification", reply_mock.call_args.args[1])
         self.assertIn("+233 20 116 6122", reply_mock.call_args.args[1])
 
-    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=True)
+    @patch("backend.api.whatsapp.send_whatsapp_text", return_value=Mock(status="accepted"))
     def test_whatsapp_webhook_does_not_reply_to_status_updates(self, reply_mock):
         payload = {
             "entry": [{
@@ -637,13 +646,13 @@ class ContactVerificationTests(unittest.TestCase):
             }],
         }
 
-        webhook = self.client.post("/api/webhooks/whatsapp", json=payload)
+        webhook = self._signed_post("/api/webhooks/whatsapp", payload)
 
         self.assertEqual(webhook.status_code, 200)
         self.assertEqual(webhook.get_json()["results"], [])
         reply_mock.assert_not_called()
 
-    @patch("backend.api.profile.send_sms", return_value=True)
+    @patch("backend.api.profile.send_sms", return_value=Mock(status="accepted"))
     def test_increasing_resend_cooldown_is_enforced(self, _send_sms_mock):
         first = self.client.post(
             "/api/me/contact-change/request",
@@ -659,7 +668,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertGreater(blocked.get_json()["retry_after_seconds"], 0)
         self.assertEqual(_send_sms_mock.call_count, 1)
 
-    @patch("backend.api.profile.send_sms", return_value=True)
+    @patch("backend.api.profile.send_sms", return_value=Mock(status="accepted"))
     @patch("backend.api.profile.secrets.randbelow", return_value=123456)
     def test_sms_verification_still_sets_phone_verified_at(self, _rand_mock, _send_sms_mock):
         request_response = self.client.post(
@@ -743,7 +752,8 @@ class ContactVerificationTests(unittest.TestCase):
             json=Mock(return_value={"messages": [{"id": "wamid.test"}]}),
         )
 
-        self.assertTrue(send_whatsapp_otp("0240000000", "654321"))
+        result = send_whatsapp_otp("0240000000", "654321")
+        self.assertEqual(result.status, "accepted")
         request_kwargs = post_mock.call_args.kwargs
         payload = request_kwargs["json"]
         self.assertEqual(payload["to"], "233240000000")

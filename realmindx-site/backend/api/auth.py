@@ -14,9 +14,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from ..audit import audit
 from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..extensions import db, limiter
-from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, CheckoutDetail, ContactChangeToken, EmailVerificationToken, JobAlertPreference, PasswordResetToken, PlatformTermsAcceptance, Role, User, UserProfile
+from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, BookRequest, BookshopPaymentIntent, CheckoutDetail, ContactChangeToken, ContactMessage, DeliverySettlementBatch, EmailVerificationToken, Job, JobAlertPreference, NewsletterSubscriber, Order, OrderDelivery, PasswordResetToken, PlatformTermsAcceptance, Role, TermsAcceptance, UploadedFile, User, UserProfile, WhatsAppWebhookEvent
+from ..profile_completion import CURRENT_TERMS_VERSION, account_status
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
+from ..upload_utils import delete_uploaded_file_physical
 from ..sms_service import normalise_phone
 
 auth_bp = Blueprint("auth", __name__)
@@ -211,6 +213,7 @@ def signup():
 
     role = Role.query.filter_by(name="user").first() or Role(name="user", description="Public account")
     db.session.add(role)
+    now = datetime.now(timezone.utc)
     user = User(
         email=email,
         first_name=first_name,
@@ -219,7 +222,9 @@ def signup():
         sex=(payload.get("sex") or "").strip() or None,
         age_range=(payload.get("age_range") or "").strip() or None,
         role=role,
-        terms_accepted_at=datetime.now(timezone.utc),
+        terms_accepted_at=now,
+        terms_version=CURRENT_TERMS_VERSION,
+        privacy_version=CURRENT_TERMS_VERSION,
         teacher_service_enabled=str(payload.get("surface") or "teacher").strip().lower() != "bookshop",
         bookshop_service_enabled=str(payload.get("surface") or "teacher").strip().lower() == "bookshop",
     )
@@ -227,6 +232,17 @@ def signup():
     db.session.add(user)
     db.session.flush()
     db.session.add(UserProfile(user_id=user.id))
+    terms_acceptance = TermsAcceptance(
+        user_id=user.id,
+        terms_type="platform_terms",
+        terms_version=CURRENT_TERMS_VERSION,
+        privacy_version=CURRENT_TERMS_VERSION,
+        accepted_at=now,
+        acceptance_source="registration",
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent", "")[:500],
+    )
+    db.session.add(terms_acceptance)
     _send_verification_otp(user)
     audit("user_signup", "user", user.id, {"email": email})
     db.session.commit()
@@ -476,6 +492,13 @@ def confirm_two_factor_change():
     )
 
 
+@auth_bp.get("/me/status")
+def me_status():
+    if not current_user.is_authenticated:
+        return jsonify({"account_exists": False, "terms_accepted": False, "requires_terms_acceptance": False}), 200
+    return jsonify(account_status(current_user))
+
+
 @auth_bp.get("/me")
 def me():
     if not current_user.is_authenticated:
@@ -486,8 +509,28 @@ def me():
 @auth_bp.post("/accept-terms")
 @login_required
 def accept_terms():
-    current_user.terms_accepted_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    current_user.terms_accepted_at = now
+    current_user.terms_version = CURRENT_TERMS_VERSION
+    current_user.privacy_version = CURRENT_TERMS_VERSION
     from ..extensions import db
+    existing = TermsAcceptance.query.filter_by(
+        user_id=current_user.id,
+        terms_type="platform_terms",
+        terms_version=CURRENT_TERMS_VERSION,
+    ).first()
+    if not existing:
+        acceptance = TermsAcceptance(
+            user_id=current_user.id,
+            terms_type="platform_terms",
+            terms_version=CURRENT_TERMS_VERSION,
+            privacy_version=CURRENT_TERMS_VERSION,
+            accepted_at=now,
+            acceptance_source="user_accept",
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent", "")[:500],
+        )
+        db.session.add(acceptance)
     db.session.commit()
     return jsonify(message="Terms accepted.", user=user_json(current_user))
 
@@ -500,7 +543,27 @@ def decline_terms():
     actor_email = user.email
     try:
         audit("user_declined_terms", "user", actor_id, {"email": actor_email})
+
+        # -- RETAIN financial/audit records: clear user references --
+        BookshopPaymentIntent.query.filter_by(user_id=user.id).update({"user_id": None})
+        WhatsAppWebhookEvent.query.filter_by(user_id=user.id).update({"user_id": None})
         AuditLog.query.filter_by(actor_id=user.id).update({"actor_id": None})
+
+        # -- RETAIN orders: clear user reference (never delete a paid order) --
+        Order.query.filter_by(user_id=user.id).update({"user_id": None})
+
+        # -- Clear user references in shared/admin/operational records --
+        ContactMessage.query.filter_by(assigned_to=user.id).update({"assigned_to": None})
+        Job.query.filter_by(created_by_id=user.id).update({"created_by_id": None})
+        OrderDelivery.query.filter_by(assigned_by_id=user.id).update({"assigned_by_id": None})
+        DeliverySettlementBatch.query.filter_by(settled_by_id=user.id).update({"settled_by_id": None})
+        DeliverySettlementBatch.query.filter_by(prepared_by_id=user.id).update({"prepared_by_id": None})
+        BookRequest.query.filter_by(resolved_by_id=user.id).update({"resolved_by_id": None})
+
+        # -- Anonymise newsletter subscription if it matches the account email --
+        NewsletterSubscriber.query.filter_by(email=user.email).delete()
+
+        # -- DELETE volatile session/token data --
         AnalyticsEvent.query.filter_by(user_id=user.id).delete()
         CheckoutDetail.query.filter_by(user_id=user.id).delete()
         ContactChangeToken.query.filter_by(user_id=user.id).delete()
@@ -508,10 +571,39 @@ def decline_terms():
         AccountSecurityCode.query.filter_by(user_id=user.id).delete()
         PasswordResetToken.query.filter_by(user_id=user.id).delete()
         JobAlertPreference.query.filter_by(user_id=user.id).delete()
-        AuthIdentity.query.filter_by(user_id=user.id).delete()
-        PlatformTermsAcceptance.query.filter_by(user_id=user.id).delete()
+
+        # -- COLLECT file paths before any DB mutation --
+        uploaded = UploadedFile.query.filter_by(owner_id=user.id).all()
+        file_paths = [(uf.id, uf.storage_path) for uf in uploaded if uf.storage_path]
+
+        # -- DELETE upload DB rows --
+        for uf in uploaded:
+            db.session.delete(uf)
+
+        # -- DELETE user (cascade removes profile, auth_identities, terms_acceptances, etc.) --
         db.session.delete(user)
+
+        # -- COMMIT transaction first (safe point) --
         db.session.commit()
+
+        # -- DELETE physical files AFTER commit --
+        failed = []
+        for fid, path in file_paths:
+            import os
+            if path and os.path.isfile(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    failed.append((fid, path))
+                    current_app.logger.warning("Could not remove physical file id=%s path=%s", fid, path)
+
+        if failed:
+            current_app.logger.info(
+                "User %s deletion: %d file(s) could not be removed. "
+                "Paths available for retry cleanup: %s",
+                actor_id, len(failed), [p for _, p in failed],
+            )
+
         logout_user()
         return jsonify(message="Account deleted.")
     except Exception:

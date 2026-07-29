@@ -20,6 +20,14 @@ from werkzeug.utils import secure_filename
 
 from ..analytics import build_analytics_dashboard, build_product_detail, parse_analytics_range
 from ..audit_labels import AREA_LABELS, readable_audit_action, readable_audit_summary
+from ..communications import (
+    CommunicationResult,
+    generate_batch_id,
+    mask_destination,
+    record_attempt,
+    resolve_communication_mode,
+)
+from ..profile_completion import account_status as canonical_account_status
 from ..book_requests import (
     BookRequestError,
     mark_available,
@@ -299,9 +307,9 @@ def _send_internal_account_access_email(user, role_name):
                 "Change the password on first sign-in."
             ),
         ))
-        return result.get("status", "failed")
+        return result.status
     except Exception as exc:
-        current_app.logger.warning("Internal account email failed for user %s: %s", user.id, exc)
+        current_app.logger.warning("Access email failed for %s (role=%s): %s", user.email, role, exc)
         return "failed"
 
 
@@ -1046,7 +1054,7 @@ def dispatch_job_alerts(job):
         except Exception:
             current_app.logger.exception("Job alert delivery failed for user %s and job %s", user.id, job.id)
             continue
-        if result.get("status") != "sent":
+        if result.status not in ("accepted", "sent", "mocked"):
             current_app.logger.warning("Job alert was not sent for user %s and job %s: %s", user.id, job.id, result)
             continue
         preference.last_sent_at = datetime.now(timezone.utc)
@@ -1487,96 +1495,156 @@ def bookshop_accounts():
     return jsonify(items=items)
 
 
-def _profile_reminder_items(user, missing):
+REMINDER_COOLDOWN_HOURS = 24  # configurable; prevents repeated clicks from flooding a teacher
+
+
+def _reminder_eligibility(user) -> dict:
+    """Check a single teacher's eligibility for a profile reminder.
+
+    Returns a dict with keys:
+      eligible (bool)
+      reason (str | None) — why they are ineligible
+      status_data (dict | None) — canonical status if eligible
+    """
+    if not user:
+        return {"eligible": False, "reason": "user_not_found", "status_data": None}
+    if not getattr(user, "is_active", False):
+        return {"eligible": False, "reason": "account_disabled", "status_data": None}
+    if not getattr(user, "email", None):
+        return {"eligible": False, "reason": "missing_email", "status_data": None}
+    role_name = getattr(user.role, "name", None) if user.role else None
+    if role_name not in ("user", None):
+        return {"eligible": False, "reason": "not_teacher_role", "status_data": None}
+    if not getattr(user, "teacher_service_enabled", False):
+        return {"eligible": False, "reason": "teacher_service_disabled", "status_data": None}
+
+    status = canonical_account_status(user)
+    completion = status.get("completion_percentage", 0)
+    profile_status = status.get("profile_status", "incomplete")
+
+    # Already submitted / under review / verified → no reminder needed
+    if profile_status in ("submitted", "under_review", "verified"):
+        return {"eligible": False, "reason": f"profile_{profile_status}", "status_data": status}
+    # Complete (100%) with nothing missing → no reminder needed
+    # But if phone isn't verified they still need a reminder.
+    if completion >= 100 and profile_status != "revision_required":
+        if getattr(user, "phone_verified", False):
+            return {"eligible": False, "reason": "profile_complete", "status_data": status}
+    # Revision required is still eligible — they need to fix something
+    return {"eligible": True, "reason": None, "status_data": status}
+
+
+def _reminder_cooldown_active(user) -> bool:
+    """Check if a reminder was sent recently (within REMINDER_COOLDOWN_HOURS)."""
+    from ..models import CommunicationAttempt
+
+    hours = current_app.config.get("REMINDER_COOLDOWN_HOURS", REMINDER_COOLDOWN_HOURS)
+    cutoff = datetime.now(timezone.utc).timestamp() - (hours * 3600)
+    recent = CommunicationAttempt.query.filter(
+        CommunicationAttempt.recipient_user_id == user.id,
+        CommunicationAttempt.purpose == "service_reminder",
+        CommunicationAttempt.channel == "email",
+        CommunicationAttempt.status.in_(["accepted", "mocked", "sent"]),
+        CommunicationAttempt.requested_at >= datetime.fromtimestamp(cutoff, tz=timezone.utc),
+    ).first()
+    return recent is not None
+
+
+def _build_reminder_items(user, missing, status_data):
+    """Build the list of missing items shown in the reminder email.
+
+    Only includes items users can actually fix. Does not tell a user without
+    a phone number to 'Verify your phone number'.
+    """
     items = list(missing or [])
-    if not getattr(user, "phone_verified", False):
-        items.append("Verify your phone number")
+    phone = getattr(user, "phone", None)
+    phone_verified = getattr(user, "phone_verified", False)
+    if not phone_verified:
+        if phone:
+            items.append("Verify your phone number")
+        else:
+            items.append("Add and verify a phone number")
     return items
 
 
 def _send_teacher_profile_reminder(user):
-    completion, missing = teacher_profile_completion(user)
-    reminder_items = _profile_reminder_items(user, missing)
-    if not reminder_items:
-        return {"status": "skipped", "reason": "complete", "profile_completion": completion}
+    """Send one profile-reminder email. Returns a structured dict for batch aggregation."""
+    from ..models import CommunicationAttempt
+
+    eligibility = _reminder_eligibility(user)
+    if not eligibility["eligible"]:
+        return {
+            "status": "skipped",
+            "reason": eligibility["reason"],
+            "user_id": user.id,
+            "masked_email": mask_destination("email", user.email or ""),
+        }
+
+    if _reminder_cooldown_active(user):
+        return {
+            "status": "skipped",
+            "reason": "reminder_cooldown",
+            "user_id": user.id,
+            "masked_email": mask_destination("email", user.email or ""),
+        }
+
+    status_data = eligibility["status_data"]
+    completion = status_data.get("completion_percentage", 0)
+    missing = status_data.get("missing_requirements", [])
+    reminder_items = _build_reminder_items(user, missing, status_data)
 
     portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
     missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
     missing_text = "\n".join(f"- {item}" for item in reminder_items)
-    result = send_email(OutboundEmail(
-        to=user.email,
-        subject="You are almost ready for better-matched teaching opportunities",
-        html=app_email_shell(
-            "Complete your profile and unlock better job matches",
-            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
-            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
-            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
-            "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
-            "Finish My Profile",
-            portal_url,
-            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
+
+    result = send_email(
+        OutboundEmail(
+            to=user.email,
+            subject="You are almost ready for better-matched teaching opportunities",
+            html=app_email_shell(
+                "Complete your profile and unlock better job matches",
+                f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+                f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
+                "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
+                f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
+                "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
+                "Finish My Profile",
+                portal_url,
+                preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
+            ),
+            text=(
+                "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
+                f"Remaining items:\n{missing_text}\n\n"
+                f"Finish here: {portal_url}"
+            ),
         ),
-        text=(
-            "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
-            f"Remaining items:\n{missing_text}\n\n"
-            f"Finish here: {portal_url}"
-        ),
-    ))
-    if result.get("status") != "sent":
-        return {"status": "failed", "profile_completion": completion, "missing_fields": reminder_items}
-    log_action("send_teacher_profile_reminder", "user", user.id, {
-        "email": user.email,
-        "profile_completion": completion,
-        "missing_fields": reminder_items,
-    })
+        purpose="service_reminder",
+        recipient_user_id=user.id,
+        template_name="profile_reminder",
+    )
+
+    if result.status in ("mocked", "accepted", "sent"):
+        log_action("send_teacher_profile_reminder", "user", user.id, {
+            "email": user.email,
+            "profile_completion": completion,
+            "missing_fields": reminder_items,
+            "provider_status": result.status,
+        })
+        return {
+            "status": result.status,
+            "profile_completion": completion,
+            "missing_fields": reminder_items,
+            "user_id": user.id,
+            "masked_email": mask_destination("email", user.email or ""),
+        }
+
     return {
-        "status": "sent",
+        "status": "failed",
+        "reason": result.error_code or "provider_error",
         "profile_completion": completion,
         "missing_fields": reminder_items,
-    }
-
-
-def _send_teacher_profile_reminder(user):
-    completion, missing = teacher_profile_completion(user)
-    reminder_items = _profile_reminder_items(user, missing)
-    if not reminder_items:
-        return {"status": "skipped", "reason": "complete", "profile_completion": completion}
-
-    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
-    missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
-    missing_text = "\n".join(f"- {item}" for item in reminder_items)
-    result = send_email(OutboundEmail(
-        to=user.email,
-        subject="You are almost ready for better-matched teaching opportunities",
-        html=app_email_shell(
-            "Complete your profile and unlock better job matches",
-            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
-            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
-            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
-            "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
-            "Finish My Profile",
-            portal_url,
-            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
-        ),
-        text=(
-            "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
-            f"Remaining items:\n{missing_text}\n\n"
-            f"Finish here: {portal_url}"
-        ),
-    ))
-    if result.get("status") != "sent":
-        return {"status": "failed", "profile_completion": completion, "missing_fields": reminder_items}
-    log_action("send_teacher_profile_reminder", "user", user.id, {
-        "email": user.email,
-        "profile_completion": completion,
-        "missing_fields": reminder_items,
-    })
-    return {
-        "status": "sent",
-        "profile_completion": completion,
-        "missing_fields": reminder_items,
+        "user_id": user.id,
+        "masked_email": mask_destination("email", user.email or ""),
     }
 
 
@@ -1591,38 +1659,40 @@ def send_profile_reminders_batch():
             Role.name == "user",
             User.teacher_service_enabled.is_(True),
             User.is_active.is_(True),
-            User.is_verified.is_(True),
         )
         .order_by(User.created_at.desc())
         .all()
     )
-    sent = []
-    skipped = 0
+    batch_id = generate_batch_id()
+    accepted = 0
+    mocked = 0
     failed = []
+    skipped = []
+    eligible_count = 0
+
     for user in rows:
         result = _send_teacher_profile_reminder(user)
-        if result["status"] == "sent":
-            sent.append(user.email)
+        if result["status"] == "accepted":
+            accepted += 1
+        elif result["status"] == "mocked":
+            mocked += 1
         elif result["status"] == "failed":
-            failed.append(user.email)
+            failed.append({"user_id": result.get("user_id"), "reason": result.get("reason", "provider_error")})
         else:
-            skipped += 1
-    if sent:
-        db.session.commit()
+            skipped.append({"user_id": result.get("user_id"), "reason": result.get("reason", "skipped")})
 
-    message = (
-        f"Profile reminders sent to {len(sent)} teacher{'s' if len(sent) != 1 else ''}."
-        if sent else
-        "No teachers need a profile reminder right now."
-    )
-    if failed:
-        message += f" {len(failed)} could not be delivered."
+    eligible_count = accepted + mocked + len(failed)
+
     return jsonify(
-        message=message,
-        sent_count=len(sent),
-        skipped_count=skipped,
-        failed_count=len(failed),
-        failed_emails=failed[:10],
+        eligible=eligible_count,
+        attempted=accepted + mocked + len(failed),
+        accepted=accepted,
+        mocked=mocked,
+        failed=len(failed),
+        skipped=len(skipped),
+        failures=failed[:20],
+        skips=skipped[:20],
+        batch_id=batch_id,
     )
 
 
@@ -1631,49 +1701,47 @@ def send_profile_reminders_batch():
 @permission_required("teachers.edit")
 def send_profile_reminder(user_id):
     user = db.get_or_404(User, user_id)
-    if user.role and user.role.name in ("admin", "staff"):
-        return jsonify(error="Profile reminders can only be sent to teacher accounts."), 403
-    if not user.is_active:
-        return jsonify(error="Enable this teacher account before sending a profile reminder."), 409
+    role_name = getattr(user.role, "name", None) if user.role else None
+
+    eligibility = _reminder_eligibility(user)
+    if not eligibility["eligible"]:
+        reason_map = {
+            "profile_complete": "This teacher's profile is already complete.",
+            "profile_submitted": "This teacher's profile has already been submitted.",
+            "profile_under_review": "This teacher's profile is under review.",
+            "profile_verified": "This teacher's profile is verified.",
+            "account_disabled": "Enable this teacher account before sending a profile reminder.",
+            "teacher_service_disabled": "Teacher services are not enabled for this account.",
+            "not_teacher_role": "Profile reminders can only be sent to teacher accounts.",
+            "missing_email": "This teacher does not have a valid email address.",
+        }
+        msg = reason_map.get(eligibility["reason"], "This teacher is not eligible for a profile reminder.")
+        return jsonify(error=msg), 409
+
+    if _reminder_cooldown_active(user):
+        return jsonify(error="A profile reminder was recently sent to this teacher. Please wait before sending another."), 429
+
     result = _send_teacher_profile_reminder(user)
-    if result["status"] == "skipped":
-        return jsonify(error="This teacher's profile and phone verification are already complete."), 409
-    if result["status"] != "sent":
-        return jsonify(error="The reminder could not be delivered. Check the email service and try again."), 502
-    db.session.commit()
-    return jsonify(message=f"Profile reminder sent to {user.email}.", profile_completion=result["profile_completion"])
+    mode = resolve_communication_mode()
 
-    completion, missing = teacher_profile_completion(user)
-    if completion >= 100:
-        return jsonify(error="This teacher's profile is already complete."), 409
+    if result["status"] == "mocked":
+        return jsonify(
+            message="Reminder recorded in local mock mode. No real email was sent.",
+            profile_completion=result.get("profile_completion"),
+            mode=mode,
+        )
 
-    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
-    missing_html = "".join(f"<li>{escape(item)}</li>" for item in missing)
-    result = send_email(OutboundEmail(
-        to=user.email,
-        subject="You are almost ready for better-matched teaching opportunities",
-        html=app_email_shell(
-            "Complete your profile and unlock better job matches",
-            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
-            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
-            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
-            "<p>Finishing your profile only takes a moment and gives you a better chance of seeing the right roles.</p>",
-            "Finish My Profile",
-            portal_url,
-            preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
-        ),
-        text=f"Complete your RealMindX teaching profile to receive tailored jobs: {portal_url}",
-    ))
-    if result.get("status") != "sent":
-        return jsonify(error="The reminder could not be delivered. Check the email service and try again."), 502
-    log_action("send_teacher_profile_reminder", "user", user.id, {
-        "email": user.email,
-        "profile_completion": completion,
-        "missing_fields": missing,
-    })
-    db.session.commit()
-    return jsonify(message=f"Profile reminder sent to {user.email}.", profile_completion=completion)
+    if result["status"] == "accepted":
+        return jsonify(
+            message=f"Profile reminder accepted for {user.email}.",
+            profile_completion=result.get("profile_completion"),
+            mode=mode,
+        )
+
+    if result["status"] == "failed":
+        return jsonify(error=result.get("reason", "The reminder could not be delivered.")), 502
+
+    return jsonify(error="Unexpected reminder status."), 500
 
 
 PAYOUT_FIELDS = [

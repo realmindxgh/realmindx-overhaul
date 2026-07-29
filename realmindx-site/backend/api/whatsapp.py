@@ -90,7 +90,20 @@ def _as_aware(value):
 
 
 def _is_verification_phrase(text):
-    return str(text or "").strip().casefold() == WHATSAPP_VERIFICATION_PHRASE.casefold()
+    raw = str(text or "").strip()
+    if not raw:
+        return False
+    if raw.casefold() == WHATSAPP_VERIFICATION_PHRASE.casefold():
+        return True
+    prefix = current_app.config.get("WHATSAPP_CHALLENGE_PREFIX", "").strip()
+    if prefix:
+        prefix_lower = prefix.casefold()
+        raw_lower = raw.casefold()
+        if raw_lower == prefix_lower:
+            return True
+        if raw_lower.startswith(prefix_lower) and raw[len(prefix):].strip().lstrip("0123456789").strip() == "":
+            return True
+    return False
 
 
 def _incoming_text_messages(payload):
@@ -110,14 +123,20 @@ def _incoming_text_messages(payload):
 
 
 def _verify_signature(raw_body):
-    app_secret = current_app.config.get("WHATSAPP_APP_SECRET") or current_app.config.get("FACEBOOK_APP_SECRET", "")
+    app_secret = current_app.config.get("WHATSAPP_APP_SECRET") or ""
     if not app_secret:
-        return True
+        current_app.logger.error("[whatsapp] WHATSAPP_APP_SECRET is not configured — refusing webhook")
+        return False
     header = request.headers.get("X-Hub-Signature-256", "")
     if not header.startswith("sha256="):
+        current_app.logger.warning("[whatsapp] Missing or malformed X-Hub-Signature-256 header")
         return False
     expected = "sha256=" + hmac.new(app_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(header, expected)
+    match = hmac.compare_digest(header, expected)
+    if not match:
+        preview = raw_body[:80] if raw_body else b""
+        current_app.logger.warning("[whatsapp] Signature mismatch (header=%s... body_preview=%s)", header[:20], preview)
+    return match
 
 
 def _message_was_processed(message_id):
@@ -393,7 +412,8 @@ def _send_whatsapp_webhook_replies(results):
         reply_text = _reply_text_for_result(result)
         if not reply_text or not result.get("from"):
             continue
-        result["reply_status"] = "sent" if send_whatsapp_text(result["from"], reply_text) else "failed"
+        wam_result = send_whatsapp_text(result["from"], reply_text)
+        result["reply_status"] = "sent" if wam_result.status in ("accepted", "sent", "mocked") else "failed"
 
 
 def _can_view_whatsapp_diagnostics():

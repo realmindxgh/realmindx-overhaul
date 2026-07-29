@@ -260,7 +260,7 @@ def send_portal_access_notification(profile, account_kind, temporary_password=DE
         f"Your RealMindX {label} account is ready. Login: {phone}. "
         f"Temporary password: {temporary_password}. Open {portal_url} and change it on first login."
     )
-    sms_sent = bool(phone and send_sms(phone, sms_text))
+    sms_sent = bool(phone and send_sms(phone, sms_text).status in ("accepted", "sent"))
 
     email = (getattr(company, "contact_email", None) or "").strip().lower()
     email_status = "unavailable"
@@ -293,7 +293,7 @@ def send_portal_access_notification(profile, account_kind, temporary_password=DE
                 ),
                 from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
             ))
-            email_status = result.get("status", "failed")
+            email_status = "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
         except Exception as exc:
             current_app.logger.warning("Delivery portal account email failed for %s: %s", phone, exc)
             email_status = "failed"
@@ -340,7 +340,7 @@ def _send_delivery_update_email(to, subject, title, body, preheader, cta_label="
             text=preheader,
             from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
         ))
-        return result.get("status", "failed")
+        return "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
     except Exception as exc:
         current_app.logger.warning("Delivery update email failed for %s: %s", to, exc)
         return "failed"
@@ -384,7 +384,7 @@ def _notify_customer_status(delivery, status):
     title, text = notice
     phone = normalise_phone(getattr(order, "phone", "") or "")
     email = (getattr(order, "email", "") or "").strip().lower()
-    sms_status = "sent" if phone and send_sms(phone, text) else ("unavailable" if not phone else "failed")
+    sms_status = "sent" if phone and send_sms(phone, text).status in ("accepted", "sent") else ("unavailable" if not phone else "failed")
     email_status = _send_delivery_update_email(
         email,
         f"{title}: {order.order_reference}",
@@ -410,7 +410,7 @@ def _notify_delivery_partner(delivery):
     text = f"New RealMindX delivery {order.order_reference} has been assigned to {company.name}. Open the company portal to review it."
     sent_phones = 0
     for manager in getattr(company, "company_users", []) or []:
-        if manager.is_active and manager.user and manager.user.is_active and send_sms(manager.phone, text):
+        if manager.is_active and manager.user and manager.user.is_active and send_sms(manager.phone, text).status in ("accepted", "sent"):
             sent_phones += 1
     email = (company.contact_email or "").strip().lower()
     email_status = _send_delivery_update_email(
@@ -438,7 +438,7 @@ def _notify_assigned_rider(delivery):
     if not rider or not order:
         return
     text = f"RealMindX delivery {order.order_reference} has been assigned to you. Open the rider portal for delivery details."
-    status = "sent" if send_sms(rider.phone, text) else "failed"
+    status = "sent" if send_sms(rider.phone, text).status in ("accepted", "sent") else "failed"
     log_delivery_event(
         delivery,
         "rider_notification_sent" if status == "sent" else "rider_notification_failed",
@@ -631,7 +631,7 @@ def send_delivery_otp(delivery, otp, code):
     sms_status = "unavailable"
     email_status = "unavailable"
     if phone:
-        sms_status = "sent" if send_sms(phone, text) else "failed"
+        sms_status = "sent" if send_sms(phone, text).status in ("accepted", "sent") else "failed"
         if sms_status == "sent":
             channels.append("sms")
     if email:
@@ -662,7 +662,7 @@ def send_delivery_otp(delivery, otp, code):
                     from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
                 )
             )
-            email_status = result.get("status", "failed")
+            email_status = "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
         except Exception as exc:
             current_app.logger.warning("Delivery OTP email failed for %s: %s", email, exc)
             email_status = "failed"

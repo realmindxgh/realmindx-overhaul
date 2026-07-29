@@ -123,8 +123,13 @@ class AdminTeacherManagementTests(unittest.TestCase):
         customer_rows = customers_response.get_json()["items"]
         self.assertIn(customer.id, [item["id"] for item in customer_rows])
 
-    @patch("backend.api.admin.send_email", return_value={"provider": "test", "status": "sent"})
+    @patch("backend.api.admin.send_email")
     def test_send_incomplete_profile_reminder(self, send_email_mock):
+        from backend.communications import CommunicationResult
+        send_email_mock.return_value = CommunicationResult(
+            channel="email", purpose="service_reminder", provider="mock",
+            mode="live", status="accepted",
+        )
         response = self.client.post(f"/api/admin/users/{self.active_teacher.id}/profile-reminder", json={})
         self.assertEqual(response.status_code, 200)
         self.assertIn(self.active_teacher.email, response.get_json()["message"])
@@ -133,12 +138,17 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertIn("almost ready", message.subject)
         self.assertIn("almost there", message.html)
         self.assertIn("Finish My Profile", message.html)
-        self.assertIn("Verify your phone number", message.html)
-        self.assertIn("Verify your phone number", message.text)
+        self.assertIn("Add and verify a phone number", message.html)
+        self.assertIn("Add and verify a phone number", message.text)
         self.assertIn("https://realmindxgh.com/logo-white.png", message.html)
 
-    @patch("backend.api.admin.send_email", return_value={"provider": "test", "status": "sent"})
+    @patch("backend.api.admin.send_email")
     def test_send_batch_profile_reminders_includes_phone_verification(self, send_email_mock):
+        from backend.communications import CommunicationResult
+        send_email_mock.return_value = CommunicationResult(
+            channel="email", purpose="service_reminder", provider="mock",
+            mode="live", status="accepted",
+        )
         complete_no_phone = User(
             email="complete-no-phone@example.com",
             first_name="Complete",
@@ -189,8 +199,8 @@ class AdminTeacherManagementTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
-        self.assertEqual(data["sent_count"], 2)
-        self.assertEqual(send_email_mock.call_count, 2)
+        self.assertEqual(data["accepted"], 3)
+        self.assertEqual(send_email_mock.call_count, 3)
         sent_by_email = {call.args[0].to: call.args[0] for call in send_email_mock.call_args_list}
         self.assertIn("complete-no-phone@example.com", sent_by_email)
         phone_email = sent_by_email["complete-no-phone@example.com"]

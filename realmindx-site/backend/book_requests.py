@@ -72,7 +72,7 @@ def request_json(row, include_private=False):
 
 
 def _email_status(result):
-    return "sent" if isinstance(result, dict) and result.get("status") == "sent" else "failed"
+    return "sent" if result.status in ("accepted", "sent", "mocked") else "failed"
 
 
 def send_acknowledgement(row):
@@ -97,7 +97,8 @@ def send_acknowledgement(row):
             email_status = "failed"
     elif row.phone:
         try:
-            sms_status = "sent" if send_sms(row.phone, f"RealMindX Bookshop received your request for {row.requested_title}. Reference: {row.reference}. We will contact you when it is available.") else "failed"
+            sms_result = send_sms(row.phone, f"RealMindX Bookshop received your request for {row.requested_title}. Reference: {row.reference}. We will contact you when it is available.")
+            sms_status = "sent" if sms_result.status in ("accepted", "sent") else "failed"
         except Exception:
             current_app.logger.exception("Book request acknowledgement SMS failed for %s", row.reference)
             sms_status = "failed"
@@ -206,7 +207,8 @@ def send_available_notification(row, retry=False):
             email_status = "failed"
     if row.phone and (not retry or sms_status != "sent"):
         try:
-            sms_status = "sent" if send_sms(row.phone, f"Good news! {row.product.name} is now available at RealMindX Bookshop. Buy now: {row.product_url}") else "failed"
+            sms_result = send_sms(row.phone, f"Good news! {row.product.name} is now available at RealMindX Bookshop. Buy now: {row.product_url}")
+            sms_status = "sent" if sms_result.status in ("accepted", "sent") else "failed"
         except Exception:
             current_app.logger.exception("Book availability SMS failed for %s", row.reference)
             sms_status = "failed"

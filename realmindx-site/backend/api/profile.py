@@ -11,10 +11,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..audit import audit
 from ..checkout_details import checkout_detail_json, list_checkout_details, upsert_checkout_detail
-from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_email
 from ..extensions import db, limiter
 from ..location_data import canonical_delivery_locations, joined_location_ids, joined_location_names
 from ..models import CheckoutDetail, ContactChangeToken, JobAlertPreference, TeacherPlacement, UploadedFile, User, UserProfile
+from ..profile_completion import teacher_profile_completion
 from ..serializers import user_json
 from ..sms_service import normalise_phone, send_sms
 from ..upload_utils import save_upload
@@ -28,6 +29,8 @@ from ..whatsapp_service import (
 
 profile_bp = Blueprint("profile", __name__)
 
+_LOCKED_STATUSES = frozenset({"submitted", "under_review", "verified", "rejected"})
+
 
 def _upload_url(uploaded_file):
     if not uploaded_file:
@@ -40,6 +43,7 @@ def profile_json(profile):
     cv = db.session.get(UploadedFile, profile.cv_file_id) if profile.cv_file_id else None
     certificate = db.session.get(UploadedFile, profile.certificate_file_id) if profile.certificate_file_id else None
     placements = TeacherPlacement.query.filter_by(user_id=current_user.id).order_by(TeacherPlacement.accepted_at.desc()).all()
+    completion, missing = teacher_profile_completion(current_user)
     return {
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
@@ -73,6 +77,11 @@ def profile_json(profile):
         "next_of_kin_email": profile.next_of_kin_email,
         "years_of_experience": profile.years_of_experience,
         "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+        "profile_status": profile.profile_status,
+        "profile_completion": completion,
+        "profile_missing_fields": missing,
+        "submitted_at": profile.submitted_at.isoformat() if profile.submitted_at else None,
+        "review_notes": profile.review_notes,
         "placements": [{
             "id": row.id, "school_name": row.school_name, "job_title": row.job_title,
             "status": row.status, "accepted_at": row.accepted_at.isoformat() if row.accepted_at else None,
@@ -135,6 +144,12 @@ def get_profile():
 def update_profile():
     payload = request.get_json(silent=True) or {}
     profile = get_or_create_profile()
+
+    _LOCKED_STATUSES = frozenset({"submitted", "under_review", "verified", "rejected"})
+
+    if profile.profile_status in _LOCKED_STATUSES:
+        return jsonify(error="Your profile is currently under review and cannot be edited."), 423
+
     if "sex" in payload:
         current_user.sex = str(payload.get("sex") or "").strip().lower() or None
     if "age_range" in payload:
@@ -184,9 +199,18 @@ def update_profile():
                 pass
         else:
             profile.date_of_birth = None
-    if "phone" in payload and payload["phone"] != current_user.phone:
-        return jsonify(error="Phone changes require OTP verification in Account & Security."), 400
+    if "phone" in payload:
+        new_phone = payload["phone"] or None
+        if new_phone != current_user.phone:
+            return jsonify(error="Phone changes require OTP verification in Account & Security."), 400
     _sync_profile_to_alert_preference(profile)
+
+    completion, missing = teacher_profile_completion(current_user)
+    if profile.profile_status == "revision_required":
+        profile.profile_status = "complete" if completion >= 100 else "incomplete"
+    elif profile.profile_status == "incomplete" and completion >= 100:
+        profile.profile_status = "complete"
+
     audit("profile_updated", "user_profile", current_user.id, {"email": current_user.email})
     db.session.commit()
     return jsonify(profile=profile_json(profile))
@@ -250,6 +274,11 @@ def update_account():
     last_name = (payload.get("last_name") or "").strip()
     if not first_name:
         return jsonify(error="First name is required."), 400
+
+    profile = current_user.profile
+    if profile and profile.profile_status in _LOCKED_STATUSES:
+        return jsonify(error="Identity details cannot be changed while your profile is locked."), 423
+
     current_user.first_name = first_name
     current_user.last_name = last_name or None
     audit("account_name_updated", "user", current_user.id, {"email": current_user.email})
@@ -436,7 +465,11 @@ def request_contact_change():
                 )
             ), 409
         raise
-    delivered = True if delivery_channel == "whatsapp_inbound" else _send_contact_change_code(field, target, code, channel)
+    if delivery_channel == "whatsapp_inbound":
+        delivered = True
+    else:
+        result = _send_contact_change_code(field, target, code, channel)
+        delivered = result.status in ("accepted", "sent", "mocked")
     if not delivered:
         db.session.rollback()
         current_app.logger.warning("Could not deliver %s verification code for user %s", field, current_user.id)
@@ -628,13 +661,21 @@ def upload_user_file():
         "document": ("documents", None, "protected"),
     }
     category, profile_field, visibility = field_map.get(kind, ("documents", None, "protected"))
+    profile = get_or_create_profile()
+
+    if profile_field in ("cv_file_id", "certificate_file_id") and profile.profile_status in _LOCKED_STATUSES:
+        return jsonify(error="Your profile is under review and documents cannot be replaced."), 423
+
     try:
         uploaded = save_upload(file, category=category, owner_id=current_user.id, visibility=visibility)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
-    profile = get_or_create_profile()
+    db.session.flush()
     if profile_field:
         setattr(profile, profile_field, uploaded.id)
+        if profile.profile_status == "revision_required":
+            comp, _ = teacher_profile_completion(current_user)
+            profile.profile_status = "complete" if comp >= 100 else "incomplete"
     audit("file_uploaded", "uploaded_file", uploaded.id, {
         "kind": kind, "filename": uploaded.original_filename, "category": uploaded.category,
     })
@@ -646,3 +687,98 @@ def upload_user_file():
         url=_upload_url(uploaded),
         profile=profile_json(profile),
     ), 201
+
+
+def _send_submission_email(user, profile):
+    first_name = user.first_name or "Teacher"
+    dashboard_url = absolute_app_url("/portal?view=profile")
+    body = (
+        f"<p>Dear {escape(first_name)},</p>"
+        "<p>Thank you for submitting your teacher application. Your profile and documents have been received.</p>"
+        f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+        f"<p><strong>Submission date:</strong> {profile.submitted_at.strftime('%B %d, %Y') if profile.submitted_at else 'N/A'}</p>"
+        "<p>Your application is now in the review queue. A RealMindX administrator will review your profile and documents.</p>"
+        "<p>What happens next:</p>"
+        "<ul>"
+        "<li>An administrator will review your profile and documents</li>"
+        "<li>If everything is in order, your profile will be verified and a permanent Teacher ID will be issued</li>"
+        "<li>If changes are needed, we will notify you with details of what to update</li>"
+        "</ul>"
+        "<p>You do not need to take any further action at this time. You will receive an email once the review is complete or if corrections are requested.</p>"
+    )
+    try:
+        send_email(
+            OutboundEmail(
+                to=user.email,
+                subject="Your Teacher Application Has Been Submitted",
+                html=app_email_shell(
+                    "Application Submitted",
+                    body,
+                    cta_label="View Dashboard",
+                    cta_url=dashboard_url,
+                    eyebrow="RealMindX Teacher Verification",
+                    preheader="Your teacher application has been submitted and is in the review queue.",
+                ),
+            )
+        )
+    except Exception as exc:
+        current_app.logger.warning("Submission email failed for user %s: %s", user.id, exc)
+
+
+@profile_bp.post("/me/profile/submit")
+@login_required
+def submit_profile():
+    profile = get_or_create_profile()
+
+    if not current_user.teacher_service_enabled:
+        return jsonify(error="Teacher profile submission is not available for this account."), 403
+
+    # Lock the row so two concurrent requests cannot both pass the status check.
+    locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()
+    profile = locked or profile
+
+    if profile.profile_status == "submitted":
+        return jsonify(
+            profile_status="submitted",
+            submitted_at=profile.submitted_at.isoformat() if profile.submitted_at else None,
+            message="Your profile has already been submitted for review."
+        ), 200
+
+    if profile.profile_status == "revision_required":
+        return jsonify(error="Please update your profile and address the requested changes before submitting."), 400
+
+    if profile.profile_status == "rejected":
+        return jsonify(error="Your profile has been rejected and cannot be resubmitted."), 400
+
+    if profile.profile_status == "verified":
+        return jsonify(error="Your profile has already been verified."), 400
+
+    if profile.profile_status not in ("complete", "incomplete"):
+        return jsonify(error="Profile cannot be submitted in its current state."), 400
+
+    completion, missing = teacher_profile_completion(current_user)
+    if completion < 100:
+        return jsonify(error="Your profile must be 100% complete before submitting."), 400
+
+    if not profile.cv_file_id:
+        return jsonify(error="A CV is required before submitting."), 400
+
+    if not profile.certificate_file_id:
+        return jsonify(error="A certificate is required before submitting."), 400
+
+    profile.profile_status = "submitted"
+    profile.submitted_at = datetime.now(timezone.utc)
+
+    audit("teacher_profile_submitted", "user", current_user.id, {
+        "application_id": current_user.application_id,
+        "submitted_at": profile.submitted_at.isoformat(),
+    })
+    db.session.commit()
+
+    _send_submission_email(current_user, profile)
+
+    return jsonify(
+        profile_status="submitted",
+        submitted_at=profile.submitted_at.isoformat(),
+        message="Your profile has been submitted for review."
+    ), 200
