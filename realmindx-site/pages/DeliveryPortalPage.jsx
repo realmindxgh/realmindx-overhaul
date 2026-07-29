@@ -68,7 +68,7 @@ const DeliveryPasswordInput = ({ value, onChange, placeholder, autoComplete, req
         minLength={minLength}
       />
       <button type="button" onClick={() => setVisible(current => !current)} aria-label={visible ? 'Hide password' : 'Show password'} title={visible ? 'Hide password' : 'Show password'}>
-        <Icon name={visible ? 'eyeOff' : 'eye'} size={18} />
+        <Icon name={visible ? 'eyeOff' : 'eye'} size={15} />
       </button>
     </div>
   );

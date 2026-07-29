@@ -255,6 +255,22 @@ class AccountLifecycleTests(unittest.TestCase):
         self.assertEqual(len(status["missing_requirements"]), 0)
         self.assertNotEqual(status["profile_status"], "incomplete")
 
+    def test_account_status_repairs_legacy_100_percent_incomplete_state(self):
+        """Canonical status must never pair 100% completion with an incomplete prompt."""
+        self._register_user()
+        self._login()
+        user = User.query.filter_by(email="new@teacher.com").first()
+        _make_complete_profile(user, db.session)
+        user.profile.profile_status = "incomplete"
+        db.session.commit()
+
+        status = self.client.get("/api/auth/me/status").get_json()
+
+        self.assertEqual(status["completion_percentage"], 100)
+        self.assertEqual(status["profile_status"], "complete")
+        self.assertTrue(status["can_submit"])
+        self.assertEqual(status["next_action"], "submit_for_review")
+
     def test_100_percent_draft_returns_submit_action(self):
         """A 100% draft profile returns submit_for_review as next_action."""
         self._register_user()
@@ -407,6 +423,9 @@ class AccountLifecycleTests(unittest.TestCase):
         status_after = self.client.get("/api/auth/me/status").get_json()
         self.assertEqual(status_after["completion_percentage"], 100)
         self.assertEqual(len(status_after["missing_requirements"]), 0)
+        self.assertEqual(status_after["profile_status"], "complete")
+        self.assertTrue(status_after["can_submit"])
+        self.assertEqual(status_after["next_action"], "submit_for_review")
 
     # ==================== ACCOUNT DELETION TESTS ====================
 

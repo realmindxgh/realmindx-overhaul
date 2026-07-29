@@ -286,7 +286,7 @@ export const DatePickerField = ({ value, onChange, placeholder, min, max, ariaLa
         <span className={`dx-datepicker-value${value ? '' : ' is-placeholder'}`}>
           {value ? dpFormatDisplay(value) : (placeholder || 'Select a date')}
         </span>
-        <span className="dx-datepicker-icon"><Icon name="calendar" size={17} stroke={1.8} /></span>
+        <span className="dx-datepicker-icon"><Icon name="calendar" size={14} stroke={1.8} /></span>
       </button>
       {popover}
     </div>

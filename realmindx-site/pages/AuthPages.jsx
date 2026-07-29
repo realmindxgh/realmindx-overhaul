@@ -178,7 +178,7 @@ const InternalLoginPage = ({ role = 'admin' }) => {
                   onClick={() => setShowPass(!showPass)}
                   aria-label={showPass ? 'Hide password' : 'Show password'}
                 >
-                  <Icon name={showPass ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                  <Icon name={showPass ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
                 </button>
               </div>
             </div>
@@ -623,7 +623,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                       style={{ paddingRight: 44 }}
                     />
                     <button type="button" className="password-toggle" onClick={() => setShowPass(!showPass)}>
-                      <Icon name={showPass ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                      <Icon name={showPass ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
                     </button>
                   </div>
                 </div>
@@ -702,7 +702,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                       style={{ paddingRight: 44 }}
                     />
                     <button type="button" className="password-toggle" onClick={() => setShowPass(!showPass)}>
-                      <Icon name={showPass ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                      <Icon name={showPass ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
                     </button>
                   </div>
                   {fieldErrors.password && <p className="form-error">{fieldErrors.password}</p>}
@@ -714,7 +714,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                     <input className="form-input" ref={confirmRef} aria-invalid={Boolean(fieldErrors.confirmPass)} type={showPass ? 'text' : 'password'} placeholder="Repeat your password"
                       value={confirmPass} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" style={{ paddingRight: 44 }} />
                     <button type="button" className="password-toggle" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Hide password' : 'Show password'}>
-                      <Icon name={showPass ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                      <Icon name={showPass ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
                     </button>
                   </div>
                   {fieldErrors.confirmPass && <p className="form-error">{fieldErrors.confirmPass}</p>}
@@ -942,7 +942,7 @@ export const PasswordResetPage = () => {
                       required
                     />
                     <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
-                      <Icon name={showPassword ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                      <Icon name={showPassword ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
                     </button>
                   </div>
                 </div>
@@ -960,7 +960,7 @@ export const PasswordResetPage = () => {
                       style={{ paddingRight: 44 }}
                     />
                     <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
-                      <Icon name={showPassword ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+                      <Icon name={showPassword ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
                     </button>
                   </div>
                 </div>

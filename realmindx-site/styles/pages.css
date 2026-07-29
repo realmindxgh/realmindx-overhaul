@@ -1598,7 +1598,7 @@ input, textarea, select { font-family: inherit; }
 .auth-brand-quote span { color: var(--yellow); }
 
 .auth-brand-sub {
-  color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.84);
   font-size: 0.95rem;
   margin-top: 20px;
   line-height: 1.6;
@@ -1606,7 +1606,7 @@ input, textarea, select { font-family: inherit; }
 }
 
 .auth-brand-footer { position: relative; z-index: 1; }
-.auth-brand-footer p { color: rgba(255,255,255,0.3); font-size: 0.78rem; }
+.auth-brand-footer p { color: rgba(255,255,255,0.72); font-size: 0.78rem; }
 
 .auth-panel-form {
   background: var(--white);
@@ -3158,7 +3158,7 @@ input, textarea, select { font-family: inherit; }
 
 .sidebar-user-role {
   font-size: 0.72rem;
-  color: rgba(255,255,255,0.72);
+  color: rgba(255,255,255,0.84);
   line-height: 1.45;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -3181,7 +3181,7 @@ input, textarea, select { font-family: inherit; }
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.68);
   padding: 0 12px;
   margin-bottom: 6px;
 }
@@ -3357,7 +3357,8 @@ input, textarea, select { font-family: inherit; }
   margin-bottom: 12px;
 }
 
-.welcome-content p { color: rgba(255,255,255,0.6); font-size: 0.92rem; }
+.welcome-content p { color: rgba(255,255,255,0.84); font-size: 0.92rem; }
+.welcome-content .application-id-display { color: rgba(255,255,255,0.78); }
 
 .welcome-actions { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
 
@@ -3562,7 +3563,7 @@ input, textarea, select { font-family: inherit; }
 
 .profile-header-info { position: relative; z-index: 1; }
 .profile-header-info h2 { font-size: 1.5rem; color: var(--white); margin-bottom: 4px; }
-.profile-header-info p { color: var(--gray-400); font-size: 0.88rem; }
+.profile-header-info p { color: rgba(255,255,255,0.84); font-size: 0.88rem; }
 .profile-completion { margin-top: 16px; }
 
 .completion-bar-wrap {
@@ -3580,7 +3581,7 @@ input, textarea, select { font-family: inherit; }
   transition: width 0.5s ease;
 }
 
-.completion-label { font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+.completion-label { font-size: 0.75rem; color: rgba(255,255,255,0.78); margin-bottom: 4px; }
 .completion-pct { font-family: 'Montserrat', sans-serif; font-weight: 800; color: var(--yellow); font-size: 0.85rem; }
 
 .profile-sections-grid {
@@ -3718,7 +3719,7 @@ input, textarea, select { font-family: inherit; }
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.68);
   padding: 0 12px;
   margin-bottom: 4px;
 }
@@ -4698,7 +4699,7 @@ input, textarea, select { font-family: inherit; }
   .welcome-greeting,
   .welcome-content h2 { padding-right: 92px; }
   .welcome-content h2 { font-size: 1.35rem; }
-  .welcome-content p { color: rgba(255,255,255,0.72); font-size: 0.88rem; line-height: 1.55; }
+  .welcome-content p { color: rgba(255,255,255,0.84); font-size: 0.88rem; line-height: 1.55; }
 
   /* Welcome CTAs: stack vertically, equal width, centered */
   .welcome-actions {

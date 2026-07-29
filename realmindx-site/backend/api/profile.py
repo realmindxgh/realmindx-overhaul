@@ -32,6 +32,14 @@ profile_bp = Blueprint("profile", __name__)
 _LOCKED_STATUSES = frozenset({"submitted", "under_review", "verified", "rejected"})
 
 
+def _sync_editable_profile_status(profile):
+    """Keep editable profile state aligned with the canonical completion score."""
+    completion, missing = teacher_profile_completion(current_user)
+    if profile.profile_status in {"incomplete", "revision_required"}:
+        profile.profile_status = "complete" if completion >= 100 else "incomplete"
+    return completion, missing
+
+
 def _upload_url(uploaded_file):
     if not uploaded_file:
         return None
@@ -205,11 +213,7 @@ def update_profile():
             return jsonify(error="Phone changes require OTP verification in Account & Security."), 400
     _sync_profile_to_alert_preference(profile)
 
-    completion, missing = teacher_profile_completion(current_user)
-    if profile.profile_status == "revision_required":
-        profile.profile_status = "complete" if completion >= 100 else "incomplete"
-    elif profile.profile_status == "incomplete" and completion >= 100:
-        profile.profile_status = "complete"
+    _sync_editable_profile_status(profile)
 
     audit("profile_updated", "user_profile", current_user.id, {"email": current_user.email})
     db.session.commit()
@@ -700,9 +704,7 @@ def upload_user_file():
     db.session.flush()
     if profile_field:
         setattr(profile, profile_field, uploaded.id)
-        if profile.profile_status == "revision_required":
-            comp, _ = teacher_profile_completion(current_user)
-            profile.profile_status = "complete" if comp >= 100 else "incomplete"
+        _sync_editable_profile_status(profile)
     audit("file_uploaded", "uploaded_file", uploaded.id, {
         "kind": kind, "filename": uploaded.original_filename, "category": uploaded.category,
     })

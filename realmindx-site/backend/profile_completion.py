@@ -73,8 +73,16 @@ def account_status(user):
 
     # ---- profile completion ----
     profile = getattr(user, "profile", None)
-    profile_status = getattr(profile, "profile_status", "incomplete") if profile else "incomplete"
+    stored_profile_status = getattr(profile, "profile_status", "incomplete") if profile else "incomplete"
     completion_percentage, missing_requirements = teacher_profile_completion(user)
+    # Older profiles can reach 100% when their final required document is
+    # uploaded without another profile edit. Present the canonical ready state
+    # even before a subsequent write persists the repaired status.
+    profile_status = (
+        "complete"
+        if stored_profile_status == "incomplete" and completion_percentage >= 100
+        else stored_profile_status
+    )
 
     # ---- profile / submission state ----
     application_count = 0

@@ -1785,7 +1785,7 @@ const PasswordRevealInput = ({ value, onChange, name, autoComplete, required, mi
         onClick={() => setVisible(current => !current)}
         aria-label={visible ? 'Hide password' : 'Show password'}
       >
-        <Icon name={visible ? 'eyeOff' : 'eye'} size={18} />
+        <Icon name={visible ? 'eyeOff' : 'eye'} size={15} />
       </button>
     </div>
   );

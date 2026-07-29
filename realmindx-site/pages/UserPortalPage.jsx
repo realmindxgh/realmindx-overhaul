@@ -45,7 +45,7 @@ const PasswordRevealInput = ({ value, onChange, autoComplete, placeholder, requi
         onClick={() => setVisible(current => !current)}
         aria-label={visible ? 'Hide password' : 'Show password'}
       >
-        <Icon name={visible ? 'eyeOff' : 'eye'} size={18} stroke={1.9} />
+        <Icon name={visible ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
       </button>
     </div>
   );
@@ -387,7 +387,7 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
         <p className="welcome-greeting">Welcome back</p>
         <h2>Hello, {user.firstName}.</h2>
         {user.applicationId ? (
-          <p className="application-id-display" style={{ fontSize: '0.8rem', color: 'var(--gray-500)', marginTop: 4 }}>
+          <p className="application-id-display" style={{ fontSize: '0.8rem', marginTop: 4 }}>
             Application ID: <strong>{user.applicationId}</strong>
           </p>
         ) : null}
@@ -1913,6 +1913,29 @@ const UserPortalPage = () => {
     }
   }, [sessionChecked, apiProfile]);
 
+  const refreshAccountStatus = React.useCallback(async () => {
+    if (!isApiMode()) return null;
+    try {
+      const response = await fetch('/api/auth/me/status', { credentials: 'include' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return null;
+      setAccountStatus(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const syncAccountStatusFromProfile = React.useCallback(profile => {
+    if (!profile) return;
+    setAccountStatus(previous => ({
+      ...(previous || {}),
+      profile_status: profile.profile_status ?? previous?.profile_status ?? '',
+      completion_percentage: profile.profile_completion ?? previous?.completion_percentage ?? 0,
+      missing_requirements: profile.profile_missing_fields ?? previous?.missing_requirements ?? [],
+    }));
+  }, []);
+
   const handleSubmitProfile = React.useCallback(async () => {
     setSubmitError('');
     setSubmitting(true);
@@ -1922,12 +1945,16 @@ const UserPortalPage = () => {
       queueToast('Your profile has been submitted for review.', 'success');
       if (result.profile_status) setApiProfile(prev => ({ ...(prev || {}), profile_status: result.profile_status, submitted_at: result.submitted_at }));
       if (result.submitted_at) setApiProfile(prev => ({ ...(prev || {}), submitted_at: result.submitted_at }));
+      if (result.profile_status) {
+        setAccountStatus(previous => ({ ...(previous || {}), profile_status: result.profile_status }));
+      }
+      await refreshAccountStatus();
     } catch (err) {
       setSubmitError(err.message || 'Failed to submit profile. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  }, []);
+  }, [refreshAccountStatus]);
 
   if (!sessionChecked || !session) return <AuthLoadingScreen />;
   if (['admin', 'staff'].includes(session.role)) return null;
@@ -1955,7 +1982,7 @@ const UserPortalPage = () => {
 
   // Use backend-calculated profile completion values, with fallback to frontend calc.
   const profileCompletion = isApiMode()
-    ? (profileSource.profile_completion ?? completionFromProfile({
+    ? (accountStatus?.completion_percentage ?? profileSource.profile_completion ?? completionFromProfile({
         ...profileSource,
         email,
         first_name: firstName,
@@ -1964,13 +1991,16 @@ const UserPortalPage = () => {
     : MOCK_USER.profileComplete;
 
   const profileMissingFields = isApiMode()
-    ? (profileSource.profile_missing_fields || [])
+    ? (accountStatus?.missing_requirements ?? profileSource.profile_missing_fields ?? [])
     : [];
+  const profileStatus = isApiMode()
+    ? (accountStatus?.profile_status || profileSource.profile_status || '')
+    : MOCK_USER.profileStatus;
 
   // Determine if the teacher is "new" (needs onboarding/prompts):
   // Not new if profile is submitted, under review, verified, rejected.
   const isNewTeacher = !['submitted', 'under_review', 'verified', 'rejected'].includes(
-    profileSource.profile_status || ''
+    profileStatus
   ) && profileCompletion < 100;
 
   // Merge: API profile takes precedence over session/mock data.
@@ -2013,7 +2043,7 @@ const UserPortalPage = () => {
         nextOfKinEmail: profileSource.next_of_kin_email || '',
         placements: profileSource.placements || [],
         applicationId: profileSource.application_id || '',
-        profileStatus: profileSource.profile_status || '',
+        profileStatus,
         submittedAt: profileSource.submitted_at || '',
         reviewNotes: profileSource.review_notes || '',
       }
@@ -2038,6 +2068,7 @@ const UserPortalPage = () => {
       ...uploadedProfile,
       ...(kind === 'profile_picture' ? { profile_picture_url: uploadedProfile.profile_picture_url || result?.url || prev?.profile_picture_url } : {}),
     }));
+    syncAccountStatusFromProfile(uploadedProfile);
   };
 
   const handleFileUpload = async (kind, file) => {
@@ -2055,6 +2086,7 @@ const UserPortalPage = () => {
       }
       const result = await api.uploadUserFile(file, kind);
       mergeUploadedProfile(result, kind);
+      await refreshAccountStatus();
     } catch (err) {
       setUploadError(err?.message || 'Upload failed. Please try again.');
     } finally {
@@ -2109,6 +2141,8 @@ const UserPortalPage = () => {
       if (isApiMode()) {
         const result = await api.updateProfile(profileForm);
         setApiProfile(prev => ({ ...(prev || {}), ...(result.profile || {}) }));
+        syncAccountStatusFromProfile(result.profile);
+        await refreshAccountStatus();
         if (profileEditSection === 'teaching') {
           const alertResponse = await fetch('/api/me/job-alerts', { credentials: 'include' });
           const alertData = await alertResponse.json().catch(() => ({}));
@@ -2133,6 +2167,7 @@ const UserPortalPage = () => {
     const data = await response.json().catch(() => ({}));
     if (response.ok && data.profile) {
       setApiProfile(prev => ({ ...(prev || {}), ...data.profile }));
+      await refreshAccountStatus();
     }
   };
 
