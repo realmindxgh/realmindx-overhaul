@@ -734,7 +734,10 @@ def _send_submission_email(user, profile):
                     eyebrow="RealMindX Teacher Verification",
                     preheader="Your teacher application has been submitted and is in the review queue.",
                 ),
-            )
+            ),
+            purpose="transactional",
+            recipient_user_id=user.id,
+            template_name="teacher_profile_submitted",
         )
     except Exception as exc:
         current_app.logger.warning(
