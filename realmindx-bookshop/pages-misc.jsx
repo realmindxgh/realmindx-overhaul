@@ -2190,7 +2190,7 @@ const AccountPage = ({ navigate }) => {
                           <div className="bs-account-ref-detail-actions">
                             {detail.can_delete ? (
                               <>
-                                <button type="button" onClick={() => beginDetailEdit(detail)}><Icon name="pencil" size={14} /> Edit</button>
+                                <button type="button" onClick={() => beginDetailEdit(detail)}><Icon name="pencil" size={14} className="bs-mobile-hidden-icon" /> Edit</button>
                                 <button type="button" className="delete" disabled={removing} onClick={() => deleteCheckoutDetail(detail)}><Icon name="trash" size={14} /> {removing ? 'Removing' : 'Delete'}</button>
                               </>
                             ) : (

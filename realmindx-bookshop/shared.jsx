@@ -93,19 +93,30 @@ const LoadingState = ({
   title = 'Loading',
   body = 'Please wait while we fetch the latest bookshop data.',
   minimal = false,
-}) => (
-  <div className="bs-empty-state bs-loading-state" role="status" aria-live="polite">
-    <div className="bs-empty-icon bs-loading-icon" aria-hidden="true">
-      <div className="bs-loading-dots">
-        <span />
-        <span />
-        <span />
+}) => {
+  const [visible, setVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setVisible(true), 180);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div className={`bs-empty-state bs-loading-state${minimal ? ' is-minimal' : ''}`} role="status" aria-live="polite">
+      <div className="bs-empty-icon bs-loading-icon" aria-hidden="true">
+        <div className="bs-loading-dots">
+          <span />
+          <span />
+          <span />
+        </div>
       </div>
+      <h2 className="bs-h2">{minimal ? 'Loading' : title}</h2>
+      {!minimal && body ? <p>{body}</p> : null}
     </div>
-    <h2 className="bs-h2">{minimal ? 'Loading' : title}</h2>
-    {!minimal && body ? <p>{body}</p> : null}
-  </div>
-);
+  );
+};
 
 const cedis = (n) => `GH\u20b5${Number(n || 0).toFixed(2)}`;
 

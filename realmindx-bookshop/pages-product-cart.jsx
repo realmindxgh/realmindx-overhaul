@@ -410,7 +410,8 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
                 className={`bs-btn bs-btn-outline-navy bs-btn-sm bs-pdp-wishlist-btn${wishlist?.has(book.id) ? ' bs-wishlisted' : ''}`}
                 onClick={() => { wishlist?.toggle(book.id); globalToast.success(wishlist?.has(book.id) ? 'Removed from wishlist' : 'Added to wishlist'); }}
               >
-                <Icon name="heart" size={17} /> {wishlist?.has(book.id) ? 'Saved' : 'Save to Wishlist'}
+                <Icon name="heart" size={17} />
+                <span className="bs-pdp-wishlist-label">{wishlist?.has(book.id) ? 'Saved' : 'Save to Wishlist'}</span>
               </button>
               <button className="bs-btn bs-btn-navy bs-btn-lg bs-btn-block" disabled={!book.stock}
                 onClick={() => { buyNow(book.id, qty); navigate('checkout'); }}>
@@ -697,36 +698,29 @@ const CartPage = ({ navigate }) => {
           </p>
         </div>
         <div className="bs-cart-head-actions">
+          <button
+            type="button"
+            className="bs-cart-invoice-btn"
+            disabled={selectedCount === 0 || generatingInvoice}
+            onClick={generateCartInvoice}
+          >
+            <Icon name="files" size={14} /> {generatingInvoice ? 'Working...' : 'Invoice'}
+          </button>
           <button type="button" className="bs-cart-clear-btn" onClick={clear}>
             <Icon name="trash" size={14} /> Clear cart
           </button>
         </div>
       </div>
 
-      <div className={`bs-cart-savings-banner${selectedBulkSaving > 0 ? '' : ' is-invoice-only'}`}>
-          <span className="bs-cart-savings-icon"><Icon name={selectedBulkSaving > 0 ? 'gift' : 'files'} size={24} /></span>
+      {selectedBulkSaving > 0 && (
+        <div className="bs-cart-savings-banner">
+          <span className="bs-cart-savings-icon"><Icon name="gift" size={24} /></span>
           <div className="bs-cart-savings-copy">
-            {selectedBulkSaving > 0 ? (
-              <>
-                <strong>Nice choice! You’re saving more with bulk pricing.</strong>
-                <span>You saved <b>{cedis(selectedBulkSaving)}</b> with your bulk discount.</span>
-              </>
-            ) : (
-              <>
-                <strong>Need a shareable copy of this cart?</strong>
-                <span>Generate a detailed invoice for your selected books.</span>
-              </>
-            )}
+            <strong>Nice choice! You’re saving more with bulk pricing.</strong>
+            <span>You saved <b>{cedis(selectedBulkSaving)}</b> with your bulk discount.</span>
           </div>
-          <button
-            type="button"
-            className="bs-cart-savings-invoice"
-            disabled={selectedCount === 0 || generatingInvoice}
-            onClick={generateCartInvoice}
-          >
-            <Icon name="files" size={16} /> {generatingInvoice ? 'Generating...' : 'Generate Invoice'}
-          </button>
-      </div>
+        </div>
+      )}
 
       <div className="bs-cart-layout">
         <div className={`bs-cart-items-card${cartHydrating ? ' is-hydrating' : ''}`} aria-busy={cartHydrating}>
@@ -825,7 +819,7 @@ const CartPage = ({ navigate }) => {
               </div>
             ))}
             <div className="bs-summary-row"><span>Delivery</span><span className="bs-delivery-tbd">Calculated at checkout</span></div>
-            <div className="bs-summary-row bs-total"><span>Subtotal <small>(Excl. Delivery)</small></span><span>{cedis(cartTotal)}</span></div>
+            <div className="bs-summary-row bs-total"><span>Subtotal</span><span>{cedis(cartTotal)}</span></div>
           </div>
           <div className="bs-cart-summary-actions">
             <div className="bs-cart-cta-row">
@@ -835,6 +829,27 @@ const CartPage = ({ navigate }) => {
             </div>
           </div>
         </aside>
+      </div>
+      <div className="bs-cart-mobile-checkout-bar">
+        <div className="bs-cart-mobile-total">
+          <span>{selectedCount} selected</span>
+          <strong>{cedis(cartTotal)}</strong>
+        </div>
+        <button
+          type="button"
+          className="bs-btn bs-btn-navy bs-cart-mobile-continue"
+          onClick={() => navigate('shop')}
+        >
+          Continue shopping
+        </button>
+        <button
+          type="button"
+          className="bs-btn bs-btn-gold"
+          disabled={selectedCount === 0}
+          onClick={() => navigate('checkout')}
+        >
+          Checkout <Icon name="arrow" size={14} />
+        </button>
       </div>
       <AuthReturnActions navigate={navigate} route="cart" />
 

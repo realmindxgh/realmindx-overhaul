@@ -733,10 +733,10 @@ const CheckoutPage = ({ navigate }) => {
                 </div>
               )}
               <div className="bs-field-row">
-                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name *</label><div className="bs-field-control"><span><Icon name="pencil" size={18} /></span><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" /></div>{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
-                <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number *</label><div className="bs-field-control"><span><Icon name="pencil" size={18} /></span><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." inputMode="tel" /></div>{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
+                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name *</label><div className="bs-field-control"><span><Icon name="user" size={16} /></span><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" /></div>{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
+                <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number *</label><div className="bs-field-control"><span><Icon name="phone" size={16} /></span><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." inputMode="tel" /></div>{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
               </div>
-              <div className={`bs-field${errors.email?' err':''}`}><label>Email *</label><div className="bs-field-control"><span><Icon name="pencil" size={18} /></span><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" inputMode="email" /></div>{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
+              <div className={`bs-field${errors.email?' err':''}`}><label>Email *</label><div className="bs-field-control"><span><Icon name="mail" size={16} /></span><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" inputMode="email" /></div>{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
               <div className="bs-field-row">
                 <div className="bs-field"><label>Sex</label><div className="bs-field-control"><select value={form.sex} onChange={set('sex')}><option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></div></div>
                 <div className="bs-field"><label>Age range</label><div className="bs-field-control"><select value={form.ageRange} onChange={set('ageRange')}><option value="">Prefer not to say</option>{['under_18','18_24','25_34','35_44','45_54','55_64','65_plus'].map(value => <option key={value} value={value}>{value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())}</option>)}</select></div></div>
@@ -760,7 +760,7 @@ const CheckoutPage = ({ navigate }) => {
                   <div className="bs-field" style={{ marginTop:18 }}>
                     <label>Delivery Area *</label>
                     <div className="bs-zone-picker">
-                      <span className="bs-zone-input-icon"><Icon name="pencil" size={18} /></span>
+                      <span className="bs-zone-input-icon"><Icon name="pin" size={16} /></span>
                       <input
                         ref={zoneRef}
                         aria-invalid={Boolean(errors.zone)}
@@ -817,7 +817,7 @@ const CheckoutPage = ({ navigate }) => {
                   <div className="bs-field-row" style={{ marginTop:18 }}>
                     <div className={`bs-field${errors.city?' err':''}`}>
                       <label>Town / Area *</label>
-                      <div className="bs-field-control"><span><Icon name="pencil" size={18} /></span><input value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" /></div>
+                      <div className="bs-field-control"><span><Icon name="pin" size={16} /></span><input value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" /></div>
                       {errors.city && <div className="bs-field-error">{errors.city}</div>}
                     </div>
                     <div className={`bs-field${errors.region?' err':''}`}>
@@ -832,14 +832,14 @@ const CheckoutPage = ({ navigate }) => {
                 )}
                 <div className="bs-field" style={{ marginTop:customDeliveryArea ? 0 : 18 }}>
                   <label>Landmark or delivery directions</label>
-                  <div className="bs-field-control bs-field-control-textarea"><span><Icon name="pencil" size={18} /></span><textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." /></div>
+                  <div className="bs-field-control bs-field-control-textarea"><span><Icon name="pin" size={16} /></span><textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." /></div>
                   <p className="bs-field-help">We will contact you to confirm the precise landmark and delivery directions.</p>
                 </div>
                 {!customDeliveryArea && <div className="bs-field"><label>Region</label><div className="bs-field-control"><select value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div></div>}
               </>}
 
               {savedDetailsError && <p className="bs-saved-checkout-error">{savedDetailsError}</p>}
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:10 }} disabled={savingDetails} onClick={continueToPayment}>
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block bs-checkout-primary-action" style={{ marginTop:10 }} disabled={savingDetails} onClick={continueToPayment}>
                 {savingDetails ? 'Saving details...' : 'Continue to Payment'} {!savingDetails && <Icon name="arrow" size={16} />}
               </button>
               <AuthReturnActions navigate={navigate} />
@@ -894,7 +894,6 @@ const CheckoutPage = ({ navigate }) => {
                   />
                   <button type="button" className="bs-btn bs-btn-gold" disabled={checkingPromo || !promoInput.trim()} onClick={applyPromo}>
                     <span>{checkingPromo ? 'Applying' : 'Apply code'}</span>
-                    {!checkingPromo && <Icon name="arrow" size={15} />}
                   </button>
                 </div>
               </div>
@@ -928,7 +927,7 @@ const CheckoutPage = ({ navigate }) => {
               <div className="bs-summary-row bs-total" style={{ fontSize:22, borderTop:'1px solid var(--bs-border)', paddingTop:14, marginTop:0 }}><span>Total</span><span>{cedis(total)}</span></div>
               <TurnstileField className="bs-turnstile-wrap bs-checkout-turnstile" theme="light" onVerify={setTurnstileToken} />
               {orderError && <p className="bs-track-error" role="alert" style={{ marginTop:14 }}>{orderError}</p>}
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}>
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block bs-checkout-primary-action" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}>
                 <Icon name={paymentMethod === 'online' ? 'lock' : 'truck'} size={17} />
                 {placing
                   ? paymentMethod === 'online' ? 'Opening secure payment...' : 'Placing order...'
@@ -940,7 +939,31 @@ const CheckoutPage = ({ navigate }) => {
                 <span className="bs-trust-badge"><Icon name="shield" size={14} /> Buyer protection</span>
                 {paymentMethod === 'online' && <span className="bs-trust-badge bs-mono" style={{ fontWeight:700, color:'var(--bs-navy)' }}>paystack</span>}
               </div>
-              <button className="bs-btn bs-btn-outline-navy bs-btn-block" style={{ marginTop:16 }} onClick={() => setStep(0)}><Icon name="chevL" size={15} /> Back to details</button>
+              <button className="bs-btn bs-btn-outline-navy bs-btn-block bs-checkout-back-action" style={{ marginTop:16 }} onClick={() => setStep(0)}><Icon name="chevL" size={15} /> Back to details</button>
+            </div>
+          )}
+
+          {step < 2 && (
+            <div className="bs-checkout-mobile-dock">
+              <div>
+                <span>{count} item{count === 1 ? '' : 's'}</span>
+                <strong>{cedis(total)}</strong>
+              </div>
+              {step === 0 ? (
+                <button type="button" className="bs-btn bs-btn-gold" disabled={savingDetails} onClick={continueToPayment}>
+                  {savingDetails ? 'Saving...' : 'Continue'} {!savingDetails && <Icon name="arrow" size={14} />}
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="bs-btn bs-btn-outline-navy bs-checkout-mobile-back" onClick={() => setStep(0)}>
+                    <Icon name="chevL" size={13} /> Back to details
+                  </button>
+                  <button type="button" className="bs-btn bs-btn-gold" disabled={placing} onClick={placeOrder}>
+                    <Icon name={paymentMethod === 'online' ? 'lock' : 'truck'} size={14} />
+                    {placing ? 'Processing...' : paymentMethod === 'online' ? 'Pay now' : 'Confirm order'}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

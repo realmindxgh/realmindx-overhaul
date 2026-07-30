@@ -5347,7 +5347,7 @@
 /* ============================================================ CART: DELIVERY TBD + WISHLIST LINK ============================================================ */
 .bs-delivery-tbd {
   font-size: 12px;
-  font-style: italic;
+  font-style: normal;
   color: var(--bs-muted);
 }
 .bs-cart-wishlist-link {
@@ -5506,4 +5506,1033 @@
 /* ── Desktop: hide mobile shell ────────────────────────────────── */
 @media (min-width: 769px) {
   .bs-mobile-shell { display: none; }
+}
+
+/* ============================================================
+   COMPACT MOBILE COMMERCE EXPERIENCE
+   Uses the full mobile canvas while preserving 40-44px touch
+   targets and the RealMindX navy/gold visual hierarchy.
+   ============================================================ */
+.bs-loading-state {
+  width: 100%;
+  max-width: 100%;
+  min-height: 150px !important;
+  margin: 0 auto;
+  padding: 24px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  text-align: center;
+  box-shadow: none;
+}
+.bs-resource-results > .bs-loading-state,
+.bs-resource-detail-shell > .bs-loading-state { min-height: 150px !important; }
+.bs-loading-state.is-minimal {
+  min-height: 92px !important;
+  padding: 14px 10px;
+}
+.bs-loading-state .bs-loading-icon {
+  width: 42px;
+  height: 42px;
+  margin: 0 auto 9px;
+  background: #edf2fb;
+}
+.bs-loading-state.is-minimal .bs-loading-icon {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 7px;
+}
+.bs-loading-state .bs-loading-dots { gap: 4px; }
+.bs-loading-state .bs-loading-dots span {
+  width: 5px;
+  height: 5px;
+  background: var(--bs-navy);
+}
+.bs-loading-state h2,
+.bs-loading-state .bs-h2 {
+  margin: 0;
+  color: var(--bs-navy);
+  font-size: 14px;
+  line-height: 1.25;
+}
+.bs-loading-state p {
+  max-width: 42ch;
+  margin: 4px auto 0;
+  color: var(--bs-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.bs-cart-mobile-checkout-bar,
+.bs-checkout-mobile-dock { display: none; }
+
+@media (max-width: 768px) {
+  .bs {
+    font-size: 87.5%;
+    line-height: 1.48;
+  }
+
+  /* Wider, balanced mobile canvas. */
+  .bs-container,
+  .bs-container-narrow {
+    max-width: 100%;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .bs-app-back-row {
+    min-height: 48px;
+    padding: 7px 10px 0;
+  }
+  .bs-app-back {
+    width: 38px;
+    height: 38px;
+  }
+  .bs-section {
+    padding: 28px 0;
+  }
+  .bs-section-head-row {
+    margin-bottom: 13px;
+  }
+  .bs-section-head-row h2,
+  .bs-section-head-row .bs-h2 {
+    font-size: 18px;
+    line-height: 1.18;
+  }
+  .bs-eyebrow {
+    font-size: 9px;
+    letter-spacing: 1.4px;
+  }
+  .bs-btn {
+    min-height: 40px;
+    padding: 9px 14px;
+    gap: 6px;
+    border-radius: 7px;
+    font-size: 12px;
+    letter-spacing: .1px;
+  }
+  .bs-btn-lg {
+    min-height: 44px;
+    padding: 10px 15px;
+    font-size: 12.5px;
+  }
+  .bs-mobile-hidden-icon { display: none !important; }
+
+  /* Product detail: compact information, persistent purchase controls. */
+  .bs-pdp-topbar {
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .bs-pdp-topbar .bs-breadcrumb {
+    min-width: 0;
+    padding: 6px 0;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow: hidden;
+    font-size: 9.5px;
+    white-space: nowrap;
+  }
+  .bs-pdp-topbar .bs-breadcrumb > * { flex: 0 0 auto; }
+  .bs-pdp-topbar .bs-breadcrumb .bs-cur {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bs-pdp-share {
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+    margin: 2px 0;
+    box-shadow: none;
+  }
+  .bs-pdp {
+    gap: 14px;
+    padding: 2px 0 86px;
+  }
+  .bs-pdp-main-img {
+    border-radius: 10px;
+  }
+  .bs-pdp-thumbs {
+    gap: 7px;
+    margin-top: 8px;
+  }
+  .bs-pdp-thumb {
+    width: 58px;
+    border-radius: 7px;
+  }
+  .bs-pdp-info { position: static; }
+  .bs-gold-pill {
+    padding: 4px 8px;
+    font-size: 9px;
+    letter-spacing: .3px;
+  }
+  .bs-pdp-title {
+    margin: 8px 0 6px;
+    font-size: 18px;
+    line-height: 1.2;
+  }
+  .bs-pdp-rating-row { gap: 7px; }
+  .bs-pdp-rating-row .bs-stars svg { width: 14px; height: 14px; }
+  .bs-review-link,
+  .bs-no-rating { font-size: 11px; }
+  .bs-pdp-price {
+    margin: 10px 0 4px;
+    font-size: 20px;
+  }
+  .bs-pdp-price .bs-old {
+    margin-left: 7px;
+    font-size: 13px;
+  }
+  .bs-pdp-info .bs-pcard-stock { font-size: 11px !important; }
+  .bs-pdp-desc {
+    margin: 10px 0 12px;
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
+  .bs-pdp-bulk-note {
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 9px 10px;
+    border-left-width: 3px;
+    border-radius: 7px;
+  }
+  .bs-pdp-bulk-note-icon {
+    width: 27px;
+    height: 27px;
+    flex-basis: 27px;
+  }
+  .bs-pdp-bulk-note-icon svg { width: 14px; height: 14px; }
+  .bs-pdp-bulk-note strong { margin: 0 0 2px; font-size: 11px; }
+  .bs-pdp-bulk-note p { font-size: 10.5px; line-height: 1.35; }
+  .bs-pdp-actions {
+    position: fixed;
+    z-index: 742;
+    left: 0;
+    right: 0;
+    bottom: var(--bs-bottomnav-h);
+    grid-template-columns: 88px minmax(0, 1fr) 40px minmax(0, 1fr);
+    gap: 6px;
+    margin: 0;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--bs-border);
+    background: rgba(255,255,255,.98);
+    box-shadow: 0 -7px 20px rgba(13,37,80,.08);
+  }
+  .bs-pdp-actions .bs-qty-stepper button {
+    width: 28px;
+    height: 42px;
+  }
+  .bs-pdp-actions .bs-qty-stepper input {
+    width: 32px;
+    height: 42px;
+    font-size: 12px;
+  }
+  .bs-pdp-actions .bs-btn {
+    min-height: 42px;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+  .bs-pdp-wishlist-btn {
+    width: 40px;
+    min-height: 42px;
+    padding: 0;
+    font-size: 0;
+  }
+  .bs-pdp-wishlist-btn svg { width: 16px; height: 16px; }
+  .bs-pdp-wishlist-label { display: none; }
+  .bs-pdp .bs-divider { margin: 14px 0; }
+  .bs-detail-list {
+    gap: 8px 16px;
+    font-size: 12px;
+  }
+  .bs-acc-head {
+    min-height: 44px;
+    padding: 12px 0;
+    font-size: 12.5px;
+  }
+  .bs-acc-body {
+    padding-bottom: 14px;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .bs-hscroll { gap: 9px; padding-bottom: 7px; }
+  .bs-hscroll > * { flex-basis: min(44vw, 172px); }
+  .bs-reviews-layout { gap: 18px; }
+  .bs-rating-big { font-size: 38px; }
+  .bs-review-card { padding: 15px 0; }
+
+  /* Cart: edge-to-edge cards and a persistent checkout summary. */
+  .bs-cart-page {
+    padding-top: 7px;
+    padding-bottom: 76px;
+  }
+  .bs-cart-page-head {
+    gap: 5px 10px;
+    margin: 2px 0 8px;
+    align-items: center;
+  }
+  .bs-cart-page-head .bs-h2 {
+    margin-bottom: 2px !important;
+    font-size: 19px !important;
+  }
+  .bs-cart-count-copy {
+    flex-wrap: nowrap;
+    gap: 3px 6px;
+    font-size: 9.5px;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+  .bs-cart-count-copy span + span::before { margin-right: 6px; }
+  .bs-cart-clear-btn {
+    min-height: 32px;
+    padding: 0 9px;
+    border-radius: 7px;
+    font-size: 10px;
+  }
+  .bs-cart-head-actions {
+    flex-direction: row;
+    align-items: center;
+    align-self: center;
+    gap: 5px;
+  }
+  .bs .bs-cart-head-actions button.bs-cart-clear-btn,
+  .bs .bs-cart-head-actions button.bs-cart-invoice-btn {
+    width: auto;
+    min-height: 29px;
+    padding: 0 7px;
+    border-radius: 7px;
+    font-size: 8.5px;
+    font-weight: 800;
+    gap: 4px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .bs .bs-cart-head-actions button:is(.bs-cart-clear-btn, .bs-cart-invoice-btn) svg {
+    width: 11px;
+    height: 11px;
+  }
+  .bs-cart-savings-banner {
+    grid-template-columns: 30px minmax(0,1fr) auto;
+    gap: 7px;
+    margin-top: 12px;
+    padding: 9px;
+    border-radius: 9px;
+  }
+  .bs-cart-savings-icon {
+    width: 30px;
+    height: 30px;
+  }
+  .bs-cart-savings-icon svg { width: 15px; height: 15px; }
+  .bs-cart-savings-copy strong { font-size: 10.5px; }
+  .bs-cart-savings-copy span { font-size: 9.5px; }
+  .bs button.bs-cart-savings-invoice {
+    min-height: 36px;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 9.5px;
+  }
+  .bs button.bs-cart-savings-invoice svg { width: 13px; height: 13px; }
+  .bs-cart-layout { padding: 12px 0 14px; }
+  .bs-cart-items-card {
+    border-radius: 10px;
+  }
+  .bs-cart-item {
+    grid-template-columns: 24px 70px minmax(0, 1fr);
+    gap: 8px;
+    padding: 11px 9px;
+    align-items: stretch;
+  }
+  .bs button.bs-cart-select {
+    width: 23px;
+    height: 23px;
+    border-width: 1.5px;
+    align-self: center;
+  }
+  .bs-cart-item-cover {
+    width: 70px;
+    border-radius: 7px;
+    align-self: center;
+  }
+  .bs-cart-item-mid {
+    gap: 4px;
+    padding-right: 0;
+    min-height: 100%;
+  }
+  .bs-cart-meta-row {
+    display: block;
+    height: 0;
+  }
+  .bs-cart-item .bs-cat-badge { display: none; }
+  .bs-cart-wishlist-link {
+    position: absolute;
+    top: 9px;
+    right: 9px;
+    width: 26px;
+    height: 26px;
+    border-width: 1px;
+  }
+  .bs-cart-wishlist-link svg { width: 14px; height: 14px; }
+  .bs-cart-item-title {
+    padding-right: 28px;
+    font-size: 12.5px;
+    line-height: 1.32;
+  }
+  .bs-cart-item-right {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(52px, 1fr) 26px;
+    gap: 9px;
+    min-height: 28px;
+    margin-top: auto;
+    align-items: center;
+  }
+  .bs-qty-stepper.sm button {
+    width: 23px;
+    height: 28px;
+  }
+  .bs-qty-stepper.sm input {
+    width: 27px;
+    height: 28px;
+    font-size: 10.5px;
+  }
+  .bs-cart-subtotal {
+    margin-left: 0;
+    justify-self: center;
+    text-align: center;
+    font-size: 12.5px;
+  }
+  .bs-remove-btn {
+    position: static;
+    width: 26px;
+    height: 28px;
+    flex: 0 0 26px;
+  }
+  .bs-remove-btn svg { width: 15px; height: 15px; }
+  .bs-cart-summary-card {
+    gap: 0;
+    margin-top: 12px;
+    padding: 13px 12px;
+    border-radius: 10px;
+  }
+  .bs-cart-summary-card .bs-h3 {
+    margin-bottom: 11px;
+    font-size: 14px;
+  }
+  .bs-cart-summary-card .bs-summary-row {
+    margin-bottom: 8px;
+    font-size: 11.5px;
+  }
+  .bs-cart-summary-card .bs-summary-row.bs-total {
+    padding-top: 10px;
+    font-size: 14px;
+  }
+  .bs-cart-summary-actions { display: none; }
+  .bs-cart-mobile-checkout-bar,
+  .bs-checkout-mobile-dock {
+    position: fixed;
+    z-index: 744;
+    left: 0;
+    right: 0;
+    bottom: var(--bs-bottomnav-h);
+    min-height: 58px;
+    padding: 7px 10px calc(7px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--bs-border);
+    background: rgba(255,255,255,.98);
+    box-shadow: 0 -7px 20px rgba(13,37,80,.08);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+  .bs-cart-mobile-total,
+  .bs-checkout-mobile-dock > div {
+    margin-right: auto;
+    display: grid;
+    gap: 1px;
+    line-height: 1.15;
+  }
+  .bs-cart-mobile-total span,
+  .bs-checkout-mobile-dock > div span {
+    color: var(--bs-muted);
+    font-size: 9.5px;
+  }
+  .bs-cart-mobile-total strong,
+  .bs-checkout-mobile-dock > div strong {
+    color: var(--bs-navy);
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+  }
+  .bs-cart-mobile-checkout-bar .bs-btn,
+  .bs-checkout-mobile-dock .bs-btn {
+    min-width: 102px;
+    min-height: 42px;
+    padding: 0 13px;
+    font-size: 11px;
+  }
+  .bs-cart-mobile-checkout-bar {
+    gap: 7px;
+  }
+  .bs-cart-mobile-checkout-bar .bs-cart-mobile-continue {
+    min-width: 108px;
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 9.5px;
+  }
+  .bs .bs-cart-mobile-checkout-bar .bs-cart-mobile-continue {
+    border-color: var(--bs-navy);
+    background: var(--bs-navy);
+    color: #fff !important;
+    box-shadow: none;
+  }
+  .bs .bs-wa-fab {
+    bottom: calc(var(--bs-bottomnav-h) + 74px);
+  }
+  .bs-cart-page > .bs-auth-return-actions {
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-icon {
+    width: 34px;
+    height: 34px;
+  }
+  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-copy strong { font-size: 11.5px; }
+  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-copy p { font-size: 10.5px; }
+  .bs-cart-page > .bs-section {
+    margin-top: 24px !important;
+  }
+
+  /* Checkout: use the full canvas, semantic compact fields, sticky CTA. */
+  .bs-steps {
+    gap: 5px;
+    margin: 10px 0 14px;
+  }
+  .bs-step-num {
+    width: 32px;
+    height: 32px;
+    border-width: 1.5px;
+    box-shadow: none !important;
+  }
+  .bs-step-num svg { width: 14px; height: 14px; }
+  .bs-step-line {
+    width: 28px;
+    margin: 0 5px;
+  }
+  .bs-checkout-layout {
+    gap: 12px;
+    padding-bottom: 78px;
+  }
+  .bs-mobile-summary-bar {
+    min-height: 42px;
+    margin-bottom: 10px;
+    padding: 9px 11px;
+    border-radius: 8px;
+    font-size: 11px;
+    box-shadow: none;
+  }
+  .bs-mobile-summary-bar svg { width: 14px; height: 14px; }
+  .bs-mini-summary.mobile {
+    margin: 0 0 10px;
+    padding: 12px;
+    border-radius: 9px;
+  }
+  .bs-mini-summary .bs-checkout-card-title {
+    margin-bottom: 8px !important;
+    font-size: 13px !important;
+  }
+  .bs-mini-item {
+    gap: 8px;
+    padding: 7px 0;
+  }
+  .bs-mini-cover {
+    width: 38px;
+    height: 48px;
+  }
+  .bs-mini-qty {
+    top: -6px;
+    right: -7px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 8px;
+  }
+  .bs-form-card {
+    width: 100%;
+    padding: 13px 12px;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+  .bs-form-card .bs-h3,
+  .bs-checkout-layout .bs-h3 {
+    margin-bottom: 13px;
+    font-size: 16px;
+  }
+  .bs-checkout-card-title { gap: 8px; }
+  .bs-checkout-card-title > span {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+    border-radius: 8px;
+  }
+  .bs-checkout-card-title > span svg { width: 15px; height: 15px; }
+  .bs-field-row { gap: 0; }
+  .bs-field {
+    margin-bottom: 10px;
+  }
+  .bs-field label,
+  .bs-field > span,
+  .bs-checkout .bs-field label,
+  .bs-checkout .bs-field > span {
+    margin-bottom: 4px;
+    font-size: 10.5px;
+  }
+  .bs-field input,
+  .bs-field select,
+  .bs-field textarea,
+  .bs-zone-input,
+  .bs-checkout .bs-field input,
+  .bs-checkout .bs-field select,
+  .bs-checkout .bs-field textarea {
+    height: 42px;
+    padding: 0 11px;
+    border-width: 1px;
+    border-radius: 7px;
+    font-size: 13px;
+  }
+  .bs-field textarea,
+  .bs-checkout .bs-field textarea {
+    min-height: 72px;
+    height: auto;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .bs-field-control > span,
+  .bs-zone-input-icon {
+    left: 11px;
+  }
+  .bs-field-control > span svg,
+  .bs-zone-input-icon svg { width: 14px; height: 14px; }
+  .bs-field-control input,
+  .bs-field-control-textarea textarea { padding-left: 34px; }
+  .bs-zone-input { padding-left: 34px !important; }
+  .bs-field-control select { padding-left: 11px; }
+  .bs-field-control-textarea > span { top: 13px; }
+  .bs-field-help,
+  .bs-field-error { margin-top: 4px; font-size: 10px; }
+  .bs-form-card .bs-field[style] { margin-top: 10px !important; }
+  .bs-checkout-section-label {
+    gap: 6px;
+    margin: 2px 0 7px;
+    font-size: 11px;
+  }
+  .bs-checkout-section-label > span {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+  }
+  .bs-checkout-section-label > span svg { width: 13px; height: 13px; }
+  .bs-radio-card {
+    gap: 9px;
+    margin-bottom: 8px;
+    padding: 10px;
+    border-width: 1px;
+    border-radius: 8px;
+  }
+  .bs-radio-dot {
+    width: 17px;
+    height: 17px;
+  }
+  .bs-radio-card.sel .bs-radio-dot::after,
+  .bs-payment-choice.selected .bs-radio-dot::after {
+    width: 8px;
+    height: 8px;
+  }
+  .bs-rc-title { font-size: 11.5px; }
+  .bs-rc-sub { font-size: 10.5px; }
+  .bs-rc-price { font-size: 11px; }
+  .bs-rc-cost { min-width: 62px; }
+  .bs-saved-checkout-picker {
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 10px;
+    border-radius: 8px;
+  }
+  .bs-saved-checkout-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+  .bs-saved-checkout-copy strong { font-size: 11px; }
+  .bs-saved-checkout-copy span { font-size: 10px; }
+  .bs-payment-choice-grid {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .bs-payment-choice {
+    min-height: 68px;
+    gap: 9px;
+    padding: 10px;
+    border-width: 1px;
+    border-radius: 8px;
+  }
+  .bs-payment-choice strong { font-size: 11.5px; }
+  .bs-payment-choice small { margin-top: 2px; font-size: 10px; }
+  .bs-billing-review,
+  .bs-checkout-totals {
+    margin-bottom: 12px;
+    padding: 11px;
+    border-radius: 8px;
+  }
+  .bs-billing-review-grid {
+    gap: 4px;
+    font-size: 11px;
+  }
+  .bs-billing-review-grid > strong {
+    margin-bottom: 5px;
+    padding-left: 18px;
+  }
+  .bs-promo-entry {
+    margin: 12px 0 8px;
+    padding: 11px;
+    border-radius: 9px;
+    box-shadow: none;
+  }
+  .bs-promo-entry-heading { gap: 8px; }
+  .bs-promo-entry-icon {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+    border-radius: 8px;
+  }
+  .bs-promo-entry-heading .bs-promo-entry-kicker {
+    font-size: 8px;
+    letter-spacing: .09em;
+  }
+  .bs-promo-entry-heading strong { font-size: 10.5px; }
+  .bs-promo-entry-copy { margin: 5px 0 7px; font-size: 9.5px; }
+  .bs-promo-entry .bs-promo-row input { font-size: 12px; }
+  .bs-promo-entry .bs-promo-row input,
+  .bs-promo-entry .bs-promo-row .bs-btn {
+    height: 40px;
+    border-radius: 7px;
+  }
+  .bs-promo-entry .bs-promo-row {
+    grid-template-columns: minmax(0, 1fr) 76px;
+    gap: 6px;
+  }
+  .bs-promo-entry .bs-promo-row .bs-btn {
+    width: 76px;
+    min-width: 76px;
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+  .bs-promo-input-icon { top: 50%; }
+  .bs-checkout-primary-action,
+  .bs-checkout-back-action { display: none; }
+  .bs-checkout-mobile-dock { display: flex; }
+  .bs-checkout-mobile-dock .bs-checkout-mobile-back {
+    min-width: 105px;
+    padding-left: 7px;
+    padding-right: 7px;
+    font-size: 9.5px;
+  }
+  .bs-trust-badges {
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .bs-trust-badge { font-size: 10px; }
+  .bs-confirm {
+    padding: 24px 0 80px;
+  }
+  .bs-check-circle {
+    width: 62px;
+    height: 62px;
+    margin-bottom: 16px;
+  }
+  .bs-confirm h1 { font-size: 22px; }
+  .bs-confirm-summary {
+    margin: 16px 0;
+    padding: 14px;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  /* Supporting Bookshop screens use the same wider, lighter rhythm. */
+  .bs-empty-state {
+    padding: 34px 12px;
+  }
+  .bs-empty-icon {
+    width: 50px;
+    height: 50px;
+    margin-bottom: 11px;
+  }
+  .bs-empty-icon svg { width: 23px; height: 23px; }
+  .bs-empty-state h2 { font-size: 15px; }
+  .bs-empty-state p { margin-bottom: 14px; font-size: 11px; }
+  .bs-loading-state {
+    min-height: 128px !important;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 18px 10px;
+  }
+  .bs-info-hero { padding: 30px 0 26px; }
+  .bs-info-hero h1 { margin-top: 8px; font-size: 23px; }
+  .bs-info-layout {
+    gap: 24px;
+    padding: 28px 0 44px;
+  }
+  .bs-info-section { margin-bottom: 26px; }
+  .bs-info-section h2 { margin-bottom: 8px; font-size: 18px; }
+  .bs-info-section p { margin-bottom: 10px; font-size: 13px; line-height: 1.6; }
+  .bs-contact-layout {
+    gap: 14px;
+    padding: 14px 0 44px;
+  }
+  .bs-contact-info-card { padding: 18px 16px; }
+  .bs-contact-info-card .bs-h3 { font-size: 17px; }
+  .bs-contact-row { gap: 9px; padding: 11px 0; font-size: 12px; }
+  .bs-track-search {
+    padding: 14px 0;
+  }
+  .bs-track-input-row {
+    gap: 7px;
+    margin-top: 12px;
+  }
+  .bs-track-input-row input {
+    height: 42px;
+    padding: 0 11px;
+    font-size: 13px;
+  }
+  .bs-auth-form-wrap {
+    padding: 24px 12px 80px;
+  }
+  .bs-auth-form h2 { font-size: 21px; }
+  .bs-sub { margin-bottom: 18px; font-size: 12.5px; }
+  .bs-account-ref-shell {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .bs-account-ref-page { padding-top: 8px; }
+  .bs-account-ref-hero {
+    padding: 14px;
+    border-radius: 9px;
+  }
+  .bs-account-ref-avatar {
+    width: 44px;
+    height: 44px;
+  }
+  .bs-account-ref-identity h1 { font-size: 18px; }
+  .bs-account-ref-meta { gap: 5px; font-size: 10.5px; }
+  .bs-account-ref-hero > button {
+    min-height: 40px;
+    font-size: 11px;
+  }
+  .bs-account-ref-columns {
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .bs-account-ref-left,
+  .bs-account-ref-right { gap: 10px; }
+  .bs-account-ref-panel-title {
+    padding: 12px;
+  }
+  .bs-account-ref-panel h2 { font-size: 15px; }
+  .bs-account-ref-profile,
+  .bs-account-ref-security {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .bs-account-ref-profile-row,
+  .bs-account-ref-contact .verified-contact-main {
+    padding: 8px 0;
+  }
+  .bs-account-orders-hero {
+    min-height: 0;
+    padding: 14px;
+    gap: 12px;
+    border-radius: 9px;
+  }
+  .bs-account-orders-icon {
+    width: 44px;
+    height: 44px;
+  }
+  .bs-account-orders-hero h1 { font-size: 20px; }
+  .bs-account-orders-hero p { font-size: 11px; }
+  .bs-account-orders-panel { margin-top: 10px; }
+  .bs-account-orders-panel-head { padding: 13px; }
+
+  /* Modal sheets: compact type with persistent, touch-safe close controls. */
+  .bs-modal-scrim {
+    align-items: center;
+    padding: 8px;
+  }
+  .bs-tab-panel.active:has(.bs-modal-scrim),
+  .bs-tab-panel.active:has(.bs-request-backdrop) {
+    z-index: 12000;
+  }
+  .bs-modal-box {
+    max-height: calc(100dvh - 16px);
+    border-radius: 14px;
+  }
+  .bs-modal-head {
+    gap: 10px;
+    padding: 12px 12px 10px;
+  }
+  .bs-modal-close {
+    width: 40px;
+    height: 40px;
+    margin-top: 0;
+  }
+  .bs-modal-close svg {
+    width: 15px;
+    height: 15px;
+  }
+  .bs-modal-body {
+    padding: 12px;
+  }
+  .bs-modal-foot {
+    gap: 7px;
+    padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+  }
+  .bs-modal-head h2,
+  .bs-modal-head h3,
+  .bs-auth-choice-modal .bs-modal-head h2,
+  .bs-account-security-modal .bs-modal-head h2,
+  .bs-account-contact-modal .bs-modal-head h2,
+  .bs-account-detail-edit-modal .bs-modal-head h2 {
+    margin-top: 2px;
+    font-size: 15.5px;
+    line-height: 1.2;
+  }
+  .bs-modal-head .bs-eyebrow,
+  .bs-modal-head .bs-account-ref-modal-kicker {
+    font-size: 8.5px;
+    letter-spacing: .1em;
+  }
+  .bs-modal-body :is(p, li, dt, dd),
+  .bs-cart-remove-modal .bs-modal-body p,
+  .bs-account-security-intro,
+  .bs-account-two-factor-state p {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .bs-modal-body :is(label, .bs-field label, .bs-field > span) {
+    font-size: 10px;
+  }
+  .bs-modal-body :is(input, select, textarea) {
+    font-size: 12px;
+  }
+  .bs-modal-body :is(input, select) {
+    min-height: 40px;
+  }
+  .bs-modal-body textarea {
+    min-height: 68px;
+  }
+  .bs-modal-foot .bs-btn {
+    min-height: 40px;
+    padding: 8px 11px;
+    font-size: 10.5px;
+  }
+  .bs-order-meta-grid {
+    gap: 10px 12px;
+    margin-bottom: 13px;
+  }
+  .bs-omg-label,
+  .bs-order-items-head {
+    font-size: 8.5px;
+  }
+  .bs-omg-val,
+  .bs-order-delivery-addr,
+  .bs-order-item-row {
+    font-size: 10.5px;
+  }
+  .bs-omg-total {
+    font-size: 13px;
+  }
+  .bs-account-two-factor-state {
+    gap: 9px;
+    margin-bottom: 12px;
+    padding: 10px;
+  }
+  .bs-account-two-factor-state > span {
+    width: 30px;
+    height: 30px;
+  }
+  .bs-account-two-factor-state strong {
+    font-size: 11.5px;
+  }
+  .bs-request-backdrop {
+    place-items: center;
+    padding: 8px;
+  }
+  .bs-request-modal {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    border-radius: 14px;
+  }
+  .bs-request-head {
+    gap: 10px;
+    padding: 12px 12px 10px;
+  }
+  .bs-request-head h2 {
+    margin-top: 2px;
+    font-size: 15.5px;
+  }
+  .bs-request-head .bs-eyebrow {
+    font-size: 8.5px;
+  }
+  .bs-request-close {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+  .bs-request-body {
+    padding: 12px;
+  }
+  .bs-request-foot {
+    padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+  }
+  .bs-request-intro {
+    margin-bottom: 12px;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .bs-request-grid {
+    gap: 10px;
+    margin-bottom: 11px;
+  }
+  .bs-request-grid label {
+    gap: 4px;
+    font-size: 10px;
+  }
+  .bs-request-grid input,
+  .bs-request-grid textarea {
+    padding: 10px 11px;
+    font-size: 12px;
+  }
+  .bs-request-foot .bs-btn {
+    min-height: 40px;
+    font-size: 10.5px;
+  }
+}
+
+@media (max-width: 380px) {
+  .bs-pdp-actions {
+    grid-template-columns: 82px minmax(0, 1fr) 38px minmax(0, 1fr);
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+  .bs-pdp-actions .bs-btn { font-size: 10px; }
+  .bs-cart-item {
+    grid-template-columns: 22px 62px minmax(0, 1fr);
+    gap: 7px;
+  }
+  .bs-cart-item-cover { width: 62px; }
+  .bs-cart-subtotal { font-size: 11.5px; }
 }

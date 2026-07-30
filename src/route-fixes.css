@@ -6833,3 +6833,244 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
     padding-top: 18px;
   }
 }
+
+/* Final Bookshop mobile density pass.
+   Keep one slim outer gutter; cards should not inherit both page and container
+   padding, and helper/loading text should remain subordinate to field content. */
+@media (max-width: 768px) {
+  .bs .bs-page {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .bs .bs-container,
+  .bs .bs-container-narrow {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .bs .bs-page .bs-container,
+  .bs .bs-page .bs-container-narrow,
+  .bs .bs-page > .bs-container:not(.bs-section),
+  .bs .bs-page > .bs-container-narrow {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .bs .bs-hero,
+  .bs .bs-category-marquee,
+  .bs .bs-gold-rule,
+  .bs .bs-info-hero,
+  .bs .bs-account-hero {
+    width: calc(100% + 16px) !important;
+    margin-left: -8px !important;
+    margin-right: -8px !important;
+  }
+
+  .bs .bs-info-hero > .bs-container,
+  .bs .bs-account-hero > .bs-container {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .bs .bs-checkout-layout,
+  .bs .bs-checkout-layout > div,
+  .bs .bs-form-card,
+  .bs .bs-cart-page,
+  .bs .bs-cart-items-card,
+  .bs .bs-cart-summary-card {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .bs .bs-form-card {
+    padding: 12px 11px !important;
+  }
+
+  .bs .bs-h2,
+  .bs .bs-section-head-row h2 {
+    font-size: 1.1rem !important;
+    line-height: 1.18 !important;
+  }
+
+  .bs .bs-form-card .bs-h3,
+  .bs .bs-checkout-layout .bs-h3 {
+    font-size: 1rem !important;
+  }
+
+  .bs .bs-pdp-title.bs-h2 {
+    font-size: 1rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .bs .bs-pdp-desc,
+  .bs .bs-acc-body {
+    font-size: .72rem !important;
+  }
+
+  .bs .bs-detail-list {
+    font-size: .7rem !important;
+  }
+
+  .bs .bs-empty-state .bs-h2 {
+    font-size: .92rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .bs .bs-empty-state p {
+    font-size: .7rem !important;
+    line-height: 1.4 !important;
+  }
+
+  .bs .bs-cart-count-copy {
+    flex-wrap: nowrap !important;
+    gap: 3px 6px !important;
+    font-size: .6rem !important;
+    line-height: 1.35 !important;
+    white-space: nowrap !important;
+  }
+
+  .bs .bs-field-control :is(input, textarea),
+  .bs .bs-zone-picker input {
+    padding-left: 34px !important;
+  }
+
+  .bs .bs-field-control select {
+    padding-left: 11px !important;
+  }
+
+  .bs .bs-field-help {
+    font-size: .64rem !important;
+    line-height: 1.35 !important;
+  }
+
+  .bs .bs-promo-entry .bs-promo-entry-kicker {
+    font-size: .52rem !important;
+    letter-spacing: .08em !important;
+  }
+
+  .bs .bs-promo-entry .bs-promo-entry-heading strong {
+    font-size: .68rem !important;
+  }
+
+  .bs .bs-promo-entry .bs-promo-entry-copy {
+    font-size: .64rem !important;
+    line-height: 1.4 !important;
+  }
+
+  .bs .bs-promo-entry .bs-promo-row input {
+    font-size: .74rem !important;
+  }
+
+  .bs .bs-promo-entry .bs-promo-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 76px !important;
+    gap: 6px !important;
+  }
+
+  .bs .bs-promo-entry .bs-promo-row .bs-btn {
+    width: 76px !important;
+    min-width: 76px !important;
+    font-size: .62rem !important;
+  }
+
+  .bs .bs-loading-state h2 {
+    font-size: .82rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .bs .bs-loading-state p {
+    font-size: .66rem !important;
+    line-height: 1.35 !important;
+  }
+
+  .bs .bs-cart-page-head {
+    align-items: center !important;
+  }
+
+  .bs .bs-cart-head-actions {
+    align-self: center !important;
+  }
+
+  .bs .bs-cart-head-actions button:is(.bs-cart-invoice-btn, .bs-cart-clear-btn) {
+    min-height: 29px !important;
+    padding: 0 7px !important;
+    border-radius: 7px !important;
+    font-size: .54rem !important;
+    gap: 4px !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+  }
+
+  .bs .bs-cart-item-right {
+    display: grid !important;
+    grid-template-columns: auto minmax(52px, 1fr) 26px !important;
+    gap: 9px !important;
+  }
+
+  .bs .bs-cart-subtotal {
+    margin-left: 0 !important;
+    justify-self: center !important;
+    text-align: center !important;
+  }
+
+  .bs .bs-modal-head h2,
+  .bs .bs-modal-head h3,
+  .bs .bs-auth-choice-modal .bs-modal-head h2,
+  .bs .bs-account-security-modal .bs-modal-head h2,
+  .bs .bs-account-contact-modal .bs-modal-head h2,
+  .bs .bs-account-detail-edit-modal .bs-modal-head h2,
+  .bs .bs-request-head h2 {
+    font-size: .97rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .bs .bs-tab-panel.active:has(.bs-modal-scrim),
+  .bs .bs-tab-panel.active:has(.bs-request-backdrop) {
+    z-index: 12000 !important;
+  }
+
+  .bs .bs-modal-scrim {
+    align-items: center !important;
+    padding: 8px !important;
+  }
+
+  .bs .bs-modal-box {
+    max-height: calc(100dvh - 16px) !important;
+    border-radius: 14px !important;
+  }
+
+  .bs .bs-request-backdrop {
+    place-items: center !important;
+    padding: 8px !important;
+  }
+
+  .bs .bs-request-modal {
+    max-height: calc(100dvh - 16px) !important;
+    border-radius: 14px !important;
+  }
+
+  .bs .bs-modal-body :is(p, li, dt, dd),
+  .bs .bs-cart-remove-modal .bs-modal-body p,
+  .bs .bs-account-security-intro,
+  .bs .bs-account-two-factor-state p,
+  .bs .bs-request-intro {
+    font-size: .69rem !important;
+    line-height: 1.45 !important;
+  }
+
+  .bs .bs-modal-body :is(label, .bs-field label, .bs-field > span),
+  .bs .bs-request-grid label {
+    font-size: .63rem !important;
+  }
+
+  .bs .bs-modal-body :is(input, select, textarea),
+  .bs .bs-request-grid :is(input, textarea) {
+    font-size: .75rem !important;
+  }
+
+  .bs .bs-modal-foot .bs-btn,
+  .bs .bs-request-foot .bs-btn {
+    font-size: .66rem !important;
+  }
+}
