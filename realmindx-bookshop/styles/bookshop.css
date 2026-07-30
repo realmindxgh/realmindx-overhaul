@@ -1599,7 +1599,7 @@
 .bs-cart-product-link:focus-visible { outline: 3px solid rgba(25,118,201,.28); outline-offset: 3px; }
 .bs-cart-item-title.bs-cart-product-link:hover { color: #1976c9; }
 .bs-cart-item-mid { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding-right: 0; }
-.bs-cart-item-title { font-family:'Montserrat',sans-serif; font-weight: 750; font-size: 17px; color: var(--bs-navy); line-height: 1.35; max-width: 44ch; }
+.bs a.bs-cart-item-title { font-family:'Montserrat',sans-serif; font-weight: 750; font-size: 17px; color: var(--bs-navy); line-height: 1.35; max-width: 44ch; }
 .bs-cart-item .bs-pcard-desc { display: none; }
 .bs-cart-item-right { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 5px; }
 .bs-cart-meta-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
