@@ -146,23 +146,27 @@ const InternalLoginPage = ({ role = 'admin' }) => {
           </div>
 
           <form onSubmit={handleSubmit} noValidate>
-            <div className="form-group">
+            <div className="form-group auth-icon-form-group">
               <label className="form-label">Email Address</label>
-              <input
-                className="form-input"
-                type="email"
-                placeholder={isStaff ? 'staff@realmindxgh.com' : 'admin@realmindxgh.com'}
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                autoComplete="email"
-              />
+              <div className="auth-field-control">
+                <span className="auth-field-icon" aria-hidden="true"><Icon name="mail" size={14} stroke={1.9} /></span>
+                <input
+                  className="form-input"
+                  type="email"
+                  placeholder={isStaff ? 'staff@realmindxgh.com' : 'admin@realmindxgh.com'}
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  autoComplete="email"
+                />
+              </div>
             </div>
 
-            <div className="form-group has-forgot">
+            <div className="form-group has-forgot auth-icon-form-group">
               <label className="form-label">
                 Password
               </label>
-              <div className="password-field">
+              <div className="password-field auth-field-control">
+                <span className="auth-field-icon" aria-hidden="true"><Icon name="lock" size={14} stroke={1.9} /></span>
                 <input
                   className="form-input"
                   type={showPass ? 'text' : 'password'}

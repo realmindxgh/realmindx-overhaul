@@ -1073,6 +1073,7 @@ const OrderDetailModal = ({ order, onClose }) => {
               </div>
             ))}
           </div>
+          <p className="bs-invoice-bulk-note bs-order-modal-bulk-note">Buy 10+ copies of the same text book and enjoy 10% off.</p>
 
           {(order.payment_reference || order.notes) && (
             <div className="bs-order-notes">

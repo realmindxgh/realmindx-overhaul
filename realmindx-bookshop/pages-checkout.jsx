@@ -1215,6 +1215,7 @@ const InvoiceDocumentPreview = ({ invoice, documentLabel, documentId }) => {
         <div><span>Delivery</span><strong>{Number(invoice.delivery_fee || 0) > 0 ? cedis(invoice.delivery_fee) : 'Calculated at checkout'}</strong></div>
         <div className="grand"><span>{isReceipt ? 'Total' : 'Total before delivery'}</span><strong>{cedis(invoice.total_amount || 0)}</strong></div>
       </div>
+      <p className="bs-invoice-bulk-note">Buy 10+ copies of the same text book and enjoy 10% off.</p>
     </div>
   );
 };

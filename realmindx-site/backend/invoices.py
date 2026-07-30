@@ -11,6 +11,7 @@ from .models import CartInvoice, Order
 from .order_status import normalize_order_status
 
 MONEY_QUANT = Decimal("0.01")
+BULK_DISCOUNT_NOTICE = "Buy 10+ copies of the same text book and enjoy 10% off."
 
 
 def money(value):
@@ -489,6 +490,20 @@ def _build_bookshop_pdf(payload):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
 
+    bulk_notice = Table(
+        [[Paragraph(
+            f"<b>{_safe_text(BULK_DISCOUNT_NOTICE)}</b>",
+            ParagraphStyle("RMXBulkNotice", parent=normal_style, textColor=navy, fontSize=8.7, leading=12),
+        )]],
+        colWidths=[159 * mm],
+        hAlign="CENTER",
+    )
+    bulk_notice.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FFF8D9")),
+        ("BOX", (0, 0), (-1, -1), 0.8, gold),
+        ("PADDING", (0, 0), (-1, -1), 8),
+    ]))
+
     story = [
         header,
         Spacer(1, 7 * mm),
@@ -498,6 +513,8 @@ def _build_bookshop_pdf(payload):
         Spacer(1, 7 * mm),
         summary,
         Spacer(1, 7 * mm),
+        bulk_notice,
+        Spacer(1, 5 * mm),
         verify_box,
         Spacer(1, 6 * mm),
         footer,

@@ -366,7 +366,13 @@ html {
   margin: auto;
 }
 
-.delivery-detail-close { position: absolute; top: 12px; right: 12px; z-index: 2; }
+.delivery-detail-close {
+  position: sticky;
+  top: 12px;
+  right: auto;
+  margin: 12px 12px -52px auto;
+  z-index: 4;
+}
 .delivery-detail-modal .delivery-card-head { padding-right: 58px; }
 .delivery-detail-modal.tone-attention,
 .delivery-compact-card.tone-attention { border-left-color: #dc2626; background: #fff8f8; }
@@ -523,9 +529,11 @@ html {
 }
 
 .focus-flyer-close {
-  position: absolute;
+  position: sticky;
   top: 14px;
-  right: 14px;
+  right: auto;
+  float: none;
+  margin: 14px 14px -56px auto;
   z-index: 2;
   width: 42px;
   height: 42px;
@@ -3798,11 +3806,11 @@ html {
    reserving enough inset space for typed text. Existing Bookshop field wrappers
    already render component icons, so they are deliberately excluded below. */
 :is(.form-group > .form-input:not(select), .form-group > .form-textarea, .password-field > .form-input, .verified-contact-form input:not([type="radio"]), .bs form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([data-form-icon="none"]), .bs form textarea) {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E") !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E") !important;
   background-repeat: no-repeat !important;
-  background-position: 14px center !important;
-  background-size: 14px 14px !important;
-  padding-left: 38px !important;
+  background-position: 13px center !important;
+  background-size: 12px 12px !important;
+  padding-left: 34px !important;
 }
 
 
@@ -6445,4 +6453,383 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 
 @media (max-width: 520px) {
   .delivery-grid { grid-template-columns: 1fr; }
+}
+
+/* Modal and form consistency pass: controls stay reachable while only modal
+   content scrolls, and mobile fields no longer repeat decorative pen icons. */
+.auth-panel-form .auth-icon-form-group::before {
+  display: none !important;
+}
+
+.auth-field-control {
+  position: relative;
+}
+
+.auth-field-icon {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  color: #5f718a;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.auth-field-control > .form-input,
+.auth-field-control.password-field > .form-input {
+  padding-left: 40px !important;
+  background-image: none !important;
+}
+
+.teacher-detail-backdrop {
+  z-index: 3000;
+  align-items: center !important;
+  padding: 24px !important;
+  overflow: hidden !important;
+}
+
+.teacher-detail-modal {
+  width: min(900px, 100%);
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, .28);
+}
+
+.teacher-detail-modal-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  background: var(--navy);
+  box-shadow: 0 8px 24px rgba(1, 17, 38, .16);
+  z-index: 4;
+}
+
+.teacher-detail-identity,
+.teacher-detail-header-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.teacher-detail-avatar {
+  width: 68px;
+  height: 68px;
+  flex: 0 0 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--yellow);
+  color: var(--navy);
+  font-size: 21px;
+  font-weight: 900;
+}
+
+.teacher-detail-identity-copy {
+  min-width: 0;
+}
+
+.teacher-detail-identity-copy > div {
+  overflow: hidden;
+  color: #fff;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-detail-identity-copy > span {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, .76);
+  font-size: .78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teacher-detail-close {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .62);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  cursor: pointer;
+}
+
+.teacher-detail-close:hover,
+.teacher-detail-close:focus-visible {
+  background: #fff;
+  color: var(--navy);
+}
+
+.teacher-detail-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px 28px;
+}
+
+.teacher-detail-modal-footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: #fff;
+  box-shadow: 0 -12px 26px rgba(1, 17, 38, .08);
+  z-index: 4;
+}
+
+.teacher-detail-footer-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.admin-order-bulk-notice {
+  margin: 16px 0 0 !important;
+  padding: 11px 13px;
+  border: 1px solid #e5bd34;
+  border-radius: 8px;
+  background: #fff8d9;
+  color: #143670;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.delivery-password-modal {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.delivery-password-modal-head {
+  position: sticky;
+  top: -26px;
+  z-index: 4;
+  margin: -26px -26px 20px;
+  padding: 20px 26px 16px;
+  border-bottom: 1px solid rgba(20, 54, 112, .12);
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(9, 20, 43, .06);
+}
+
+.delivery-rider-edit-modal .delivery-password-modal-head .delivery-icon-button {
+  position: static;
+}
+
+.delivery-terms-footer {
+  position: sticky;
+  bottom: -26px;
+  z-index: 4;
+  margin: 18px -26px -26px;
+  padding: 16px 26px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(20, 54, 112, .12);
+  background: #fff;
+  box-shadow: 0 -10px 24px rgba(9, 20, 43, .07);
+}
+
+@media (max-width: 760px) {
+  :is(
+    .form-group > .form-input:not(select),
+    .form-group > .form-textarea,
+    .password-field > .form-input,
+    .verified-contact-form input:not([type="radio"]),
+    .bs form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+    .bs form textarea
+  ) {
+    padding-left: 14px !important;
+    background-image: none !important;
+  }
+
+  .auth-field-control > .form-input,
+  .auth-field-control.password-field > .form-input {
+    padding-left: 40px !important;
+  }
+
+  :root:root .teacher-detail-modal.teacher-detail-modal .form-group > :is(.form-input:not(select), .form-textarea) {
+    padding-left: 14px !important;
+    background-image: none !important;
+  }
+
+  .bs .bs-field-control :is(input, select, textarea),
+  .bs .bs-zone-picker input {
+    padding-left: 42px !important;
+  }
+
+  .admin-modal-backdrop {
+    align-items: flex-end;
+    padding: 8px 8px 0;
+  }
+
+  .admin-modal-panel {
+    width: 100%;
+    max-height: calc(100dvh - 8px);
+    border-radius: 16px 16px 0 0;
+    padding: 0 18px 18px;
+  }
+
+  .admin-modal-close {
+    position: sticky !important;
+    top: 8px;
+    right: auto;
+    float: none;
+    margin: 8px 0 -38px auto;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    z-index: 20;
+    box-shadow: 0 5px 16px rgba(1, 17, 38, .14);
+  }
+
+  .admin-modal-actions-sticky {
+    bottom: -18px;
+    margin: 14px -18px -18px !important;
+    padding: 13px 18px calc(13px + env(safe-area-inset-bottom));
+  }
+
+  .teacher-detail-backdrop {
+    align-items: flex-end !important;
+    padding: 8px 8px 0 !important;
+  }
+
+  .teacher-detail-modal {
+    width: 100%;
+    max-height: calc(100dvh - 8px);
+    border-radius: 16px 16px 0 0;
+  }
+
+  .teacher-detail-modal-header {
+    min-height: 76px;
+    padding: 12px 12px 12px 14px;
+  }
+
+  .teacher-detail-identity {
+    gap: 10px;
+  }
+
+  .teacher-detail-modal-header img,
+  .teacher-detail-avatar {
+    width: 52px !important;
+    height: 52px !important;
+    flex-basis: 52px;
+    border-width: 2px !important;
+    font-size: 17px;
+  }
+
+  .teacher-detail-identity-copy > div {
+    font-size: .9rem;
+  }
+
+  .teacher-detail-identity-copy > span {
+    max-width: 46vw;
+    font-size: .7rem;
+  }
+
+  .teacher-detail-header-actions {
+    gap: 6px;
+  }
+
+  .teacher-detail-header-actions .badge {
+    padding: 5px 7px;
+    font-size: .6rem !important;
+  }
+
+  .teacher-detail-close {
+    width: 42px;
+    height: 42px;
+  }
+
+  .teacher-detail-modal-body {
+    padding: 17px 16px 24px;
+  }
+
+  .teacher-detail-grid,
+  .teacher-detail-grid.is-compact,
+  .teacher-detail-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .teacher-detail-field > div {
+    font-size: .64rem;
+  }
+
+  .teacher-detail-field > span,
+  .teacher-detail-modal-body :is(p, input, select, textarea) {
+    font-size: .8rem;
+  }
+
+  .teacher-detail-modal-footer {
+    justify-content: center;
+    gap: 12px;
+    padding: 11px 16px calc(11px + env(safe-area-inset-bottom));
+  }
+
+  .teacher-detail-footer-action {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 50% !important;
+    color: #fff !important;
+    box-shadow: 0 6px 16px rgba(1, 17, 38, .16);
+  }
+
+  .teacher-detail-footer-action > span {
+    display: none;
+  }
+
+  .teacher-detail-footer-action.is-delete {
+    background: #c92a2a !important;
+  }
+
+  .teacher-detail-footer-action.is-disable {
+    background: #b77900 !important;
+  }
+
+  .teacher-detail-footer-action.is-enable {
+    background: #16833a !important;
+  }
+
+  .teacher-detail-footer-action.is-close {
+    background: #143670 !important;
+  }
+
+  .delivery-password-modal-backdrop {
+    align-items: end;
+    padding: 8px 8px 0;
+  }
+
+  .delivery-password-modal {
+    width: 100%;
+    max-height: calc(100dvh - 8px);
+    border-radius: 16px 16px 0 0;
+  }
+
+  .delivery-password-modal-head {
+    flex-direction: row;
+    top: -26px;
+    padding-top: 18px;
+  }
 }

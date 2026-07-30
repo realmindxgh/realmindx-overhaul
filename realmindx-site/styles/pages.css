@@ -1716,7 +1716,9 @@ input, textarea, select { font-family: inherit; }
 .auth-choice-modal-card {
   width: min(720px, 100%);
   max-height: min(92vh, 760px);
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: var(--white);
   border-radius: 24px;
   box-shadow: 0 28px 80px rgba(8, 25, 58, 0.3);
@@ -1732,8 +1734,17 @@ input, textarea, select { font-family: inherit; }
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
+  flex: 0 0 auto;
   background: linear-gradient(135deg, #ffffff, #f5f8fc);
   border-bottom: 1px solid var(--gray-100);
+  box-shadow: 0 8px 22px rgba(8, 25, 58, 0.06);
+  z-index: 2;
+}
+
+.auth-choice-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .auth-choice-modal-kicker,
@@ -2301,20 +2312,30 @@ input, textarea, select { font-family: inherit; }
   max-width: 700px;
   width: 100%;
   max-height: 90vh;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--shadow-lg);
 }
 
 .job-modal-header {
+  flex: 0 0 auto;
   background: var(--navy);
   padding: 32px 40px;
   border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: 0 8px 22px rgba(1, 17, 38, 0.12);
+  z-index: 2;
 }
 
 .job-modal-header h2 { color: var(--white); font-size: 1.4rem; margin-bottom: 6px; }
 .job-modal-header p { color: var(--yellow); font-size: 0.88rem; font-weight: 600; }
 
-.job-modal-body { padding: 36px 40px; }
+.job-modal-body {
+  min-height: 0;
+  padding: 36px 40px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 
 .job-modal-meta {
   display: flex;
@@ -2355,6 +2376,7 @@ input, textarea, select { font-family: inherit; }
 }
 
 .job-modal-footer {
+  flex: 0 0 auto;
   padding: 24px 40px;
   border-top: 1px solid var(--gray-100);
   display: flex;
@@ -2362,11 +2384,15 @@ input, textarea, select { font-family: inherit; }
   justify-content: flex-end;
   /* never push a CTA off-screen when the row runs out of width */
   flex-wrap: wrap;
+  background: var(--white);
+  box-shadow: 0 -10px 24px rgba(1, 17, 38, 0.07);
 }
 
 /* Apply-flow states (sign in / verify / success / error) inside the job modal */
 .job-apply-state {
+  min-height: 0;
   padding: 28px 40px 36px;
+  overflow-y: auto;
   text-align: center;
 }
 

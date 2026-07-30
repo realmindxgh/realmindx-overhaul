@@ -987,6 +987,9 @@ def _send_cart_invoice_email(invoice, recipient, *, reminder=False):
         <p style="margin:0;color:#1a2a40;">Total before delivery: <strong>GH&#8373;{float(invoice.total_amount or 0):,.2f}</strong></p>
       </div>
       {bookshop_order_summary_table(invoice)}
+      <p style="margin:18px 0 0;padding:12px 14px;border:1px solid #f0ce55;border-radius:10px;background:#fff8d9;color:#143670;font-weight:900;">
+        Buy 10+ copies of the same text book and enjoy 10% off.
+      </p>
       <p style="margin:18px 0 0;">
         You can <a href="{escape(lookup_url, quote=True)}" style="color:#143670;font-weight:800;">verify and view this invoice online</a>,
         <a href="{escape(cart_url, quote=True)}" style="color:#143670;font-weight:800;">add the items back to cart</a>,

@@ -389,6 +389,14 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
             {book.short || book.full || `${book.desc}. A trusted, classroom-ready edition used by schools across Ghana.`}
           </p>
 
+          <div className="bs-pdp-bulk-note">
+            <span className="bs-pdp-bulk-note-icon" aria-hidden="true"><Icon name="gift" size={18} /></span>
+            <div>
+              <strong>Bulk Discount Available</strong>
+              <p>Purchase at least 10 copies of this book to receive a 10% discount.</p>
+            </div>
+          </div>
+
           <div className="bs-pdp-actions">
             <div className="bs-pdp-cart-row">
               <QtyStepper qty={qty} setQty={setQty} />
@@ -567,6 +575,7 @@ const AuthReturnActions = ({ navigate, route = 'cart' }) => (
 
 const CartPage = ({ navigate }) => {
   const {
+    items,
     detailed,
     selectedDetailed,
     selectedSubtotal,
@@ -593,6 +602,7 @@ const CartPage = ({ navigate }) => {
   // Delivery is NOT estimated on the cart page — location has not been chosen yet.
   // The exact fee is calculated once the user selects a delivery zone at checkout.
   const cartTotal = selectedSubtotal - (selectedBulkSaving || 0);
+  const cartHydrating = cartLoading && detailed.length === 0;
 
   // Suggested products: same categories as cart items, not already in cart, in stock
   const cartIds = new Set(detailed.map(b => b.id));
@@ -652,15 +662,6 @@ const CartPage = ({ navigate }) => {
       setGeneratingInvoice(false);
     }
   };
-
-  if (cartLoading) return (
-    <div className="bs-container bs-fade-page">
-      <LoadingState
-        title="Loading your cart"
-        body="Restoring your saved items from the latest catalog."
-      />
-    </div>
-  );
 
   if (cartError) return (
     <div className="bs-container bs-fade-page">
@@ -728,8 +729,24 @@ const CartPage = ({ navigate }) => {
       </div>
 
       <div className="bs-cart-layout">
-        <div className="bs-cart-items-card">
-          {detailed.map((b, i) => (
+        <div className={`bs-cart-items-card${cartHydrating ? ' is-hydrating' : ''}`} aria-busy={cartHydrating}>
+          {cartHydrating && (
+            <>
+              <span className="bs-sr-only" role="status">Restoring your saved cart items.</span>
+              {items.map((item) => (
+                <div className="bs-cart-item-skeleton" key={item.id} aria-hidden="true">
+                  <span className="bs-skeleton bs-cart-skeleton-select" />
+                  <span className="bs-skeleton bs-cart-skeleton-cover" />
+                  <span className="bs-cart-skeleton-copy">
+                    <span className="bs-skeleton" />
+                    <span className="bs-skeleton" />
+                    <span className="bs-skeleton" />
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+          {!cartHydrating && detailed.map((b, i) => (
             <div className={`bs-cart-item${b.selected ? '' : ' is-unselected'}`} key={b.id}>
               <button
                 type="button"
@@ -740,7 +757,17 @@ const CartPage = ({ navigate }) => {
               >
                 {b.selected && b.stock && <Icon name="check" size={14} />}
               </button>
-              <div className="bs-cart-item-cover"><CoverPlaceholder title={b.title} idx={i} small image={b.imageThumb || b.image} width={96} height={128} /></div>
+              <a
+                className="bs-cart-item-cover bs-cart-product-link"
+                href={hrefForProduct(b)}
+                aria-label={`View ${b.title}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate('product', { id: b.id, slug: productPathSegment(b) });
+                }}
+              >
+                <CoverPlaceholder title={b.title} idx={i} small image={b.imageThumb || b.image} width={96} height={128} />
+              </a>
               <div className="bs-cart-item-mid">
                 <div className="bs-cart-meta-row">
                   <span className="bs-cat-badge">{b.catName}</span>
@@ -759,7 +786,16 @@ const CartPage = ({ navigate }) => {
                     <Icon name="heart" size={16} />
                   </button>
                 </div>
-                <div className="bs-cart-item-title">{b.title}</div>
+                <a
+                  className="bs-cart-item-title bs-cart-product-link"
+                  href={hrefForProduct(b)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigate('product', { id: b.id, slug: productPathSegment(b) });
+                  }}
+                >
+                  {b.title}
+                </a>
                 {!b.stock && <span className="bs-stock-warning">Out of stock</span>}
                 <div className="bs-pcard-desc" style={{ whiteSpace:'normal' }}>{b.desc}</div>
                 <div className="bs-cart-item-right">
@@ -797,7 +833,6 @@ const CartPage = ({ navigate }) => {
               <button className="bs-btn bs-btn-navy bs-btn-lg bs-btn-flex" onClick={() => navigate('shop')}><Icon name="chevL" size={15} /> Continue Shopping</button>
               {selectedCount === 0 && <button className="bs-btn bs-btn-outline-navy bs-btn-flex" onClick={selectAll}>Select all items</button>}
             </div>
-            <div className="bs-cart-security-note"><span><Icon name="shield" size={20} /></span><div><strong>Secure checkout</strong><small>Your data is protected</small></div></div>
           </div>
         </aside>
       </div>

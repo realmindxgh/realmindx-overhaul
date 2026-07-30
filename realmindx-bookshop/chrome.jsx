@@ -211,6 +211,7 @@ const CartProviderInner = ({ children, navigate }) => {
   const [error, setError] = React.useState('');
   const itemsRef = React.useRef(items);
   const lastFetchIdsRef = React.useRef('');
+  const cartFetchGenerationRef = React.useRef(0);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -220,25 +221,50 @@ const CartProviderInner = ({ children, navigate }) => {
 
   // Fetch product details for cart items via batch API
   React.useEffect(() => {
-    const ids = items.map(i => i.id).filter(Boolean);
-    if (ids.length === 0) { setProductMap({}); setCartLoading(false); return; }
-    const key = ids.sort().join(',');
+    const ids = [...new Set(items.map(i => String(i.id || '')).filter(Boolean))];
+    if (ids.length === 0) {
+      lastFetchIdsRef.current = '';
+      cartFetchGenerationRef.current += 1;
+      setProductMap(current => Object.keys(current).length ? {} : current);
+      setCartLoading(false);
+      setError('');
+      return;
+    }
+    const key = [...ids].sort().join(',');
     if (key === lastFetchIdsRef.current) return;
     lastFetchIdsRef.current = key;
-    setProductMap({});
-    setCartLoading(true);
+    const requestGeneration = ++cartFetchGenerationRef.current;
+    const alreadyResolved = ids.every(id => Boolean(productMap[id]));
+    if (alreadyResolved) {
+      setProductMap(current => {
+        const next = {};
+        ids.forEach(id => { if (current[id]) next[id] = current[id]; });
+        const currentKeys = Object.keys(current);
+        return currentKeys.length === Object.keys(next).length && currentKeys.every(id => current[id] === next[id])
+          ? current
+          : next;
+      });
+      setCartLoading(false);
+      setError('');
+      return;
+    }
+    setCartLoading(Object.keys(productMap).length === 0);
     setError('');
     if (isApiMode()) {
       api.fetchProductBatch(ids).then((data) => {
+        if (requestGeneration !== cartFetchGenerationRef.current) return;
         const map = {};
         (data.items || []).forEach((p) => { map[String(p.id)] = fromApiProduct(p); });
         setProductMap(map);
         setCartLoading(false);
       }).catch((err) => {
+        if (requestGeneration !== cartFetchGenerationRef.current) return;
+        lastFetchIdsRef.current = '';
         setError(err.message || 'Could not load product details.');
         setCartLoading(false);
       });
     } else {
+      if (requestGeneration !== cartFetchGenerationRef.current) return;
       if (books && books.length) {
         const map = {};
         books.forEach((b) => { map[String(b.id)] = b; });
@@ -246,7 +272,7 @@ const CartProviderInner = ({ children, navigate }) => {
       }
       setCartLoading(false);
     }
-  }, [items, books]);
+  }, [items, books, productMap]);
 
   React.useEffect(() => {
     if (items.length === 0) clearCheckoutDraft();

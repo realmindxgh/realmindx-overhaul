@@ -501,7 +501,7 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
           </a>
         </div>
       </div>
-    ) : user.profileStatus === 'incomplete' ? (
+    ) : user.profileStatus === 'incomplete' && user.profileComplete < 100 ? (
       <div className="profile-status-banner status-incomplete">
         <span className="profile-status-icon">&#9888;</span>
         <div className="profile-status-text">

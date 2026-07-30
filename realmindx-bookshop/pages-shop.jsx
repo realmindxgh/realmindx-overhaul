@@ -102,20 +102,27 @@ const BookRequestModal = ({ open, onClose, initialTitle, browseContext }) => {
   return (
     <div className="bs-request-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="bs-request-modal" role="dialog" aria-modal="true" aria-labelledby="book-request-title">
-        <button type="button" className="bs-request-close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
-        {result ? (
-          <div className="bs-request-success" role="status">
-            <span className="bs-request-success-icon"><Icon name="check" size={24} /></span>
-            <span className="bs-eyebrow">Request received</span>
-            <h2 id="book-request-title">We are looking for your book.</h2>
-            <p>We will contact you when it becomes available. Keep this reference for your records.</p>
-            <strong>{result.reference}</strong>
-            <button type="button" className="bs-btn bs-btn-navy" onClick={onClose}>Done</button>
+        <header className="bs-request-head">
+          <div>
+            <span className="bs-eyebrow">{result ? 'Request received' : 'Cannot find a book?'}</span>
+            <h2 id="book-request-title">{result ? 'We are looking for your book.' : 'Request it from RealMindX'}</h2>
           </div>
+          <button type="button" className="bs-request-close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
+        </header>
+        {result ? (
+          <>
+            <div className="bs-request-body bs-request-success" role="status">
+              <span className="bs-request-success-icon"><Icon name="check" size={24} /></span>
+              <p>We will contact you when it becomes available. Keep this reference for your records.</p>
+              <strong>{result.reference}</strong>
+            </div>
+            <footer className="bs-request-foot">
+              <button type="button" className="bs-btn bs-btn-navy bs-btn-block" onClick={onClose}>Done</button>
+            </footer>
+          </>
         ) : (
-          <form onSubmit={submit}>
-            <span className="bs-eyebrow">Cannot find a book?</span>
-            <h2 id="book-request-title">Request it from RealMindX</h2>
+          <form className="bs-request-form" onSubmit={submit}>
+            <div className="bs-request-body">
             <p className="bs-request-intro">Tell us what you need and where to reach you. We will notify you as soon as it is available.</p>
             <div className="bs-request-grid">
               <label className="wide"><span>Book title or search term *</span><input value={form.requested_title} onChange={event => update('requested_title', event.target.value)} required /></label>
@@ -129,7 +136,10 @@ const BookRequestModal = ({ open, onClose, initialTitle, browseContext }) => {
             </div>
             <TurnstileField className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
             {error && <p className="bs-request-error" role="alert">{error}</p>}
-            <button type="submit" className="bs-btn bs-btn-gold bs-btn-block" disabled={busy}>{busy ? 'Sending request...' : 'Send book request'}</button>
+            </div>
+            <footer className="bs-request-foot">
+              <button type="submit" className="bs-btn bs-btn-gold bs-btn-block" disabled={busy}>{busy ? 'Sending request...' : 'Send book request'}</button>
+            </footer>
           </form>
         )}
       </section>
@@ -673,7 +683,7 @@ const HomePage = ({ navigate, onLoadingChange }) => {
   );
 };
 
-const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' }) => {
+const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '', showHeading = true }) => {
   const { taxonomies } = useCatalog();
   const [open, setOpen] = React.useState({
     categories: true,
@@ -739,7 +749,7 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '' })
 
   return (
     <>
-      <h3 className="bs-h3">Filter Products</h3>
+      {showHeading && <h3 className="bs-h3">Filter Products</h3>}
       {FILTER_GROUPS.filter((group) => group.taxonomy !== hiddenTaxonomy).map((group) => {
         const items = taxonomies[group.key] || [];
         if (items.length === 0) return null;
@@ -1646,25 +1656,33 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
       </div>
 
       <div className={`bs-drawer-scrim${drawer ? ' open' : ''}`} onClick={() => setDrawer(false)} />
-      <div className={`bs-filter-drawer${drawer ? ' open' : ''}`}>
-        <div className="bs-drawer-handle" />
-        <button
-          type="button"
-          className="bs-drawer-close"
-          onClick={() => setDrawer(false)}
-          aria-label="Close filters"
-        >
-          <Icon name="close" size={17} />
-        </button>
-        <FilterPanel
-          filters={filters}
-          setFilters={setFilters}
-          ceiling={rangeCeiling}
-          hiddenTaxonomy={hiddenFilterTaxonomy}
-        />
-        <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" style={{ marginTop: 18 }} onClick={() => setDrawer(false)}>
-          {requestStatus === 'loading' ? 'Loading\u2026' : <>Show {totalCount} result{totalCount !== 1 ? 's' : ''}</>}
-        </button>
+      <div className={`bs-filter-drawer${drawer ? ' open' : ''}`} role="dialog" aria-modal="true" aria-labelledby="bs-mobile-filter-title">
+        <header className="bs-filter-drawer-head">
+          <div className="bs-drawer-handle" aria-hidden="true" />
+          <h3 className="bs-h3" id="bs-mobile-filter-title">Filter Products</h3>
+          <button
+            type="button"
+            className="bs-drawer-close"
+            onClick={() => setDrawer(false)}
+            aria-label="Close filters"
+          >
+            <Icon name="close" size={17} />
+          </button>
+        </header>
+        <div className="bs-filter-drawer-body">
+          <FilterPanel
+            filters={filters}
+            setFilters={setFilters}
+            ceiling={rangeCeiling}
+            hiddenTaxonomy={hiddenFilterTaxonomy}
+            showHeading={false}
+          />
+        </div>
+        <footer className="bs-filter-drawer-foot">
+          <button className="bs-btn bs-btn-navy bs-btn-block bs-filter-apply" onClick={() => setDrawer(false)}>
+            {requestStatus === 'loading' ? 'Updating results\u2026' : <>Show {totalCount} result{totalCount !== 1 ? 's' : ''}</>}
+          </button>
+        </footer>
       </div>
       <BookRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} initialTitle={requestTitle} browseContext={requestContext} />
     </div>

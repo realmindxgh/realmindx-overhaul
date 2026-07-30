@@ -71,6 +71,7 @@ export const Icon = ({ name, size = 24, stroke = 1.8 }) => {
     folder: <><path d="M3 6h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></>,
     party: <><path d="M5 21l5-17 10 10L5 21z"/><path d="M14 4l1-2M18 8l3-1M16 12l2 2M10 7l-2-2"/></>,
     filter: <path d="M3 5h18l-7 8.5V19l-4 2.5v-8L3 5z"/>,
+    trash: <><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"

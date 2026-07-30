@@ -123,7 +123,23 @@ const DocumentsPage = ({ navigate }) => {
       </div></div>
       <div className="bs-documents-foot"><span>Need books for a document or curriculum?</span><button type="button" className="bs-btn bs-btn-navy" onClick={() => navigate('shop')}>Browse Bookshop</button></div>
     </section>
-    {mobileFilters && hasFilterOptions ? <div className="bs-resource-filter-drawer" role="presentation" onMouseDown={event => event.target === event.currentTarget && setMobileFilters(false)}><section role="dialog" aria-modal="true" aria-label="Filter resources"><button type="button" className="bs-resource-filter-close" onClick={() => setMobileFilters(false)} aria-label="Close filters"><Icon name="x" size={20} /></button>{filterPanel}<button className="bs-btn bs-btn-navy" type="button" onClick={() => setMobileFilters(false)}>Show {filtered.length} Resources</button></section></div> : null}
+    {mobileFilters && hasFilterOptions ? (
+      <div className="bs-resource-filter-drawer" role="presentation" onMouseDown={event => event.target === event.currentTarget && setMobileFilters(false)}>
+        <section role="dialog" aria-modal="true" aria-labelledby="bs-resource-filter-title">
+          <header className="bs-resource-filter-drawer-head">
+            <div>
+              <h2 id="bs-resource-filter-title">Filter Resources</h2>
+              {activeFilterCount ? <button type="button" onClick={clearFilters}>Clear all</button> : null}
+            </div>
+            <button type="button" className="bs-resource-filter-close" onClick={() => setMobileFilters(false)} aria-label="Close filters"><Icon name="close" size={20} /></button>
+          </header>
+          <div className="bs-resource-filter-drawer-body">{filterPanel}</div>
+          <footer className="bs-resource-filter-drawer-foot">
+            <button className="bs-btn bs-btn-navy" type="button" onClick={() => setMobileFilters(false)}>Show {filtered.length} Resources</button>
+          </footer>
+        </section>
+      </div>
+    ) : null}
   </div>;
 };
 

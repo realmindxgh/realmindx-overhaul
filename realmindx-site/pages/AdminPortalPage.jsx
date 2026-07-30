@@ -3848,6 +3848,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             <section className="admin-order-receipt-parties"><div><h3>Customer</h3><p><strong>{orderDetail.customer_name || '-'}</strong></p>{orderDetail.phone ? <p>{orderDetail.phone}</p> : null}{orderDetail.email ? <p>{orderDetail.email}</p> : null}{orderDetail.customer_sex ? <p>{statusLabel(orderDetail.customer_sex)} | {statusLabel(orderDetail.customer_age_range)}</p> : null}</div><div><h3>Fulfilment Details</h3><p><strong>{statusLabel(orderDetail.delivery_method || 'pickup')}</strong></p>{orderDetail.delivery_zone_name ? <p>{orderDetail.delivery_zone_name}</p> : null}{orderDetail.location ? <p>{orderDetail.location}</p> : null}{orderDetail.delivery_region ? <p>{orderDetail.delivery_region}</p> : null}{orderDetail.delivery?.company_name ? <p>{orderDetail.delivery.company_name}{orderDetail.delivery.rider_name ? ` | ${orderDetail.delivery.rider_name}` : ''}</p> : null}</div></section>
             <section><h3>Items</h3><div className="admin-order-receipt-items"><div className="head"><span>Item</span><span>Qty</span><span>Price</span><span>Amount</span></div>{(orderDetail.items || []).map((item, index) => <div key={`${item.product_id || index}-${item.product_name}`}><span>{item.product_name}</span><span>{item.quantity}</span><span>GHS {Number(item.unit_price || 0).toFixed(2)}</span><strong>GHS {(Number(item.unit_price || 0) * Number(item.quantity || 0)).toFixed(2)}</strong></div>)}</div></section>
             <section className="admin-order-receipt-bottom"><div><h3>Payment Details</h3><p>Method: <strong>{statusLabel(orderDetail.payment_method || 'unknown')}</strong></p>{orderDetail.payment_provider ? <p>Provider: <strong>{statusLabel(orderDetail.payment_provider)}</strong></p> : null}{orderDetail.payment_reference ? <p>Reference: <strong>{orderDetail.payment_reference}</strong></p> : null}{orderDetail.invoice_id ? <p>Invoice: <strong>{orderDetail.invoice_id}</strong></p> : null}</div><dl><div><dt>Subtotal</dt><dd>GHS {Number(orderDetail.subtotal_amount != null ? orderDetail.subtotal_amount : Number(orderDetail.total_amount || 0) - Number(orderDetail.delivery_fee || 0)).toFixed(2)}</dd></div>{Number(orderDetail.bulk_discount_amount || 0) ? <div><dt>Bulk discount</dt><dd>- GHS {Number(orderDetail.bulk_discount_amount).toFixed(2)}</dd></div> : null}{Number(orderDetail.promo_discount_amount || 0) ? <div><dt>Promo {orderDetail.promo_code ? `(${orderDetail.promo_code})` : ''}</dt><dd>- GHS {Number(orderDetail.promo_discount_amount).toFixed(2)}</dd></div> : null}<div><dt>Delivery</dt><dd>GHS {Number(orderDetail.delivery_fee || 0).toFixed(2)}</dd></div><div className="total"><dt>Total</dt><dd>GHS {Number(orderDetail.total_amount || 0).toFixed(2)}</dd></div></dl></section>
+            <p className="admin-order-bulk-notice">Buy 10+ copies of the same text book and enjoy 10% off.</p>
             <footer><span>Last activity: {orderDetail.updated_at ? new Date(orderDetail.updated_at).toLocaleString() : '-'}</span><button className="btn btn-outline-navy" type="button" onClick={() => setOrderDetail(null)}>Close</button></footer>
           </article>
         </div>
@@ -4862,37 +4863,37 @@ const TeachersView = ({ session }) => {
 
       {/* Teacher detail modal */}
       {detail && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'40px 20px', overflowY:'auto' }}>
-          <div className="teacher-detail-modal" style={{ background:'#fff', borderRadius:16, padding:0, width:'100%', maxWidth:900, boxShadow:'0 24px 72px rgba(0,0,0,0.28)', overflow:'hidden' }}>
+        <div className="admin-modal-backdrop teacher-detail-backdrop">
+          <div className="teacher-detail-modal" role="dialog" aria-modal="true" aria-label="Teacher account details">
             {/* Modal header */}
-            <div style={{ background:'var(--navy)', padding:'24px 28px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+            <header className="teacher-detail-modal-header">
+              <div className="teacher-detail-identity">
                 {detail.profile_picture_url ? (
                   <img src={detail.profile_picture_url} alt="" style={{ width:76, height:76, borderRadius:'50%', objectFit:'cover', border:'3px solid rgba(255,255,255,0.35)' }} />
                 ) : (
-                  <div style={{ width:76, height:76, borderRadius:'50%', background:'var(--yellow)', color:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontSize:22 }}>
+                  <div className="teacher-detail-avatar">
                     {([detail.first_name?.[0], detail.last_name?.[0]].filter(Boolean).join('').toUpperCase()) || 'T'}
                   </div>
                 )}
-                <div>
-                  <div style={{ fontFamily:"'Montserrat',sans-serif", fontWeight:800, color:'#fff', fontSize:'1.05rem' }}>
+                <div className="teacher-detail-identity-copy">
+                  <div>
                     {[detail.first_name, detail.last_name].filter(Boolean).join(' ') || 'Unknown'}
                   </div>
-                  <div style={{ fontSize:'0.82rem', color:'rgba(255,255,255,0.7)', marginTop:2 }}>{detail.email}</div>
+                  <span>{detail.email}</span>
                 </div>
               </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <div className="teacher-detail-header-actions">
                 <span className={`badge ${detail.is_active !== false ? 'badge-success' : 'badge-danger'}`} style={{ fontSize:'0.72rem' }}>
                   {detail.is_active !== false ? 'Active' : 'Disabled'}
                 </span>
-                <button onClick={() => setDetail(null)} aria-label="Close teacher details" style={{ background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.4)', color:'#fff', width:34, height:34, borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <button className="teacher-detail-close" type="button" onClick={() => setDetail(null)} aria-label="Close teacher details">
                   <Icon name="x" size={16} />
                 </button>
               </div>
-            </div>
+            </header>
 
             {/* Modal body */}
-            <div style={{ padding:'24px 28px' }}>
+            <div className="teacher-detail-modal-body">
               {detailLoading ? (
                 <p style={{ color:'var(--gray-600)', textAlign:'center', padding:'20px 0' }}>Loading profile…</p>
               ) : (
@@ -4923,7 +4924,7 @@ const TeachersView = ({ session }) => {
                   {detail.profile && (
                     <>
                       <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Teaching Profile</h4>
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', marginBottom:20 }}>
+                      <div className="teacher-detail-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px', marginBottom:20 }}>
                         {[
                           ['Subject', detail.profile.teaching_subject],
                           ['Level', detail.profile.preferred_level],
@@ -4965,7 +4966,7 @@ const TeachersView = ({ session }) => {
                       {(detail.profile.next_of_kin_name || detail.profile.next_of_kin_phone || detail.profile.next_of_kin_relationship || detail.profile.next_of_kin_email) && (
                         <div style={{ marginBottom:20 }}>
                           <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Next of Kin</h4>
-                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px' }}>
+                          <div className="teacher-detail-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px' }}>
                             {[['Name', detail.profile.next_of_kin_name], ['Phone', detail.profile.next_of_kin_phone], ['Relationship', detail.profile.next_of_kin_relationship], ['Email', detail.profile.next_of_kin_email]].filter(([, v]) => v).map(([k, v]) => (
                               <div key={k}>
                                 <div style={{ fontSize:'0.7rem', fontWeight:700, letterSpacing:'.5px', textTransform:'uppercase', color:'var(--gray-500)', marginBottom:2 }}>{k}</div>
@@ -5039,7 +5040,7 @@ const TeachersView = ({ session }) => {
                     <h4 style={{ fontFamily:"'Montserrat',sans-serif", fontSize:'0.78rem', letterSpacing:'1.5px', textTransform:'uppercase', color:'var(--gray-600)', marginBottom:12 }}>Payout Details</h4>
                     {canEditTeachers ? (
                       <>
-                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px 14px' }}>
+                        <div className="teacher-detail-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px 14px' }}>
                           <div className="form-group" style={{ margin:0 }}>
                             <label className="form-label">Method</label>
                             <select className="form-select" value={payoutForm.payout_method} onChange={updatePayoutField('payout_method')}>
@@ -5080,7 +5081,7 @@ const TeachersView = ({ session }) => {
                         </button>
                       </>
                     ) : (
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px' }}>
+                      <div className="teacher-detail-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 20px' }}>
                         {[
                           ['Method', detail.profile?.payout?.payout_method],
                           ['MoMo Network', detail.profile?.payout?.payout_momo_network],
@@ -5124,28 +5125,37 @@ const TeachersView = ({ session }) => {
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding:'16px 28px', borderTop:'1px solid var(--border)', display:'flex', gap:10, justifyContent:'flex-end', flexWrap:'wrap' }}>
+            <footer className="teacher-detail-modal-footer">
               {canDeleteTeachers ? (
                 <button
-                  className="btn btn-danger btn-sm"
+                  className="btn btn-danger btn-sm teacher-detail-footer-action is-delete"
                   disabled={deleting === detail.id}
                   onClick={() => deleteTeacher(detail)}
+                  aria-label={deleting === detail.id ? 'Deleting account' : 'Delete account'}
+                  title={deleting === detail.id ? 'Deleting account' : 'Delete account'}
                 >
-                  {deleting === detail.id ? 'Deleting…' : 'Delete Account'}
+                  <Icon name="trash" size={16} />
+                  <span>{deleting === detail.id ? 'Deleting…' : 'Delete Account'}</span>
                 </button>
               ) : null}
               {canEditTeachers ? (
                 <button
-                  className="btn btn-outline-navy btn-sm"
+                  className={`btn btn-outline-navy btn-sm teacher-detail-footer-action ${detail.is_active !== false ? 'is-disable' : 'is-enable'}`}
                   style={detail.is_active !== false ? { color:'#92400e', borderColor:'#d97706' } : { color:'#166534', borderColor:'#16a34a' }}
                   disabled={toggling === detail.id}
                   onClick={() => toggleActive(detail)}
+                  aria-label={toggling === detail.id ? 'Saving account status' : detail.is_active !== false ? 'Disable account' : 'Enable account'}
+                  title={toggling === detail.id ? 'Saving account status' : detail.is_active !== false ? 'Disable account' : 'Enable account'}
                 >
-                  {toggling === detail.id ? 'Saving…' : detail.is_active !== false ? 'Disable Account' : 'Enable Account'}
+                  <Icon name={detail.is_active !== false ? 'lock' : 'check'} size={16} />
+                  <span>{toggling === detail.id ? 'Saving…' : detail.is_active !== false ? 'Disable Account' : 'Enable Account'}</span>
                 </button>
               ) : null}
-              <button className="btn btn-outline-navy btn-sm" onClick={() => setDetail(null)}>Close</button>
-            </div>
+              <button className="btn btn-outline-navy btn-sm teacher-detail-footer-action is-close" type="button" onClick={() => setDetail(null)} aria-label="Close teacher details" title="Close teacher details">
+                <Icon name="x" size={16} />
+                <span>Close</span>
+              </button>
+            </footer>
           </div>
         </div>
       )}
