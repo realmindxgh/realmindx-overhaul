@@ -4702,7 +4702,7 @@ def _send_order_status_sms(order, status, cancel_reason=""):
         ),
         "shipped": (
             f"Hi {first_name}, great news! Your order {ref} is on its way. "
-            f"Expected delivery within 48 hours. - RealMindX Bookshop"
+            f"Expected delivery within 48 working hours. - RealMindX Bookshop"
         ),
         "complete": (
             f"Hi {first_name}, your order {ref} has been delivered. "
@@ -4810,7 +4810,7 @@ def _send_order_status_email(order, status, cancel_reason=""):
                 f"<p>Good news! Your order <strong>{escape(ref)}</strong> has been dispatched and is heading your way.</p>"
                 f"{order_meta_html}"
                 f"{order_summary_html}"
-                f"<p>Expected delivery is within 48 hours. Our team will contact you if any final handover details are needed.</p>"
+                f"<p>Expected delivery is within 48 working hours. Our team will contact you if any final handover details are needed.</p>"
             ),
             "cta_label": "Track Your Order",
             "cta_url": "track",

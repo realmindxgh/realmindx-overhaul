@@ -192,6 +192,7 @@ def expand_product_search_terms(value):
 def product_search_filter(value):
     fields = [
         Product.name,
+        Product.slug,
         Product.short_description,
         Product.full_description,
         Product.subject,
@@ -233,6 +234,7 @@ def product_search_filter(value):
         return or_(*clauses) if clauses else None
 
     normalized = normalize_search_text(value)
+    exact_slug_clause = Product.slug.ilike(_slug(value))
     grade_match = re.search(r"\b(?:basic|grade)\s*([1-9])\b", normalized)
     if not grade_match:
         grade_match = re.search(r"\bprimary\s*([1-6])\b", normalized)
@@ -260,11 +262,11 @@ def product_search_filter(value):
                 Product.name.ilike(like),
                 cast(Product.tags, String).ilike(like),
             ])
-        return or_(*clauses)
+        return or_(exact_slug_clause, *clauses)
 
     alias_clause = exact_alias_clause(_exact_alias_matches(value))
     if alias_clause is not None:
-        return alias_clause
+        return or_(exact_slug_clause, alias_clause)
 
     meaningful_tokens = [
         token
@@ -277,6 +279,7 @@ def product_search_filter(value):
             for token in meaningful_tokens
         ]
         token_clauses = [clause for clause in token_clauses if clause is not None]
-        return and_(*token_clauses) if token_clauses else None
+        return or_(exact_slug_clause, and_(*token_clauses)) if token_clauses else exact_slug_clause
 
-    return clause_for_terms(expand_product_search_terms(value))
+    expanded_clause = clause_for_terms(expand_product_search_terms(value))
+    return or_(exact_slug_clause, expanded_clause) if expanded_clause is not None else exact_slug_clause

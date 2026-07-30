@@ -160,6 +160,15 @@ class ExamPicksEndpointTests(unittest.TestCase):
         data = resp.get_json()
         self.assertGreater(len(data["items"]), 4)
 
+    def test_products_search_matches_canonical_slug(self):
+        product = Product.query.filter_by(name="SHS Core Maths").one()
+        product.slug = "maths-shs-1"
+        db.session.commit()
+
+        resp = self.client.get("/api/products?q=maths-shs-1&page=1&per_page=5")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("SHS Core Maths", self._titles(resp))
+
     def test_old_individual_picks_return_zero(self):
         """The old slug-based approach should now work because the taxonomy_filter_terms fix
         ensures canonical values are never deduplicated."""

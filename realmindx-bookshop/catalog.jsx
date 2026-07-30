@@ -38,7 +38,7 @@ const EMPTY_TAXONOMIES = buildBookshopTaxonomies([], EMPTY_CATEGORIES);
 const FALLBACK_FLYERS = [
   { id: 'f1', headline: 'Back-to-School', accent: 'Sale', subline: 'Up to 25% off selected curriculum textbooks', badge: 'SHOP THE SALE', image: null, showOverlay: false, imageFit: 'cover', imagePosition: 'center' },
   { id: 'f2', headline: 'New BECE & WASSCE', accent: 'Past Questions', subline: '2015-2024, fully solved - just arrived', badge: 'NEW STOCK', image: null, showOverlay: false, imageFit: 'cover', imagePosition: 'center' },
-  { id: 'f3', headline: 'Wholesale for', accent: 'Schools', subline: 'Class sets delivered within 48 hours', badge: 'GET A QUOTE', image: null, showOverlay: false, imageFit: 'cover', imagePosition: 'center' },
+  { id: 'f3', headline: 'Wholesale for', accent: 'Schools', subline: 'Class sets delivered within 48 working hours', badge: 'GET A QUOTE', image: null, showOverlay: false, imageFit: 'cover', imagePosition: 'center' },
 ];
 
 const CatalogCtx = React.createContext({

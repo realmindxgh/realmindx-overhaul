@@ -382,7 +382,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
         </p>
         <div className="bs-auth-trust">
           {[
-            ['truck', 'Delivery within 48 hours, nationwide'],
+            ['truck', 'Delivery within 48 working hours, nationwide'],
             ['shield', 'Secure payments via Paystack'],
             ['spark', 'Wholesale pricing for schools'],
           ].map(([icon, text]) => (

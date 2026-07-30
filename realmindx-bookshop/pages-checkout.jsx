@@ -59,6 +59,7 @@ const hasRequiredCheckoutDetails = ({
   if (!data.name.trim()) return false;
   if (!PHONE_RE.test(data.phone)) return false;
   if (!EMAIL_RE.test(data.email)) return false;
+  if (!method) return false;
   if (method !== 'delivery') return true;
   if (requireZone && !selectedZoneId) return false;
   if (customDeliveryArea && !data.city.trim()) return false;
@@ -137,7 +138,7 @@ const StepBar = ({ step, canVisit = () => false, onStepChange = null }) => {
   );
 };
 
-const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, bulkDiscountPct = '', promoProductDiscount = 0, promoDeliveryDiscount = 0, promoOrderDiscount = 0, promoCode = '', className = 'desktop' }) => (
+const MiniSummary = ({ detailed, total, deliveryLabel, showDeliveryEstimate = false, subtotal, bulkSaving = 0, bulkDiscountPct = '', promoProductDiscount = 0, promoDeliveryDiscount = 0, promoOrderDiscount = 0, promoCode = '', className = 'desktop' }) => (
   <div className={`bs-mini-summary ${className}`}>
     <h3 className="bs-h3 bs-checkout-card-title" style={{ fontSize:16, marginBottom:14 }}><span><Icon name="cart" size={17} /></span>Order Summary</h3>
     {detailed.map((b,i) => (
@@ -146,19 +147,19 @@ const MiniSummary = ({ detailed, total, delivery, subtotal, bulkSaving = 0, bulk
           <CoverPlaceholder title={b.title} idx={i} small image={b.imageThumb || b.image} width={72} height={96} />
           <span className="bs-mini-qty">{b.qty}</span>
         </div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontFamily:'Montserrat', fontWeight:600, fontSize:13, color:'var(--bs-navy)', lineHeight:1.3 }}>{b.title}</div>
-          <div className="bs-muted" style={{ fontSize:12 }}>{cedis(b.price)} x {b.qty}</div>
+        <div className="bs-mini-item-copy">
+          <div className="bs-mini-item-title">{b.title}</div>
+          <div className="bs-mini-item-meta">{cedis(b.price)} x {b.qty}</div>
         </div>
-        <span style={{ fontFamily:'Montserrat', fontWeight:700, fontSize:13 }}>{cedis(b.price*b.qty)}</span>
+        <span className="bs-mini-item-price">{cedis(b.price*b.qty)}</span>
       </div>
     ))}
     <div className="bs-divider" style={{ margin:'14px 0' }} />
     <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(subtotal)}</span></div>
     {bulkSaving > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Bulk Purchase Discount{bulkDiscountPct ? ` (${bulkDiscountPct}%)` : ''}</span><span>-{cedis(bulkSaving)}</span></div>}
     {promoProductDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Promo {promoCode} on products</span><span>-{cedis(promoProductDiscount)}</span></div>}
-    <div className="bs-summary-row"><span>Delivery</span><span>{cedis(delivery)}</span></div>
-    {delivery > 0 && <div style={{ fontSize:11, color:'var(--bs-text-muted)', fontStyle:'italic', marginBottom:6 }}>Delivery fee is an estimate. Actual fee may vary slightly based on your exact location.</div>}
+    <div className="bs-summary-row"><span>Delivery</span><span>{deliveryLabel}</span></div>
+    {showDeliveryEstimate && <div className="bs-delivery-estimate-note">Delivery fee is an estimate. Actual fee may vary slightly based on your exact location.</div>}
     {promoDeliveryDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Delivery discount</span><span>-{cedis(promoDeliveryDiscount)}</span></div>}
     {promoOrderDiscount > 0 && <div className="bs-summary-row" style={{ fontSize:13, color:'var(--bs-success)' }}><span>Promo {promoCode} on order</span><span>-{cedis(promoOrderDiscount)}</span></div>}
     <div className="bs-summary-row bs-total" style={{ fontSize:18 }}><span>Total</span><span>{cedis(total)}</span></div>
@@ -182,6 +183,7 @@ const CheckoutPage = ({ navigate }) => {
   const initialDraft = React.useMemo(readCheckoutDraft, []);
   const initialSuccess = React.useMemo(readCheckoutSuccess, []);
   const linkedCartInvoiceId = React.useMemo(() => readInvoiceIdFromUrl() || initialDraft?.cartInvoiceId || '', [initialDraft]);
+  const restoredMethod = initialSuccess?.method || initialDraft?.method || 'delivery';
   const restoredDraftSignatureRef = React.useRef(initialDraft?.cartSignature || '');
   const restoredSuccessRef = React.useRef(Boolean(initialSuccess));
   const [step, setStep] = React.useState(() => (
@@ -189,7 +191,7 @@ const CheckoutPage = ({ navigate }) => {
       ? 2
       : initialDraft?.step === 1 && hasRequiredCheckoutDetails({
         form: initialDraft.form,
-        method: initialDraft.method || 'delivery',
+        method: restoredMethod,
         selectedZoneId: initialDraft.selectedZoneId || '',
         customDeliveryArea: initialDraft.selectedZoneId === 'other',
         requireZone: false,
@@ -197,7 +199,7 @@ const CheckoutPage = ({ navigate }) => {
         ? 1
         : 0
   ));
-  const [method, setMethod] = React.useState(() => initialSuccess?.method || initialDraft?.method || 'delivery');
+  const [method, setMethod] = React.useState(() => restoredMethod);
   const [paymentMethod, setPaymentMethod] = React.useState(() => initialSuccess?.paymentMethod || initialDraft?.paymentMethod || 'online');
   const [form, setForm] = React.useState(() => {
     const defaultForm = cleanCheckoutForm({
@@ -225,6 +227,9 @@ const CheckoutPage = ({ navigate }) => {
   const emailRef = React.useRef(null);
   const zoneRef = React.useRef(null);
   const addressRef = React.useRef(null);
+  const methodRef = React.useRef(null);
+  const cityRef = React.useRef(null);
+  const regionRef = React.useRef(null);
 
   // Delivery zones — fetched from API in API mode, fallback to fixed fee
   const [deliveryZones, setDeliveryZones] = React.useState([]);
@@ -335,10 +340,19 @@ const CheckoutPage = ({ navigate }) => {
     }
     setSavedDetailsError('');
   };
+  const zoneRequired = method === 'delivery' && isApiMode() && deliveryZones.length > 0;
+  const fallbackDeliveryLocation = method === 'delivery'
+    && !loadingZones
+    && (!isApiMode() || deliveryZones.length === 0);
+  const fallbackDeliveryLocationReady = fallbackDeliveryLocation
+    && Boolean(form.city.trim())
+    && Boolean(form.region);
   const deliveryFee = method !== 'delivery' ? 0
     : (isApiMode() && deliveryZones.length > 0)
       ? (selectedZone ? Number(selectedZone.fee) : 0)
-      : 15;  // fallback for local mode
+      : fallbackDeliveryLocationReady
+        ? 15
+        : 0;  // fallback fee applies only after a location is entered
   const subtotalAfterBulk = Math.max(0, subtotal - (bulkSaving || 0));
   const orderBase = subtotalAfterBulk + deliveryFee;
 
@@ -390,7 +404,21 @@ const CheckoutPage = ({ navigate }) => {
   const delivery = Math.max(0, deliveryFee - promoDeliveryDiscount);
   const total = Math.max(0, orderBase - promoDiscount);
   const cartSignature = React.useMemo(() => cartSignatureFor(detailed), [detailed]);
-  const zoneRequired = method === 'delivery' && isApiMode() && deliveryZones.length > 0;
+  const deliveryLabel = !method
+    ? 'Choose a method'
+    : method === 'pickup'
+      ? 'Free'
+      : customDeliveryArea
+        ? 'To be confirmed'
+        : zoneRequired && !selectedZone
+          ? 'Select a location'
+          : !zoneRequired && !fallbackDeliveryLocationReady
+            ? 'Select a location'
+            : cedis(delivery);
+  const showDeliveryEstimate = method === 'delivery'
+    && !customDeliveryArea
+    && (zoneRequired ? Boolean(selectedZone) : fallbackDeliveryLocationReady)
+    && delivery > 0;
   const stepOneComplete = hasRequiredCheckoutDetails({
     form,
     method,
@@ -440,6 +468,7 @@ const CheckoutPage = ({ navigate }) => {
       step: draftStep,
       form: cleanCheckoutForm(form),
       method,
+      methodChosen: Boolean(method),
       paymentMethod,
       selectedZoneId,
       zoneSearch,
@@ -504,6 +533,7 @@ const CheckoutPage = ({ navigate }) => {
           step: 1,
           form: cleanCheckoutForm(form),
           method,
+          methodChosen: Boolean(method),
           paymentMethod,
           selectedZoneId,
           zoneSearch,
@@ -575,15 +605,16 @@ const CheckoutPage = ({ navigate }) => {
     if (!form.name.trim()) e.name = 'Required';
     if (!PHONE_RE.test(form.phone)) e.phone = 'Enter a valid phone number';
     if (!EMAIL_RE.test(form.email)) e.email = 'Enter a valid email';
+    if (!method) e.method = 'Choose delivery or pickup';
     if (method === 'delivery' && isApiMode() && deliveryZones.length > 0 && !selectedZoneId) e.zone = 'Please select your delivery area first.';
-    if (method === 'delivery' && customDeliveryArea && !form.city.trim()) e.city = 'Enter your delivery town or area';
-    if (method === 'delivery' && customDeliveryArea && !form.region) e.region = 'Select your region';
+    if (method === 'delivery' && (customDeliveryArea || fallbackDeliveryLocation) && !form.city.trim()) e.city = 'Enter your delivery town or area';
+    if (method === 'delivery' && (customDeliveryArea || fallbackDeliveryLocation) && !form.region) e.region = 'Select your region';
     setErrors(e);
     const first = Object.keys(e)[0];
     if (first) {
       const ref = first === 'zone'
         ? zoneRef
-        : { name: nameRef, phone: phoneRef, email: emailRef, address: addressRef }[first];
+        : { name: nameRef, phone: phoneRef, email: emailRef, address: addressRef, method: methodRef, city: cityRef, region: regionRef }[first];
       requestAnimationFrame(() => {
         const node = ref?.current;
         node?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -593,6 +624,10 @@ const CheckoutPage = ({ navigate }) => {
     return Object.keys(e).length === 0;
   };
   const set = (k) => (ev) => setForm(f => ({ ...f, [k]: ev.target.value }));
+  const chooseMethod = nextMethod => {
+    setMethod(nextMethod);
+    setErrors(prev => ({ ...prev, method: '', zone: '', city: '', region: '' }));
+  };
   const continueToPayment = async () => {
     if (!validate()) return;
     clearCheckoutSuccess();
@@ -655,7 +690,7 @@ const CheckoutPage = ({ navigate }) => {
             <span>{cedis(confirmedTotal)}</span>
           </div>
           <div className="bs-secure-note" style={{ justifyContent:'flex-start', marginTop:14 }}>
-            <Icon name="truck" size={16} /> {method === 'delivery' ? 'Estimated delivery: within 48 hours' : `Ready for pickup at ${pickupAddress} tomorrow`}
+            <Icon name="truck" size={16} /> {method === 'delivery' ? 'Estimated delivery: within 48 working hours' : `Ready for pickup at ${pickupAddress} tomorrow`}
           </div>
         </div>
         <div className="bs-confirm-actions">
@@ -697,7 +732,8 @@ const CheckoutPage = ({ navigate }) => {
               className="mobile"
               detailed={detailed}
               total={total}
-              delivery={delivery}
+              deliveryLabel={deliveryLabel}
+              showDeliveryEstimate={showDeliveryEstimate}
               subtotal={subtotal}
               bulkSaving={bulkSaving}
               bulkDiscountPct={selectedBulkDiscounts[0]?.pct || ''}
@@ -743,22 +779,23 @@ const CheckoutPage = ({ navigate }) => {
               </div>
 
               <div className="bs-checkout-section-label"><span><Icon name="truck" size={17} /></span>Delivery Method</div>
-              <button type="button" className={`bs-radio-card${method==='delivery'?' sel':''}`} aria-pressed={method === 'delivery'} onClick={() => setMethod('delivery')}>
-                <span className="bs-radio-dot" /><div className="bs-rc-copy"><div className="bs-rc-title">Home Delivery</div><div className="bs-rc-sub">Within 48 hours, nationwide</div></div>
+              <button ref={methodRef} type="button" className={`bs-radio-card${method==='delivery'?' sel':''}`} aria-pressed={method === 'delivery'} onClick={() => chooseMethod('delivery')}>
+                <span className="bs-radio-dot" /><div className="bs-rc-copy"><div className="bs-rc-title">Home Delivery</div><div className="bs-rc-sub">Within 48 working hours, nationwide</div></div>
                 <div className="bs-rc-cost">
                   <span className="bs-rc-price">{selectedZone ? cedis(Number(selectedZone.fee)) : ''}</span>
                   {selectedZone && Number(selectedZone.fee) > 0 && <div className="bs-rc-estimate">Estimate only. Actual fee may vary.</div>}
                 </div>
               </button>
-              <button type="button" className={`bs-radio-card${method==='pickup'?' sel':''}`} aria-pressed={method === 'pickup'} onClick={() => setMethod('pickup')}>
+              <button type="button" className={`bs-radio-card${method==='pickup'?' sel':''}`} aria-pressed={method === 'pickup'} onClick={() => chooseMethod('pickup')}>
                 <span className="bs-radio-dot" /><div className="bs-rc-copy"><div className="bs-rc-title">Pickup at {pickupAddress}</div><div className="bs-rc-sub">Ready next working day</div></div><span className="bs-rc-price">Free</span>
               </button>
+              {errors.method && <div className="bs-field-error bs-method-error">{errors.method}</div>}
 
               {method === 'delivery' && <>
                 {/* Delivery zone selector */}
                 {isApiMode() && deliveryZones.length > 0 && (
                   <div className="bs-field" style={{ marginTop:18 }}>
-                    <label>Delivery Area *</label>
+                    <label>Delivery Location *</label>
                     <div className="bs-zone-picker">
                       <span className="bs-zone-input-icon"><Icon name="pin" size={16} /></span>
                       <input
@@ -813,16 +850,32 @@ const CheckoutPage = ({ navigate }) => {
                     {errors.zone && <div className="bs-field-error">{errors.zone}</div>}
                   </div>
                 )}
+                {deliveryZones.length === 0 && (
+                  <div className={`bs-field${errors.city?' err':''}`} style={{ marginTop:18 }}>
+                    <label>Delivery Location *</label>
+                    <div className="bs-field-control">
+                      <span><Icon name="pin" size={16} /></span>
+                      <input
+                        ref={cityRef}
+                        value={form.city}
+                        onChange={set('city')}
+                        disabled={loadingZones}
+                        placeholder={loadingZones ? 'Loading delivery locations...' : 'Town, city, or area'}
+                      />
+                    </div>
+                    {errors.city && <div className="bs-field-error">{errors.city}</div>}
+                  </div>
+                )}
                 {customDeliveryArea && (
                   <div className="bs-field-row" style={{ marginTop:18 }}>
                     <div className={`bs-field${errors.city?' err':''}`}>
                       <label>Town / Area *</label>
-                      <div className="bs-field-control"><span><Icon name="pin" size={16} /></span><input value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" /></div>
+                      <div className="bs-field-control"><span><Icon name="pin" size={16} /></span><input ref={cityRef} value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" /></div>
                       {errors.city && <div className="bs-field-error">{errors.city}</div>}
                     </div>
                     <div className={`bs-field${errors.region?' err':''}`}>
                       <label>Region *</label>
-                      <div className="bs-field-control"><select value={form.region} onChange={set('region')}>
+                      <div className="bs-field-control"><select ref={regionRef} value={form.region} onChange={set('region')}>
                         <option value="">Select region</option>
                         {GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}
                       </select></div>
@@ -835,7 +888,7 @@ const CheckoutPage = ({ navigate }) => {
                   <div className="bs-field-control bs-field-control-textarea"><span><Icon name="pin" size={16} /></span><textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." /></div>
                   <p className="bs-field-help">We will contact you to confirm the precise landmark and delivery directions.</p>
                 </div>
-                {!customDeliveryArea && <div className="bs-field"><label>Region</label><div className="bs-field-control"><select value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div></div>}
+                {!customDeliveryArea && <div className={`bs-field${errors.region?' err':''}`}><label>Region{fallbackDeliveryLocation ? ' *' : ''}</label><div className="bs-field-control"><select ref={regionRef} value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div>{errors.region && <div className="bs-field-error">{errors.region}</div>}</div>}
               </>}
 
               {savedDetailsError && <p className="bs-saved-checkout-error">{savedDetailsError}</p>}
@@ -971,7 +1024,8 @@ const CheckoutPage = ({ navigate }) => {
         <MiniSummary
           detailed={detailed}
           total={total}
-          delivery={delivery}
+          deliveryLabel={deliveryLabel}
+          showDeliveryEstimate={showDeliveryEstimate}
           subtotal={subtotal}
           bulkSaving={bulkSaving}
           bulkDiscountPct={selectedBulkDiscounts[0]?.pct || ''}

@@ -402,7 +402,7 @@ export const SEED_CONTENT = {
   flyers: [
     { id: 1, headline: 'Back-to-School', accent: 'Sale', subline: 'Up to 25% off selected curriculum textbooks', badge: 'SHOP THE SALE', image: '' },
     { id: 2, headline: 'New BECE & WASSCE', accent: 'Past Questions', subline: '2015-2024, fully solved - just arrived', badge: 'NEW STOCK', image: '' },
-    { id: 3, headline: 'Wholesale for', accent: 'Schools', subline: 'Class sets delivered within 48 hours', badge: 'GET A QUOTE', image: '' },
+    { id: 3, headline: 'Wholesale for', accent: 'Schools', subline: 'Class sets delivered within 48 working hours', badge: 'GET A QUOTE', image: '' },
   ].map(withAdminMeta),
   products: [
     { id: 1, name: 'Mathematics for JHS 1', author: 'MoE Ghana', source: 'MoE Ghana', category: 'Textbooks', price: 28, oldPrice: 35, badges: ['sale'], stock: 'in', level: 'JHS', subject: 'Mathematics', image: bookshopHeroImage },

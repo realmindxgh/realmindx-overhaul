@@ -4871,9 +4871,9 @@ html {
 
   .bs .bs-pcard-title {
     min-height: 0 !important;
-    height: 2.3em !important;
-    font-size: clamp(0.62rem, 2.6vw, 0.72rem) !important;
-    line-height: 1.15 !important;
+    height: 2.36em !important;
+    font-size: clamp(0.58rem, 2.35vw, 0.66rem) !important;
+    line-height: 1.18 !important;
     letter-spacing: 0 !important;
     display: -webkit-box !important;
     -webkit-line-clamp: 2 !important;
@@ -6930,6 +6930,22 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
     white-space: nowrap !important;
   }
 
+  .bs .bs-cart-item-title {
+    font-size: .72rem !important;
+    line-height: 1.28 !important;
+  }
+
+  .bs .bs-qty-stepper.sm button {
+    width: 20px !important;
+    height: 26px !important;
+  }
+
+  .bs .bs-qty-stepper.sm input {
+    width: 24px !important;
+    height: 26px !important;
+    font-size: .6rem !important;
+  }
+
   .bs .bs-field-control :is(input, textarea),
   .bs .bs-zone-picker input {
     padding-left: 34px !important;
@@ -6981,6 +6997,64 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 
   .bs .bs-loading-state p {
     font-size: .66rem !important;
+    line-height: 1.35 !important;
+  }
+
+  .bs .bs-loading-state:not(.is-minimal) {
+    min-height: calc(100svh - var(--bs-nav-h) - var(--bs-bottomnav-h)) !important;
+  }
+
+  .bs .bs-cart-page > .bs-auth-return-actions {
+    grid-template-columns: 30px minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 10px !important;
+    border-radius: 9px !important;
+  }
+
+  .bs .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-copy strong {
+    font-size: .66rem !important;
+  }
+
+  .bs .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-copy p {
+    font-size: .6rem !important;
+    line-height: 1.38 !important;
+  }
+
+  .bs .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-buttons {
+    grid-column: 1 / -1 !important;
+    gap: 7px !important;
+  }
+
+  .bs .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-buttons button {
+    height: 36px !important;
+    border-radius: 7px !important;
+    font-size: .63rem !important;
+  }
+
+  .bs .bs-wa-fab.has-sticky-dock {
+    bottom: calc(var(--bs-bottomnav-h) + 74px) !important;
+  }
+
+  .bs button.bs-scrolltop-fab.has-sticky-dock {
+    bottom: calc(var(--bs-bottomnav-h) + 146px) !important;
+  }
+
+  .bs .bs-mini-summary.mobile .bs-mini-item-title {
+    font-size: .625rem !important;
+    line-height: 1.22 !important;
+  }
+
+  .bs .bs-mini-summary.mobile .bs-mini-item-meta {
+    font-size: .53rem !important;
+    line-height: 1.3 !important;
+  }
+
+  .bs .bs-mini-summary.mobile .bs-mini-item-price {
+    font-size: .625rem !important;
+  }
+
+  .bs .bs-mini-summary.mobile .bs-delivery-estimate-note {
+    font-size: .56rem !important;
     line-height: 1.35 !important;
   }
 

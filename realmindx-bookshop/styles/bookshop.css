@@ -740,9 +740,9 @@
 
   .bs-pcard-title {
     min-height: 0;
-    height: 2.28em;
-    font-size: 11px;
-    line-height: 1.14;
+    height: 2.3em;
+    font-size: 10.5px;
+    line-height: 1.15;
     -webkit-line-clamp: 2;
     letter-spacing: 0;
   }
@@ -1599,7 +1599,8 @@
 .bs-cart-product-link:focus-visible { outline: 3px solid rgba(25,118,201,.28); outline-offset: 3px; }
 .bs-cart-item-title.bs-cart-product-link:hover { color: #1976c9; }
 .bs-cart-item-mid { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding-right: 0; }
-.bs a.bs-cart-item-title { font-family:'Montserrat',sans-serif; font-weight: 750; font-size: 17px; color: var(--bs-navy); line-height: 1.35; max-width: 44ch; }
+.bs-cart-item-title { font-family:'Montserrat',sans-serif; font-weight: 750; font-size: 17px; line-height: 1.35; max-width: 44ch; }
+.bs a.bs-cart-item-title { color: var(--bs-navy); }
 .bs-cart-item .bs-pcard-desc { display: none; }
 .bs-cart-item-right { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 5px; }
 .bs-cart-meta-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -2124,9 +2125,15 @@
 .bs-rc-price { margin-left: auto; font-family:'Montserrat',sans-serif; font-weight: 800; color: var(--bs-navy); }
 .bs-mini-summary { background: #fff; border: 1px solid var(--bs-border); border-radius: var(--bs-radius-md); padding: 24px; box-shadow: var(--bs-shadow-sm); position: sticky; top: calc(var(--bs-nav-h) + 16px); }
 .bs-mini-item { display: flex; gap: 12px; align-items: center; padding: 10px 0; }
+.bs-mini-item-copy { flex: 1; min-width: 0; }
+.bs-mini-item-title { color: var(--bs-navy); font-family: 'Montserrat', sans-serif; font-size: 13px; font-weight: 600; line-height: 1.3; }
+.bs-mini-item-meta { color: var(--bs-muted); font-size: 11px; }
+.bs-mini-item-price { flex-shrink: 0; font-family: 'Montserrat', sans-serif; font-size: 13px; font-weight: 700; }
 .bs-mini-cover { width: 48px; height: 60px; border-radius: 6px; overflow: visible; background: #eef1f7; flex-shrink: 0; position: relative; }
 .bs-mini-cover > :not(.bs-mini-qty) { border-radius: 6px; overflow: hidden; }
 .bs-mini-qty { position: absolute; top: -8px; right: -9px; z-index: 2; min-width: 22px; height: 22px; padding: 0 5px; border: 2px solid #fff; border-radius: 999px; background: var(--bs-navy); color: #fff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; font-family:'Montserrat'; box-shadow: 0 3px 8px rgba(11,29,56,.22); }
+.bs-delivery-estimate-note { margin-bottom: 6px; color: var(--bs-text-muted); font-size: 11px; line-height: 1.4; }
+.bs-method-error { margin: -4px 0 12px 28px; }
 .bs-mobile-summary-bar { display: none; }
 .bs-mini-summary.mobile { display: none; }
 @media (max-width: 900px) {
@@ -5516,7 +5523,7 @@
 .bs-loading-state {
   width: 100%;
   max-width: 100%;
-  min-height: 150px !important;
+  min-height: calc(100svh - var(--bs-nav-h)) !important;
   margin: 0 auto;
   padding: 24px 12px;
   border: 0;
@@ -5531,7 +5538,7 @@
   box-shadow: none;
 }
 .bs-resource-results > .bs-loading-state,
-.bs-resource-detail-shell > .bs-loading-state { min-height: 150px !important; }
+.bs-resource-detail-shell > .bs-loading-state { min-height: calc(100svh - var(--bs-nav-h)) !important; }
 .bs-loading-state.is-minimal {
   min-height: 92px !important;
   padding: 14px 10px;
@@ -5881,8 +5888,8 @@
   .bs-cart-wishlist-link svg { width: 14px; height: 14px; }
   .bs-cart-item-title {
     padding-right: 28px;
-    font-size: 12.5px;
-    line-height: 1.32;
+    font-size: 11.5px;
+    line-height: 1.28;
   }
   .bs-cart-item-right {
     width: 100%;
@@ -5894,13 +5901,13 @@
     align-items: center;
   }
   .bs-qty-stepper.sm button {
-    width: 23px;
-    height: 28px;
+    width: 20px;
+    height: 26px;
   }
   .bs-qty-stepper.sm input {
-    width: 27px;
-    height: 28px;
-    font-size: 10.5px;
+    width: 24px;
+    height: 26px;
+    font-size: 9.5px;
   }
   .bs-cart-subtotal {
     margin-left: 0;
@@ -5991,20 +5998,35 @@
     color: #fff !important;
     box-shadow: none;
   }
-  .bs .bs-wa-fab {
+  .bs .bs-wa-fab.has-sticky-dock {
     bottom: calc(var(--bs-bottomnav-h) + 74px);
   }
   .bs-cart-page > .bs-auth-return-actions {
+    grid-template-columns: 30px minmax(0, 1fr);
     gap: 8px;
     margin-top: 12px;
-    padding-top: 12px;
+    padding: 10px;
+    border-radius: 9px;
   }
   .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-icon {
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
   }
-  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-copy strong { font-size: 11.5px; }
-  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-copy p { font-size: 10.5px; }
+  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-copy strong { font-size: 10.5px; }
+  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-copy p { font-size: 9.5px; line-height: 1.38; }
+  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-buttons {
+    grid-column: 1 / -1;
+    gap: 7px;
+  }
+  .bs-cart-page > .bs-auth-return-actions .bs-cart-auth-buttons button {
+    height: 36px;
+    border-radius: 7px;
+    font-size: 10px;
+  }
   .bs-cart-page > .bs-section {
     margin-top: 24px !important;
   }
@@ -6050,6 +6072,21 @@
   .bs-mini-item {
     gap: 8px;
     padding: 7px 0;
+  }
+  .bs-mini-summary.mobile .bs-mini-item-title {
+    font-size: 10px;
+    line-height: 1.22;
+  }
+  .bs-mini-summary.mobile .bs-mini-item-meta {
+    font-size: 8.5px;
+    line-height: 1.3;
+  }
+  .bs-mini-summary.mobile .bs-mini-item-price {
+    font-size: 10px;
+  }
+  .bs-mini-summary.mobile .bs-delivery-estimate-note {
+    font-size: 9px;
+    line-height: 1.35;
   }
   .bs-mini-cover {
     width: 38px;
@@ -6276,7 +6313,7 @@
   .bs-empty-state h2 { font-size: 15px; }
   .bs-empty-state p { margin-bottom: 14px; font-size: 11px; }
   .bs-loading-state {
-    min-height: 128px !important;
+    min-height: calc(100svh - var(--bs-nav-h) - var(--bs-bottomnav-h)) !important;
     max-width: 100%;
     margin: 0 auto;
     padding: 18px 10px;

@@ -1056,11 +1056,18 @@ const Footer = ({ navigate }) => {
 };
 
 // ---------- Floating WhatsApp ----------
-const WHATSAPP_HIDDEN_ROUTES = new Set(['cart', 'checkout', 'track', 'invoice', 'login', 'signup', 'account', 'orders']);
+const WHATSAPP_HIDDEN_ROUTES = new Set(['track', 'invoice', 'login', 'signup', 'account', 'orders']);
+const MOBILE_STICKY_DOCK_ROUTES = new Set(['cart', 'checkout', 'product']);
 
 const WhatsAppFab = ({ route }) => (
   WHATSAPP_HIDDEN_ROUTES.has(route) ? null :
-  <a className="bs-wa-fab" href="https://wa.link/q5rjtp" target="_blank" rel="noopener" aria-label="Chat on WhatsApp">
+  <a
+    className={`bs-wa-fab${MOBILE_STICKY_DOCK_ROUTES.has(route) ? ' has-sticky-dock' : ''}`}
+    href="https://wa.link/q5rjtp"
+    target="_blank"
+    rel="noopener"
+    aria-label="Chat on WhatsApp"
+  >
     <Icon name="wa" size={28} />
   </a>
 );
@@ -1106,11 +1113,11 @@ const ScrollToTopFab = ({ route }) => {
     };
   }, [route]);
 
-  if (!visible || route === 'checkout') return null;
+  if (!visible) return null;
   return (
     <button
       type="button"
-      className={`bs-scrolltop-fab${whatsappHidden ? ' is-solo' : ''}`}
+      className={`bs-scrolltop-fab${whatsappHidden ? ' is-solo' : ''}${MOBILE_STICKY_DOCK_ROUTES.has(route) ? ' has-sticky-dock' : ''}`}
       aria-label="Back to top"
       onClick={() => scrollTabOrWindow(0, 'smooth')}
     >
