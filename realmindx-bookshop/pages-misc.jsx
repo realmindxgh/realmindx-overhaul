@@ -496,7 +496,7 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
           {!isLogin && (
             <div className="bs-field">
               <label>Phone Number</label>
-              <input placeholder="+233 XX XXX XXXX" value={form.phone} onChange={set('phone')} autoComplete="tel" />
+              <input type="tel" placeholder="+233 XX XXX XXXX" value={form.phone} onChange={set('phone')} autoComplete="tel" />
             </div>
           )}
           <BookshopPasswordField
@@ -2190,7 +2190,7 @@ const AccountPage = ({ navigate }) => {
                           <div className="bs-account-ref-detail-actions">
                             {detail.can_delete ? (
                               <>
-                                <button type="button" onClick={() => beginDetailEdit(detail)}><Icon name="pencil" size={14} className="bs-mobile-hidden-icon" /> Edit</button>
+                                <button type="button" onClick={() => beginDetailEdit(detail)}>Edit</button>
                                 <button type="button" className="delete" disabled={removing} onClick={() => deleteCheckoutDetail(detail)}><Icon name="trash" size={14} /> {removing ? 'Removing' : 'Delete'}</button>
                               </>
                             ) : (

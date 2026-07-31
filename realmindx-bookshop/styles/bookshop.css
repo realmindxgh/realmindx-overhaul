@@ -1809,7 +1809,7 @@
   background: #edf3ff;
   color: var(--bs-navy);
 }
-.bs-field { margin-bottom: 18px; }
+.bs-field { position: relative; margin-bottom: 18px; }
 .bs-field:is(label) { display: block; }
 .bs-field label,
 .bs-field > span { display: block; font-family:'Montserrat',sans-serif; font-weight: 600; font-size: 13px; color: var(--bs-navy); margin-bottom: 7px; }
@@ -1817,8 +1817,7 @@
 .bs-field textarea { height: auto; padding: 13px 15px; resize: vertical; min-height: 90px; }
 .bs-field input:focus, .bs-field textarea:focus, .bs-field select:focus { outline: none; border-color: var(--bs-navy); box-shadow: 0 0 0 3px rgba(20,54,112,.1); }
 .bs-field-control { position: relative; }
-.bs-field-control > span,
-.bs-zone-input-icon {
+.bs-field-control > span {
   position: absolute;
   top: 50%;
   left: 15px;
@@ -1828,12 +1827,11 @@
   transform: translateY(-50%);
   pointer-events: none;
 }
-.bs-field-control input { padding-left: 46px; }
+.bs-field-control:has(> span) input { padding-left: 46px; }
 .bs-field-control select { padding-left: 15px; }
 .bs-field-control-textarea > span { top: 17px; transform: none; }
-.bs-field-control-textarea textarea { padding-left: 46px; }
-.bs-field-control:focus-within > span,
-.bs-zone-picker:focus-within .bs-zone-input-icon { color: var(--bs-navy); }
+.bs-field-control:has(> span) textarea { padding-left: 46px; }
+.bs-field-control:focus-within > span { color: var(--bs-navy); }
 .bs-checkout-section-label {
   display: flex;
   align-items: center;
@@ -1882,7 +1880,7 @@
   height: 48px;
   border: 1.5px solid var(--bs-border);
   border-radius: var(--bs-radius-sm);
-  padding: 0 15px 0 50px !important;
+  padding: 0 15px;
   font-size: 15px;
   color: var(--bs-text);
   background: #fff;
@@ -2028,7 +2026,7 @@
 }
 .bs-promo-entry .bs-promo-row input {
   height: 48px;
-  padding: 0 14px 0 42px;
+  padding: 0 14px;
   border-color: rgba(20,54,112,.2);
   border-radius: 12px;
   background: rgba(255,255,255,.94);
@@ -2046,16 +2044,6 @@
 .bs-promo-entry .bs-promo-row input:focus {
   border-color: var(--bs-navy);
   box-shadow: 0 0 0 3px rgba(20,54,112,.09);
-}
-.bs-promo-input-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  z-index: 1;
-  display: grid;
-  color: #60728f;
-  transform: translateY(-50%);
-  pointer-events: none;
 }
 .bs-promo-entry .bs-promo-row .bs-btn {
   height: 48px;
@@ -2109,7 +2097,6 @@
   .bs-promo-entry-copy { margin-left: 0; }
   .bs-promo-entry .bs-promo-row { display: grid; }
   .bs-promo-entry .bs-promo-row .bs-btn { width: 100%; }
-  .bs-promo-input-icon { top: 24px; }
 }
 .bs-radio-card { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 16px; border: 1.5px solid #d9e2ef; border-radius: var(--bs-radius-sm); background: #fff; color: inherit; text-align: left; cursor: pointer; transition: all .2s; margin-bottom: 12px; }
 .bs-radio-card:hover, .bs-radio-card:focus-visible { border-color: var(--bs-navy); outline: none; box-shadow: 0 0 0 3px rgba(20,54,112,.08); }
@@ -2273,7 +2260,7 @@
 .bs-auth-form .bs-field input::placeholder { color: rgba(255,255,255,.4); }
 .bs-auth-form .bs-field input:focus { border-color: var(--bs-gold-live); box-shadow: 0 0 0 3px rgba(255,204,1,.18); }
 .bs-auth-form .bs-field { position: relative; }
-.bs-auth-form .bs-field::after {
+.bs-field::after {
   content: '';
   position: absolute;
   z-index: 1;
@@ -2282,12 +2269,27 @@
   width: 17px;
   height: 17px;
   pointer-events: none;
-  background: center / 17px 17px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='20' height='16' x='2' y='4' rx='2'/%3E%3Cpath d='m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7'/%3E%3C/svg%3E");
+  background: center / 17px 17px no-repeat;
+  display: none;
 }
-.bs-auth-form .bs-field:has(input[type="password"])::after {
+.bs-field:not(:has(.bs-field-control)):has(input[type="email"])::after {
+  display: block;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='20' height='16' x='2' y='4' rx='2'/%3E%3Cpath d='m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7'/%3E%3C/svg%3E");
+}
+.bs-field:not(:has(.bs-field-control)):has(input[type="tel"])::after {
+  display: block;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z'/%3E%3C/svg%3E");
+}
+.bs-field:not(:has(.bs-field-control)):has(input[type="password"])::after {
+  display: block;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%236f809a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='11' x='3' y='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E");
 }
-.bs-auth-form .bs-field input { padding-left: 44px; }
+.bs-field:not(:has(.bs-field-control)):has(input[type="email"]) > input,
+.bs-field:not(:has(.bs-field-control)):has(input[type="tel"]) > input,
+.bs-field:not(:has(.bs-field-control)):has(input[type="password"]) > input,
+.bs-field:not(:has(.bs-field-control)):has(input[type="password"]) .bs-password-field input {
+  padding-left: 44px;
+}
 .bs-auth-form .bs-password-toggle { color: rgba(255,255,255,.72); }
 .bs-auth-form .bs-password-toggle:hover,
 .bs-auth-form .bs-password-toggle:focus-visible { color: var(--bs-gold-live); background: rgba(255,255,255,.1); }
@@ -6149,15 +6151,12 @@
     padding-top: 10px;
     padding-bottom: 10px;
   }
-  .bs-field-control > span,
-  .bs-zone-input-icon {
+  .bs-field-control > span {
     left: 11px;
   }
-  .bs-field-control > span svg,
-  .bs-zone-input-icon svg { width: 14px; height: 14px; }
-  .bs-field-control input,
-  .bs-field-control-textarea textarea { padding-left: 34px; }
-  .bs-zone-input { padding-left: 34px !important; }
+  .bs-field-control > span svg { width: 14px; height: 14px; }
+  .bs-field-control:has(> span) input,
+  .bs-field-control:has(> span) textarea { padding-left: 34px; }
   .bs-field-control select { padding-left: 11px; }
   .bs-field-control-textarea > span { top: 13px; }
   .bs-field-help,
@@ -6269,7 +6268,6 @@
     padding-left: 5px;
     padding-right: 5px;
   }
-  .bs-promo-input-icon { top: 50%; }
   .bs-checkout-primary-action,
   .bs-checkout-back-action { display: none; }
   .bs-checkout-mobile-dock { display: flex; }

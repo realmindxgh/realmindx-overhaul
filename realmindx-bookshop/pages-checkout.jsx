@@ -769,7 +769,7 @@ const CheckoutPage = ({ navigate }) => {
                 </div>
               )}
               <div className="bs-field-row">
-                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name *</label><div className="bs-field-control"><span><Icon name="user" size={16} /></span><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" /></div>{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
+                <div className={`bs-field${errors.name?' err':''}`}><label>Full Name *</label><div className="bs-field-control"><input ref={nameRef} aria-invalid={Boolean(errors.name)} value={form.name} onChange={set('name')} placeholder="Ama Mensah" /></div>{errors.name && <div className="bs-field-error">{errors.name}</div>}</div>
                 <div className={`bs-field${errors.phone?' err':''}`}><label>Phone Number *</label><div className="bs-field-control"><span><Icon name="phone" size={16} /></span><input ref={phoneRef} aria-invalid={Boolean(errors.phone)} value={form.phone} onChange={set('phone')} placeholder="+233 ..." inputMode="tel" /></div>{errors.phone && <div className="bs-field-error">{errors.phone}</div>}</div>
               </div>
               <div className={`bs-field${errors.email?' err':''}`}><label>Email *</label><div className="bs-field-control"><span><Icon name="mail" size={16} /></span><input ref={emailRef} aria-invalid={Boolean(errors.email)} value={form.email} onChange={set('email')} placeholder="you@email.com" inputMode="email" /></div>{errors.email && <div className="bs-field-error">{errors.email}</div>}</div>
@@ -797,7 +797,6 @@ const CheckoutPage = ({ navigate }) => {
                   <div className="bs-field" style={{ marginTop:18 }}>
                     <label>Delivery Location *</label>
                     <div className="bs-zone-picker">
-                      <span className="bs-zone-input-icon"><Icon name="pin" size={16} /></span>
                       <input
                         ref={zoneRef}
                         aria-invalid={Boolean(errors.zone)}
@@ -805,6 +804,7 @@ const CheckoutPage = ({ navigate }) => {
                         aria-controls="delivery-zone-results"
                         className="bs-zone-input"
                         type="search"
+                        data-form-icon="none"
                         value={zoneSearch}
                         placeholder={loadingZones ? 'Loading delivery areas...' : 'Search your town or area'}
                         onFocus={() => setZonePickerOpen(true)}
@@ -854,7 +854,6 @@ const CheckoutPage = ({ navigate }) => {
                   <div className={`bs-field${errors.city?' err':''}`} style={{ marginTop:18 }}>
                     <label>Delivery Location *</label>
                     <div className="bs-field-control">
-                      <span><Icon name="pin" size={16} /></span>
                       <input
                         ref={cityRef}
                         value={form.city}
@@ -870,7 +869,7 @@ const CheckoutPage = ({ navigate }) => {
                   <div className="bs-field-row" style={{ marginTop:18 }}>
                     <div className={`bs-field${errors.city?' err':''}`}>
                       <label>Town / Area *</label>
-                      <div className="bs-field-control"><span><Icon name="pin" size={16} /></span><input ref={cityRef} value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" /></div>
+                      <div className="bs-field-control"><input ref={cityRef} value={form.city} onChange={set('city')} placeholder="Example: Hohoe, Berekum, Wa" /></div>
                       {errors.city && <div className="bs-field-error">{errors.city}</div>}
                     </div>
                     <div className={`bs-field${errors.region?' err':''}`}>
@@ -885,7 +884,7 @@ const CheckoutPage = ({ navigate }) => {
                 )}
                 <div className="bs-field" style={{ marginTop:customDeliveryArea ? 0 : 18 }}>
                   <label>Landmark or delivery directions</label>
-                  <div className="bs-field-control bs-field-control-textarea"><span><Icon name="pin" size={16} /></span><textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." /></div>
+                  <div className="bs-field-control bs-field-control-textarea"><textarea ref={addressRef} value={form.address} onChange={set('address')} placeholder="House number, street, nearby landmark..." /></div>
                   <p className="bs-field-help">We will contact you to confirm the precise landmark and delivery directions.</p>
                 </div>
                 {!customDeliveryArea && <div className={`bs-field${errors.region?' err':''}`}><label>Region{fallbackDeliveryLocation ? ' *' : ''}</label><div className="bs-field-control"><select ref={regionRef} value={form.region} onChange={set('region')}><option value="">Select region</option>{GHANA_REGIONS.map(region => <option key={region} value={region}>{region}</option>)}</select></div>{errors.region && <div className="bs-field-error">{errors.region}</div>}</div>}
@@ -935,7 +934,6 @@ const CheckoutPage = ({ navigate }) => {
                 </div>
                 <p className="bs-promo-entry-copy">Enter your code to update the order total before confirmation.</p>
                 <div className="bs-promo-row">
-                  <span className="bs-promo-input-icon" aria-hidden="true"><Icon name="tag" size={16} /></span>
                   <input
                     aria-label="Promo code"
                     placeholder="Enter promo code"

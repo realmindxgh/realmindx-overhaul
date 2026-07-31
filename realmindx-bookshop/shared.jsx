@@ -37,7 +37,6 @@ const Icon = ({ name, size = 24, stroke = 1.8, className = '' }) => {
     home:     <><path d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-3v-7H10v7H5a2 2 0 0 1-2-2v-9z"/></>,
     shop:     <><path d="M4 9h16l-1-4H5L4 9zM5 9v11h14V9M9 20v-6h6v6"/></>,
     book:     <><path d="M4 19a2 2 0 0 1 2-2h13V3H6a2 2 0 0 0-2 2v14z"/><path d="M4 19a2 2 0 0 0 2 2h13"/></>,
-    pencil:   <><path d="M4 20h4L18.5 9.5a2 2 0 0 0-3-3L5 16v4z"/><path d="M14 7l3 3"/></>,
     files:    <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5z"/><path d="M14 3v5h5"/></>,
     cap:      <><path d="M12 3l10 5-10 5L2 8l10-5z"/><path d="M6 10v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/></>,
     palette:  <><circle cx="12" cy="12" r="9"/><circle cx="8" cy="9" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16" cy="9" r="1"/><circle cx="16.5" cy="13" r="1"/></>,
@@ -182,7 +181,7 @@ const CATEGORIES = [
   { id: 'curriculum', name: 'Curriculum Books', icon: 'cap' },
   { id: 'textbooks',  name: 'Textbooks',     icon: 'book' },
   { id: 'past',       name: 'Past Questions',icon: 'files' },
-  { id: 'stationery', name: 'Stationery',    icon: 'pencil' },
+  { id: 'stationery', name: 'Stationery',    icon: 'box' },
   { id: 'readers',    name: 'Readers',       icon: 'globe' },
   { id: 'art',        name: 'Art & Craft',   icon: 'palette' },
 ];

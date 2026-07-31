@@ -304,10 +304,13 @@ const DonateForm = () => {
             </div>
             <div className="form-group">
               <label className="form-label">Amount</label>
-              <input className="form-input" type="number" min="1" value={form.amount}
-                ref={amountRef}
-                aria-invalid={Boolean(fieldErrors.amount)}
-                onChange={set('amount')} placeholder="e.g. 200" />
+              <div className="auth-field-control">
+                <span className="auth-field-icon" aria-hidden="true"><Icon name="money" size={14} stroke={1.9} /></span>
+                <input className="form-input" type="number" min="1" value={form.amount}
+                  ref={amountRef}
+                  aria-invalid={Boolean(fieldErrors.amount)}
+                  onChange={set('amount')} placeholder="e.g. 200" />
+              </div>
               {fieldErrors.amount && <p className="form-error">{fieldErrors.amount}</p>}
               {form.currency === 'GHS' && (
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:8 }}>

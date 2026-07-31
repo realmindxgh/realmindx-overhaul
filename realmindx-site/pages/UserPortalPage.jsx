@@ -1205,7 +1205,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
               <label className="form-label">{label}</label>
               <input
                 className="form-input"
-                type={name.includes('email') ? 'email' : 'text'}
+                type={name.includes('phone') ? 'tel' : name.includes('email') ? 'email' : 'text'}
                 placeholder={placeholder}
                 value={form[name] || ''}
                 onChange={event => setForm(prev => ({ ...prev, [name]: event.target.value }))}

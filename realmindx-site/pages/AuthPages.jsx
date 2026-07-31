@@ -146,7 +146,7 @@ const InternalLoginPage = ({ role = 'admin' }) => {
           </div>
 
           <form onSubmit={handleSubmit} noValidate>
-            <div className="form-group auth-icon-form-group">
+            <div className="form-group">
               <label className="form-label">Email Address</label>
               <div className="auth-field-control">
                 <span className="auth-field-icon" aria-hidden="true"><Icon name="mail" size={14} stroke={1.9} /></span>
@@ -161,7 +161,7 @@ const InternalLoginPage = ({ role = 'admin' }) => {
               </div>
             </div>
 
-            <div className="form-group has-forgot auth-icon-form-group">
+            <div className="form-group has-forgot">
               <label className="form-label">
                 Password
               </label>

@@ -111,7 +111,7 @@ const DeliveryLogin = ({ role }) => {
       <form className="delivery-login-panel" onSubmit={submit}>
         {error ? <div className="form-error">{error}</div> : null}
         <Field label="Phone number">
-          <input value={form.phone} onChange={set('phone')} placeholder="024XXXXXXX" autoComplete="tel" required />
+          <input type="tel" value={form.phone} onChange={set('phone')} placeholder="024XXXXXXX" autoComplete="tel" required />
         </Field>
         <Field label="Password">
           <DeliveryPasswordInput value={form.password} onChange={set('password')} autoComplete="current-password" required />
