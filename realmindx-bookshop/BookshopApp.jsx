@@ -811,7 +811,13 @@ const App = () => {
       } else if (activeProduct) {
         page = <ProductPage navigate={navigate} bookId={activeProduct?.id} bookSlug={params.slug} initialBook={activeProduct} key={activeProduct?.id || params.slug} />;
       } else {
-        page = <div className="bs-fade-page bs-section bs-container"><LoadingState minimal /></div>;
+        page = (
+          <div className="bs-fade-page">
+            <div className="bs-page-loader">
+              <LoadingState minimal />
+            </div>
+          </div>
+        );
       }
       break;
     case 'wishlist': page = <WishlistPage navigate={navigate} />; break;

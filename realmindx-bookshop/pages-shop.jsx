@@ -489,10 +489,7 @@ const HomePage = ({ navigate, onLoadingChange }) => {
   if (catalogLoading && !isApiMode()) {
     return (
       <div className="bs-fade-page">
-        <HeroSlideshow navigate={navigate} />
-        <section className="bs-section bs-container">
-          <LoadingState title="Loading the bookshop" body="Fetching the latest books, categories, and offers." />
-        </section>
+        <LoadingState title="Loading the bookshop" body="Fetching the latest books, categories, and offers." />
       </div>
     );
   }
@@ -514,8 +511,10 @@ const HomePage = ({ navigate, onLoadingChange }) => {
   // The home page is the first impression, so it should arrive as one complete page.
   if (sectionLoading && !hasContent) {
     return (
-      <div className="bs-fade-page bs-section bs-container">
-        <LoadingState minimal />
+      <div className="bs-fade-page">
+        <div className="bs-page-loader">
+          <LoadingState minimal />
+        </div>
       </div>
     );
   }
