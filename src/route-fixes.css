@@ -6955,12 +6955,15 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
     font-size: .6rem !important;
   }
 
-  .bs .bs-field-control :is(input, textarea),
-  .bs .bs-zone-picker input {
+  .bs .bs-field-control:has(> span) :is(input, textarea) {
     padding-left: 34px !important;
   }
 
   .bs .bs-field-control select {
+    padding-left: 11px !important;
+  }
+
+  .bs .bs-zone-picker input {
     padding-left: 11px !important;
   }
 
