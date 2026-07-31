@@ -6542,9 +6542,19 @@
 }
 
 /* ---------- Related-books carousel (product page) ---------- */
-.bs-related { padding: 8px 48px 64px; }
+.bs-related { padding: 8px 0 64px; }
 .bs-related-sub { margin-top: 10px; color: var(--bs-muted); font-size: 14px; line-height: 1.5; max-width: 560px; }
-.bs-related-wrap { position: relative; }
+.bs-related-shell {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  align-items: center;
+  column-gap: 16px;
+}
+.bs-related-viewport {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+}
 .bs-related-track {
   display: flex;
   gap: 18px;
@@ -6564,10 +6574,6 @@
 }
 .bs-related-track:focus-visible { outline: 2px solid var(--bs-gold-dark); outline-offset: 3px; border-radius: var(--bs-radius-md); }
 .bs-related-arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 3;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -6581,12 +6587,12 @@
   box-shadow: var(--bs-shadow-sm);
   transition: opacity .2s, box-shadow .2s, transform .2s;
 }
-.bs-related-arrow:hover:not(:disabled) { box-shadow: var(--bs-shadow-md); transform: translateY(-50%) scale(1.06); }
-.bs-related-arrow:active:not(:disabled) { transform: translateY(-50%) scale(0.97); }
+.bs-related-arrow:hover:not(:disabled) { box-shadow: var(--bs-shadow-md); transform: scale(1.06); }
+.bs-related-arrow:active:not(:disabled) { transform: scale(0.97); }
 .bs-related-arrow:disabled { opacity: .3; cursor: default; pointer-events: none; }
 .bs-related-arrow:focus-visible { outline: 2px solid var(--bs-gold-dark); outline-offset: 2px; }
-.bs-related-prev { left: 4px; }
-.bs-related-next { right: 4px; }
+.bs-related-prev { justify-self: center; }
+.bs-related-next { justify-self: center; }
 .bs-pcard-old { margin-right: 6px; font-weight: 600; font-size: 11px; color: var(--bs-muted); }
 @media (max-width: 1439px) {
   .bs-related-track > * { flex-basis: calc((100% - 54px) / 4); }
@@ -6597,7 +6603,6 @@
 @media (max-width: 767px) {
   .bs-related-track { gap: 9px; padding-bottom: 8px; }
   .bs-related-track > * { flex-basis: calc((100% - 9px) / 2); }
-  .bs-related { padding: 0 32px 40px; }
 }
 @media (max-width: 480px) {
   .bs-related-track { padding-left: 4px; padding-right: 4px; }

@@ -154,9 +154,11 @@ export const RelatedCarousel = ({ books, book, navigate, loading = false }) => {
             <p className="bs-related-sub">Explore more books for the same subject, class level, or curriculum.</p>
           </div>
         </div>
-        <div className="bs-related-wrap">
-          <div className="bs-related-track">
-            {Array.from({ length: 5 }, (_, i) => <RelatedSkeletonCard key={i} />)}
+        <div className="bs-related-shell">
+          <div className="bs-related-viewport">
+            <div className="bs-related-track">
+              {Array.from({ length: 5 }, (_, i) => <RelatedSkeletonCard key={i} />)}
+            </div>
           </div>
         </div>
       </section>
@@ -173,7 +175,7 @@ export const RelatedCarousel = ({ books, book, navigate, loading = false }) => {
           <p className="bs-related-sub">Explore more books for the same subject, class level, or curriculum.</p>
         </div>
       </div>
-      <div className="bs-related-wrap">
+      <div className="bs-related-shell">
         <button
           type="button"
           className="bs-related-arrow bs-related-prev"
@@ -183,15 +185,17 @@ export const RelatedCarousel = ({ books, book, navigate, loading = false }) => {
         >
           <Icon name="chevL" size={22} />
         </button>
-        <div
-          className="bs-related-track"
-          ref={trackRef}
-          tabIndex={0}
-          role="group"
-          aria-label="Related books carousel"
-          onKeyDown={onKeyDown}
-        >
-          {related.map((b, i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}
+        <div className="bs-related-viewport">
+          <div
+            className="bs-related-track"
+            ref={trackRef}
+            tabIndex={0}
+            role="group"
+            aria-label="Related books carousel"
+            onKeyDown={onKeyDown}
+          >
+            {related.map((b, i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}
+          </div>
         </div>
         <button
           type="button"
