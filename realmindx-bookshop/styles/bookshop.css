@@ -6542,7 +6542,7 @@
 }
 
 /* ---------- Related-books carousel (product page) ---------- */
-.bs-related { padding: 8px 0 64px; }
+.bs-related { padding: 8px 48px 64px; }
 .bs-related-sub { margin-top: 10px; color: var(--bs-muted); font-size: 14px; line-height: 1.5; max-width: 560px; }
 .bs-related-wrap { position: relative; }
 .bs-related-track {
@@ -6553,7 +6553,7 @@
   scroll-behavior: smooth;
   scroll-snap-type: x proximity;
   scrollbar-width: none;
-  padding: 2px 8px 14px;
+  padding: 2px 0 14px;
   outline: none;
 }
 .bs-related-track::-webkit-scrollbar { display: none; }
@@ -6568,8 +6568,8 @@
   top: 50%;
   transform: translateY(-50%);
   z-index: 3;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: 1px solid var(--bs-border);
   background: #fff;
@@ -6585,8 +6585,8 @@
 .bs-related-arrow:active:not(:disabled) { transform: translateY(-50%) scale(0.97); }
 .bs-related-arrow:disabled { opacity: .3; cursor: default; pointer-events: none; }
 .bs-related-arrow:focus-visible { outline: 2px solid var(--bs-gold-dark); outline-offset: 2px; }
-.bs-related-prev { left: 0; }
-.bs-related-next { right: 0; }
+.bs-related-prev { left: 4px; }
+.bs-related-next { right: 4px; }
 .bs-pcard-old { margin-right: 6px; font-weight: 600; font-size: 11px; color: var(--bs-muted); }
 @media (max-width: 1439px) {
   .bs-related-track > * { flex-basis: calc((100% - 54px) / 4); }
@@ -6597,7 +6597,7 @@
 @media (max-width: 767px) {
   .bs-related-track { gap: 9px; padding-bottom: 8px; }
   .bs-related-track > * { flex-basis: calc((100% - 9px) / 2); }
-  .bs-related { padding: 0 0 40px; }
+  .bs-related { padding: 0 32px 40px; }
 }
 @media (max-width: 480px) {
   .bs-related-track { padding-left: 4px; padding-right: 4px; }

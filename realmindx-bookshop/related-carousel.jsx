@@ -177,7 +177,7 @@ export const RelatedCarousel = ({ books, book, navigate, loading = false }) => {
         <button
           type="button"
           className="bs-related-arrow bs-related-prev"
-          aria-label="Previous books"
+          aria-label="Previous products"
           onClick={() => scrollStep(-1)}
           disabled={!canLeft}
         >
@@ -196,7 +196,7 @@ export const RelatedCarousel = ({ books, book, navigate, loading = false }) => {
         <button
           type="button"
           className="bs-related-arrow bs-related-next"
-          aria-label="Next books"
+          aria-label="Next products"
           onClick={() => scrollStep(1)}
           disabled={!canRight}
         >
