@@ -1267,7 +1267,7 @@ const ProductCard = React.memo(({ book, idx = 0, navigate, searchContext = null 
           {book.title}
         </a>
         <div className="bs-pcard-desc">{book.desc}</div>
-        <div className="bs-pcard-price">{cedis(book.price)}</div>
+        <div className="bs-pcard-price">{book.old ? <del className="bs-pcard-old">{cedis(book.old)}</del> : null}{cedis(book.price)}</div>
         <div className="bs-pcard-foot">
           <RatingLine book={book} size={13} />
           {book.stock

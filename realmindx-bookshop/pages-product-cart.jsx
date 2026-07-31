@@ -1,7 +1,8 @@
 ﻿import React from 'react';
 import { Icon, Stars, LoadingState, cedis, CoverPlaceholder } from './shared.jsx';
-import { useCart, useWishlist, ProductCard } from './chrome.jsx';
+import { useCart, useWishlist } from './chrome.jsx';
 import { useCatalog, fromApiProduct } from './catalog.jsx';
+import { RelatedCarousel } from './related-carousel.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { trackProductView } from '../src/lib/analytics.js';
 import { canUseLocalFallback, useSiteCopyState } from '../src/lib/siteContent.js';
@@ -278,16 +279,6 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
     );
   }
 
-  const samePublisher = book.publisher
-    ? books.filter(b => b.id !== book.id && b.publisher && b.publisher.toLowerCase() === book.publisher.toLowerCase())
-    : [];
-  const sameCategory = books.filter(b => b.id !== book.id && b.cat === book.cat);
-  const related = [...samePublisher, ...sameCategory]
-    .filter((item, index, arr) => arr.findIndex(candidate => candidate.id === item.id) === index)
-    .slice(0, 5);
-  const relatedTitle = samePublisher.length && book.publisher
-    ? `More from ${book.publisher}`
-    : 'More in this category';
   const deliveryCopy = siteCopy.bookshop_pdp_delivery_info
     || (allowLocalFallback ? PDP_DELIVERY_FALLBACK : 'Current delivery information is unavailable.');
   const returnsCopy = siteCopy.bookshop_pdp_return_policy
@@ -446,15 +437,6 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
         </div>
       </div>
 
-      {related.length > 0 && (
-        <section className="bs-section" id="related">
-          <div className="bs-section-head-row"><div><span className="bs-eyebrow">Keep browsing</span><h2 className="bs-h2">{relatedTitle}</h2></div></div>
-          <div className="bs-hscroll">
-            {related.map((b,i) => <ProductCard key={b.id} book={b} idx={i} navigate={navigate} />)}
-          </div>
-        </section>
-      )}
-
       <section className="bs-section" id="reviews">
         <div className="bs-section-head-row"><div><span className="bs-eyebrow">What buyers say</span><h2 className="bs-h2">Reviews</h2></div></div>
         <div className="bs-reviews-layout">
@@ -531,6 +513,8 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
           </div>
         </div>
       </section>
+
+      <RelatedCarousel books={books} book={book} navigate={navigate} loading={catalogLoading} />
 
       {lightbox && (
         <div
