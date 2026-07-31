@@ -10,7 +10,6 @@ import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute } from './urls.js';
 import { fuzzyMatches, rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
 import { api, isApiMode } from '../src/lib/apiClient.js';
-import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { buildShopCacheKey, saveShopCache, saveHomeCache, getHomeCacheStale } from '../src/lib/bookshopRouteCache.js';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
@@ -51,101 +50,6 @@ const ProductCardSkeleton = () => (
     </div>
   </div>
 );
-
-const BookRequestModal = ({ open, onClose, initialTitle, browseContext }) => {
-  const session = getDemoSession();
-  const [form, setForm] = React.useState({ requested_title: '', customer_name: '', email: '', phone: '', author: '', publisher: '', level: '', notes: '' });
-  const [turnstileToken, setTurnstileToken] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const [result, setResult] = React.useState(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setForm({
-      requested_title: initialTitle || '',
-      customer_name: session?.full_name || session?.name || '',
-      email: session?.email || '',
-      phone: session?.phone || '',
-      author: '', publisher: '', level: '', notes: '',
-    });
-    setTurnstileToken('');
-    setError('');
-    setResult(null);
-  }, [open, initialTitle]);
-
-  if (!open) return null;
-  const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
-  const submit = async event => {
-    event.preventDefault();
-    if (!form.email.trim() && !form.phone.trim()) {
-      setError('Enter an email address or phone number so we can contact you.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    try {
-      const response = await api.createBookRequest({
-        ...form,
-        search_query: initialTitle || undefined,
-        browse_context: browseContext,
-        turnstile_token: turnstileToken,
-      });
-      setResult(response.request);
-    } catch (err) {
-      setError(err?.message || 'We could not send your request. Please try again.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="bs-request-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="bs-request-modal" role="dialog" aria-modal="true" aria-labelledby="book-request-title">
-        <header className="bs-request-head">
-          <div>
-            <span className="bs-eyebrow">{result ? 'Request received' : 'Cannot find a book?'}</span>
-            <h2 id="book-request-title">{result ? 'We are looking for your book.' : 'Request it from RealMindX'}</h2>
-          </div>
-          <button type="button" className="bs-request-close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
-        </header>
-        {result ? (
-          <>
-            <div className="bs-request-body bs-request-success" role="status">
-              <span className="bs-request-success-icon"><Icon name="check" size={24} /></span>
-              <p>We will contact you when it becomes available. Keep this reference for your records.</p>
-              <strong>{result.reference}</strong>
-            </div>
-            <footer className="bs-request-foot">
-              <button type="button" className="bs-btn bs-btn-navy bs-btn-block" onClick={onClose}>Done</button>
-            </footer>
-          </>
-        ) : (
-          <form className="bs-request-form" onSubmit={submit}>
-            <div className="bs-request-body">
-            <p className="bs-request-intro">Tell us what you need and where to reach you. We will notify you as soon as it is available.</p>
-            <div className="bs-request-grid">
-              <label className="wide"><span>Book title or search term *</span><input value={form.requested_title} onChange={event => update('requested_title', event.target.value)} required /></label>
-              <label><span>Your name *</span><input value={form.customer_name} onChange={event => update('customer_name', event.target.value)} required /></label>
-              <label><span>Email address</span><input type="email" value={form.email} onChange={event => update('email', event.target.value)} /></label>
-              <label><span>Phone number</span><input type="tel" value={form.phone} onChange={event => update('phone', event.target.value)} /></label>
-              <label><span>Author</span><input value={form.author} onChange={event => update('author', event.target.value)} /></label>
-              <label><span>Publisher</span><input value={form.publisher} onChange={event => update('publisher', event.target.value)} /></label>
-              <label><span>Level or class</span><input value={form.level} onChange={event => update('level', event.target.value)} /></label>
-              <label className="wide"><span>Anything else?</span><textarea rows="3" value={form.notes} onChange={event => update('notes', event.target.value)} /></label>
-            </div>
-            <TurnstileField className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
-            {error && <p className="bs-request-error" role="alert">{error}</p>}
-            </div>
-            <footer className="bs-request-foot">
-              <button type="submit" className="bs-btn bs-btn-gold bs-btn-block" disabled={busy}>{busy ? 'Sending request...' : 'Send book request'}</button>
-            </footer>
-          </form>
-        )}
-      </section>
-    </div>
-  );
-};
 
 const filterGroupForTaxonomy = (taxonomy) => FILTER_GROUPS.find((group) => group.taxonomy === taxonomy) || null;
 const safeCeilingValue = (value) => Math.max(2, Math.ceil(Number(value) || 0));
@@ -924,7 +828,6 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
   const [view, setView] = React.useState('grid');
   const [drawer, setDrawer] = React.useState(false);
   const [browseQuery, setBrowseQuery] = React.useState('');
-  const [requestOpen, setRequestOpen] = React.useState(false);
   const [fetchedItems, setFetchedItems] = React.useState([]);
   const [totalCount, setTotalCount] = React.useState(0);
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -1235,6 +1138,12 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
     taxonomy_value: initialBrowse.value || null,
     selected_filters: selectedLabels,
     context_label: contextLabel,
+  };
+  const openRequestPage = () => {
+    try {
+      sessionStorage.setItem('bs:request-preseed', JSON.stringify({ title: requestTitle, context: requestContext }));
+    } catch (err) { /* ignore */ }
+    navigate('request-book');
   };
 
   const topPicks = React.useMemo(() => [], []);
@@ -1588,7 +1497,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
                   : 'Try a different subject, level, curriculum, publisher, item type, price range, or rating filter.'}
               </p>
               <div className="bs-empty-actions">
-                <button className="bs-btn bs-btn-gold" onClick={() => setRequestOpen(true)}>Request this book</button>
+                <button className="bs-btn bs-btn-gold" onClick={openRequestPage}>Request this book</button>
                 <button className="bs-btn bs-btn-outline" onClick={() => setFilters(createFilterState(rangeCeiling, initialBrowse, '', initialFilters))}>Clear all filters</button>
               </div>
             </div>
@@ -1623,7 +1532,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
               </div>
               <div className="bs-request-prompt">
                 <div><strong>Still did not find the book you need?</strong><span>Send us the title and we will notify you when it is available.</span></div>
-                <button type="button" className="bs-btn bs-btn-gold" onClick={() => setRequestOpen(true)}>Request a book</button>
+                <button type="button" className="bs-btn bs-btn-gold" onClick={openRequestPage}>Request a book</button>
               </div>
 
               {topPicks.length >= 2 && (
@@ -1684,7 +1593,6 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
           </button>
         </footer>
       </div>
-      <BookRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} initialTitle={requestTitle} browseContext={requestContext} />
     </div>
   );
 };
@@ -1700,4 +1608,4 @@ const ExamPicksPage = (props) => (
   />
 );
 
-export { HomePage, ShopPage, ExamPicksPage, CategoryStrip, BookRequestModal };
+export { HomePage, ShopPage, ExamPicksPage, CategoryStrip };

@@ -1,6 +1,7 @@
 import React from 'react';
 import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, ScrollToTopFab, BottomNav } from './chrome.jsx';
-import { HomePage, ShopPage, ExamPicksPage, BookRequestModal } from './pages-shop.jsx';
+import { HomePage, ShopPage, ExamPicksPage } from './pages-shop.jsx';
+import RequestBookPage from './pages-request.jsx';
 import { ProductPage, CartPage, WishlistPage } from './pages-product-cart.jsx';
 import { CheckoutPage, TrackPage, InvoicePage } from './pages-checkout.jsx';
 import { AuthPage, BookshopResetPasswordPage, ContactPage, InfoPage, BookshopLegalPage, AccountPage, OrderReviewPage, OrdersPage } from './pages-misc.jsx';
@@ -830,13 +831,7 @@ const App = () => {
     case 'review':   page = <OrderReviewPage navigate={navigate} />; break;
     case 'exam-catalogue':
       page = <ExamPicksPage navigate={navigate} />; break;
-    case 'request-book': page = (
-      <div className="bs-container bs-fade-page">
-        <div className="bs-request-page-wrap">
-          <BookRequestModal open={true} onClose={() => navigate('home')} />
-        </div>
-      </div>
-    ); break;
+    case 'request-book': page = <RequestBookPage navigate={navigate} />; break;
     default:         page = null;
   }
   const mainClassName = `bs-page${route === 'login' || route === 'signup' || route === 'reset-password' ? ' bs-page-auth' : ''}`;

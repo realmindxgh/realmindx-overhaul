@@ -7105,14 +7105,12 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   .bs .bs-auth-choice-modal .bs-modal-head h2,
   .bs .bs-account-security-modal .bs-modal-head h2,
   .bs .bs-account-contact-modal .bs-modal-head h2,
-  .bs .bs-account-detail-edit-modal .bs-modal-head h2,
-  .bs .bs-request-head h2 {
+  .bs .bs-account-detail-edit-modal .bs-modal-head h2 {
     font-size: .97rem !important;
     line-height: 1.2 !important;
   }
 
-  .bs .bs-tab-panel.active:has(.bs-modal-scrim),
-  .bs .bs-tab-panel.active:has(.bs-request-backdrop) {
+  .bs .bs-tab-panel.active:has(.bs-modal-scrim) {
     z-index: 12000 !important;
   }
 
@@ -7122,16 +7120,6 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   }
 
   .bs .bs-modal-box {
-    max-height: calc(100dvh - 16px) !important;
-    border-radius: 14px !important;
-  }
-
-  .bs .bs-request-backdrop {
-    place-items: center !important;
-    padding: 8px !important;
-  }
-
-  .bs .bs-request-modal {
     max-height: calc(100dvh - 16px) !important;
     border-radius: 14px !important;
   }
@@ -7155,8 +7143,7 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
     font-size: .75rem !important;
   }
 
-  .bs .bs-modal-foot .bs-btn,
-  .bs .bs-request-foot .bs-btn {
+  .bs .bs-modal-foot .bs-btn {
     font-size: .66rem !important;
   }
 }
