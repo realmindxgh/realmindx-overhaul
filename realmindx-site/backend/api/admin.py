@@ -3372,6 +3372,257 @@ def preview_product_import():
     )
 
 
+@admin_bp.post("/products/import/images/preview")
+@login_required
+@permission_required("products.create")
+def preview_product_images_import():
+    """
+    Preview an images-only import. Matches images in a ZIP to existing products
+    by original_filename (case-insensitive). Returns matched products, unmatched
+    images, duplicate matches, and invalid files.
+    """
+    images_zip = request.files.get("images_zip")
+    if not images_zip or not images_zip.filename:
+        return jsonify(error="Upload an image ZIP file."), 400
+    if not images_zip.filename.lower().endswith(".zip"):
+        return jsonify(error="Only ZIP files are supported for image batches."), 400
+
+    # Validate ZIP
+    images_zip.stream.seek(0, 2)
+    archive_bytes = images_zip.stream.tell()
+    images_zip.stream.seek(0)
+    if archive_bytes > 100 * 1024 * 1024:
+        return jsonify(error="Image ZIP must be 100 MB or smaller."), 400
+    if not zipfile.is_zipfile(images_zip.stream):
+        return jsonify(error="Choose a valid ZIP archive for the product images."), 400
+    images_zip.stream.seek(0)
+
+    # Build a lookup of existing products by original_filename (case-insensitive)
+    # Only products that have an image_file are matchable
+    product_by_filename = {}
+    duplicate_filenames = set()
+    products = Product.query.filter(Product.image_file_id.isnot(None)).all()
+    for product in products:
+        if product.image_file and product.image_file.original_filename:
+            key = product.image_file.original_filename.lower()
+            if key in product_by_filename:
+                duplicate_filenames.add(key)
+            else:
+                product_by_filename[key] = product
+
+    max_entries = 500
+    max_image_bytes = 12 * 1024 * 1024
+    max_uncompressed_bytes = 512 * 1024 * 1024
+
+    matched = []
+    unmatched = []
+    invalid_files = []
+    duplicate_matches = []
+
+    try:
+        images_zip.stream.seek(0)
+        with zipfile.ZipFile(images_zip.stream) as archive:
+            entries = [
+                entry
+                for entry in archive.infolist()
+                if not entry.is_dir() and "__MACOSX" not in entry.filename
+            ]
+            if len(entries) > 500:
+                return jsonify(error="Image ZIP contains too many files. Use at most 500."), 400
+
+            total_uncompressed = 0
+            max_image_bytes = 12 * 1024 * 1024
+            max_uncompressed_bytes = 512 * 1024 * 1024
+            total_uncompressed = 0
+
+            # First pass: validate entries
+            for entry in entries:
+                basename = Path(entry.filename).name
+                if not basename:
+                    continue
+                if entry.file_size > 12 * 1024 * 1024:
+                    invalid_files.append({"filename": basename, "reason": "File exceeds 12 MB limit."})
+                    continue
+                total_uncompressed += entry.file_size
+                if total_uncompressed > 512 * 1024 * 1024:
+                    return jsonify(error="Image ZIP expands beyond the 512 MB safety limit."), 400
+
+                # Check file extension
+                ext = Path(basename).suffix.lower().lstrip(".")
+                allowed = current_app.config["ALLOWED_UPLOAD_EXTENSIONS"].get("images", set())
+                if ext not in allowed:
+                    invalid_files.append({"filename": basename, "reason": f"Unsupported file type: .{ext}"})
+                    continue
+
+                # Match to product
+                key = basename.lower()
+                if key in duplicate_filenames:
+                    # Multiple products share this filename - ambiguous match
+                    duplicate_matches.append({
+                        "filename": basename,
+                        "reason": "Multiple products use this image filename. Cannot determine which to update."
+                    })
+                    continue
+
+                product = product_by_filename.get(key)
+                if product:
+                    matched.append({
+                        "filename": basename,
+                        "product_id": product.id,
+                        "product_name": product.name,
+                        "product_slug": product.slug,
+                        "product_category": product.category.name if product.category else "",
+                        "current_image_filename": product.image_file.original_filename if product.image_file else "",
+                        "current_image_id": product.image_file_id,
+                    })
+                else:
+                    unmatched.append({
+                        "filename": basename,
+                        "reason": "No product found with this image filename."
+                    })
+    except zipfile.BadZipFile:
+        return jsonify(error="The uploaded file is not a valid ZIP archive."), 400
+    except Exception as exc:
+        current_app.logger.exception("Image ZIP preview failed.")
+        return jsonify(error="Failed to process the image ZIP."), 500
+
+    # Build preview data for each matched product (existing image + new image preview)
+    # Note: We can't easily show the new image without uploading, but we can show metadata
+    matched_previews = []
+    for match in matched:
+        matched_previews.append({
+            "filename": match["filename"],
+            "product_id": match["product_id"],
+            "product_name": match["product_name"],
+            "product_slug": match["product_slug"],
+            "product_category": match["product_category"],
+            "current_image_filename": match["current_image_filename"],
+            "current_image_id": match["current_image_id"],
+        })
+
+    warnings = []
+    if not matched and not unmatched and not invalid_files:
+        warnings.append("No valid images found in the ZIP.")
+    elif not matched:
+        warnings.append("No images matched any existing products.")
+
+    return jsonify(
+        total_images=len(matched) + len(unmatched) + len(invalid_files),
+        matched_count=len(matched),
+        unmatched_count=len(unmatched),
+        invalid_count=len(invalid_files),
+        duplicate_count=len(duplicate_matches),
+        matched=matched_previews,
+        unmatched=unmatched,
+        invalid_files=invalid_files,
+        duplicate_matches=duplicate_matches,
+        warnings=warnings,
+    )
+
+
+)
+
+
+@admin_bp.post("/products/import/images")
+@login_required
+@permission_required("products.create")
+def import_product_images():
+    """
+    Import product images from a ZIP file. Updates images for existing products
+    matched by original_filename (case-insensitive). Does not create new products
+    or modify any other product fields.
+    """
+    images_zip = request.files.get("images_zip")
+    if not images_zip or not images_zip.filename:
+        return jsonify(error="Upload an image ZIP file."), 400
+    if not images_zip.filename.lower().endswith(".zip"):
+        return jsonify(error="Only ZIP files are supported for image batches."), 400
+
+    # Get the list of product IDs to update from the request
+    product_ids = set(json.loads(request.form.get("product_ids") or "[]"))
+    if not product_ids:
+        return jsonify(error="No products selected for image update."), 400
+
+    # Validate ZIP
+    images_zip.stream.seek(0, 2)
+    archive_bytes = images_zip.stream.tell()
+    images_zip.stream.seek(0)
+    if archive_bytes > 100 * 1024 * 1024:
+        return jsonify(error="Image ZIP must be 100 MB or smaller."), 400
+    if not zipfile.is_zipfile(images_zip.stream):
+        return jsonify(error="Choose a valid ZIP archive for the product images."), 400
+    images_zip.stream.seek(0)
+
+    # Build lookup of products to update
+    products = Product.query.filter(Product.id.in_(product_ids)).all()
+    product_by_id = {p.id: p for p in products}
+    if len(product_by_id) != len(product_ids):
+        return jsonify(error="One or more selected products no longer exist."), 400
+
+    # Save images from ZIP
+    try:
+        image_ids, saved_paths = _save_imported_images(images_zip, current_user.id)
+    except ValueError as exc:
+        for path in saved_paths:
+            path.unlink(missing_ok=True)
+        return jsonify(error=str(exc)), 400
+
+    updated = 0
+    skipped = []
+    missing_images = []
+
+    for product_id in product_ids:
+        product = product_by_id.get(product_id)
+        if not product:
+            skipped.append({"product_id": product_id, "reason": "Product not found"})
+            continue
+
+        # Find the image file that matches this product's original filename
+        if not product.image_file or not product.image_file.original_filename:
+            skipped.append({"product_id": product_id, "reason": "Product has no existing image to replace"})
+            continue
+
+        key = product.image_file.original_filename.lower()
+        if key not in image_ids:
+            skipped.append({"product_id": product_id, "reason": f"No image found in ZIP for filename '{product.image_file.original_filename}'"})
+            continue
+
+        # Update product image
+        new_image_id = image_ids[key]
+        if product.image_file_id != new_image_id:
+            product.image_file_id = new_image_id
+            reset_product_image_variants(product)
+            ensure_product_image_variants(product, owner_id=current_user.id)
+            updated += 1
+        else:
+            skipped.append({"product_id": product_id, "reason": "Image is identical to current"})
+
+    if updated == 0:
+        db.session.rollback()
+        for path in saved_paths:
+            path.unlink(missing_ok=True)
+        return jsonify(
+            updated=0,
+            skipped=skipped,
+            message="No images were updated.",
+        ), 400
+
+    log_action(
+        "update_product_images",
+        "product",
+        None,
+        {
+            "updated": updated,
+            "skipped": skipped,
+        },
+    )
+    db.session.commit()
+    return jsonify(
+        updated=updated,
+        skipped=skipped,
+    )
+
+
 def _build_admin_export_pdf(title, headers, data_rows):
     """Build a readable, repeat-header table for admin exports.
 

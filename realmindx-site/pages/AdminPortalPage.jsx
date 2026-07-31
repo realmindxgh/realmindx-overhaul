@@ -2197,6 +2197,7 @@ const formatImportBytes = value => {
 
 const ProductImportPanel = ({ onImported, onClose }) => {
   const maxZipBytes = 100 * 1024 * 1024;
+  const [importMode, setImportMode] = React.useState('catalogue'); // 'catalogue' or 'images'
   const [catalogFile, setCatalogFile] = React.useState(null);
   const [imagesZip, setImagesZip] = React.useState(null);
   const [preview, setPreview] = React.useState(null);
@@ -2206,6 +2207,10 @@ const ProductImportPanel = ({ onImported, onClose }) => {
   const [previewing, setPreviewing] = React.useState(false);
   const [importing, setImporting] = React.useState(false);
   const [overwriteSlugs, setOverwriteSlugs] = React.useState(new Set());
+  const [imagesPreview, setImagesPreview] = React.useState(null);
+  const [imagesPreviewing, setImagesPreviewing] = React.useState(false);
+  const [selectedImageMatches, setSelectedImageMatches] = React.useState(new Set());
+  const [conflictSelectAll, setConflictSelectAll] = React.useState(false);
 
   const reviewCatalog = async file => {
     setCatalogFile(file);
@@ -2234,8 +2239,74 @@ const ProductImportPanel = ({ onImported, onClose }) => {
     }
   };
 
+  const reviewImages = async file => {
+    setImagesZip(file);
+    setImagesPreview(null);
+    setSelectedImageMatches(new Set());
+    if (!file) {
+      setStatus(null);
+      return;
+    }
+    setImagesPreviewing(true);
+    setStatus({ type: 'info', message: 'Reviewing image ZIP...' });
+    try {
+      const result = await api.adminPreviewProductImagesImport(file);
+      setImagesPreview(result);
+      setSelectedImageMatches(new Set(result.matched.map(m => m.product_id)));
+      const msg = `${result.matched_count} images matched, ${result.unmatched_count} unmatched, ${result.invalid_count} invalid`;
+      setStatus({
+        type: result.warnings?.length ? 'warning' : 'success',
+        message: `${result.matched_count} of ${result.total_images} images matched to existing products. ${result.unmatched_count} unmatched, ${result.invalid_count} invalid. ${result.duplicate_count} duplicate matches ignored.`,
+      });
+    } catch (err) {
+      setStatus({ type: 'error', message: err.message || 'Image preview failed.' });
+    } finally {
+      setImagesPreviewing(false);
+    }
+  };
+
+  const submitImages = async event => {
+    event.preventDefault();
+    if (!imagesZip) {
+      setStatus({ type: 'error', message: 'Upload an image ZIP file.' });
+      return;
+    }
+    if (!imagesPreview) {
+      setStatus({ type: 'error', message: 'Wait for the image preview to finish.' });
+      return;
+    }
+    const selectedIds = Array.from(selectedImageMatches);
+    if (selectedIds.length === 0) {
+      setStatus({ type: 'error', message: 'Select at least one product image to update.' });
+      return;
+    }
+    setImporting(true);
+    setProgress({ stage: 'uploading', percent: 0, loaded: 0, total: 0 });
+    setStatus({ type: 'info', message: 'Updating product images...' });
+    try {
+      const result = await api.adminImportProductImages({
+        imagesZip,
+        productIds: selectedIds,
+        onProgress: nextProgress => setProgress(nextProgress),
+      });
+      const details = [
+        `${result.updated || 0} images updated`,
+        `${result.skipped?.length || 0} skipped`,
+      ];
+      setStatus({ type: 'success', message: `Image update complete: ${details.join(', ')}.` });
+      onImported?.();
+    } catch (err) {
+      setStatus({ type: 'error', message: err.message || 'Image update failed.' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const submit = async event => {
     event.preventDefault();
+    if (importMode === 'images') {
+      return submitImages(event);
+    }
     if (!catalogFile) {
       setStatus({ type: 'error', message: 'Upload a CSV or XLSX catalogue first.' });
       return;
@@ -2283,11 +2354,36 @@ const ProductImportPanel = ({ onImported, onClose }) => {
       setStatus({ type: 'error', message: 'Image ZIP must be 100 MB or smaller.' });
       return;
     }
-    setStatus(preview ? {
-      type: preview.warnings?.length ? 'warning' : 'success',
-      message: `${preview.row_count} product rows are ready for review.`,
-    } : null);
-    setImagesZip(file);
+    if (importMode === 'images') {
+      reviewImages(file);
+    } else {
+      setStatus(preview ? {
+        type: preview.warnings?.length ? 'warning' : 'success',
+        message: `${preview.row_count} product rows are ready for review.`,
+      } : null);
+      setImagesZip(file);
+    }
+  };
+
+  const handleConflictSelectAll = (checked) => {
+    if (checked) {
+      const allIds = new Set();
+      preview.conflicts.forEach(c => allIds.add(c.slug));
+      setOverwriteSlugs(allIds);
+      setConflictSelectAll(true);
+    } else {
+      setOverwriteSlugs(new Set());
+      setConflictSelectAll(false);
+    }
+  };
+
+  const handleImageMatchSelectAll = (checked) => {
+    if (checked) {
+      const allIds = new Set(imagesPreview.matched.map(m => m.product_id));
+      setSelectedImageMatches(allIds);
+    } else {
+      setSelectedImageMatches(new Set());
+    }
   };
 
   const updateMapping = (field, source) => {
@@ -2329,6 +2425,28 @@ const ProductImportPanel = ({ onImported, onClose }) => {
       ? 'Import complete'
       : `Uploading catalogue and images: ${progress?.percent || 0}%`;
 
+  const progressLabel = progress?.stage === 'processing'
+    ? 'Upload complete. The server is validating images and saving products.'
+    : progress?.stage === 'complete'
+      ? 'Import complete'
+      : `Uploading catalogue and images: ${progress?.percent || 0}%`;
+
+  const imagesProgressLabel = progress?.stage === 'processing'
+    ? 'Upload complete. The server is updating product images.'
+    : progress?.stage === 'complete'
+      ? 'Image update complete'
+      : `Uploading images: ${progress?.percent || 0}%`;
+
+  const totalConflicts = preview?.conflicts?.length || 0;
+  const selectedConflictCount = overwriteSlugs.size;
+  const conflictAllSelected = totalConflicts > 0 && selectedConflictCount === totalConflicts;
+  const conflictIndeterminate = selectedConflictCount > 0 && selectedConflictCount < totalConflicts;
+
+  const totalImageMatches = imagesPreview?.matched?.length || 0;
+  const selectedImageMatchCount = selectedImageMatches.size;
+  const imagesAllSelected = totalImageMatches > 0 && selectedImageMatchCount === totalImageMatches;
+  const imagesIndeterminate = selectedImageMatchCount > 0 && selectedImageMatchCount < totalImageMatches;
+
   return (
     <form className="admin-reply-panel product-import-panel" onSubmit={submit}>
       <div>
@@ -2339,23 +2457,64 @@ const ProductImportPanel = ({ onImported, onClose }) => {
           Cover images should use the filenames in the mapped image column.
         </p>
       </div>
+
+      {/* Mode selector */}
+      <div className="product-import-mode-selector" style={{ marginBottom: 20 }}>
+        <label style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontWeight: 600, color: 'var(--navy)', marginRight: 8 }}>Import mode:</span>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 16px', border: '2px solid var(--navy)', borderRadius: 8, background: importMode === 'catalogue' ? 'var(--navy)' : 'transparent', color: importMode === 'catalogue' ? '#fff' : 'var(--navy)', transition: 'all 0.2s' }}>
+            <input type="radio" name="importMode" value="catalogue" checked={importMode === 'catalogue'} onChange={() => setImportMode('catalogue')} disabled={importing || importing} style={{ accentColor: 'var(--gold)' }} />
+            <span style={{ fontWeight: 600 }}>Import or update product details</span>
+          </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 16px', border: '2px solid var(--navy)', borderRadius: 8, background: importMode === 'images' ? 'var(--navy)' : 'transparent', color: importMode === 'images' ? '#fff' : 'var(--navy)', transition: 'all 0.2s' }}>
+            <input type="radio" name="importMode" value="images" checked={importMode === 'images'} onChange={() => setImportMode('images')} disabled={importing || importing} style={{ accentColor: 'var(--gold)' }} />
+            <span style={{ fontWeight: 600 }}>Update existing product images only</span>
+          </label>
+        </label>
+        {importMode === 'images' && (
+          <p className="product-import-helper" style={{ marginTop: 8, fontSize: '0.86rem', color: 'var(--gray-600)' }}>
+            Upload a ZIP of product images. Files will be matched to existing products by their original filename (case-insensitive).
+            Exported product images use the format <code>{product.slug}.{ext}</code> and can be re-uploaded to update those products.
+            Only products that already exist and have an image will be matched. No new products will be created.
+          </p>
+        )}
+      </div>
+
       <div className="admin-form-grid product-import-files">
-        <label className="form-group">
-          <span className="form-label">1. Catalogue CSV/XLSX</span>
-          <input
-            className="form-input"
-            type="file"
-            accept=".csv,.xlsx"
-            disabled={importing}
-            onChange={event => reviewCatalog(event.target.files?.[0] || null)}
-          />
-          <small>{previewing ? 'Reading columns...' : catalogFile ? `${catalogFile.name} / ${formatImportBytes(catalogFile.size)}` : 'Choose the product catalogue.'}</small>
-        </label>
-        <label className="form-group">
-          <span className="form-label">2. Image ZIP</span>
-          <input className="form-input" type="file" accept=".zip" disabled={importing} onChange={chooseImageZip} />
-          <small>{imagesZip ? `${imagesZip.name} / ${formatImportBytes(imagesZip.size)}` : 'Optional, up to 100 MB.'}</small>
-        </label>
+        {importMode === 'catalogue' ? (
+          <>
+            <label className="form-group">
+              <span className="form-label">1. Catalogue CSV/XLSX</span>
+              <input
+                className="form-input"
+                type="file"
+                accept=".csv,.xlsx"
+                disabled={importing}
+                onChange={event => reviewCatalog(event.target.files?.[0] || null)}
+              />
+              <small>{previewing ? 'Reading columns...' : catalogFile ? `${catalogFile.name} / ${formatImportBytes(catalogFile.size)}` : 'Choose the product catalogue.'}</small>
+            </label>
+            <label className="form-group">
+              <span className="form-label">2. Image ZIP (optional)</span>
+              <input className="form-input" type="file" accept=".zip" disabled={importing} onChange={chooseImageZip} />
+              <small>{imagesZip ? `${imagesZip.name} / ${formatImportBytes(imagesZip.size)}` : 'Optional, up to 100 MB.'}</small>
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="form-group">
+              <span className="form-label">Image ZIP</span>
+              <input
+                className="form-input"
+                type="file"
+                accept=".zip"
+                disabled={importing || imagesPreviewing}
+                onChange={event => reviewImages(event.target.files?.[0] || null)}
+              />
+              <small>{imagesPreviewing ? 'Reviewing image ZIP...' : imagesZip ? `${imagesZip.name} / ${formatImportBytes(imagesZip.size)}` : 'Choose an image ZIP (up to 100 MB, 500 files max).'}</small>
+            </label>
+          </>
+        )}
       </div>
 
       {preview ? (
