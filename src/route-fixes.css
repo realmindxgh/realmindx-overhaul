@@ -2197,6 +2197,65 @@ html {
   font-size: 0.9rem;
 }
 
+.product-import-helper code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #edf2fa;
+  color: var(--navy);
+  font-weight: 700;
+}
+
+.product-import-selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid #dce3ef;
+  border-radius: 10px;
+  background: #f7f9fd;
+}
+
+.product-import-selection-count {
+  color: var(--navy);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.product-import-selection-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.product-import-match-thumb {
+  display: block;
+  width: 48px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #dce3ef;
+  background: #edf2fa;
+}
+
+.product-import-file-notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: #475467;
+}
+
+.product-import-file-notes li {
+  padding: 7px 0;
+  border-bottom: 1px solid #e6ebf3;
+}
+
+.product-import-file-notes li:last-child {
+  border-bottom: 0;
+}
+
 .product-import-mapping-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

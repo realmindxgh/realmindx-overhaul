@@ -658,6 +658,19 @@ def _unique_category_slug(name):
     return candidate
 
 
+def _image_entry_key(basename):
+    """Normalise an image filename to the stored original_filename matching key.
+
+    Stored original filenames are passed through secure_filename, so a ZIP entry
+    such as "My Cover.jpg" or "my%20cover.jpg" must reduce to the same key
+    ("my_cover.jpg") before matching products. Only the basename is used, so
+    nested ZIP folders never affect matching, and the result is lowercased so
+    matching is case-insensitive.
+    """
+    from urllib.parse import unquote
+    return secure_filename(unquote(basename or "")).lower() or ""
+
+
 def _save_imported_image(filename, data, owner_id):
     safe_name = secure_filename(filename or "")
     if not safe_name or "." not in safe_name:
@@ -712,9 +725,9 @@ def _read_catalog_rows(file_storage):
     raise ValueError("Only CSV and XLSX catalogue files are supported.")
 
 
-def _save_imported_images(file_storage, owner_id):
+def _save_imported_images(file_storage, owner_id, only_filenames=None):
     if not file_storage or not file_storage.filename:
-        return {}, []
+        return {}, [], []
     if not file_storage.filename.lower().endswith(".zip"):
         raise ValueError("Batch images must be uploaded as a ZIP file.")
     file_storage.stream.seek(0, 2)
@@ -729,8 +742,10 @@ def _save_imported_images(file_storage, owner_id):
     max_entries = 500
     max_image_bytes = 12 * 1024 * 1024
     max_uncompressed_bytes = 512 * 1024 * 1024
+    only_keys = {_image_entry_key(name) for name in (only_filenames or [])} if only_filenames else None
     saved_images = {}
     saved_paths = []
+    saved_ids = []
     with zipfile.ZipFile(file_storage.stream) as archive:
         entries = [
             entry
@@ -752,13 +767,22 @@ def _save_imported_images(file_storage, owner_id):
             basename = Path(entry.filename).name
             if not basename:
                 continue
+            key = _image_entry_key(basename)
+            if not key:
+                continue
+            if only_keys is not None and key not in only_keys:
+                continue
+            if key in saved_images:
+                # Duplicate filename inside the ZIP: the first entry wins.
+                continue
             saved = _save_imported_image(basename, archive.read(entry), owner_id)
             if not saved:
                 continue
             file_id, target = saved
-            saved_images[basename.lower()] = file_id
+            saved_images[key] = file_id
             saved_paths.append(target)
-    return saved_images, saved_paths
+            saved_ids.append(file_id)
+    return saved_images, saved_paths, saved_ids
 
 
 PRODUCT_IMPORT_FIELDS = (
@@ -3201,6 +3225,7 @@ def delete_order_review(review_id):
 @permission_required("products.create")
 def import_products():
     saved_paths = []
+    saved_ids = []
     try:
         rows = _read_catalog_rows(request.files.get("catalog_file"))
         headers = _import_headers(rows)
@@ -3208,17 +3233,22 @@ def import_products():
         overwrite_slugs = set(json.loads(request.form.get("overwrite_slugs") or "[]"))
         if mapping and not mapping.get("name"):
             raise ValueError("Map a catalogue column to Product name before importing.")
-        image_ids, saved_paths = _save_imported_images(request.files.get("images_zip"), current_user.id)
+        image_ids, saved_paths, saved_ids = _save_imported_images(request.files.get("images_zip"), current_user.id)
     except ValueError as exc:
         db.session.rollback()
         for path in saved_paths:
             path.unlink(missing_ok=True)
+        if saved_ids:
+            UploadedFile.query.filter(UploadedFile.id.in_(saved_ids)).delete(synchronize_session=False)
+            db.session.commit()
         return jsonify(error=str(exc)), 400
 
     imported = 0
     updated = 0
     skipped = []
     missing_images = set()
+    image_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "public" / "images"
+    files_before = set(image_dir.rglob("*")) if image_dir.exists() else set()
     try:
         for index, raw_row in enumerate(rows, start=2):
             row = _normalise_import_row(_apply_import_mapping(raw_row, mapping))
@@ -3263,9 +3293,10 @@ def import_products():
             product.featured = row["featured"]
             product.source = row["source"]
             product.is_active = True
-            image_filename = row["image_filename"].lower()
-            if image_filename and image_filename in image_ids:
-                next_image_id = image_ids[image_filename]
+            image_filename = row["image_filename"].strip()
+            image_key = _image_entry_key(image_filename)
+            if image_key and image_key in image_ids:
+                next_image_id = image_ids[image_key]
                 if product.image_file_id != next_image_id:
                     product.image_file_id = next_image_id
                     reset_product_image_variants(product)
@@ -3290,6 +3321,15 @@ def import_products():
         db.session.rollback()
         for path in saved_paths:
             path.unlink(missing_ok=True)
+        if image_dir.exists():
+            for path in set(image_dir.rglob("*")) - files_before:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        if saved_ids:
+            UploadedFile.query.filter(UploadedFile.id.in_(saved_ids)).delete(synchronize_session=False)
+            db.session.commit()
         current_app.logger.exception("Product catalogue import failed.")
         return jsonify(error="The catalogue could not be imported. No product changes were saved."), 500
     return jsonify(
@@ -3397,22 +3437,18 @@ def preview_product_images_import():
         return jsonify(error="Choose a valid ZIP archive for the product images."), 400
     images_zip.stream.seek(0)
 
-    # Build a lookup of existing products by original_filename (case-insensitive)
-    # Only products that have an image_file are matchable
+    # Build a lookup of existing products by original_filename (case-insensitive).
+    # Only products that have an image_file are matchable.
     product_by_filename = {}
     duplicate_filenames = set()
     products = Product.query.filter(Product.image_file_id.isnot(None)).all()
     for product in products:
         if product.image_file and product.image_file.original_filename:
-            key = product.image_file.original_filename.lower()
+            key = _image_entry_key(product.image_file.original_filename)
             if key in product_by_filename:
                 duplicate_filenames.add(key)
             else:
                 product_by_filename[key] = product
-
-    max_entries = 500
-    max_image_bytes = 12 * 1024 * 1024
-    max_uncompressed_bytes = 512 * 1024 * 1024
 
     matched = []
     unmatched = []
@@ -3431,14 +3467,16 @@ def preview_product_images_import():
                 return jsonify(error="Image ZIP contains too many files. Use at most 500."), 400
 
             total_uncompressed = 0
-            max_image_bytes = 12 * 1024 * 1024
-            max_uncompressed_bytes = 512 * 1024 * 1024
-            total_uncompressed = 0
+            seen_keys = set()
 
-            # First pass: validate entries
+            # First pass: safety validation
             for entry in entries:
-                basename = Path(entry.filename).name
+                raw_name = entry.filename
+                basename = Path(raw_name).name
                 if not basename:
+                    continue
+                if ".." in raw_name.replace("\\", "/").split("/"):
+                    invalid_files.append({"filename": raw_name, "reason": "Unsafe ZIP path rejected."})
                     continue
                 if entry.file_size > 12 * 1024 * 1024:
                     invalid_files.append({"filename": basename, "reason": "File exceeds 12 MB limit."})
@@ -3454,13 +3492,25 @@ def preview_product_images_import():
                     invalid_files.append({"filename": basename, "reason": f"Unsupported file type: .{ext}"})
                     continue
 
-                # Match to product
-                key = basename.lower()
+                key = _image_entry_key(basename)
+                if not key:
+                    invalid_files.append({"filename": basename, "reason": "Invalid image filename."})
+                    continue
+
+                # Duplicate filename inside the ZIP (e.g. two folders with the same image name)
+                if key in seen_keys:
+                    duplicate_matches.append({
+                        "filename": basename,
+                        "reason": "The ZIP contains this filename more than once. Skipped to keep one image per product.",
+                    })
+                    continue
+                seen_keys.add(key)
+
                 if key in duplicate_filenames:
                     # Multiple products share this filename - ambiguous match
                     duplicate_matches.append({
                         "filename": basename,
-                        "reason": "Multiple products use this image filename. Cannot determine which to update."
+                        "reason": "Multiple products use this image filename. Cannot determine which to update.",
                     })
                     continue
 
@@ -3468,37 +3518,25 @@ def preview_product_images_import():
                 if product:
                     matched.append({
                         "filename": basename,
+                        "file_size": entry.file_size,
                         "product_id": product.id,
                         "product_name": product.name,
                         "product_slug": product.slug,
                         "product_category": product.category.name if product.category else "",
                         "current_image_filename": product.image_file.original_filename if product.image_file else "",
                         "current_image_id": product.image_file_id,
+                        "existing_image_url": _upload_public_url(product.image_file),
                     })
                 else:
                     unmatched.append({
                         "filename": basename,
-                        "reason": "No product found with this image filename."
+                        "reason": "No product found with this image filename.",
                     })
     except zipfile.BadZipFile:
         return jsonify(error="The uploaded file is not a valid ZIP archive."), 400
-    except Exception as exc:
+    except Exception:
         current_app.logger.exception("Image ZIP preview failed.")
         return jsonify(error="Failed to process the image ZIP."), 500
-
-    # Build preview data for each matched product (existing image + new image preview)
-    # Note: We can't easily show the new image without uploading, but we can show metadata
-    matched_previews = []
-    for match in matched:
-        matched_previews.append({
-            "filename": match["filename"],
-            "product_id": match["product_id"],
-            "product_name": match["product_name"],
-            "product_slug": match["product_slug"],
-            "product_category": match["product_category"],
-            "current_image_filename": match["current_image_filename"],
-            "current_image_id": match["current_image_id"],
-        })
 
     warnings = []
     if not matched and not unmatched and not invalid_files:
@@ -3507,20 +3545,17 @@ def preview_product_images_import():
         warnings.append("No images matched any existing products.")
 
     return jsonify(
-        total_images=len(matched) + len(unmatched) + len(invalid_files),
+        total_images=len(matched) + len(unmatched) + len(invalid_files) + len(duplicate_matches),
         matched_count=len(matched),
         unmatched_count=len(unmatched),
         invalid_count=len(invalid_files),
         duplicate_count=len(duplicate_matches),
-        matched=matched_previews,
+        matched=matched,
         unmatched=unmatched,
         invalid_files=invalid_files,
         duplicate_matches=duplicate_matches,
         warnings=warnings,
     )
-
-
-)
 
 
 @admin_bp.post("/products/import/images")
@@ -3559,53 +3594,100 @@ def import_product_images():
     if len(product_by_id) != len(product_ids):
         return jsonify(error="One or more selected products no longer exist."), 400
 
-    # Save images from ZIP
+    # Only save the images that the selected products actually need, so unselected
+    # files never linger in storage.
+    needed_keys = {
+        _image_entry_key(product.image_file.original_filename)
+        for product in product_by_id.values()
+        if product.image_file and product.image_file.original_filename
+    }
+
+    saved_paths = []
+    saved_ids = []
     try:
-        image_ids, saved_paths = _save_imported_images(images_zip, current_user.id)
+        image_ids, saved_paths, saved_ids = _save_imported_images(
+            images_zip, current_user.id, only_filenames=needed_keys
+        )
     except ValueError as exc:
+        db.session.rollback()
         for path in saved_paths:
             path.unlink(missing_ok=True)
+        if saved_ids:
+            UploadedFile.query.filter(UploadedFile.id.in_(saved_ids)).delete(synchronize_session=False)
+            db.session.commit()
         return jsonify(error=str(exc)), 400
 
     updated = 0
     skipped = []
-    missing_images = []
+    attached_ids = set()
+    image_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "public" / "images"
+    files_before = set(image_dir.rglob("*")) if image_dir.exists() else set()
+    try:
+        for product_id in product_ids:
+            product = product_by_id.get(product_id)
+            if not product:
+                skipped.append({"product_id": product_id, "reason": "Product not found"})
+                continue
 
-    for product_id in product_ids:
-        product = product_by_id.get(product_id)
-        if not product:
-            skipped.append({"product_id": product_id, "reason": "Product not found"})
-            continue
+            # Find the image file that matches this product's original filename
+            if not product.image_file or not product.image_file.original_filename:
+                skipped.append({"product_id": product_id, "reason": "Product has no existing image to replace"})
+                continue
 
-        # Find the image file that matches this product's original filename
-        if not product.image_file or not product.image_file.original_filename:
-            skipped.append({"product_id": product_id, "reason": "Product has no existing image to replace"})
-            continue
+            key = _image_entry_key(product.image_file.original_filename)
+            if key not in image_ids:
+                skipped.append({"product_id": product_id, "reason": f"No image found in ZIP for filename '{product.image_file.original_filename}'"})
+                continue
 
-        key = product.image_file.original_filename.lower()
-        if key not in image_ids:
-            skipped.append({"product_id": product_id, "reason": f"No image found in ZIP for filename '{product.image_file.original_filename}'"})
-            continue
-
-        # Update product image
-        new_image_id = image_ids[key]
-        if product.image_file_id != new_image_id:
+            # Update the product image. No other product field is touched.
+            new_image_id = image_ids[key]
             product.image_file_id = new_image_id
+            attached_ids.add(new_image_id)
             reset_product_image_variants(product)
             ensure_product_image_variants(product, owner_id=current_user.id)
             updated += 1
-        else:
-            skipped.append({"product_id": product_id, "reason": "Image is identical to current"})
+    except Exception:
+        db.session.rollback()
+        for path in saved_paths:
+            path.unlink(missing_ok=True)
+        if image_dir.exists():
+            for path in set(image_dir.rglob("*")) - files_before:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        if saved_ids:
+            UploadedFile.query.filter(UploadedFile.id.in_(saved_ids)).delete(synchronize_session=False)
+            db.session.commit()
+        current_app.logger.exception("Product image update failed.")
+        return jsonify(error="The product images could not be updated. No changes were saved."), 500
 
     if updated == 0:
         db.session.rollback()
         for path in saved_paths:
             path.unlink(missing_ok=True)
+        if saved_ids:
+            UploadedFile.query.filter(UploadedFile.id.in_(saved_ids)).delete(synchronize_session=False)
+            db.session.commit()
         return jsonify(
             updated=0,
             skipped=skipped,
             message="No images were updated.",
         ), 400
+
+    # Remove any images saved for products that ended up skipped so nothing is
+    # left orphaned in storage.
+    orphan_ids = set(saved_ids) - attached_ids
+    if orphan_ids:
+        for file_id in orphan_ids:
+            uploaded = db.session.get(UploadedFile, file_id)
+            if uploaded:
+                if uploaded.storage_path:
+                    try:
+                        Path(uploaded.storage_path).unlink(missing_ok=True)
+                    except OSError:
+                        current_app.logger.warning("Could not remove orphaned image file %s", uploaded.storage_path)
+                db.session.delete(uploaded)
 
     log_action(
         "update_product_images",

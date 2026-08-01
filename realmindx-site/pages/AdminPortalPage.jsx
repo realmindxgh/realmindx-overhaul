@@ -2195,6 +2195,19 @@ const formatImportBytes = value => {
   return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 1 : 2)} MB`;
 };
 
+const SelectionHeaderCheckbox = ({ checked, indeterminate, onChange, disabled }) => (
+  <input
+    type="checkbox"
+    ref={el => {
+      if (el) el.indeterminate = Boolean(indeterminate);
+    }}
+    checked={checked}
+    disabled={disabled}
+    onChange={event => onChange(event.target.checked)}
+    aria-label="Select all rows"
+  />
+);
+
 const ProductImportPanel = ({ onImported, onClose }) => {
   const maxZipBytes = 100 * 1024 * 1024;
   const [importMode, setImportMode] = React.useState('catalogue'); // 'catalogue' or 'images'
@@ -2210,7 +2223,6 @@ const ProductImportPanel = ({ onImported, onClose }) => {
   const [imagesPreview, setImagesPreview] = React.useState(null);
   const [imagesPreviewing, setImagesPreviewing] = React.useState(false);
   const [selectedImageMatches, setSelectedImageMatches] = React.useState(new Set());
-  const [conflictSelectAll, setConflictSelectAll] = React.useState(false);
 
   const reviewCatalog = async file => {
     setCatalogFile(file);
@@ -2370,10 +2382,8 @@ const ProductImportPanel = ({ onImported, onClose }) => {
       const allIds = new Set();
       preview.conflicts.forEach(c => allIds.add(c.slug));
       setOverwriteSlugs(allIds);
-      setConflictSelectAll(true);
     } else {
       setOverwriteSlugs(new Set());
-      setConflictSelectAll(false);
     }
   };
 
@@ -2425,12 +2435,6 @@ const ProductImportPanel = ({ onImported, onClose }) => {
       ? 'Import complete'
       : `Uploading catalogue and images: ${progress?.percent || 0}%`;
 
-  const progressLabel = progress?.stage === 'processing'
-    ? 'Upload complete. The server is validating images and saving products.'
-    : progress?.stage === 'complete'
-      ? 'Import complete'
-      : `Uploading catalogue and images: ${progress?.percent || 0}%`;
-
   const imagesProgressLabel = progress?.stage === 'processing'
     ? 'Upload complete. The server is updating product images.'
     : progress?.stage === 'complete'
@@ -2452,30 +2456,40 @@ const ProductImportPanel = ({ onImported, onClose }) => {
       <div>
         <p className="overline">Batch Product Import</p>
         <h3>Upload, review, then import</h3>
-        <p>
-          Select the catalogue first. RealMindX will match its columns and show a sample before any products are changed.
-          Cover images should use the filenames in the mapped image column.
-        </p>
+        {importMode === 'images' ? (
+          <p>
+            Upload an image ZIP to replace the cover images of existing products. RealMindX will match each file to a
+            product, show a preview, and only change images after you confirm. Catalogue fields are never touched in
+            this mode.
+          </p>
+        ) : (
+          <p>
+            Select the catalogue first. RealMindX will match its columns and show a sample before any products are changed.
+            Cover images should use the filenames in the mapped image column.
+          </p>
+        )}
       </div>
 
       {/* Mode selector */}
       <div className="product-import-mode-selector" style={{ marginBottom: 20 }}>
-        <label style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontWeight: 600, color: 'var(--navy)', marginRight: 8 }}>Import mode:</span>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 16px', border: '2px solid var(--navy)', borderRadius: 8, background: importMode === 'catalogue' ? 'var(--navy)' : 'transparent', color: importMode === 'catalogue' ? '#fff' : 'var(--navy)', transition: 'all 0.2s' }}>
-            <input type="radio" name="importMode" value="catalogue" checked={importMode === 'catalogue'} onChange={() => setImportMode('catalogue')} disabled={importing || importing} style={{ accentColor: 'var(--gold)' }} />
+            <input type="radio" name="importMode" value="catalogue" checked={importMode === 'catalogue'} onChange={() => setImportMode('catalogue')} disabled={importing} style={{ accentColor: 'var(--gold)' }} />
             <span style={{ fontWeight: 600 }}>Import or update product details</span>
           </label>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '8px 16px', border: '2px solid var(--navy)', borderRadius: 8, background: importMode === 'images' ? 'var(--navy)' : 'transparent', color: importMode === 'images' ? '#fff' : 'var(--navy)', transition: 'all 0.2s' }}>
-            <input type="radio" name="importMode" value="images" checked={importMode === 'images'} onChange={() => setImportMode('images')} disabled={importing || importing} style={{ accentColor: 'var(--gold)' }} />
+            <input type="radio" name="importMode" value="images" checked={importMode === 'images'} onChange={() => setImportMode('images')} disabled={importing} style={{ accentColor: 'var(--gold)' }} />
             <span style={{ fontWeight: 600 }}>Update existing product images only</span>
           </label>
-        </label>
+        </span>
         {importMode === 'images' && (
           <p className="product-import-helper" style={{ marginTop: 8, fontSize: '0.86rem', color: 'var(--gray-600)' }}>
-            Upload a ZIP of product images. Files will be matched to existing products by their original filename (case-insensitive).
-            Exported product images use the format <code>{product.slug}.{ext}</code> and can be re-uploaded to update those products.
-            Only products that already exist and have an image will be matched. No new products will be created.
+            Upload a ZIP of product images. Each image is matched to the product whose current cover uses the same
+            original filename — for example <code>978-1-2345-6789-0.jpg</code>. Matching ignores case, converts spaces
+            and encoded characters (e.g. <code>%20</code>) to the stored filename, and ignores folders inside the ZIP,
+            so the product export ZIP can be re-uploaded as-is to replace covers. Only existing products with an image
+            are updated; no new products are created and no catalogue fields change.
           </p>
         )}
       </div>
@@ -2509,7 +2523,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
                 type="file"
                 accept=".zip"
                 disabled={importing || imagesPreviewing}
-                onChange={event => reviewImages(event.target.files?.[0] || null)}
+                onChange={event => chooseImageZip(event)}
               />
               <small>{imagesPreviewing ? 'Reviewing image ZIP...' : imagesZip ? `${imagesZip.name} / ${formatImportBytes(imagesZip.size)}` : 'Choose an image ZIP (up to 100 MB, 500 files max).'}</small>
             </label>
@@ -2517,7 +2531,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
         )}
       </div>
 
-      {preview ? (
+      {importMode === 'catalogue' && preview ? (
         <section className="product-import-review" aria-label="Catalogue review">
           <div className="product-import-review-heading">
             <div>
@@ -2579,11 +2593,31 @@ const ProductImportPanel = ({ onImported, onClose }) => {
               <p style={{ fontSize: '0.86rem', color: 'var(--gray-600)', marginBottom: 10 }}>
                 Select the products below to overwrite their details and images with the new upload. Unselected products will be skipped.
               </p>
+              <div className="product-import-selection-toolbar">
+                <span className="product-import-selection-count" data-testid="conflict-selection-count">
+                  {selectedConflictCount} of {totalConflicts} products selected for overwrite
+                </span>
+                <span className="product-import-selection-actions">
+                  <button className="btn btn-outline-navy btn-sm" type="button" disabled={importing} onClick={() => handleConflictSelectAll(true)}>
+                    Select all {totalConflicts}
+                  </button>
+                  <button className="btn btn-outline-navy btn-sm" type="button" disabled={importing} onClick={() => handleConflictSelectAll(false)}>
+                    Clear selection
+                  </button>
+                </span>
+              </div>
               <div className="product-import-preview-scroll">
                 <table>
                   <thead>
                     <tr>
-                      <th style={{ width: 40 }}>Overwrite</th>
+                      <th style={{ width: 40, textAlign: 'center' }}>
+                        <SelectionHeaderCheckbox
+                          checked={conflictAllSelected}
+                          indeterminate={conflictIndeterminate}
+                          disabled={importing}
+                          onChange={handleConflictSelectAll}
+                        />
+                      </th>
                       <th>Import Name</th>
                       <th>Existing Match</th>
                     </tr>
@@ -2617,10 +2651,147 @@ const ProductImportPanel = ({ onImported, onClose }) => {
         </section>
       ) : null}
 
+      {importMode === 'images' && imagesPreview ? (
+        <section className="product-import-review" aria-label="Image update review">
+          <div className="product-import-review-heading">
+            <div>
+              <p className="overline">Image Update Review</p>
+              <h4>{imagesPreview.matched_count} of {imagesPreview.total_images} images matched to existing products</h4>
+            </div>
+          </div>
+          <p className="product-import-helper">
+            Select the matched images to replace. Only the selected products&apos; images change —
+            product names, categories, prices, stock and other catalogue fields stay untouched.
+          </p>
+
+          {imagesPreview.matched?.length > 0 ? (
+            <div className="product-import-preview">
+              <div className="product-import-selection-toolbar">
+                <span className="product-import-selection-count" data-testid="image-selection-count">
+                  {selectedImageMatchCount} of {totalImageMatches} products selected for image update
+                </span>
+                <span className="product-import-selection-actions">
+                  <button className="btn btn-outline-navy btn-sm" type="button" disabled={importing} onClick={() => handleImageMatchSelectAll(true)}>
+                    Select all {totalImageMatches}
+                  </button>
+                  <button className="btn btn-outline-navy btn-sm" type="button" disabled={importing} onClick={() => handleImageMatchSelectAll(false)}>
+                    Clear selection
+                  </button>
+                </span>
+              </div>
+              <div className="product-import-preview-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40, textAlign: 'center' }}>
+                        <SelectionHeaderCheckbox
+                          checked={imagesAllSelected}
+                          indeterminate={imagesIndeterminate}
+                          disabled={importing}
+                          onChange={handleImageMatchSelectAll}
+                        />
+                      </th>
+                      <th style={{ width: 90 }}>Current Image</th>
+                      <th>New Image</th>
+                      <th>Product</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {imagesPreview.matched.map(match => (
+                      <tr key={match.product_id}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedImageMatches.has(match.product_id)}
+                            onChange={(e) => {
+                              setSelectedImageMatches(prev => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(match.product_id);
+                                else next.delete(match.product_id);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        <td>
+                          {match.existing_image_url ? (
+                            <img
+                              className="product-import-match-thumb"
+                              src={adminAssetUrl(match.existing_image_url)}
+                              alt={match.current_image_filename || 'Current image'}
+                              loading="lazy"
+                            />
+                          ) : <span className="product-import-empty">No image</span>}
+                          <small style={{ display: 'block', color: 'var(--gray-600)' }}>{match.current_image_filename}</small>
+                        </td>
+                        <td>
+                          <strong>{match.filename}</strong>
+                          {match.file_size ? <small style={{ display: 'block', color: 'var(--gray-600)' }}>{formatImportBytes(match.file_size)}</small> : null}
+                        </td>
+                        <td>
+                          {match.product_name}
+                          {match.product_category ? <small style={{ display: 'block', color: 'var(--gray-600)' }}>{match.product_category}</small> : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {imagesPreview.unmatched?.length > 0 ? (
+            <div className="product-import-preview" style={{ marginTop: 20 }}>
+              <div>
+                <p className="overline">Unmatched Files</p>
+                <h4>{imagesPreview.unmatched_count} image(s) did not match any existing product.</h4>
+              </div>
+              <ul className="product-import-file-notes">
+                {imagesPreview.unmatched.map(item => (
+                  <li key={item.filename}>{item.filename} — {item.reason}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {imagesPreview.invalid_files?.length > 0 ? (
+            <div className="product-import-preview" style={{ marginTop: 20 }}>
+              <div>
+                <p className="overline">Invalid Files</p>
+                <h4>{imagesPreview.invalid_count} file(s) were ignored.</h4>
+              </div>
+              <ul className="product-import-file-notes">
+                {imagesPreview.invalid_files.map(item => (
+                  <li key={item.filename}>{item.filename} — {item.reason}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {imagesPreview.duplicate_matches?.length > 0 ? (
+            <div className="product-import-preview" style={{ marginTop: 20 }}>
+              <div>
+                <p className="overline">Ambiguous Images</p>
+                <h4>{imagesPreview.duplicate_count} file(s) could not be matched safely.</h4>
+              </div>
+              <ul className="product-import-file-notes">
+                {imagesPreview.duplicate_matches.map((item, index) => (
+                  <li key={`${item.filename}-${index}`}>{item.filename} — {item.reason}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {imagesPreview.warnings?.map(warning => (
+            <p className="product-import-warning" key={warning}>{warning}</p>
+          ))}
+        </section>
+      ) : null}
+
       {progress ? (
         <div className="product-import-progress" data-stage={progress.stage}>
           <div className="product-import-progress-copy">
-            <strong>{progressLabel}</strong>
+            <strong>{importMode === 'images' ? imagesProgressLabel : progressLabel}</strong>
             {progress.stage === 'uploading' && progress.total ? (
               <span>{formatImportBytes(progress.loaded)} of {formatImportBytes(progress.total)}</span>
             ) : null}
@@ -2640,9 +2811,36 @@ const ProductImportPanel = ({ onImported, onClose }) => {
 
       {status ? <p className="product-import-status" data-type={status.type}>{status.message}</p> : null}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="btn btn-primary btn-sm" disabled={importing || previewing || !preview || !mapping.name}>
-          {importing ? (progress?.stage === 'processing' ? 'Processing...' : `Uploading ${progress?.percent || 0}%`) : 'Import Products'}
-        </button>
+        {importMode === 'images' ? (
+          imagesPreview ? (
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={importing || imagesPreviewing || selectedImageMatchCount === 0}
+            >
+              {importing
+                ? (progress?.stage === 'processing' ? 'Processing...' : `Uploading ${progress?.percent || 0}%`)
+                : (selectedImageMatchCount > 0
+                  ? `Replace ${selectedImageMatchCount} Product ${selectedImageMatchCount === 1 ? 'Image' : 'Images'}`
+                  : 'Update Product Images')}
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              disabled={importing || imagesPreviewing || !imagesZip}
+              onClick={() => reviewImages(imagesZip)}
+            >
+              Review Image Updates
+            </button>
+          )
+        ) : (
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={importing || previewing || !preview || !mapping.name || (preview.conflicts?.length > 0 && selectedConflictCount === 0)}
+          >
+            {importing ? (progress?.stage === 'processing' ? 'Processing...' : `Uploading ${progress?.percent || 0}%`) : (selectedConflictCount > 0 ? `Overwrite ${selectedConflictCount} Products` : 'Import Products')}
+          </button>
+        )}
         <button className="btn btn-outline-navy btn-sm" type="button" disabled={importing} onClick={onClose}>Close</button>
       </div>
     </form>
