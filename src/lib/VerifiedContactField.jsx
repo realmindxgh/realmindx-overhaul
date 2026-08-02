@@ -25,6 +25,65 @@ const WhatsAppGlyph = ({ className = '' }) => (
   </svg>
 );
 
+const PhoneGlyph = ({ className = '' }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M7.1 3.4 9.8 7.8 7.9 9.7c1.2 2.6 3.4 4.8 6 6l1.9-1.9 4.5 2.7v2.8c0 1-.8 1.8-1.8 1.8C9.9 21.1 2.9 14.1 2.9 5.5c0-1 .8-1.8 1.8-1.8h2.4Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M14.7 3.8c2.8.7 4.9 2.8 5.6 5.6M14.7 7.3c1.2.4 2.2 1.3 2.5 2.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+  </svg>
+);
+
+const SmsGlyph = ({ className = '' }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M4 4.5h16v11H10l-5 4v-4H4V4.5Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+    <circle cx="8.5" cy="10" r="1" fill="currentColor" /><circle cx="12" cy="10" r="1" fill="currentColor" /><circle cx="15.5" cy="10" r="1" fill="currentColor" />
+  </svg>
+);
+
+const VerificationMiniGlyph = ({ type }) => {
+  if (type === 'message') return <SmsGlyph />;
+  if (type === 'lock') return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M8.5 10V7.2a3.5 3.5 0 0 1 7 0V10M12 14v2.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
+  if (type === 'bolt') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13.5 2-7 11h5L10.5 22l7-12h-5l1-8Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" /></svg>;
+  if (type === 'refresh') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M18.2 9A7 7 0 0 0 6.4 6.4L4 9m16 6-2.4 2.6A7 7 0 0 1 5.8 15" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" /><path d="M4 9h16M8 7h.01" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
+};
+
+const VerificationArtwork = ({ whatsapp = false }) => (
+  <svg className="phone-verification-artwork" viewBox="0 0 180 140" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id={whatsapp ? 'waShield' : 'blueShield'} x1="0" y1="0" x2="1" y2="1">
+        <stop stopColor={whatsapp ? '#47df84' : '#78a7ff'} />
+        <stop offset="1" stopColor={whatsapp ? '#05a94d' : '#0a5ee7'} />
+      </linearGradient>
+    </defs>
+    <ellipse cx="88" cy="72" rx="65" ry="29" fill="none" stroke="#a9c3ff" strokeWidth="1.5" transform="rotate(-12 88 72)" />
+    <circle cx="32" cy="35" r="4" fill={whatsapp ? '#1ab85c' : '#6799f6'} />
+    <circle cx="144" cy="28" r="3" fill={whatsapp ? '#1ab85c' : '#6799f6'} />
+    <path d="M88 24 128 42v36c0 27-17 43-40 51-23-8-40-24-40-51V42l40-18Z" fill={`url(#${whatsapp ? 'waShield' : 'blueShield'})`} stroke="#fff" strokeWidth="7" />
+    {whatsapp ? <g transform="translate(66 47) scale(1.8)" fill="#fff"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.26-.46-2.39-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.03-.52-.08-.15-.67-1.61-.92-2.21-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.07c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35M12.05 21.79h-.01a9.87 9.87 0 0 1-5.03-1.38l-.36-.21-3.74.98 1-3.65-.24-.37a9.86 9.86 0 0 1-1.51-5.26C2.17 6.44 6.6 2.01 12.05 2.01c2.64 0 5.12 1.03 6.99 2.9a9.82 9.82 0 0 1 2.89 6.99c0 5.45-4.44 9.89-9.88 9.89"/></g> : <g fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round"><rect x="70" y="63" width="36" height="33" rx="5" fill="rgba(255,255,255,.16)"/><path d="M78 63V52a10 10 0 0 1 20 0v11"/><path d="M88 76v9"/></g>}
+    <circle cx="124" cy="98" r="21" fill={whatsapp ? '#10af52' : '#1768e7'} stroke="#fff" strokeWidth="5" />
+    <path d="m115 98 7 7 13-15" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const VerificationAside = ({ changing = false, whatsapp = false }) => (
+  <aside className={`phone-verification-aside ${whatsapp ? 'is-whatsapp' : ''}`}>
+    <VerificationArtwork whatsapp={whatsapp} />
+    <h3>{whatsapp ? "We've got your back" : 'Secure verification'}</h3>
+    <p>{whatsapp ? 'RealMindX verifies your number automatically and securely.' : 'We protect your account every step of the way.'}</p>
+    <div className="phone-verification-aside-list">
+      {(whatsapp ? [
+        ['refresh', 'Automatic checking', 'We check for your message every few seconds.'],
+        ['lock', 'Secure & private', 'Your number is encrypted and safe with RealMindX.'],
+        ['window', 'Keep this window open', 'Do not close or refresh your browser while we verify.'],
+      ] : [
+        ['message', '', 'We send a one-time code to verify your number.'],
+        ['lock', '', changing ? 'Your old number stays unchanged until confirmed.' : 'Your number will be added after it is confirmed.'],
+        ['bolt', '', 'WhatsApp may be faster in most cases.'],
+      ]).map(([icon, title, copy]) => <div key={copy}><span aria-hidden="true"><VerificationMiniGlyph type={icon} /></span><p>{title && <strong>{title}</strong>}{copy}</p></div>)}
+    </div>
+  </aside>
+);
+
 const WHATSAPP_VERIFICATION_PHRASE = 'Verify my RealMindX number';
 const WHATSAPP_VERIFICATION_NUMBER = '+233257125229';
 const WHATSAPP_VERIFICATION_URL = `https://wa.me/${WHATSAPP_VERIFICATION_NUMBER.replace(/\D/g, '')}?text=${encodeURIComponent(WHATSAPP_VERIFICATION_PHRASE)}`;
@@ -259,6 +318,11 @@ export default function VerifiedContactField({
           <p>Tap the button below, then send the prefilled WhatsApp message without changing it.</p>
         </div>
       </div>
+      <ol className="verified-contact-whatsapp-steps">
+        <li><span>1</span><p><strong>Open WhatsApp</strong>Tap the button below to open WhatsApp.</p></li>
+        <li><span>2</span><p><strong>Send the prepared message</strong>Send the message exactly as shown. Do not edit it.</p></li>
+        <li><span>3</span><p><strong>Come back here</strong>Return to this page and wait while we check automatically, or press Check now.</p></li>
+      </ol>
       <div className="verified-contact-whatsapp-panel">
         <div>
           <span>Send to</span>
@@ -286,12 +350,25 @@ export default function VerifiedContactField({
           Open WhatsApp
         </a>
       )}
+      <p className="verified-contact-whatsapp-waiting"><span />Waiting for the WhatsApp verification message. We are checking automatically every few seconds.</p>
     </div>
   ) : null;
 
   const modalTitle = challenge
     ? `Verify ${meta.title.toLowerCase()}`
     : `${value ? 'Change' : 'Add'} ${meta.title.toLowerCase()}`;
+  const isPhoneFlow = field === 'phone';
+  const isChangingPhone = isPhoneFlow && Boolean(value);
+  const phoneNationalDigits = isPhoneFlow
+    ? nextValue.replace(/^\s*\+?233\s*/, '').replace(/\D/g, '').slice(0, 9)
+    : '';
+  const phoneNationalValue = isPhoneFlow
+    ? (phoneNationalDigits.match(/.{1,3}/g) || []).join(' ')
+    : nextValue;
+  const updateNationalPhone = event => {
+    const national = event.target.value.replace(/\D/g, '').replace(/^0/, '').slice(0, 9);
+    setNextValue(national ? `+233${national}` : '');
+  };
 
   const inlineEditor = (
     <>
@@ -430,7 +507,67 @@ export default function VerifiedContactField({
           </div>
         </div>
       )}
-      {modal && (editing || challenge) && (
+      {modal && isPhoneFlow && editing && !challenge && (
+        <div className="verified-contact-modal-scrim phone-verification-scrim" onClick={event => { if (event.target === event.currentTarget) reset(); }}>
+          <form className="phone-verification-modal" onSubmit={requestCode} role="dialog" aria-modal="true" aria-labelledby="phone-verification-title">
+            <button className="verified-contact-modal-close phone-verification-close" type="button" onClick={reset} aria-label="Close"><span aria-hidden="true">×</span></button>
+            <main className="phone-verification-main">
+              <header className="phone-verification-head">
+                <span className="phone-verification-phone-icon" aria-hidden="true"><PhoneGlyph /></span>
+                <div><span className="verified-contact-modal-kicker">Contact details</span><h2 id="phone-verification-title">{isChangingPhone ? 'Change phone number' : 'Verify your phone number'}</h2><p>{isChangingPhone ? "We'll verify your new phone number before updating your RealMindX account." : "We'll verify your phone number before adding it to your RealMindX account."}</p></div>
+                <span className="phone-verification-step">Step 1 of 2</span>
+              </header>
+              <label className="phone-verification-number-field"><span>{isChangingPhone ? 'New phone number' : 'Phone number'}</span><div><span className="phone-country-prefix"><span className="ghana-flag" aria-label="Ghana"><i /></span> +233 <em>⌄</em></span><input type="tel" inputMode="tel" autoComplete="tel" maxLength={11} placeholder="554 529 493" value={phoneNationalValue} onChange={updateNationalPhone} autoFocus /></div><small>Enter the {isChangingPhone ? 'new ' : ''}phone number you want to {isChangingPhone ? 'use' : 'verify'}.</small></label>
+              <fieldset className="phone-verification-channels"><legend>Choose verification method</legend><div>
+                <label className={channel === 'sms' ? 'is-selected' : ''}><input type="radio" name="verification-channel-reference" value="sms" checked={channel === 'sms'} onChange={() => setChannel('sms')} /><span className="phone-channel-check">✓</span><SmsGlyph className="phone-channel-icon is-sms" /><strong>SMS</strong><small>Receive a 6-digit code<br />via text message.</small></label>
+                {canUseWhatsApp && <label className={channel === 'whatsapp' ? 'is-selected' : ''}><input type="radio" name="verification-channel-reference" value="whatsapp" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} /><span className="phone-channel-check">✓</span><WhatsAppGlyph className="phone-channel-icon is-whatsapp" /><strong>WhatsApp</strong><small>Receive a 6-digit code<br />on WhatsApp.</small></label>}
+              </div></fieldset>
+              {error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}
+              {message && <p className="verified-contact-feedback">{message}</p>}
+              <footer className="phone-verification-actions"><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}>{busy ? 'Sending…' : <><VerificationMiniGlyph type="lock" /> Send code</>}</button></footer>
+              <p className="phone-verification-footnote"><VerificationMiniGlyph type="lock" /> {isChangingPhone ? 'Your current number will remain active until you verify the new one.' : 'Your phone number will be added to your account after verification.'}</p>
+            </main>
+            <VerificationAside changing={isChangingPhone} />
+          </form>
+        </div>
+      )}
+      {modal && isPhoneFlow && isWhatsAppInbound && (
+        <div className="verified-contact-modal-scrim phone-verification-scrim" onClick={event => { if (event.target === event.currentTarget) reset(); }}>
+          <form className="phone-verification-modal is-whatsapp-step" onSubmit={verifyCode} role="dialog" aria-modal="true" aria-labelledby="whatsapp-verification-title">
+            <button className="verified-contact-modal-close phone-verification-close" type="button" onClick={reset} aria-label="Close"><span aria-hidden="true">×</span></button>
+            <header className="whatsapp-verification-head"><div><span className="verified-contact-modal-kicker">Contact details</span><h2 id="whatsapp-verification-title">Verify phone number</h2><p>We'll help you verify your number with WhatsApp. Just follow the steps below. RealMindX will check automatically after you send the message.</p></div><span className="phone-verification-step">Step 2 of 2</span></header>
+            <div className="whatsapp-verification-grid"><div>{whatsAppChallenge}{error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}</div><VerificationAside whatsapp /></div>
+            <footer className="whatsapp-verification-actions"><div><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button>{waitSeconds > 0 && <span className="verified-contact-countdown">{waitSeconds}s</span>}</div><button type="submit" className="verified-contact-modal-btn is-primary" disabled={checking}>{checking ? 'Checking…' : 'Check now'}</button></footer>
+          </form>
+        </div>
+      )}
+      {modal && isPhoneFlow && challenge && !isWhatsAppInbound && (
+        <div className="verified-contact-modal-scrim phone-verification-scrim" onClick={event => { if (event.target === event.currentTarget) reset(); }}>
+          <form className="phone-verification-modal is-sms-step" onSubmit={verifyCode} role="dialog" aria-modal="true" aria-labelledby="sms-verification-title">
+            <button className="verified-contact-modal-close phone-verification-close" type="button" onClick={reset} aria-label="Close"><span aria-hidden="true">×</span></button>
+            <main className="phone-verification-main">
+              <header className="phone-verification-head">
+                <span className="phone-verification-phone-icon is-sms" aria-hidden="true"><SmsGlyph /></span>
+                <div><span className="verified-contact-modal-kicker">Contact details</span><h2 id="sms-verification-title">Verify phone number</h2><p>Enter the 6-digit code we sent by SMS to <strong>{challenge.destination}</strong>.</p></div>
+                <span className="phone-verification-step">Step 2 of 2</span>
+              </header>
+              <section className="sms-verification-card">
+                <span className="sms-verification-card-icon" aria-hidden="true"><SmsGlyph /></span>
+                <h3>Check your messages</h3>
+                <p>The code expires shortly, so enter it below as soon as it arrives.</p>
+                <label className="sms-verification-code-field"><span>6-digit verification code</span><input inputMode="numeric" autoComplete="one-time-code" placeholder="000000" maxLength={6} value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} autoFocus /></label>
+                {error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}
+                {message && <p className="verified-contact-feedback">{message}</p>}
+                <button className="sms-verification-resend" type="button" onClick={resendCode} disabled={busy || waitSeconds > 0}>{waitSeconds > 0 ? `Send another code in ${waitSeconds}s` : 'Send another code'}</button>
+              </section>
+              <footer className="phone-verification-actions sms-verification-actions"><div><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button></div><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}>{busy ? 'Verifying…' : 'Verify number'}</button></footer>
+              <p className="phone-verification-footnote"><VerificationMiniGlyph type="lock" /> Your phone number changes only after this code is confirmed.</p>
+            </main>
+            <VerificationAside changing={isChangingPhone} />
+          </form>
+        </div>
+      )}
+      {modal && (editing || challenge) && !(isPhoneFlow && (editing || challenge)) && (
         <div className="verified-contact-modal-scrim" onClick={event => { if (event.target === event.currentTarget) reset(); }}>
           <form className={`verified-contact-modal-card ${isWhatsAppInbound ? 'has-whatsapp-challenge' : ''}`} onSubmit={challenge ? verifyCode : requestCode} role="dialog" aria-modal="true" aria-label={modalTitle}>
             <div className="verified-contact-modal-head">

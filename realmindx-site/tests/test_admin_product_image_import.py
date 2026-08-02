@@ -146,6 +146,33 @@ class ProductImageImportTests(unittest.TestCase):
         self.assertTrue(by_id[product_a.id]["existing_image_url"].startswith("/uploads/"))
         self.assertEqual(by_id[product_a.id]["current_image_filename"], "alpha.jpg")
 
+    def test_product_exports_include_csv_xlsx_and_zip_images(self):
+        image_bytes = _make_image_bytes((32, 96, 180))
+        uploaded = self._write_upload("reference-cover.png", image_bytes)
+        self._make_product("Reference Book", "reference-book", 25, uploaded)
+        db.session.commit()
+
+        csv_response = self.client.get("/api/admin/products/export?format=csv")
+        self.assertEqual(csv_response.status_code, 200)
+        self.assertEqual(csv_response.mimetype, "text/csv")
+        self.assertIn(b"Reference Book", csv_response.data)
+
+        xlsx_response = self.client.get("/api/admin/products/export?format=xlsx")
+        self.assertEqual(xlsx_response.status_code, 200)
+        self.assertEqual(
+            xlsx_response.mimetype,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        self.assertTrue(xlsx_response.data.startswith(b"PK"))
+
+        zip_response = self.client.get("/api/admin/products/export?format=zip")
+        self.assertEqual(zip_response.status_code, 200)
+        self.assertEqual(zip_response.mimetype, "application/zip")
+        with zipfile.ZipFile(io.BytesIO(zip_response.data)) as archive:
+            self.assertIn("products.csv", archive.namelist())
+            self.assertIn("images/reference-cover.png", archive.namelist())
+            self.assertEqual(archive.read("images/reference-cover.png"), image_bytes)
+
     def test_preview_reports_unmatched_invalid_duplicates_and_traversal(self):
         self._write_upload("alpha.jpg", _make_image_bytes((200, 30, 30)))
         db.session.commit()

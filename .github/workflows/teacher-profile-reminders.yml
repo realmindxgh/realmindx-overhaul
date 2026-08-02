@@ -1,15 +1,17 @@
-name: Annual Teacher Profile Reminders
+name: Teacher Profile Completion Reminders
 
 on:
   schedule:
-    - cron: "0 9 1 8 *"
+    # Daily at 08:00 UTC (08:00 in Ghana). A daily run guarantees every
+    # newly-due account is processed within the next 24 hours.
+    - cron: "0 8 * * *"
   workflow_dispatch:
 
 jobs:
   remind:
     runs-on: self-hosted
     steps:
-      - name: Send profile reminders
+      - name: Send due profile completion reminders
         run: |
           cd /var/www/realmindx/realmindx-site
-          .venv/bin/python -m flask --app backend:create_app send-teacher-profile-reminders
+          .venv/bin/python -m flask --app backend:create_app send-profile-completion-reminders

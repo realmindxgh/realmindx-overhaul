@@ -425,6 +425,19 @@ def register_cli(app):
         sent = send_due_cart_invoice_reminders()
         click.echo(f"Sent {sent} cart invoice reminder email(s).")
 
+    @app.cli.command("send-profile-completion-reminders")
+    def send_profile_completion_reminders_command():
+        """Send due profile reminders at 24 hours, +7 days, and +30 days."""
+        from .api.admin import send_due_teacher_profile_completion_reminders
+
+        result = send_due_teacher_profile_completion_reminders()
+        click.echo(
+            "Profile completion reminders: "
+            f"{result['due']} due, {result['accepted']} accepted, "
+            f"{result['mocked']} mocked, {result['failed']} failed, "
+            f"{result['skipped']} skipped."
+        )
+
     @app.cli.command("send-teacher-profile-reminders")
     @click.option("--force", is_flag=True, help="Allow a manual run outside August 2027 or later.")
     def send_teacher_profile_reminders_command(force):

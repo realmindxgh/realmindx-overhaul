@@ -3260,6 +3260,11 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [replyError, setReplyError] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [filterStatus, setFilterStatus] = React.useState('');
+  const [productCategory, setProductCategory] = React.useState('');
+  const [showProductFilters, setShowProductFilters] = React.useState(true);
+  const [productExportOpen, setProductExportOpen] = React.useState(false);
+  const [productMenuId, setProductMenuId] = React.useState(null);
+  const [selectedProductIds, setSelectedProductIds] = React.useState(() => new Set());
   const [resourceCategory, setResourceCategory] = React.useState('');
   const [resourceLevel, setResourceLevel] = React.useState('');
   const [resourceSubject, setResourceSubject] = React.useState('');
@@ -3346,10 +3351,11 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [tablePageSize, setTablePageSize] = React.useState(10);
 
   // Reset to page 1 when search or filter changes
-  React.useEffect(() => { setTablePage(1); }, [search, filterStatus, tablePageSize, settlementCompany, settlementPayment, settlementStart, settlementEnd, resourceCategory, resourceLevel, resourceSubject]);
+  React.useEffect(() => { setTablePage(1); }, [search, filterStatus, productCategory, tablePageSize, settlementCompany, settlementPayment, settlementStart, settlementEnd, resourceCategory, resourceLevel, resourceSubject]);
 
   const filteredByStatus = rows.filter(row => {
     if (filterStatus && row.status !== filterStatus) return false;
+    if (config.collection === 'products' && productCategory && row.category !== productCategory) return false;
     if (config.collection === 'resources') {
       if (resourceCategory && row.category !== resourceCategory) return false;
       if (resourceLevel && row.level !== resourceLevel) return false;
@@ -3899,8 +3905,54 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     return <span className={isPrimary ? 'td-primary' : ''}>{readableCellValue(value)}</span>;
   };
 
+  const productCategories = [...new Set(rows.map(row => row.category).filter(Boolean))].sort();
+  const allVisibleProductsSelected = paginatedRows.length > 0 && paginatedRows.every(row => selectedProductIds.has(row.id));
+  const toggleVisibleProducts = () => {
+    setSelectedProductIds(current => {
+      const next = new Set(current);
+      if (allVisibleProductsSelected) paginatedRows.forEach(row => next.delete(row.id));
+      else paginatedRows.forEach(row => next.add(row.id));
+      return next;
+    });
+  };
+  const toggleProductSelection = id => {
+    setSelectedProductIds(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
-    <div>
+    <div className={config.collection === 'products' ? 'admin-redesign-page product-admin-page' : ''}>
+      {config.collection === 'products' ? (
+        <div className="product-page-heading">
+          <div className="product-page-copy">
+            <h2 className="admin-page-title">Bookshop Products</h2>
+            <p>Manage books, stationery, and learning materials in the public bookshop.</p>
+            <span className="product-save-note"><Icon name="check" size={13} stroke={2.4} /> Changes saved here update the live website once published.</span>
+          </div>
+          <div className="product-heading-actions">
+            {hasSessionPermission(session, 'bookRequests.view') && (
+              <button className="product-heading-action" type="button" onClick={() => setShowBookRequests(true)}>
+                <span className="product-heading-icon"><Icon name="book" size={21} stroke={2} /></span>
+                <span><strong>Book Requests{pendingBookRequests ? ` (${pendingBookRequests})` : ''}</strong><small>View requests</small></span>
+              </button>
+            )}
+            <button className="product-heading-action" type="button" onClick={() => setShowProductActions(true)}>
+              <span className="product-heading-icon"><Icon name="more" size={22} stroke={2.2} /></span>
+              <span><strong>More Actions</strong><small>Bulk actions</small></span>
+            </button>
+            {canCreate && (
+              <button className="product-heading-action is-add" type="button" onClick={() => { setCreating(true); setEditing(null); }}>
+                <span className="product-heading-icon"><Icon name="plus" size={22} stroke={2.3} /></span>
+                <span><strong>Add Product</strong><small>Create new product</small></span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
         <div>
           <h2 className="admin-page-title">{config.title}</h2>
@@ -3936,6 +3988,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           )}
         </div>
       </div>
+      )}
 
       {config.collection === 'products' && showProductImport && (
         <ProductImportPanel
@@ -4028,7 +4081,49 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         </div>
       )}
 
-      <div className="admin-table-card">
+      {config.collection === 'products' && (
+        <section className="admin-table-card product-table-card">
+          <div className="product-filter-bar">
+            <label className="product-search-field"><Icon name="search" size={18} stroke={2} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search products by title, author, ISBN..." /></label>
+            <select aria-label="Product status" value={filterStatus} onChange={event => setFilterStatus(event.target.value)}><option value="">All Statuses</option><option value="published">Published</option><option value="draft">Draft</option></select>
+            <select aria-label="Product category" value={productCategory} onChange={event => setProductCategory(event.target.value)}><option value="">All Categories</option>{productCategories.map(category => <option key={category} value={category}>{category}</option>)}</select>
+            <label className="product-rows-field"><span>Rows</span><select value={tablePageSize} onChange={event => setTablePageSize(Number(event.target.value))}>{[10, 20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select></label>
+            <button className="product-filter-button" type="button" onClick={() => setShowProductFilters(value => !value)}><Icon name="filter" size={17} stroke={2} /> Filters</button>
+            {isApiMode() && <div className="product-export-wrap">
+              <button className="product-export-button" type="button" aria-haspopup="menu" aria-expanded={productExportOpen} onClick={() => setProductExportOpen(value => !value)}><Icon name="download" size={17} stroke={2} /> Export <Icon name="chevDown" size={14} stroke={2.2} /></button>
+              {productExportOpen && <div className="product-export-menu" role="menu">
+                <a role="menuitem" href={api.adminExportUrl('products', 'zip')} onClick={() => setProductExportOpen(false)}><strong>ZIP</strong><span>Catalogue with images</span></a>
+                <a role="menuitem" href={api.adminExportUrl('products', 'csv')} onClick={() => setProductExportOpen(false)}><strong>CSV</strong><span>Spreadsheet data</span></a>
+                <a role="menuitem" href={api.adminExportUrl('products', 'xlsx')} onClick={() => setProductExportOpen(false)}><strong>XLSX</strong><span>Excel workbook</span></a>
+              </div>}
+            </div>}
+          </div>
+          {showProductFilters && <div className="product-filter-chips">
+            <button type="button" onClick={() => setFilterStatus('')}>Status: {filterStatus ? statusLabel(filterStatus) : 'All'} <Icon name="x" size={12} stroke={2} /></button>
+            <button type="button" onClick={() => setProductCategory('')}>Category: {productCategory || 'All'} <Icon name="x" size={12} stroke={2} /></button>
+            {(filterStatus || productCategory || search) && <button className="is-clear" type="button" onClick={() => { setFilterStatus(''); setProductCategory(''); setSearch(''); }}><Icon name="clock" size={13} stroke={2} /> Clear all</button>}
+          </div>}
+          {loadError ? <EmptySection title="This section could not load" body="Please sign in again with the correct internal account." action="Open Sign In" onAction={() => { window.location.href = reloginPath; }} />
+            : isLoading ? <EmptySection title="Loading Bookshop Products" body="One moment while the latest catalogue loads." />
+            : sorted.length === 0 ? <EmptySection title="No Bookshop Products Yet" body="Use Add Product to create the first catalogue item." action={createAction} onAction={canCreate ? () => setCreating(true) : undefined} />
+            : <AdminTableScroll><table className="admin-table product-redesign-table">
+              <thead><tr>
+                <th className="product-check-cell"><input type="checkbox" checked={allVisibleProductsSelected} onChange={toggleVisibleProducts} aria-label="Select all products on this page" /></th>
+                <th onClick={() => toggleSort('name')}>Product <span>⇅</span></th><th onClick={() => toggleSort('category')}>Category <span>⇅</span></th><th onClick={() => toggleSort('curriculum')}>Curriculum <span>⇅</span></th><th onClick={() => toggleSort('publisher')}>Publisher <span>⇅</span></th><th onClick={() => toggleSort('price')}>Price (GH₵) <span>⇅</span></th><th onClick={() => toggleSort('stock_status')}>Stock <span>⇅</span></th><th onClick={() => toggleSort('updated_at')}>Last activity <span>⇅</span></th><th className="admin-actions-column">Actions</th>
+              </tr></thead>
+              <tbody>{paginatedRows.map(row => <tr key={row.id}>
+                <td className="product-check-cell"><input type="checkbox" checked={selectedProductIds.has(row.id)} onChange={() => toggleProductSelection(row.id)} aria-label={`Select ${row.name}`} /></td>
+                <td><div className="product-name-cell">{rowImageUrl(row) ? <img src={rowImageUrl(row)} alt="" loading="lazy" decoding="async" /> : <span className="product-cover-placeholder"><Icon name="book" size={20} /></span>}<span><strong>{row.name}</strong><small>{row.author ? `Author: ${row.author}` : row.short_description || `Product ID: ${row.id}`}</small></span></div></td>
+                <td>{row.category || 'Uncategorised'}</td><td>{row.curriculum || '—'}</td><td>{row.publisher || '—'}</td><td className="product-price-cell">GH₵{Number(row.price || 0).toFixed(2)}</td>
+                <td><span className={`product-stock-badge is-${row.stock_status || 'out_of_stock'}`}>{statusLabel(row.stock_status || 'out_of_stock')}</span></td><td className="admin-activity-date">{formatActivityDate(row.updated_at || row.created_at)}</td>
+                <td className="admin-actions-column"><div className="product-row-actions">{canUpdate && <button type="button" onClick={() => { setEditing(row); setCreating(false); }}><Icon name="edit" size={15} stroke={2} /> Edit</button>}<div className="product-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${row.name}`} onClick={() => setProductMenuId(current => current === row.id ? null : row.id)}><Icon name="more" size={18} /></button>{productMenuId === row.id && <div className="product-row-menu">{canPublish && <button type="button" onClick={() => { togglePublish(row); setProductMenuId(null); }}>{row.status === 'published' ? 'Unpublish' : 'Publish'}</button>}{canDelete && <button className="danger" type="button" onClick={() => { handleDelete(row); setProductMenuId(null); }}>Delete</button>}</div>}</div></div></td>
+              </tr>)}</tbody>
+            </table></AdminTableScroll>}
+          {sorted.length > 0 && <footer className="product-table-footer"><span>Showing {(tablePage - 1) * tablePageSize + 1} to {Math.min(tablePage * tablePageSize, sorted.length)} of {sorted.length} results</span><div className="product-pagination"><button type="button" disabled={tablePage === 1} onClick={() => setTablePage(page => page - 1)}><Icon name="chevL" size={15} /></button>{Array.from({ length: totalTablePages }, (_, index) => index + 1).filter(page => totalTablePages <= 6 || page <= 4 || page === totalTablePages).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 ? <span>…</span> : null}<button className={page === tablePage ? 'is-active' : ''} type="button" onClick={() => setTablePage(page)}>{page}</button></React.Fragment>)}<button type="button" disabled={tablePage === totalTablePages} onClick={() => setTablePage(page => page + 1)}><Icon name="chevR" size={15} /></button></div></footer>}
+        </section>
+      )}
+
+      {config.collection !== 'products' && <div className="admin-table-card">
         <div className="atc-header" style={{ flexWrap: 'wrap', gap: 10 }}>
           <h3>{sorted.length} Record{sorted.length !== 1 ? 's' : ''}{sorted.length > tablePageSize ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
           <div className="admin-table-tools">
@@ -4189,7 +4284,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           <button className="btn btn-outline-navy btn-sm" disabled={tablePage === totalTablePages} onClick={() => setTablePage(p => p + 1)}>Next →</button>
         </div>
       )}
-      </div>
+      </div>}
 
       {orderDetail && (
         <div className="admin-receipt-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setOrderDetail(null)}>
@@ -4898,7 +4993,16 @@ const DetailSection = ({ title, children }) => (
 
 const TeachersView = ({ session }) => {
   const [teachers, setTeachers] = React.useState(null);
+  const [teacherSummary, setTeacherSummary] = React.useState(null);
   const [search, setSearch] = React.useState('');
+  const [statusFilter, setStatusFilter] = React.useState('active');
+  const [profileFilter, setProfileFilter] = React.useState('');
+  const [registeredFilter, setRegisteredFilter] = React.useState('all');
+  const [teacherPage, setTeacherPage] = React.useState(1);
+  const [teacherPageSize, setTeacherPageSize] = React.useState(10);
+  const [selectedTeacherIds, setSelectedTeacherIds] = React.useState(() => new Set());
+  const [teacherMenuId, setTeacherMenuId] = React.useState(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = React.useState(false);
   const [detail, setDetail] = React.useState(null); // full profile object for the modal
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [toggling, setToggling] = React.useState(null); // user id currently being toggled
@@ -4927,8 +5031,8 @@ const TeachersView = ({ session }) => {
     if (!isApiMode()) return;
     fetch('/api/admin/users', { credentials: 'include' })
       .then(r => r.ok ? r.json() : { items: [] })
-      .then(data => setTeachers(data.items || []))
-      .catch(() => setTeachers([]));
+      .then(data => { setTeachers(data.items || []); setTeacherSummary(data.summary || null); })
+      .catch(() => { setTeachers([]); setTeacherSummary(null); });
   }, []);
 
   React.useEffect(() => { reload(); }, [reload]);
@@ -4945,11 +5049,49 @@ const TeachersView = ({ session }) => {
   // Only regular users (role === 'user') — admins/staff are filtered out server-side too,
   // but this guards against any future changes.
   const filtered = (teachers || [])
-    .filter(t => t.role === 'user' || !t.role);
+    .filter(t => t.role === 'user' || !t.role)
+    .filter(t => statusFilter === 'active' ? t.is_active !== false : statusFilter === 'disabled' ? t.is_active === false : true)
+    .filter(t => profileFilter === 'complete' ? (t.profile_completion ?? 0) >= 100 : profileFilter === 'incomplete' ? (t.profile_completion ?? 0) < 100 || !t.phone_verified : true)
+    .filter(t => {
+      if (registeredFilter === 'all' || !t.created_at) return true;
+      const days = Number(registeredFilter);
+      return Date.now() - new Date(t.created_at).getTime() <= days * 86400000;
+    });
   const rankedTeachers = rankByFuzzyMatch(filtered, search, t => `${t.first_name} ${t.last_name} ${t.email} ${t.phone || ''}`);
+  const teacherPageCount = Math.max(1, Math.ceil(rankedTeachers.length / teacherPageSize));
+  const visibleTeachers = rankedTeachers.slice((teacherPage - 1) * teacherPageSize, teacherPage * teacherPageSize);
+  const allVisibleTeachersSelected = visibleTeachers.length > 0 && visibleTeachers.every(t => selectedTeacherIds.has(t.id));
   const reminderEligibleCount = (teachers || [])
-    .filter(t => (t.role === 'user' || !t.role) && ((t.profile_completion ?? 0) < 100 || !t.phone_verified))
+    .filter(t => (t.role === 'user' || !t.role) && t.is_active !== false && ((t.profile_completion ?? 0) < 100 || !t.phone_verified))
     .length;
+
+  React.useEffect(() => { setTeacherPage(1); }, [search, statusFilter, profileFilter, registeredFilter, teacherPageSize]);
+  React.useEffect(() => { setTeacherPage(page => Math.min(page, teacherPageCount)); }, [teacherPageCount]);
+
+  const toggleTeacherSelection = id => setSelectedTeacherIds(current => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleVisibleTeachers = () => setSelectedTeacherIds(current => {
+    const next = new Set(current);
+    if (allVisibleTeachersSelected) visibleTeachers.forEach(t => next.delete(t.id));
+    else visibleTeachers.forEach(t => next.add(t.id));
+    return next;
+  });
+  const selectedTeachers = (teachers || []).filter(t => selectedTeacherIds.has(t.id));
+  const exportSelectedTeachers = () => {
+    if (!selectedTeachers.length) return;
+    const escapeCsv = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const csv = [
+      ['Name', 'Email', 'Phone', 'Profile completion', 'Status', 'Registered'],
+      ...selectedTeachers.map(t => [[t.first_name, t.last_name].filter(Boolean).join(' '), t.email, t.phone || '', `${t.profile_completion ?? 0}%`, t.is_active === false ? 'Disabled' : 'Active', t.created_at || '']),
+    ].map(row => row.map(escapeCsv).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = 'realmindx-selected-teachers.csv'; link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const openDetail = async (t) => {
     setDetailLoading(true);
@@ -4969,6 +5111,7 @@ const TeachersView = ({ session }) => {
       await api.adminPatch('users', t.id, { status: newStatus });
       setTeachers(prev => prev.map(u => u.id === t.id ? { ...u, is_active: !t.is_active } : u));
       if (detail && detail.id === t.id) setDetail(d => ({ ...d, is_active: !t.is_active }));
+      reload();
     } catch { /* noop */ }
     finally { setToggling(null); }
   };
@@ -4986,6 +5129,7 @@ const TeachersView = ({ session }) => {
       await api.adminDelete('users', t.id);
       setTeachers(prev => prev.filter(u => u.id !== t.id));
       if (detail?.id === t.id) setDetail(null);
+      reload();
     } catch (err) {
       console.error(err);
       globalToast.error(err?.message || 'Could not delete teacher account.');
@@ -5032,6 +5176,41 @@ const TeachersView = ({ session }) => {
     }
   };
 
+  const sendSelectedProfileReminders = async () => {
+    if (!selectedTeachers.length) return;
+    setBatchReminding(true);
+    const results = await Promise.allSettled(selectedTeachers.map(t => api.adminCreate(`users/${t.id}/profile-reminder`, {})));
+    const sent = results.filter(result => result.status === 'fulfilled').length;
+    const failed = results.length - sent;
+    if (sent) globalToast.success(`Sent ${sent} profile reminder${sent === 1 ? '' : 's'}.`);
+    if (failed) globalToast.warning(`${failed} selected reminder${failed === 1 ? '' : 's'} could not be sent.`);
+    setBatchReminding(false);
+  };
+
+  const disableSelectedTeachers = async () => {
+    if (!selectedTeachers.length) return;
+    setBatchReminding(true);
+    const activeSelected = selectedTeachers.filter(t => t.is_active !== false);
+    const results = await Promise.allSettled(activeSelected.map(t => api.adminPatch('users', t.id, { status: 'inactive' })));
+    const disabledIds = new Set(activeSelected.filter((_, index) => results[index]?.status === 'fulfilled').map(t => t.id));
+    setTeachers(current => (current || []).map(t => disabledIds.has(t.id) ? { ...t, is_active: false } : t));
+    setSelectedTeacherIds(new Set());
+    reload();
+    setBatchReminding(false);
+  };
+
+  const deleteSelectedTeachers = async () => {
+    setBulkDeleteConfirm(false);
+    if (!selectedTeachers.length) return;
+    setBatchReminding(true);
+    const results = await Promise.allSettled(selectedTeachers.map(t => api.adminDelete('users', t.id)));
+    const deletedIds = new Set(selectedTeachers.filter((_, index) => results[index]?.status === 'fulfilled').map(t => t.id));
+    setTeachers(current => (current || []).filter(t => !deletedIds.has(t.id)));
+    setSelectedTeacherIds(new Set());
+    reload();
+    setBatchReminding(false);
+  };
+
   const updatePayoutField = (fieldName) => (event) => {
     setPayoutForm(form => ({ ...form, [fieldName]: event.target.value }));
   };
@@ -5056,113 +5235,68 @@ const TeachersView = ({ session }) => {
     }
   };
 
+  const stats = teacherSummary || {
+    total_teachers: (teachers || []).length,
+    active_teachers: (teachers || []).filter(t => t.is_active !== false).length,
+    incomplete_profiles: (teachers || []).filter(t => (t.profile_completion ?? 0) < 100 || !t.phone_verified).length,
+    disabled_accounts: (teachers || []).filter(t => t.is_active === false).length,
+    excluded_internal_accounts: 0,
+  };
+
   return (
-    <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, marginBottom:24, flexWrap:'wrap' }}>
-        <div>
-          <h2 className="admin-page-title">Active Teachers</h2>
-          <p style={{ fontSize:'0.86rem', color:'var(--gray-600)', marginTop:4 }}>
-            Only enabled teacher accounts with verified email addresses are shown. Admin, staff, unverified, and disabled accounts are excluded.
-          </p>
+    <div className="admin-redesign-page teachers-admin-page">
+      <div className="teachers-page-heading">
+        <div><h2 className="admin-page-title">Active Teachers</h2><p>Manage verified teacher accounts. Use filters and bulk actions to keep your data clean and accurate.</p></div>
+        <div className="teachers-heading-actions">
+          {isApiMode() && canExportTeachers && <><a href={api.adminExportUrl('users','csv')}><Icon name="file" size={18} /> Export CSV</a><a href={api.adminExportUrl('users','xlsx')}><Icon name="file" size={18} /> Export Excel</a></>}
+          {canEditTeachers && <button type="button" onClick={openBatchProfileReminderConfirm} disabled={batchReminding || reminderEligibleCount === 0}><Icon name="send" size={18} /> {batchReminding ? 'Sending…' : 'Remind Incomplete'}</button>}
         </div>
-        {isApiMode() && canExportTeachers && (
-          <div style={{ display:'flex', gap:10 }}>
-            <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl('users','csv')}>Export CSV</a>
-            <a className="btn btn-outline-navy btn-sm" href={api.adminExportUrl('users','xlsx')}>Export Excel</a>
-          </div>
-        )}
       </div>
-      <div className="admin-table-card">
-        <div className="atc-header teachers-toolbar">
-          <h3>{rankedTeachers.length} Teacher{rankedTeachers.length !== 1 ? 's' : ''}</h3>
-          <div className="atc-search"><span>Search</span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or email" />
-          </div>
-          {canEditTeachers ? (
-            <button
-              type="button"
-              className="btn btn-outline-navy btn-sm teachers-batch-reminder"
-              disabled={batchReminding || reminderEligibleCount === 0}
-              onClick={openBatchProfileReminderConfirm}
-              title={reminderEligibleCount === 0 ? 'All active teachers have complete profiles and verified phone numbers.' : 'Send one profile reminder email to every teacher who still has profile or phone verification items outstanding.'}
-            >
-              {batchReminding ? 'Sending reminders…' : `Remind incomplete teachers${reminderEligibleCount ? ` (${reminderEligibleCount})` : ''}`}
-            </button>
-          ) : null}
+
+      <div className="teacher-stat-grid">
+        {[
+          { label: 'Total Teachers', value: stats.total_teachers, icon: 'teacher', tone: 'blue' },
+          { label: 'Active Teachers', value: stats.active_teachers, icon: 'teacher', tone: 'green' },
+          { label: 'Incomplete Profiles', value: stats.incomplete_profiles, icon: 'teacher', tone: 'orange', progress: stats.total_teachers ? Math.round((stats.incomplete_profiles / stats.total_teachers) * 100) : 0 },
+          { label: 'Disabled Accounts', value: stats.disabled_accounts, icon: 'teacher', tone: 'red' },
+          { label: 'Admins & Staff Excluded', value: stats.excluded_internal_accounts, icon: 'users', tone: 'gray' },
+        ].map(stat => <div className="teacher-stat-card" data-tone={stat.tone} key={stat.label}><span className="teacher-stat-icon"><Icon name={stat.icon} size={23} stroke={1.8} /></span><span><small>{stat.label}</small><strong>{stat.value ?? 0}</strong></span>{stat.progress != null && <span className="teacher-stat-progress" style={{ '--progress': `${stat.progress * 3.6}deg` }}>{stat.progress}%</span>}</div>)}
+      </div>
+
+      <section className="admin-table-card teacher-table-card">
+        <div className="teacher-filter-bar">
+          <label>Status: <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">All</option><option value="active">Active</option><option value="disabled">Disabled</option></select><button type="button" aria-label="Clear status filter" onClick={() => setStatusFilter('')}>×</button></label>
+          <label>Profile: <select value={profileFilter} onChange={event => setProfileFilter(event.target.value)}><option value="">All</option><option value="complete">Complete</option><option value="incomplete">Incomplete</option></select><button type="button" aria-label="Clear profile filter" onClick={() => setProfileFilter('')}>×</button></label>
+          <label className="teacher-date-filter"><Icon name="calendar" size={15} /> Registered: <select value={registeredFilter} onChange={event => setRegisteredFilter(event.target.value)}><option value="all">All Time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="365">Last year</option></select></label>
+          <button className="teacher-add-filter" type="button" onClick={() => setProfileFilter(profileFilter ? '' : 'incomplete')}>＋ Add Filter</button>
+          <label className="teacher-search-field"><Icon name="search" size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search by name, email or phone..." /></label>
+          <button className="teacher-filter-icon" type="button" aria-label="Clear all filters" onClick={() => { setStatusFilter('active'); setProfileFilter(''); setRegisteredFilter('all'); setSearch(''); }}><Icon name="filter" size={17} /></button>
         </div>
-        {!isApiMode() ? (
-          <EmptySection title="API mode required" body="Connect the Flask backend to see registered teachers." />
-        ) : teachers === null ? (
-          <EmptySection title="Loading…" body="" />
-        ) : rankedTeachers.length === 0 ? (
-          <EmptySection title="No Active Teachers Yet" body="Teacher accounts appear here after email verification and activation." />
-        ) : (
-          <AdminTableScroll>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Name</th><th>Email</th><th>Phone</th>
-                  <th>Profile</th><th>Status</th><th>Registered</th><th className="admin-actions-column">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rankedTeachers.map(t => (
-                  <tr key={t.id} style={{ opacity: t.is_active === false ? 0.55 : 1 }}>
-                    <td className="td-primary">{[t.first_name, t.last_name].filter(Boolean).join(' ') || 'Unknown'}</td>
-                    <td><VerifiedContactValue value={t.email} verified={t.is_verified} type="Email" /></td>
-                    <td><VerifiedContactValue value={t.phone} verified={t.phone_verified} type="Phone" /></td>
-                    <td><span className={`badge ${t.profile_completion === 100 ? 'badge-success' : 'badge-navy'}`}>{t.profile_completion ?? 0}%</span></td>
-                    <td>
-                      <span className={`badge ${t.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
-                        {t.is_active !== false ? 'Active' : 'Disabled'}
-                      </span>
-                    </td>
-                    <td style={{ fontSize:'0.76rem', color:'var(--gray-600)', whiteSpace:'nowrap' }}>
-                      {t.created_at ? new Date(t.created_at).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="admin-actions-column">
-                      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                        <button className="table-action-btn" onClick={() => openDetail(t)}>View Profile</button>
-                        {canEditTeachers ? (
-                          <button
-                            className="table-action-btn"
-                            style={{ background: t.is_active !== false ? '#fff8e1' : '#f0fdf4', color: t.is_active !== false ? '#92400e' : '#166534' }}
-                            disabled={toggling === t.id}
-                            onClick={() => toggleActive(t)}
-                          >
-                            {toggling === t.id ? '…' : t.is_active !== false ? 'Disable' : 'Enable'}
-                          </button>
-                        ) : null}
-                        {canEditTeachers && ((t.profile_completion ?? 0) < 100 || !t.phone_verified) ? (
-                          <button
-                            className="table-action-btn"
-                            style={{ background:'#e8f1ff', color:'var(--navy)' }}
-                            disabled={reminding === t.id || t.is_active === false}
-                            onClick={() => sendProfileReminder(t)}
-                            title={t.is_active === false ? 'Enable this account before sending a reminder' : `Missing: ${[...(t.profile_missing_fields || []), ...(!t.phone_verified ? ['Verify your phone number'] : [])].join(', ')}`}
-                          >
-                            {reminding === t.id ? 'Sending…' : 'Send Profile Reminder'}
-                          </button>
-                        ) : null}
-                        {canDeleteTeachers ? (
-                          <button
-                            className="table-action-btn"
-                            style={{ background: '#fee2e2', color: '#991b1b' }}
-                            disabled={deleting === t.id}
-                            onClick={() => deleteTeacher(t)}
-                          >
-                            {deleting === t.id ? 'Deleting…' : 'Delete'}
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </AdminTableScroll>
-        )}
-      </div>
+
+        {selectedTeachers.length > 0 && <div className="teacher-bulk-bar"><strong><button type="button" onClick={() => setSelectedTeacherIds(new Set())}>×</button>{selectedTeachers.length} teacher{selectedTeachers.length === 1 ? '' : 's'} selected</strong><div>{canEditTeachers && <><button type="button" onClick={sendSelectedProfileReminders}><Icon name="send" size={15} /> Send Reminder</button><button type="button" onClick={disableSelectedTeachers}><Icon name="ban" size={15} /> Disable</button></>}<button type="button" onClick={exportSelectedTeachers}><Icon name="download" size={15} /> Export Selected</button>{canDeleteTeachers && <button className="danger" type="button" onClick={() => setBulkDeleteConfirm(true)}><Icon name="trash" size={15} /> Delete</button>}</div></div>}
+
+        {!isApiMode() ? <EmptySection title="API mode required" body="Connect the Flask backend to see registered teachers." />
+          : teachers === null ? <EmptySection title="Loading…" body="" />
+          : rankedTeachers.length === 0 ? <EmptySection title="No matching teachers" body="Try changing the filters or search term." />
+          : <AdminTableScroll><table className="admin-table teacher-redesign-table">
+            <thead><tr><th className="teacher-check-cell"><input type="checkbox" checked={allVisibleTeachersSelected} onChange={toggleVisibleTeachers} aria-label="Select all teachers on this page" /></th><th>Teacher <span>⌃</span></th><th>Email <span>⌃</span></th><th>Phone <span>⌃</span></th><th>Profile completion <span>⌃</span></th><th>Status <span>⌃</span></th><th>Registered <span>⌃</span></th><th>Actions</th></tr></thead>
+            <tbody>{visibleTeachers.map((t, index) => {
+              const name = [t.first_name, t.last_name].filter(Boolean).join(' ') || 'Unknown';
+              const initials = [t.first_name, t.last_name].filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'T';
+              const completion = Math.max(0, Math.min(100, t.profile_completion ?? 0));
+              return <tr key={t.id} className={selectedTeacherIds.has(t.id) ? 'is-selected' : ''}><td className="teacher-check-cell"><input type="checkbox" checked={selectedTeacherIds.has(t.id)} onChange={() => toggleTeacherSelection(t.id)} aria-label={`Select ${name}`} /></td>
+                <td><div className="teacher-name-cell"><span className={`teacher-avatar tone-${(t.id || index) % 5}`}>{initials}</span><strong>{name}</strong></div></td>
+                <td><VerifiedContactValue value={t.email} verified={t.is_verified} type="Email" /></td><td><VerifiedContactValue value={t.phone} verified={t.phone_verified} type="Phone" /></td>
+                <td><span className={`teacher-completion-ring ${completion >= 100 ? 'is-complete' : ''}`} style={{ '--completion': `${completion * 3.6}deg` }}><b>{completion}%</b></span></td>
+                <td><span className={`teacher-status-pill ${t.is_active === false ? 'is-disabled' : ''}`}>{t.is_active === false ? 'Disabled' : 'Active'}</span></td>
+                <td>{t.created_at ? new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}</td>
+                <td><div className="teacher-row-actions"><button type="button" onClick={() => openDetail(t)}>View Profile</button><div className="teacher-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${name}`} onClick={() => setTeacherMenuId(current => current === t.id ? null : t.id)}><Icon name="more" size={18} /></button>{teacherMenuId === t.id && <div className="teacher-row-menu">{canEditTeachers && <><button type="button" onClick={() => { sendProfileReminder(t); setTeacherMenuId(null); }}>Send Profile Reminder</button><button type="button" onClick={() => { toggleActive(t); setTeacherMenuId(null); }}>{t.is_active === false ? 'Enable' : 'Disable'}</button></>}{canDeleteTeachers && <button className="danger" type="button" onClick={() => { deleteTeacher(t); setTeacherMenuId(null); }}>Delete</button>}</div>}</div></div></td>
+              </tr>;
+            })}</tbody>
+          </table></AdminTableScroll>}
+        <footer className="teacher-table-footer"><span>Showing {rankedTeachers.length ? (teacherPage - 1) * teacherPageSize + 1 : 0} to {Math.min(teacherPage * teacherPageSize, rankedTeachers.length)} of {rankedTeachers.length} teachers</span><label><select value={teacherPageSize} onChange={event => setTeacherPageSize(Number(event.target.value))}>{[10, 20, 50].map(size => <option key={size} value={size}>{size} per page</option>)}</select></label><div className="product-pagination"><button type="button" disabled={teacherPage === 1} onClick={() => setTeacherPage(page => page - 1)}><Icon name="chevL" size={15} /></button>{Array.from({ length: teacherPageCount }, (_, index) => index + 1).filter(page => teacherPageCount <= 5 || page <= 3 || page === teacherPageCount).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 && <span>…</span>}<button type="button" className={teacherPage === page ? 'is-active' : ''} onClick={() => setTeacherPage(page)}>{page}</button></React.Fragment>)}<button type="button" disabled={teacherPage === teacherPageCount} onClick={() => setTeacherPage(page => page + 1)}><Icon name="chevR" size={15} /></button></div></footer>
+      </section>
+
 
       {batchReminderConfirm && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
@@ -5191,6 +5325,18 @@ const TeachersView = ({ session }) => {
                 {batchReminding ? 'Sending...' : 'Send reminders'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {bulkDeleteConfirm && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="bulk-teacher-delete-title" style={{ position:'relative', background:'#fff', borderRadius:18, padding:'34px 32px 30px', width:'100%', maxWidth:500, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
+            <button className="admin-modal-close" type="button" onClick={() => setBulkDeleteConfirm(false)} aria-label="Close"><Icon name="x" size={16} /></button>
+            <div style={{ width:58, height:58, borderRadius:'50%', background:'#fff0f2', display:'grid', placeItems:'center', margin:'0 auto 20px', color:'#d62f43' }}><Icon name="trash" size={24} /></div>
+            <h3 id="bulk-teacher-delete-title" style={{ color:'var(--navy)', textAlign:'center', marginBottom:10 }}>Delete selected teachers?</h3>
+            <p style={{ color:'var(--gray-600)', textAlign:'center', lineHeight:1.6, marginBottom:24 }}>This permanently deletes {selectedTeachers.length} selected teacher account{selectedTeachers.length === 1 ? '' : 's'}. Accounts with placement history will be safely rejected by the server.</p>
+            <div style={{ display:'flex', gap:12 }}><button className="btn btn-outline-navy" style={{ flex:1 }} type="button" onClick={() => setBulkDeleteConfirm(false)}>Cancel</button><button className="btn btn-primary" style={{ flex:1, background:'#d62f43', borderColor:'#d62f43' }} type="button" onClick={deleteSelectedTeachers}>Delete</button></div>
           </div>
         </div>
       )}

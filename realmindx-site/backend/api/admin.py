@@ -5,7 +5,7 @@ import mimetypes
 import re
 import secrets
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 from threading import Thread
@@ -1510,20 +1510,41 @@ def admin_change_password():
 @login_required
 @permission_required("teachers.view")
 def users():
-    # Return only regular-user accounts (i.e. teachers); admin/staff excluded.
+    # Return verified teacher accounts. The UI defaults to Active but can also
+    # filter disabled accounts, while summary counts keep internal roles clear.
     rows = (
         User.query
         .join(User.role)
         .filter(
             Role.name == "user",
             User.teacher_service_enabled.is_(True),
-            User.is_active.is_(True),
             User.is_verified.is_(True),
         )
         .order_by(User.created_at.desc())
         .all()
     )
-    return jsonify(items=[user_json(user) for user in rows])
+    items = [user_json(user) for user in rows]
+    active_items = [item for item in items if item.get("is_active") is not False]
+    incomplete_items = [
+        item for item in active_items
+        if int(item.get("profile_completion") or 0) < 100 or not item.get("phone_verified")
+    ]
+    excluded_internal_accounts = (
+        User.query
+        .join(User.role)
+        .filter(Role.name.in_(["admin", "staff"]))
+        .count()
+    )
+    return jsonify(
+        items=items,
+        summary={
+            "total_teachers": len(items),
+            "active_teachers": len(active_items),
+            "incomplete_profiles": len(incomplete_items),
+            "disabled_accounts": len(items) - len(active_items),
+            "excluded_internal_accounts": excluded_internal_accounts,
+        },
+    )
 
 
 @admin_bp.get("/bookshop-accounts")
@@ -1548,6 +1569,12 @@ def bookshop_accounts():
 
 
 REMINDER_COOLDOWN_HOURS = 24  # configurable; prevents repeated clicks from flooding a teacher
+AUTOMATED_PROFILE_REMINDER_STAGES = (
+    ("profile_completion_reminder_24h", timedelta(hours=24)),
+    ("profile_completion_reminder_7d", timedelta(days=7)),
+    ("profile_completion_reminder_30d", timedelta(days=30)),
+)
+SUCCESSFUL_COMMUNICATION_STATUSES = ("queued", "accepted", "sent", "delivered", "mocked")
 
 
 def _reminder_eligibility(user) -> dict:
@@ -1602,6 +1629,63 @@ def _reminder_cooldown_active(user) -> bool:
     return recent is not None
 
 
+def _automated_profile_reminder_due(user, now=None):
+    """Return the next due automated reminder stage, or ``None``.
+
+    The first reminder is due 24 hours after account creation. Each later
+    interval starts when the preceding automated reminder was accepted, so
+    delayed jobs never compress the 7-day and 30-day waiting periods.
+    """
+    from ..models import CommunicationAttempt
+
+    eligibility = _reminder_eligibility(user)
+    if not eligibility["eligible"]:
+        return None
+
+    now = now or datetime.now(timezone.utc)
+    attempts = (
+        CommunicationAttempt.query
+        .filter(
+            CommunicationAttempt.recipient_user_id == user.id,
+            CommunicationAttempt.channel == "email",
+            CommunicationAttempt.template_name.in_([stage[0] for stage in AUTOMATED_PROFILE_REMINDER_STAGES]),
+            CommunicationAttempt.status.in_(SUCCESSFUL_COMMUNICATION_STATUSES),
+        )
+        .order_by(CommunicationAttempt.requested_at.asc(), CommunicationAttempt.id.asc())
+        .all()
+    )
+    completed_templates = {attempt.template_name for attempt in attempts}
+    next_index = next(
+        (index for index, (template_name, _) in enumerate(AUTOMATED_PROFILE_REMINDER_STAGES)
+         if template_name not in completed_templates),
+        None,
+    )
+    if next_index is None:
+        return None
+
+    template_name, delay = AUTOMATED_PROFILE_REMINDER_STAGES[next_index]
+    if next_index == 0:
+        anchor = user.created_at
+    else:
+        preceding_template = AUTOMATED_PROFILE_REMINDER_STAGES[next_index - 1][0]
+        preceding_attempt = next(
+            (attempt for attempt in reversed(attempts) if attempt.template_name == preceding_template),
+            None,
+        )
+        if not preceding_attempt:
+            return None
+        anchor = preceding_attempt.requested_at
+
+    if not anchor:
+        return None
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=timezone.utc)
+    due_at = anchor + delay
+    if now < due_at:
+        return None
+    return {"template_name": template_name, "stage": next_index + 1, "due_at": due_at}
+
+
 def _build_reminder_items(user, missing, status_data):
     """Build the list of missing items shown in the reminder email.
 
@@ -1619,7 +1703,7 @@ def _build_reminder_items(user, missing, status_data):
     return items
 
 
-def _send_teacher_profile_reminder(user):
+def _send_teacher_profile_reminder(user, *, template_name="profile_reminder", enforce_cooldown=True):
     """Send one profile-reminder email. Returns a structured dict for batch aggregation."""
     from ..models import CommunicationAttempt
 
@@ -1632,7 +1716,7 @@ def _send_teacher_profile_reminder(user):
             "masked_email": mask_destination("email", user.email or ""),
         }
 
-    if _reminder_cooldown_active(user):
+    if enforce_cooldown and _reminder_cooldown_active(user):
         return {
             "status": "skipped",
             "reason": "reminder_cooldown",
@@ -1645,7 +1729,7 @@ def _send_teacher_profile_reminder(user):
     missing = status_data.get("missing_requirements", [])
     reminder_items = _build_reminder_items(user, missing, status_data)
 
-    portal_url = f"{current_app.config['BASE_URL'].rstrip('/')}/portal?view=profile"
+    sign_in_url = f"{current_app.config['BASE_URL'].rstrip('/')}/login"
     missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
     missing_text = "\n".join(f"- {item}" for item in reminder_items)
 
@@ -1660,19 +1744,19 @@ def _send_teacher_profile_reminder(user):
                 "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
                 f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
                 "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
-                "Finish My Profile",
-                portal_url,
+                "Sign In to Finish My Profile",
+                sign_in_url,
                 preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
             ),
             text=(
                 "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
                 f"Remaining items:\n{missing_text}\n\n"
-                f"Finish here: {portal_url}"
+                f"Sign in and finish here: {sign_in_url}"
             ),
         ),
         purpose="service_reminder",
         recipient_user_id=user.id,
-        template_name="profile_reminder",
+        template_name=template_name,
     )
 
     if result.status == "mocked":
@@ -1713,6 +1797,43 @@ def _send_teacher_profile_reminder(user):
         "user_id": user.id,
         "masked_email": mask_destination("email", user.email or ""),
     }
+
+
+def send_due_teacher_profile_completion_reminders(now=None):
+    """Send every currently due 24-hour, 7-day, or 30-day reminder."""
+    now = now or datetime.now(timezone.utc)
+    rows = (
+        User.query
+        .join(User.role)
+        .filter(
+            Role.name == "user",
+            User.teacher_service_enabled.is_(True),
+            User.is_active.is_(True),
+        )
+        .order_by(User.created_at.asc())
+        .all()
+    )
+    counts = {"due": 0, "accepted": 0, "mocked": 0, "failed": 0, "skipped": 0}
+    stages = {1: 0, 2: 0, 3: 0}
+    for user in rows:
+        due = _automated_profile_reminder_due(user, now=now)
+        if not due:
+            continue
+        counts["due"] += 1
+        result = _send_teacher_profile_reminder(
+            user,
+            template_name=due["template_name"],
+            enforce_cooldown=False,
+        )
+        status = result.get("status", "failed")
+        if status in counts:
+            counts[status] += 1
+        else:
+            counts["failed"] += 1
+        if status in ("accepted", "mocked"):
+            stages[due["stage"]] += 1
+    db.session.commit()
+    return {**counts, "stages": stages}
 
 
 @admin_bp.post("/users/profile-reminders")

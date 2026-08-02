@@ -1,5 +1,6 @@
 import sys
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SITE_ROOT = Path(__file__).resolve().parents[1]
@@ -11,7 +12,7 @@ from backend.config import Config
 from backend.extensions import db
 from unittest.mock import patch
 
-from backend.models import Job, JobAlertPreference, JobApplication, Role, TeacherPlacement, UploadedFile, User, UserProfile
+from backend.models import CommunicationAttempt, Job, JobAlertPreference, JobApplication, Role, TeacherPlacement, UploadedFile, User, UserProfile
 
 
 class AdminTeacherManagementTestConfig(Config):
@@ -85,6 +86,15 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertIn(self.active_teacher.id, user_ids)
         self.assertNotIn(self.unverified_teacher.id, user_ids)
 
+    def test_teacher_summary_includes_verified_disabled_accounts(self):
+        response = self.client.get("/api/admin/users")
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["summary"]["total_teachers"], 2)
+        self.assertEqual(data["summary"]["active_teachers"], 1)
+        self.assertEqual(data["summary"]["disabled_accounts"], 1)
+        self.assertEqual(data["summary"]["excluded_internal_accounts"], 1)
+
     def test_delete_teacher_account(self):
         db.session.add(JobAlertPreference(user_id=self.active_teacher.id, subject="Mathematics", location="Test"))
         db.session.commit()
@@ -138,9 +148,54 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertIn("almost ready", message.subject)
         self.assertIn("almost there", message.html)
         self.assertIn("Finish My Profile", message.html)
+        self.assertIn("/login", message.html)
         self.assertIn("Add and verify a phone number", message.html)
         self.assertIn("Add and verify a phone number", message.text)
         self.assertIn("https://realmindxgh.com/logo-white.png", message.html)
+
+    def test_automatic_profile_reminder_stages_use_24h_then_7d_then_30d(self):
+        from backend.api.admin import _automated_profile_reminder_due
+
+        now = datetime.now(timezone.utc)
+        self.active_teacher.created_at = now - timedelta(days=2)
+        db.session.commit()
+
+        due = _automated_profile_reminder_due(self.active_teacher, now=now)
+        self.assertEqual(due["stage"], 1)
+        self.assertEqual(due["template_name"], "profile_completion_reminder_24h")
+
+        db.session.add(CommunicationAttempt(
+            channel="email", purpose="service_reminder", recipient_user_id=self.active_teacher.id,
+            masked_destination="t***@example.com", template_name="profile_completion_reminder_24h",
+            provider="test", mode="live", status="accepted", requested_at=now - timedelta(days=8),
+        ))
+        db.session.commit()
+        due = _automated_profile_reminder_due(self.active_teacher, now=now)
+        self.assertEqual(due["stage"], 2)
+        self.assertEqual(due["template_name"], "profile_completion_reminder_7d")
+
+        first_attempt = CommunicationAttempt.query.filter_by(
+            recipient_user_id=self.active_teacher.id,
+            template_name="profile_completion_reminder_24h",
+        ).one()
+        first_attempt.requested_at = now - timedelta(days=40)
+        db.session.add(CommunicationAttempt(
+            channel="email", purpose="service_reminder", recipient_user_id=self.active_teacher.id,
+            masked_destination="t***@example.com", template_name="profile_completion_reminder_7d",
+            provider="test", mode="live", status="accepted", requested_at=now - timedelta(days=31),
+        ))
+        db.session.commit()
+        due = _automated_profile_reminder_due(self.active_teacher, now=now)
+        self.assertEqual(due["stage"], 3)
+        self.assertEqual(due["template_name"], "profile_completion_reminder_30d")
+
+        db.session.add(CommunicationAttempt(
+            channel="email", purpose="service_reminder", recipient_user_id=self.active_teacher.id,
+            masked_destination="t***@example.com", template_name="profile_completion_reminder_30d",
+            provider="test", mode="live", status="accepted", requested_at=now,
+        ))
+        db.session.commit()
+        self.assertIsNone(_automated_profile_reminder_due(self.active_teacher, now=now))
 
     @patch("backend.api.admin.send_email")
     def test_send_batch_profile_reminders_includes_phone_verification(self, send_email_mock):

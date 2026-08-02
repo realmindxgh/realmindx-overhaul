@@ -71,6 +71,12 @@ export const Icon = ({ name, size = 24, stroke = 1.8 }) => {
     folder: <><path d="M3 6h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></>,
     party: <><path d="M5 21l5-17 10 10L5 21z"/><path d="M14 4l1-2M18 8l3-1M16 12l2 2M10 7l-2-2"/></>,
     filter: <path d="M3 5h18l-7 8.5V19l-4 2.5v-8L3 5z"/>,
+    plus: <><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></>,
+    more: <><circle cx="5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.2" fill="currentColor" stroke="none"/></>,
+    edit: <><path d="M4 20h4l11-11-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></>,
+    download: <><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></>,
+    send: <><path d="M22 2 10.8 13.2"/><path d="m22 2-7 20-4.2-8.8L2 9l20-7Z"/></>,
+    ban: <><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></>,
     trash: <><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13"/><path d="M10 11v5M14 11v5"/></>,
   };
   return (

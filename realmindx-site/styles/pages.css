@@ -4056,6 +4056,320 @@ input, textarea, select { font-family: inherit; }
   line-height: 1.2;
 }
 
+/* Reference-matched product and teacher management surfaces. */
+.admin-redesign-page { color: #092b61; }
+.product-page-heading,
+.teachers-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.product-page-copy .admin-page-title,
+.teachers-page-heading .admin-page-title { margin: 0; font-size: 1.72rem; line-height: 1.15; letter-spacing: -.035em; }
+.product-page-copy > p,
+.teachers-page-heading > div:first-child > p { margin: 7px 0 0; color: #4b5e7d; font-size: .85rem; line-height: 1.45; }
+.product-save-note { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; color: #61718b; font-size: .75rem; }
+.product-save-note svg { color: #27a768; border: 1px solid #27a768; border-radius: 50%; padding: 1px; }
+.product-heading-actions { display: flex; gap: 14px; align-items: stretch; }
+.product-heading-action {
+  display: flex; align-items: center; gap: 11px; min-width: 180px; min-height: 70px; padding: 12px 16px;
+  border: 1px solid #dce4ef; border-radius: 9px; background: #fff; color: #092b61; text-align: left;
+  box-shadow: 0 4px 12px rgba(15, 40, 78, .04); cursor: pointer;
+}
+.product-heading-action.is-add { min-width: 207px; border-color: #ffc400; background: #ffc400; box-shadow: 0 7px 18px rgba(255, 196, 0, .22); }
+.product-heading-icon { display: inline-grid; place-items: center; width: 43px; height: 43px; flex: 0 0 43px; border-radius: 50%; background: #f3f7fc; }
+.product-heading-action.is-add .product-heading-icon { background: transparent; }
+.product-heading-action > span:last-child { display: grid; gap: 4px; }
+.product-heading-action strong { font-family: 'Montserrat', sans-serif; font-size: .78rem; font-weight: 900; white-space: nowrap; }
+.product-heading-action small { color: #59708f; font-size: .68rem; white-space: nowrap; }
+.product-heading-action.is-add small { color: #3f4c60; }
+
+.product-table-card,
+.teacher-table-card { overflow: visible; border: 1px solid #e1e7ef; border-radius: 13px; box-shadow: 0 8px 24px rgba(18, 42, 73, .06); }
+.product-filter-bar { display: grid; grid-template-columns: minmax(270px, 1.7fr) minmax(150px, 1fr) minmax(170px, 1fr) auto auto auto; align-items: center; gap: 16px; padding: 20px 22px 12px; }
+.product-filter-bar > select,
+.product-rows-field select { width: 100%; height: 44px; border: 1px solid #ced9e8; border-radius: 7px; padding: 0 14px; background: #fff; color: #15335f; font-size: .76rem; font-weight: 700; }
+.product-search-field { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 13px; border: 1px solid #ced9e8; border-radius: 7px; color: #73839b; }
+.product-search-field input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: #15335f; font-size: .78rem; }
+.product-search-field input::placeholder { color: #8795aa; }
+.product-rows-field { display: flex; align-items: center; gap: 11px; color: #213b62; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.product-rows-field select { width: 88px; }
+.product-filter-button,
+.product-export-button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; height: 44px; padding: 0 18px; border: 1px solid #ced9e8; border-radius: 7px; background: #fff; color: #092b61; font-family: 'Montserrat', sans-serif; font-size: .72rem; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.product-export-button { min-width: 136px; border-color: #082e6d; background: #082e6d; color: #fff; }
+.product-export-wrap { position: relative; }
+.product-export-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: 210px; padding: 7px; border: 1px solid #dbe4f0; border-radius: 10px; background: #fff; box-shadow: 0 18px 45px rgba(8, 32, 70, .18); }
+.product-export-menu a { display: grid; gap: 2px; padding: 10px 12px; border-radius: 7px; color: #092b61; text-decoration: none; }
+.product-export-menu a:hover { background: #f2f6fb; }
+.product-export-menu strong { font-size: .76rem; }
+.product-export-menu span { color: #6a7890; font-size: .66rem; }
+.product-filter-chips { display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 0 22px 15px; border-bottom: 1px solid #dbe3ed; }
+.product-filter-chips button { display: inline-flex; align-items: center; gap: 13px; height: 32px; padding: 0 13px; border: 1px solid #dbe4f0; border-radius: 6px; background: #f8fafc; color: #19375f; font-size: .7rem; font-weight: 800; cursor: pointer; }
+.product-filter-chips button.is-clear { border: 0; background: transparent; color: #0c4190; }
+.product-redesign-table { min-width: 1120px; table-layout: auto; }
+.product-redesign-table th { height: 47px; padding: 0 13px; background: #f8fafc; font-size: .63rem; letter-spacing: 0; }
+.product-redesign-table th:not(.product-check-cell) { cursor: pointer; }
+.product-redesign-table th span { margin-left: 5px; color: #7c8ba2; }
+.product-redesign-table td { height: 72px; padding: 9px 13px; color: #435779; font-size: .72rem; }
+.product-check-cell { width: 34px; padding-right: 3px !important; text-align: center !important; }
+.product-check-cell input,
+.teacher-check-cell input { width: 17px; height: 17px; accent-color: #0b4ba5; cursor: pointer; }
+.product-name-cell { display: flex; align-items: center; gap: 14px; min-width: 275px; }
+.product-name-cell img,
+.product-cover-placeholder { width: 45px; height: 54px; flex: 0 0 45px; border-radius: 4px; object-fit: cover; border: 1px solid #dce4ef; }
+.product-cover-placeholder { display: grid; place-items: center; background: #eef3f9; color: #42638f; }
+.product-name-cell > span:last-child { display: grid; gap: 4px; }
+.product-name-cell strong { max-width: 245px; color: #062b63; font-size: .75rem; line-height: 1.28; }
+.product-name-cell small { max-width: 245px; color: #61708a; font-size: .66rem; line-height: 1.25; }
+.product-price-cell { color: #15345f !important; white-space: nowrap; }
+.product-stock-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 27px; padding: 0 11px; border-radius: 5px; font-size: .66rem; font-weight: 800; white-space: nowrap; }
+.product-stock-badge.is-in_stock { border: 1px solid #c4ead6; background: #ebf8f1; color: #08713c; }
+.product-stock-badge.is-low_stock { border: 1px solid #f3d98e; background: #fff8e5; color: #a66a00; }
+.product-stock-badge.is-out_of_stock { border: 1px solid #f1c8cd; background: #fff1f2; color: #b42332; }
+.product-row-actions,
+.teacher-row-actions { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+.product-row-actions > button,
+.product-row-menu-wrap > button,
+.teacher-row-actions > button,
+.teacher-row-menu-wrap > button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 13px; border: 1px solid #ccd8e8; border-radius: 6px; background: #fff; color: #0a336f; font-size: .7rem; font-weight: 800; cursor: pointer; }
+.product-row-actions .is-menu,
+.teacher-row-actions .is-menu { width: 36px; padding: 0; }
+.product-row-menu-wrap,
+.teacher-row-menu-wrap { position: relative; }
+.product-row-menu,
+.teacher-row-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 25; display: grid; min-width: 160px; padding: 6px; border: 1px solid #dbe4f0; border-radius: 8px; background: #fff; box-shadow: 0 14px 35px rgba(8, 32, 70, .16); }
+.product-row-menu button,
+.teacher-row-menu button { padding: 9px 10px; border: 0; border-radius: 5px; background: transparent; color: #163862; text-align: left; font-size: .7rem; cursor: pointer; }
+.product-row-menu button:hover,
+.teacher-row-menu button:hover { background: #f1f5f9; }
+.product-row-menu button.danger,
+.teacher-row-menu button.danger { color: #d62f43; }
+.product-table-footer,
+.teacher-table-footer { display: flex; align-items: center; gap: 16px; min-height: 62px; padding: 0 20px; color: #576987; font-size: .7rem; }
+.product-table-footer { justify-content: space-between; }
+.product-pagination { display: flex; align-items: center; gap: 7px; }
+.product-pagination button { display: inline-grid; place-items: center; min-width: 38px; height: 38px; padding: 0 9px; border: 1px solid #d8e1ed; border-radius: 6px; background: #fff; color: #0b326c; font-size: .72rem; font-weight: 800; cursor: pointer; }
+.product-pagination button.is-active { border-color: #082e6d; background: #082e6d; color: #fff; }
+.product-pagination button:disabled { opacity: .45; cursor: default; }
+
+.teachers-heading-actions { display: flex; align-items: center; gap: 12px; }
+.teachers-heading-actions a,
+.teachers-heading-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 46px; padding: 0 18px; border: 1px solid #184f9d; border-radius: 8px; background: #fff; color: #0a326d; font-family: 'Montserrat', sans-serif; font-size: .76rem; font-weight: 800; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.teachers-heading-actions a:nth-of-type(2) svg { color: #14a654; }
+.teachers-heading-actions button { min-width: 210px; border-color: #082e6d; background: #082e6d; color: #fff; box-shadow: 0 6px 16px rgba(8, 46, 109, .19); }
+.teachers-heading-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.teachers-page-heading { padding-top: 7px; margin-bottom: 33px; }
+.teacher-stat-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 15px; }
+.teacher-stat-card { position: relative; display: flex; align-items: center; gap: 13px; min-height: 94px; padding: 16px 18px; border: 1px solid #dfe6ef; border-radius: 10px; background: #fff; box-shadow: 0 4px 13px rgba(14, 37, 68, .04); }
+.teacher-stat-icon { display: inline-grid; place-items: center; width: 48px; height: 48px; flex: 0 0 48px; border-radius: 50%; color: #1d5cca; background: #eff4ff; }
+.teacher-stat-card[data-tone='green'] .teacher-stat-icon { color: #13a659; background: #edf9f1; }
+.teacher-stat-card[data-tone='orange'] .teacher-stat-icon { color: #ed790c; background: #fff5e9; }
+.teacher-stat-card[data-tone='red'] .teacher-stat-icon { color: #e32942; background: #fff0f2; }
+.teacher-stat-card[data-tone='gray'] .teacher-stat-icon { color: #213551; background: #f2f4f7; }
+.teacher-stat-card > span:nth-child(2) { display: grid; gap: 5px; min-width: 0; }
+.teacher-stat-card small { color: #5e6f88; font-size: .7rem; white-space: nowrap; }
+.teacher-stat-card strong { color: #092b61; font-family: 'Montserrat', sans-serif; font-size: 1.35rem; }
+.teacher-stat-card[data-tone='green'] strong { color: #0ba14b; }
+.teacher-stat-card[data-tone='orange'] strong { color: #df6b00; }
+.teacher-stat-card[data-tone='red'] strong { color: #db1935; }
+.teacher-stat-progress { position: relative; z-index: 0; display: grid; place-items: center; width: 48px; height: 48px; margin-left: auto; border-radius: 50%; background: conic-gradient(#0b3c83 var(--progress), #e9edf3 0); color: #17345e; font-size: .62rem; font-weight: 800; }
+.teacher-stat-progress::before { content: ''; position: absolute; width: 37px; height: 37px; border-radius: 50%; background: #fff; }
+.teacher-stat-progress { isolation: isolate; }
+.teacher-stat-progress::before { z-index: -1; }
+.teacher-table-card { overflow: visible; border: 0; background: transparent; box-shadow: none; }
+.teacher-filter-bar { display: flex; align-items: center; gap: 10px; min-height: 62px; margin-bottom: 16px; padding: 9px 8px; border: 1px solid #dfe6ef; border-radius: 10px; background: #fff; box-shadow: 0 4px 13px rgba(14,37,68,.04); }
+.teacher-filter-bar > label:not(.teacher-search-field) { display: inline-flex; align-items: center; gap: 6px; height: 42px; padding: 0 8px 0 12px; border: 1px solid #d4deeb; border-radius: 7px; color: #17365f; background: #fff; font-size: .71rem; font-weight: 800; white-space: nowrap; }
+.teacher-filter-bar select { border: 0; outline: 0; background: transparent; color: #17365f; font-size: .71rem; font-weight: 700; }
+.teacher-filter-bar label > button { border: 0; background: transparent; color: #6f7f97; font-size: 1rem; cursor: pointer; }
+.teacher-add-filter { height: 42px; padding: 0 14px; border: 0; background: transparent; color: #0e4a9a; font-size: .74rem; cursor: pointer; }
+.teacher-search-field { display: flex; align-items: center; gap: 10px; height: 42px; min-width: 265px; margin-left: auto; padding: 0 13px; border: 1px solid #d4deeb; border-radius: 7px; color: #789; }
+.teacher-search-field input { min-width: 0; width: 100%; border: 0; outline: 0; color: #17365f; font-size: .74rem; }
+.teacher-filter-icon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid #d4deeb; border-radius: 7px; background: #fff; color: #27486f; cursor: pointer; }
+.teacher-bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 64px; padding: 0 20px; border-radius: 10px 10px 0 0; background: linear-gradient(110deg, #082e6d, #063b87); color: #fff; }
+.teacher-bulk-bar > strong { display: inline-flex; align-items: center; gap: 12px; font-size: .75rem; }
+.teacher-bulk-bar > strong button { border: 0; background: transparent; color: #fff; font-size: 1.25rem; cursor: pointer; }
+.teacher-bulk-bar > div { display: flex; gap: 12px; }
+.teacher-bulk-bar > div button { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border: 0; border-radius: 6px; background: rgba(255,255,255,.12); color: #fff; font-size: .7rem; cursor: pointer; }
+.teacher-bulk-bar > div button.danger { color: #ff6477; }
+.teacher-redesign-table { min-width: 1080px; }
+.teacher-table-card > .admin-table-scroll { border-right: 1px solid #dfe6ef; border-left: 1px solid #dfe6ef; background: #fff; }
+.teacher-filter-bar + .admin-table-scroll { border-top: 1px solid #dfe6ef; border-radius: 10px 10px 0 0; }
+.teacher-redesign-table th { height: 59px; padding: 0 14px; background: #fff; font-size: .63rem; letter-spacing: 0; }
+.teacher-redesign-table th span { margin-left: 5px; color: #9aa7b8; }
+.teacher-redesign-table tbody tr { height: 69px; }
+.teacher-redesign-table td { height: auto; padding: 9px 14px; color: #24436d; font-size: .72rem; }
+.admin-table.teacher-redesign-table td { padding: 6px 14px; }
+.teacher-redesign-table tbody tr.is-selected td { background: #f4f9ff; }
+.teacher-check-cell { width: 36px; text-align: center !important; }
+.teacher-name-cell { display: flex; align-items: center; gap: 12px; min-width: 165px; }
+.teacher-name-cell strong { color: #1b3b68; font-size: .73rem; font-weight: 500; }
+.teacher-avatar { display: grid; place-items: center; width: 39px; height: 39px; flex: 0 0 39px; border-radius: 50%; background: #0d4798; color: #fff; font-size: .68rem; font-weight: 900; }
+.teacher-avatar.tone-1 { background: #6436dc; }.teacher-avatar.tone-2 { background: #25999a; }.teacher-avatar.tone-3 { background: #e66c00; }.teacher-avatar.tone-4 { background: #e54193; }
+.teacher-completion-ring { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: conic-gradient(#0d3d83 var(--completion), #e8edf3 0); }
+.teacher-completion-ring::before { content: ''; position: absolute; width: 38px; height: 38px; border-radius: 50%; background: #fff; }
+.teacher-completion-ring b { position: relative; color: #173b6b; font-size: .64rem; }
+.teacher-completion-ring.is-complete { background: conic-gradient(#10a553 360deg, #e8edf3 0); }
+.teacher-status-pill { display: inline-flex; align-items: center; justify-content: center; min-height: 27px; padding: 0 11px; border-radius: 6px; background: #dff8e7; color: #0a8e42; font-size: .68rem; font-weight: 800; }
+.teacher-status-pill.is-disabled { background: #ffe9ec; color: #c8273a; }
+.teacher-table-footer { border: 1px solid #dfe6ef; border-top-color: #e5eaf1; border-radius: 0 0 10px 10px; background: #fff; }
+.teacher-table-footer > label { margin-left: auto; }
+.teacher-table-footer select { height: 40px; padding: 0 34px 0 14px; border: 1px solid #d8e1ed; border-radius: 7px; background: #fff; color: #29476d; font-size: .72rem; }
+
+@media (max-width: 1280px) {
+  .product-page-heading, .teachers-page-heading { flex-direction: column; }
+  .product-filter-bar { grid-template-columns: minmax(240px, 1fr) repeat(2, minmax(150px, .7fr)); }
+  .product-heading-actions, .teachers-heading-actions { width: 100%; flex-wrap: wrap; }
+  .teacher-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .teacher-filter-bar { flex-wrap: wrap; }
+  .teacher-search-field { margin-left: 0; flex: 1; }
+}
+@media (max-width: 720px) {
+  .product-heading-actions, .teachers-heading-actions { display: grid; grid-template-columns: 1fr; }
+  .product-heading-action, .product-heading-action.is-add, .teachers-heading-actions a, .teachers-heading-actions button { width: 100%; }
+  .product-filter-bar { grid-template-columns: 1fr; }
+  .product-filter-chips { flex-wrap: wrap; }
+  .teacher-stat-grid { grid-template-columns: 1fr; }
+  .teacher-filter-bar > *, .teacher-search-field { width: 100%; }
+  .teacher-bulk-bar { align-items: flex-start; flex-direction: column; padding: 14px; }
+  .teacher-bulk-bar > div { flex-wrap: wrap; }
+  .product-table-footer, .teacher-table-footer { flex-wrap: wrap; padding: 12px; }
+  .teacher-table-footer > label { margin-left: 0; }
+}
+
+/* Phone verification dialogs — matched to the supplied two-step reference. */
+.phone-verification-scrim { background: rgba(25, 45, 75, .67); backdrop-filter: blur(4px); }
+.phone-verification-modal { position: relative; display: grid; grid-template-columns: minmax(0, 550px) 285px; width: min(835px, calc(100vw - 34px)); max-height: calc(100vh - 34px); overflow: hidden; border: 1px solid rgba(255,255,255,.75); border-radius: 25px; background: #fff; box-shadow: 0 32px 80px rgba(9, 27, 55, .34); }
+.phone-verification-modal:not(.is-whatsapp-step) { min-height: 695px; transform: translateX(30px); }
+.phone-verification-main { min-width: 0; padding: 34px 28px 20px; }
+.phone-verification-head { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 0 30px; align-items: start; }
+.phone-verification-phone-icon { display: grid; place-items: center; width: 62px; height: 62px; grid-row: span 2; border-radius: 50%; background: #eff5ff; color: #1666dd; font-size: 2rem; transform: rotate(-22deg); }
+.phone-verification-phone-icon svg { width: 33px; height: 33px; }
+.phone-verification-head .verified-contact-modal-kicker,
+.whatsapp-verification-head .verified-contact-modal-kicker { margin: 3px 0 8px; color: #083d82; font-size: .68rem; letter-spacing: .13em; }
+.phone-verification-head h2,
+.whatsapp-verification-head h2 { margin: 0; color: #07336e; font-family: 'Montserrat', sans-serif; font-size: 1.68rem; line-height: 1.1; letter-spacing: -.035em; }
+.phone-verification-head p,
+.whatsapp-verification-head p { margin: 12px 0 0; max-width: 420px; color: #526b91; font-size: .83rem; line-height: 1.5; }
+.phone-verification-step { position: absolute; top: 40px; right: 108px; z-index: 3; display: inline-flex; align-items: center; justify-content: center; min-height: 31px; padding: 0 16px; border-radius: 999px; background: #eef4ff; color: #164eaa; font-size: .71rem; font-weight: 800; white-space: nowrap; }
+.phone-verification-close { position: absolute; top: 32px; right: 24px; z-index: 4; width: 45px; height: 45px; border-color: #cfd9e8; color: #0c3977; }
+.phone-verification-modal:not(.is-whatsapp-step) .phone-verification-close { right: 22px; }
+.phone-verification-modal:not(.is-whatsapp-step) .phone-verification-step { margin-right: -4px; }
+.phone-verification-number-field { display: grid; gap: 8px; margin-top: 43px; color: #102f5d; }
+.phone-verification-number-field > span,
+.phone-verification-channels legend { font-size: .68rem; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.phone-verification-number-field > div { display: grid; grid-template-columns: 158px minmax(0, 1fr); height: 60px; border: 1px solid #bac9df; border-radius: 11px; overflow: hidden; background: #fff; box-shadow: inset 0 1px 2px rgba(15, 41, 79, .03); }
+.phone-country-prefix { display: flex; align-items: center; gap: 10px; padding: 0 15px; border-right: 1px solid #cbd6e5; color: #274d7b; font-size: .95rem; }
+.ghana-flag { position: relative; display: block; width: 28px; height: 18px; overflow: hidden; border-radius: 2px; background: linear-gradient(#ce1126 0 33.33%, #fcd116 33.33% 66.66%, #006b3f 66.66%); box-shadow: 0 0 0 1px rgba(7,38,76,.08); }
+.ghana-flag i { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3px 0 0 -3px; background: #111; clip-path: polygon(50% 0,61% 35%,98% 35%,68% 56%,79% 93%,50% 71%,21% 93%,32% 56%,2% 35%,39% 35%); }
+.phone-country-prefix em { margin-left: auto; color: #0b326c; font-style: normal; }
+.phone-verification-number-field input { width: 100%; min-width: 0; border: 0; outline: 0; padding: 0 18px; background: #fff; color: #163963; font-size: 1rem; letter-spacing: .03em; }
+.phone-verification-number-field small { color: #60789c; font-size: .73rem; }
+.phone-verification-channels { margin: 29px 0 0; padding: 0; border: 0; }
+.phone-verification-channels > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 13px; }
+.phone-verification-channels label { position: relative; display: grid; place-items: center; align-content: center; min-height: 162px; padding: 16px; border: 1px solid #cdd9e8; border-radius: 11px; background: #fff; color: #0a3977; text-align: center; cursor: pointer; }
+.phone-verification-channels label.is-selected { border: 2px solid #176be9; background: linear-gradient(145deg, #f7faff, #eef4ff); }
+.phone-verification-channels input { position: absolute; opacity: 0; pointer-events: none; }
+.phone-channel-check { position: absolute; top: 11px; right: 11px; display: none; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #174c96; color: #fff; font-size: .68rem; }
+.phone-verification-channels label.is-selected .phone-channel-check { display: grid; }
+.phone-channel-icon { width: 36px; height: 36px; margin-bottom: 10px; color: #13bd58; }
+.phone-channel-icon.is-sms { color: #176be9; }
+.phone-verification-channels strong { font-family: 'Montserrat', sans-serif; font-size: .88rem; }
+.phone-verification-channels small { margin-top: 7px; color: #5c7192; font-size: .72rem; line-height: 1.35; }
+.phone-verification-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 34px; padding-top: 22px; border-top: 1px solid #d9e1eb; }
+.phone-verification-actions .verified-contact-modal-btn { min-height: 44px; padding: 0 26px; }
+.phone-verification-actions .is-primary { min-width: 145px; background: #082f6f; border-color: #082f6f; }
+.phone-verification-actions .is-primary svg { width: 15px; height: 15px; }
+.phone-verification-footnote { margin: 32px 0 0; color: #6680a4; font-size: .7rem; line-height: 1.4; }
+.phone-verification-footnote { display: flex; align-items: center; gap: 7px; }
+.phone-verification-footnote svg { width: 16px; height: 16px; color: #1766dc; }
+.phone-verification-aside { position: relative; align-self: stretch; margin: 118px 23px 38px 16px; padding: 23px 20px; border-radius: 12px; background: linear-gradient(145deg, #f5f8ff, #eef4ff); text-align: center; }
+.phone-verification-modal:not(.is-whatsapp-step) .phone-verification-aside::before { content: ''; position: absolute; top: 0; bottom: 0; left: -17px; border-left: 1px solid #d9e1eb; }
+.phone-verification-artwork { display: block; width: 165px; max-width: 100%; height: 130px; margin: -10px auto 1px; }
+.phone-verification-aside h3 { margin: 5px 0 7px; color: #07336e; font-family: 'Montserrat', sans-serif; font-size: .83rem; text-transform: none !important; letter-spacing: normal !important; }
+.phone-verification-aside > p { margin: 0 auto; max-width: 185px; color: #5a7093; font-size: .72rem; line-height: 1.45; }
+.phone-verification-aside-list { display: grid; gap: 20px; margin-top: 21px; padding-top: 22px; border-top: 1px solid #d7e0ed; text-align: left; }
+.phone-verification-aside-list > div { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 10px; align-items: start; }
+.phone-verification-aside-list > div > span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #e4edff; color: #1766dc; font-size: 1rem; font-weight: 900; }
+.phone-verification-aside-list > div > span svg { width: 19px; height: 19px; }
+.phone-verification-aside-list p { display: grid; gap: 2px; margin: 2px 0 0; color: #556d92; font-size: .67rem; line-height: 1.42; }
+.phone-verification-aside-list strong { color: #0b3977; font-size: .69rem; }
+
+.phone-verification-modal.is-sms-step .phone-verification-phone-icon { transform: none; }
+.phone-verification-modal.is-sms-step .phone-verification-phone-icon svg { width: 32px; height: 32px; }
+.sms-verification-card { display: grid; justify-items: center; margin-top: 36px; padding: 23px 27px 20px; border: 1px solid #cfdaea; border-radius: 13px; background: linear-gradient(145deg, #fbfdff, #f5f8ff); text-align: center; }
+.sms-verification-card-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: #e8f1ff; color: #1768e7; }
+.sms-verification-card-icon svg { width: 28px; height: 28px; }
+.sms-verification-card h3 { margin: 12px 0 6px; color: #07336e; font-family: 'Montserrat', sans-serif; font-size: 1rem; text-transform: none !important; letter-spacing: normal !important; }
+.sms-verification-card > p:not(.verified-contact-feedback) { margin: 0; color: #5c7294; font-size: .75rem; line-height: 1.45; }
+.sms-verification-code-field { display: grid; gap: 8px; width: 100%; margin-top: 20px; color: #153660; text-align: left; }
+.sms-verification-code-field > span { font-size: .67rem; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.sms-verification-code-field input { width: 100%; height: 64px; border: 1px solid #aebfda; border-radius: 10px; outline: 0; background: #fff; color: #0a3977; font-family: 'Montserrat', sans-serif; font-size: 1.85rem; font-weight: 800; letter-spacing: .55em; text-align: center; text-indent: .55em; box-shadow: inset 0 1px 2px rgba(15, 41, 79, .04); }
+.sms-verification-code-field input:focus { border-color: #176be9; box-shadow: 0 0 0 3px rgba(23,107,233,.1); }
+.sms-verification-card .verified-contact-feedback { width: 100%; margin: 10px 0 0; font-size: .68rem; }
+.sms-verification-resend { margin-top: 13px; border: 0; background: transparent; color: #1557af; font-size: .72rem; font-weight: 800; cursor: pointer; }
+.sms-verification-resend:disabled { color: #7689a5; cursor: default; }
+.sms-verification-actions { margin-top: 22px; }
+.sms-verification-actions > div { display: flex; gap: 12px; }
+.sms-verification-actions .is-primary { min-width: 148px; }
+.phone-verification-modal.is-sms-step .phone-verification-footnote { margin-top: 18px; }
+
+.phone-verification-modal.is-whatsapp-step { display: block; width: min(980px, calc(100vw - 34px)); }
+.whatsapp-verification-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; padding: 28px 34px 15px; }
+.whatsapp-verification-head h2 { font-size: 1.55rem; }
+.whatsapp-verification-head p { max-width: 610px; margin-top: 8px; font-size: .77rem; }
+.phone-verification-modal.is-whatsapp-step .phone-verification-step { margin-right: 0; }
+.whatsapp-verification-grid { display: grid; grid-template-columns: minmax(0, 1fr) 272px; gap: 17px; padding: 0 25px 12px 31px; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-challenge { gap: 10px; min-height: 581px; padding: 17px 15px 10px; border-radius: 13px; box-shadow: none; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-heading p { display: none; }
+.verified-contact-whatsapp-steps { display: grid; gap: 17px; margin: 0; padding: 0; list-style: none; }
+.verified-contact-whatsapp-steps li { position: relative; display: grid; grid-template-columns: 37px minmax(0, 1fr); gap: 11px; align-items: center; min-height: 42px; }
+.verified-contact-whatsapp-steps li:not(:last-child)::after { content: ''; position: absolute; left: 18px; top: 36px; width: 1px; height: 17px; background: #d5e0ef; }
+.verified-contact-whatsapp-steps li > span { display: grid; place-items: center; width: 37px; height: 37px; border: 1px solid #cddbeb; border-radius: 50%; background: #f8faff; color: #174b93; font-size: .72rem; font-weight: 900; }
+.verified-contact-whatsapp-steps p { display: grid; gap: 2px; margin: 0; color: #4e668b; font-size: .68rem; line-height: 1.35; }
+.verified-contact-whatsapp-steps strong { color: #0b3470; font-size: .75rem; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-panel { gap: 8px; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-panel { min-height: 73px; margin-top: 12px; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-panel > div { padding: 8px 12px; border-radius: 9px; background: #f8faff; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-panel span { font-size: .59rem; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-panel strong { font-size: .75rem; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-route { margin-top: 5px; padding-left: 4px; font-size: .68rem; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-note { min-height: 76px; margin-top: 23px; padding: 9px 12px 9px 49px; border-color: #f2d48d; background: #fffaf0; font-size: .67rem; box-sizing: border-box; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-note > strong { margin-bottom: 1px; color: #18375e; font-size: .62rem; }
+.phone-verification-modal.is-whatsapp-step .verified-contact-whatsapp-open { min-height: 39px; border-radius: 7px; background: #13ad4e; font-size: .72rem; box-shadow: none; }
+.verified-contact-whatsapp-waiting { display: flex; align-items: center; gap: 8px; margin: 0; padding: 9px 10px; border: 1px solid #cce9d8; border-radius: 8px; background: #edf8f1; color: #128545; font-size: .63rem; }
+.verified-contact-whatsapp-waiting > span { width: 9px; height: 9px; border-radius: 50%; background: #1db35a; }
+.phone-verification-modal.is-whatsapp-step .phone-verification-aside { margin: 0; padding: 20px 17px; }
+.phone-verification-modal.is-whatsapp-step .phone-verification-aside-list { gap: 19px; }
+.phone-verification-modal.is-whatsapp-step .phone-verification-aside-list > div > span { background: #e7f0ff; }
+.whatsapp-verification-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 75px; padding: 0 25px 0 31px; border-top: 1px solid #d9e1eb; }
+.whatsapp-verification-actions > div { display: flex; align-items: center; gap: 14px; }
+.whatsapp-verification-actions .verified-contact-modal-btn { min-height: 45px; }
+.whatsapp-verification-actions > .is-primary { min-width: 132px; background: #082f6f; border-color: #082f6f; }
+
+@media (max-width: 760px) {
+  .phone-verification-modal { display: block; overflow-y: auto; }
+  .phone-verification-modal:not(.is-whatsapp-step) { min-height: 0; transform: none; }
+  .phone-verification-main { padding: 24px 18px 18px; }
+  .phone-verification-head { grid-template-columns: 48px minmax(0, 1fr); gap: 12px; }
+  .phone-verification-phone-icon { width: 48px; height: 48px; }
+  .phone-verification-head h2 { font-size: 1.28rem; }
+  .phone-verification-step { position: static; grid-column: 2; margin-top: 10px; width: fit-content; }
+  .phone-verification-close { top: 12px; right: 12px !important; }
+  .phone-verification-number-field > div { grid-template-columns: 135px minmax(0, 1fr); }
+  .phone-verification-channels > div { grid-template-columns: 1fr; }
+  .phone-verification-aside { margin: 0 18px 18px; }
+  .sms-verification-card { padding: 20px 16px; }
+  .sms-verification-actions { align-items: stretch; flex-direction: column; }
+  .sms-verification-actions > div { flex-wrap: wrap; }
+  .whatsapp-verification-head { padding: 24px 20px 14px; }
+  .phone-verification-modal.is-whatsapp-step .phone-verification-step { margin-right: 42px; }
+  .whatsapp-verification-grid { grid-template-columns: 1fr; padding: 0 18px 12px; }
+  .whatsapp-verification-actions { align-items: stretch; flex-direction: column; padding: 14px 18px; }
+  .whatsapp-verification-actions > div { flex-wrap: wrap; }
+}
+
 .admin-table { width: 100%; min-width: 720px; border-collapse: collapse; }
 .admin-table th {
   padding: 10px 16px;
