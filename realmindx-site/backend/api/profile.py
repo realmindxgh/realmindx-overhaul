@@ -18,6 +18,7 @@ from ..models import CheckoutDetail, ContactChangeToken, JobAlertPreference, Tea
 from ..profile_completion import teacher_profile_completion
 from ..serializers import user_json
 from ..sms_service import normalise_phone, send_sms
+from ..teacher_ids import ensure_application_id
 from ..upload_utils import save_upload
 from ..whatsapp_access import can_use_whatsapp_phone_verification
 from ..whatsapp_service import (
@@ -768,6 +769,13 @@ def submit_profile():
 
     if not current_user.teacher_service_enabled:
         return jsonify(error="Teacher profile submission is not available for this account."), 403
+
+    previous_application_id = current_user.application_id
+    ensure_application_id(current_user)
+    if current_user.application_id != previous_application_id:
+        # Persist the identity repair even if a later submission validation
+        # returns early (for example, an already-submitted legacy profile).
+        db.session.commit()
 
     # Lock the row so two concurrent requests cannot both pass the status check.
     locked = db.session.query(UserProfile).with_for_update().filter_by(id=profile.id).first()

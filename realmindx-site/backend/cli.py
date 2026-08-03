@@ -427,15 +427,18 @@ def register_cli(app):
 
     @app.cli.command("send-profile-completion-reminders")
     def send_profile_completion_reminders_command():
-        """Send due profile reminders at 24 hours, +7 days, and +30 days."""
+        """Send due completion, submission, and revision reminders."""
         from .api.admin import send_due_teacher_profile_completion_reminders
 
         result = send_due_teacher_profile_completion_reminders()
         click.echo(
-            "Profile completion reminders: "
+            "Teacher profile reminders: "
             f"{result['due']} due, {result['accepted']} accepted, "
             f"{result['mocked']} mocked, {result['failed']} failed, "
-            f"{result['skipped']} skipped."
+            f"{result['skipped']} skipped; "
+            f"completion={result['kinds']['completion']}, "
+            f"submission={result['kinds']['submission']}, "
+            f"revision={result['kinds']['revision']}."
         )
 
     @app.cli.command("send-teacher-profile-reminders")

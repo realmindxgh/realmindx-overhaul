@@ -1569,48 +1569,68 @@ def bookshop_accounts():
 
 
 REMINDER_COOLDOWN_HOURS = 24  # configurable; prevents repeated clicks from flooding a teacher
-AUTOMATED_PROFILE_REMINDER_STAGES = (
-    ("profile_completion_reminder_24h", timedelta(hours=24)),
-    ("profile_completion_reminder_7d", timedelta(days=7)),
-    ("profile_completion_reminder_30d", timedelta(days=30)),
-)
+AUTOMATED_PROFILE_REMINDER_STAGES = {
+    "completion": (
+        ("profile_completion_reminder_24h", timedelta(hours=24)),
+        ("profile_completion_reminder_7d", timedelta(days=7)),
+        ("profile_completion_reminder_30d", timedelta(days=30)),
+    ),
+    "submission": (
+        ("profile_submission_reminder_24h", timedelta(hours=24)),
+        ("profile_submission_reminder_7d", timedelta(days=7)),
+        ("profile_submission_reminder_30d", timedelta(days=30)),
+    ),
+    "revision": (
+        ("profile_revision_reminder_24h", timedelta(hours=24)),
+        ("profile_revision_reminder_7d", timedelta(days=7)),
+        ("profile_revision_reminder_30d", timedelta(days=30)),
+    ),
+}
 SUCCESSFUL_COMMUNICATION_STATUSES = ("queued", "accepted", "sent", "delivered", "mocked")
 
 
 def _reminder_eligibility(user) -> dict:
-    """Check a single teacher's eligibility for a profile reminder.
-
-    Returns a dict with keys:
-      eligible (bool)
-      reason (str | None) — why they are ineligible
-      status_data (dict | None) — canonical status if eligible
-    """
+    """Check a teacher's eligibility and select the correct reminder kind."""
     if not user:
-        return {"eligible": False, "reason": "user_not_found", "status_data": None}
+        return {"eligible": False, "reason": "user_not_found", "status_data": None, "reminder_kind": None}
     if not getattr(user, "is_active", False):
-        return {"eligible": False, "reason": "account_disabled", "status_data": None}
+        return {"eligible": False, "reason": "account_disabled", "status_data": None, "reminder_kind": None}
     if not getattr(user, "email", None):
-        return {"eligible": False, "reason": "missing_email", "status_data": None}
+        return {"eligible": False, "reason": "missing_email", "status_data": None, "reminder_kind": None}
     role_name = getattr(user.role, "name", None) if user.role else None
     if role_name not in ("user", None):
-        return {"eligible": False, "reason": "not_teacher_role", "status_data": None}
+        return {"eligible": False, "reason": "not_teacher_role", "status_data": None, "reminder_kind": None}
     if not getattr(user, "teacher_service_enabled", False):
-        return {"eligible": False, "reason": "teacher_service_disabled", "status_data": None}
+        return {"eligible": False, "reason": "teacher_service_disabled", "status_data": None, "reminder_kind": None}
 
     status = canonical_account_status(user)
     completion = status.get("completion_percentage", 0)
     profile_status = status.get("profile_status", "incomplete")
 
-    # Already submitted / under review / verified → no reminder needed
-    if profile_status in ("submitted", "under_review", "verified"):
-        return {"eligible": False, "reason": f"profile_{profile_status}", "status_data": status}
-    # Complete (100%) with nothing missing → no reminder needed
-    # But if phone isn't verified they still need a reminder.
-    if completion >= 100 and profile_status != "revision_required":
-        if getattr(user, "phone_verified", False):
-            return {"eligible": False, "reason": "profile_complete", "status_data": status}
-    # Revision required is still eligible — they need to fix something
-    return {"eligible": True, "reason": None, "status_data": status}
+    # These states no longer need a completion/submission reminder. Rejected
+    # applications must not receive a misleading invitation to resubmit.
+    if profile_status in ("submitted", "under_review", "verified", "rejected"):
+        return {
+            "eligible": False,
+            "reason": f"profile_{profile_status}",
+            "status_data": status,
+            "reminder_kind": None,
+        }
+
+    if profile_status == "revision_required":
+        reminder_kind = "revision"
+    elif completion >= 100:
+        # A filled profile is not the same thing as a submitted profile.
+        reminder_kind = "submission"
+    else:
+        reminder_kind = "completion"
+
+    return {
+        "eligible": True,
+        "reason": None,
+        "status_data": status,
+        "reminder_kind": reminder_kind,
+    }
 
 
 def _reminder_cooldown_active(user) -> bool:
@@ -1643,12 +1663,14 @@ def _automated_profile_reminder_due(user, now=None):
         return None
 
     now = now or datetime.now(timezone.utc)
+    reminder_kind = eligibility["reminder_kind"]
+    stages = AUTOMATED_PROFILE_REMINDER_STAGES[reminder_kind]
     attempts = (
         CommunicationAttempt.query
         .filter(
             CommunicationAttempt.recipient_user_id == user.id,
             CommunicationAttempt.channel == "email",
-            CommunicationAttempt.template_name.in_([stage[0] for stage in AUTOMATED_PROFILE_REMINDER_STAGES]),
+            CommunicationAttempt.template_name.in_([stage[0] for stage in stages]),
             CommunicationAttempt.status.in_(SUCCESSFUL_COMMUNICATION_STATUSES),
         )
         .order_by(CommunicationAttempt.requested_at.asc(), CommunicationAttempt.id.asc())
@@ -1656,18 +1678,28 @@ def _automated_profile_reminder_due(user, now=None):
     )
     completed_templates = {attempt.template_name for attempt in attempts}
     next_index = next(
-        (index for index, (template_name, _) in enumerate(AUTOMATED_PROFILE_REMINDER_STAGES)
+        (index for index, (template_name, _) in enumerate(stages)
          if template_name not in completed_templates),
         None,
     )
     if next_index is None:
         return None
 
-    template_name, delay = AUTOMATED_PROFILE_REMINDER_STAGES[next_index]
+    template_name, delay = stages[next_index]
     if next_index == 0:
-        anchor = user.created_at
+        profile = getattr(user, "profile", None)
+        if reminder_kind == "submission":
+            anchor = getattr(profile, "updated_at", None) or user.created_at
+        elif reminder_kind == "revision":
+            anchor = (
+                getattr(profile, "reviewed_at", None)
+                or getattr(profile, "updated_at", None)
+                or user.created_at
+            )
+        else:
+            anchor = user.created_at
     else:
-        preceding_template = AUTOMATED_PROFILE_REMINDER_STAGES[next_index - 1][0]
+        preceding_template = stages[next_index - 1][0]
         preceding_attempt = next(
             (attempt for attempt in reversed(attempts) if attempt.template_name == preceding_template),
             None,
@@ -1683,7 +1715,12 @@ def _automated_profile_reminder_due(user, now=None):
     due_at = anchor + delay
     if now < due_at:
         return None
-    return {"template_name": template_name, "stage": next_index + 1, "due_at": due_at}
+    return {
+        "template_name": template_name,
+        "stage": next_index + 1,
+        "due_at": due_at,
+        "reminder_kind": reminder_kind,
+    }
 
 
 def _build_reminder_items(user, missing, status_data):
@@ -1703,7 +1740,7 @@ def _build_reminder_items(user, missing, status_data):
     return items
 
 
-def _send_teacher_profile_reminder(user, *, template_name="profile_reminder", enforce_cooldown=True):
+def _send_teacher_profile_reminder(user, *, template_name=None, enforce_cooldown=True):
     """Send one profile-reminder email. Returns a structured dict for batch aggregation."""
     from ..models import CommunicationAttempt
 
@@ -1725,34 +1762,98 @@ def _send_teacher_profile_reminder(user, *, template_name="profile_reminder", en
         }
 
     status_data = eligibility["status_data"]
+    reminder_kind = eligibility["reminder_kind"]
     completion = status_data.get("completion_percentage", 0)
     missing = status_data.get("missing_requirements", [])
     reminder_items = _build_reminder_items(user, missing, status_data)
 
     sign_in_url = f"{current_app.config['BASE_URL'].rstrip('/')}/login"
-    missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
-    missing_text = "\n".join(f"- {item}" for item in reminder_items)
+    template_name = template_name or f"profile_{reminder_kind}_reminder_manual"
+
+    if reminder_kind == "submission":
+        subject = "Your RealMindX profile is complete — submit it for review"
+        title = "Your completed profile is ready for review"
+        body_html = (
+            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+            "<p>Your RealMindX teaching profile is <strong>100% complete</strong>, but it has "
+            "<strong>not yet been submitted</strong> to our review team.</p>"
+            "<p>Filling every profile field does not automatically start the review. Sign in, open "
+            "your profile, and select <strong>Submit Profile for Review</strong>.</p>"
+            "<p>Once you submit, your application will enter the teacher review queue and you will "
+            "receive a confirmation email.</p>"
+        )
+        if not getattr(user, "phone_verified", False):
+            body_html += "<p>You can also verify your phone number while signed in.</p>"
+        cta_label = "Sign In and Submit for Review"
+        preheader = "Your profile is complete, but review will not begin until you submit it."
+        text_body = (
+            "Your RealMindX teaching profile is 100% complete, but it has not yet been submitted "
+            "to our review team. Filling the profile does not automatically start the review.\n\n"
+            "Sign in, open your profile, and select Submit Profile for Review. Once submitted, "
+            "you will receive a confirmation email.\n\n"
+            f"Sign in and submit here: {sign_in_url}"
+        )
+    elif reminder_kind == "revision":
+        profile = getattr(user, "profile", None)
+        review_note = (
+            getattr(profile, "review_notes", None)
+            or "Review the requested corrections in your profile."
+        ).strip()
+        subject = "Update and resubmit your RealMindX teacher profile"
+        title = "Your profile needs updates before review can continue"
+        body_html = (
+            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+            "<p>Your teacher profile needs changes requested by the RealMindX review team.</p>"
+            f"<p><strong>Review note:</strong> {escape(review_note)}</p>"
+            "<p>Sign in, make the requested changes, complete any missing items, and then select "
+            "<strong>Submit Profile for Review</strong> again. Saving your changes alone does not "
+            "return the profile to the review queue.</p>"
+        )
+        cta_label = "Sign In to Update and Resubmit"
+        preheader = "Update the requested items, then resubmit your teacher profile for review."
+        text_body = (
+            "Your RealMindX teacher profile needs changes before review can continue.\n\n"
+            f"Review note: {review_note}\n\n"
+            "Sign in, make the requested changes, and then select Submit Profile for Review again. "
+            "Saving changes alone does not return the profile to the review queue.\n\n"
+            f"Sign in here: {sign_in_url}"
+        )
+    else:
+        missing_html = "".join(f"<li>{escape(item)}</li>" for item in reminder_items)
+        missing_text = "\n".join(f"- {item}" for item in reminder_items)
+        subject = "You are almost ready for better-matched teaching opportunities"
+        title = "Complete your profile and unlock better job matches"
+        body_html = (
+            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
+            "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
+            f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
+            "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>"
+            "<p><strong>Important:</strong> Completing the fields does not automatically submit your profile. "
+            "After it reaches 100%, select <strong>Submit Profile for Review</strong> so the RealMindX team can review it.</p>"
+        )
+        cta_label = "Sign In to Finish My Profile"
+        preheader = f"Your teaching profile is {completion}% complete — finish it, then submit it for review."
+        text_body = (
+            "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
+            f"Remaining items:\n{missing_text}\n\n"
+            "Important: completing the fields does not automatically submit your profile. After it reaches "
+            "100%, select Submit Profile for Review so the RealMindX team can review it.\n\n"
+            f"Sign in and finish here: {sign_in_url}"
+        )
 
     result = send_email(
         OutboundEmail(
             to=user.email,
-            subject="You are almost ready for better-matched teaching opportunities",
+            subject=subject,
             html=app_email_shell(
-                "Complete your profile and unlock better job matches",
-                f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-                f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
-                "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
-                f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
-                "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>",
-                "Sign In to Finish My Profile",
+                title,
+                body_html,
+                cta_label,
                 sign_in_url,
-                preheader=f"Your teaching profile is {completion}% complete — finish it for better-matched opportunities.",
+                preheader=preheader,
             ),
-            text=(
-                "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
-                f"Remaining items:\n{missing_text}\n\n"
-                f"Sign in and finish here: {sign_in_url}"
-            ),
+            text=text_body,
         ),
         purpose="service_reminder",
         recipient_user_id=user.id,
@@ -1764,12 +1865,14 @@ def _send_teacher_profile_reminder(user, *, template_name="profile_reminder", en
             "email": user.email,
             "profile_completion": completion,
             "missing_fields": reminder_items,
+            "reminder_kind": reminder_kind,
             "provider_status": result.status,
         })
         return {
             "status": "mocked",
             "profile_completion": completion,
             "missing_fields": reminder_items,
+            "reminder_kind": reminder_kind,
             "user_id": user.id,
             "masked_email": mask_destination("email", user.email or ""),
         }
@@ -1778,6 +1881,7 @@ def _send_teacher_profile_reminder(user, *, template_name="profile_reminder", en
             "email": user.email,
             "profile_completion": completion,
             "missing_fields": reminder_items,
+            "reminder_kind": reminder_kind,
             "provider_status": result.status,
         })
         return {
@@ -1785,6 +1889,7 @@ def _send_teacher_profile_reminder(user, *, template_name="profile_reminder", en
             "provider_status": result.status,
             "profile_completion": completion,
             "missing_fields": reminder_items,
+            "reminder_kind": reminder_kind,
             "user_id": user.id,
             "masked_email": mask_destination("email", user.email or ""),
         }
@@ -1794,13 +1899,14 @@ def _send_teacher_profile_reminder(user, *, template_name="profile_reminder", en
         "reason": result.error_code or "provider_error",
         "profile_completion": completion,
         "missing_fields": reminder_items,
+        "reminder_kind": reminder_kind,
         "user_id": user.id,
         "masked_email": mask_destination("email", user.email or ""),
     }
 
 
 def send_due_teacher_profile_completion_reminders(now=None):
-    """Send every currently due 24-hour, 7-day, or 30-day reminder."""
+    """Send every due completion, submission, or revision reminder."""
     now = now or datetime.now(timezone.utc)
     rows = (
         User.query
@@ -1815,6 +1921,7 @@ def send_due_teacher_profile_completion_reminders(now=None):
     )
     counts = {"due": 0, "accepted": 0, "mocked": 0, "failed": 0, "skipped": 0}
     stages = {1: 0, 2: 0, 3: 0}
+    kinds = {"completion": 0, "submission": 0, "revision": 0}
     for user in rows:
         due = _automated_profile_reminder_due(user, now=now)
         if not due:
@@ -1832,8 +1939,9 @@ def send_due_teacher_profile_completion_reminders(now=None):
             counts["failed"] += 1
         if status in ("accepted", "mocked"):
             stages[due["stage"]] += 1
+            kinds[due["reminder_kind"]] += 1
     db.session.commit()
-    return {**counts, "stages": stages}
+    return {**counts, "stages": stages, "kinds": kinds}
 
 
 @admin_bp.post("/users/profile-reminders")
@@ -1894,10 +2002,10 @@ def send_profile_reminder(user_id):
     eligibility = _reminder_eligibility(user)
     if not eligibility["eligible"]:
         reason_map = {
-            "profile_complete": "This teacher's profile is already complete.",
             "profile_submitted": "This teacher's profile has already been submitted.",
             "profile_under_review": "This teacher's profile is under review.",
             "profile_verified": "This teacher's profile is verified.",
+            "profile_rejected": "This teacher's profile was rejected and cannot receive a submission reminder.",
             "account_disabled": "Enable this teacher account before sending a profile reminder.",
             "teacher_service_disabled": "Teacher services are not enabled for this account.",
             "not_teacher_role": "Profile reminders can only be sent to teacher accounts.",

@@ -6164,7 +6164,7 @@ const TeacherReviewView = ({ session }) => {
   };
 
   const queueColumns = (item) => {
-    const idDisplay = item.teacher_id || item.application_id || `#${item.id}`;
+    const idDisplay = item.teacher_id || item.application_id || 'RMX ID pending';
     const secondaryId = item.teacher_id ? item.application_id : null;
     return (
       <tr key={item.id}>
@@ -6410,7 +6410,7 @@ const TeacherReviewView = ({ session }) => {
               Request profile revision
             </h3>
             <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)', textAlign: 'center', marginBottom: 18, lineHeight: 1.6 }}>
-              {detail ? `${detail.first_name} ${detail.last_name} (${detail.application_id || `#${detail.id}`})` : ''}
+              {detail ? `${detail.first_name} ${detail.last_name} (${detail.application_id || 'RMX ID pending'})` : ''}
             </p>
             <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)', marginBottom: 20 }}>
               Revision notes
@@ -6441,7 +6441,7 @@ const TeacherReviewView = ({ session }) => {
             </h3>
             <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)', textAlign: 'center', marginBottom: 18, lineHeight: 1.6 }}>
               <strong>{detail ? `${detail.first_name} ${detail.last_name}` : ''}</strong><br />
-              {detail ? (detail.application_id || `#${detail.id}`) : ''}<br />
+              {detail ? (detail.application_id || 'RMX ID pending') : ''}<br />
               This teacher will be notified that their application was rejected. Ordinary resubmission will not be possible.
             </p>
             <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)', marginBottom: 20 }}>
@@ -6501,7 +6501,7 @@ const TeacherReviewView = ({ session }) => {
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 14, padding: '14px 16px', marginBottom: 20, fontSize: '0.84rem', color: '#166534', lineHeight: 1.55 }}>
                   <strong>Confirm visual verification</strong><br />
                   Teacher: {detail ? `${detail.first_name} ${detail.last_name}` : ''}<br />
-                  Application ID: {detail ? (detail.application_id || `#${detail.id}`) : ''}<br /><br />
+                  Application ID: {detail ? (detail.application_id || 'RMX ID pending') : ''}<br /><br />
                   A permanent Teacher ID will be issued upon verification. This action should only be completed after human visual inspection.
                 </div>
                 <div style={{ display: 'flex', gap: 12 }}>
@@ -6528,7 +6528,7 @@ const TeacherReviewView = ({ session }) => {
             </h3>
             <p style={{ fontSize: '0.84rem', color: 'var(--gray-600)', textAlign: 'center', marginBottom: 16, lineHeight: 1.5 }}>
               Teacher: {detail ? `${detail.first_name} ${detail.last_name}` : ''}<br />
-              Application ID: {detail ? (detail.application_id || `#${detail.id}`) : ''}
+              Application ID: {detail ? (detail.application_id || 'RMX ID pending') : ''}
             </p>
             {detail?.review_notes ? (
               <div style={{ background: '#f9f9f9', border: '1px solid var(--gray-200)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: '0.82rem' }}>

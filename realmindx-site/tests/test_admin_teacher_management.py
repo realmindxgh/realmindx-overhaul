@@ -151,6 +151,9 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertIn("/login", message.html)
         self.assertIn("Add and verify a phone number", message.html)
         self.assertIn("Add and verify a phone number", message.text)
+        self.assertIn("does not automatically submit your profile", message.html)
+        self.assertIn("Submit Profile for Review", message.html)
+        self.assertIn("does not automatically submit your profile", message.text)
         self.assertIn("https://realmindxgh.com/logo-white.png", message.html)
 
     def test_automatic_profile_reminder_stages_use_24h_then_7d_then_30d(self):
@@ -259,8 +262,104 @@ class AdminTeacherManagementTests(unittest.TestCase):
         sent_by_email = {call.args[0].to: call.args[0] for call in send_email_mock.call_args_list}
         self.assertIn("complete-no-phone@example.com", sent_by_email)
         phone_email = sent_by_email["complete-no-phone@example.com"]
-        self.assertIn("Verify your phone number", phone_email.html)
-        self.assertIn("Verify your phone number", phone_email.text)
+        self.assertIn("submit it for review", phone_email.subject)
+        self.assertIn("not yet been submitted", phone_email.html)
+        self.assertIn("Submit Profile for Review", phone_email.html)
+        self.assertIn("verify your phone number", phone_email.html)
+        self.assertIn("not yet been submitted", phone_email.text)
+
+    @patch("backend.api.admin.send_email")
+    def test_complete_unsubmitted_profile_gets_submission_reminder(self, send_email_mock):
+        from backend.communications import CommunicationResult
+
+        send_email_mock.return_value = CommunicationResult(
+            channel="email", purpose="service_reminder", provider="mock",
+            mode="live", status="accepted",
+        )
+        self.active_teacher.phone = "+233200000999"
+        self.active_teacher.phone_verified = True
+        profile = self.active_teacher.profile
+        profile.location = "Accra"
+        profile.teaching_subject = "Mathematics"
+        profile.preferred_level = "JHS"
+        profile.preferred_employment_type = "Full time"
+        profile.curriculum_experience = "GES"
+        cv = UploadedFile(
+            owner_id=self.active_teacher.id, original_filename="ready-cv.pdf",
+            stored_filename="ready-cv.pdf", storage_path="protected/ready-cv.pdf",
+            mime_type="application/pdf", size_bytes=100, category="cv",
+        )
+        cert = UploadedFile(
+            owner_id=self.active_teacher.id, original_filename="ready-cert.pdf",
+            stored_filename="ready-cert.pdf", storage_path="protected/ready-cert.pdf",
+            mime_type="application/pdf", size_bytes=100, category="certificate",
+        )
+        db.session.add_all([cv, cert])
+        db.session.flush()
+        profile.cv_file_id = cv.id
+        profile.certificate_file_id = cert.id
+        profile.profile_status = "complete"
+        db.session.commit()
+
+        response = self.client.post(
+            f"/api/admin/users/{self.active_teacher.id}/profile-reminder",
+            json={},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        message = send_email_mock.call_args.args[0]
+        self.assertIn("submit it for review", message.subject)
+        self.assertIn("100% complete", message.html)
+        self.assertIn("does not automatically start the review", message.html)
+        self.assertIn("Sign In and Submit for Review", message.html)
+        self.assertIn("/login", message.html)
+
+    def test_submission_reminders_have_an_independent_24h_7d_30d_sequence(self):
+        from backend.api.admin import _automated_profile_reminder_due
+
+        now = datetime.now(timezone.utc)
+        profile = self.active_teacher.profile
+        self.active_teacher.phone_verified = True
+        profile.location = "Accra"
+        profile.teaching_subject = "Mathematics"
+        profile.preferred_level = "JHS"
+        profile.preferred_employment_type = "Full time"
+        profile.curriculum_experience = "GES"
+        cv = UploadedFile(
+            owner_id=self.active_teacher.id, original_filename="sequence-cv.pdf",
+            stored_filename="sequence-cv.pdf", storage_path="protected/sequence-cv.pdf",
+            mime_type="application/pdf", size_bytes=100, category="cv",
+        )
+        cert = UploadedFile(
+            owner_id=self.active_teacher.id, original_filename="sequence-cert.pdf",
+            stored_filename="sequence-cert.pdf", storage_path="protected/sequence-cert.pdf",
+            mime_type="application/pdf", size_bytes=100, category="certificate",
+        )
+        db.session.add_all([cv, cert])
+        db.session.flush()
+        profile.cv_file_id = cv.id
+        profile.certificate_file_id = cert.id
+        profile.profile_status = "complete"
+        profile.updated_at = now - timedelta(days=2)
+        for index, template_name in enumerate((
+            "profile_completion_reminder_24h",
+            "profile_completion_reminder_7d",
+            "profile_completion_reminder_30d",
+        )):
+            db.session.add(CommunicationAttempt(
+                channel="email", purpose="service_reminder",
+                recipient_user_id=self.active_teacher.id,
+                masked_destination="t***@example.com", template_name=template_name,
+                provider="test", mode="live", status="accepted",
+                requested_at=now - timedelta(days=60 - index),
+            ))
+        db.session.commit()
+
+        due = _automated_profile_reminder_due(self.active_teacher, now=now)
+
+        self.assertEqual(due["reminder_kind"], "submission")
+        self.assertEqual(due["stage"], 1)
+        self.assertEqual(due["template_name"], "profile_submission_reminder_24h")
 
     def test_teacher_with_placement_history_must_be_disabled_instead(self):
         application = JobApplication.query.filter_by(user_id=self.active_teacher.id).one()

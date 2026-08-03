@@ -26,6 +26,7 @@ from flask_login import login_user
 
 from ..extensions import db
 from ..models import AuthIdentity, Role, User, UserProfile
+from ..teacher_ids import ensure_application_id
 
 oauth_bp = Blueprint("oauth", __name__)
 oauth = OAuth()
@@ -167,6 +168,8 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
         user.set_password(secrets.token_urlsafe(48), enable_login=False)
         db.session.add(user)
         db.session.flush()
+        if user.teacher_service_enabled:
+            ensure_application_id(user)
         db.session.add(UserProfile(user_id=user.id))
         if terms_now:
             db.session.add(TermsAcceptance(
@@ -199,6 +202,8 @@ def _login_and_redirect(user, frontend_path=None):
             user.bookshop_service_enabled = True
         else:
             user.teacher_service_enabled = True
+        if user.teacher_service_enabled:
+            ensure_application_id(user)
     session.permanent = True
     login_user(user, remember=True)
     user.last_login_at = datetime.now(timezone.utc)

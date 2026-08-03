@@ -22,7 +22,7 @@ from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
 from ..upload_utils import delete_uploaded_file_physical
 from ..sms_service import normalise_phone
-from ..teacher_ids import generate_application_id
+from ..teacher_ids import ensure_application_id, generate_application_id
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -496,6 +496,8 @@ def login():
             user.bookshop_service_enabled = True
         elif surface == "teacher":
             user.teacher_service_enabled = True
+        if user.teacher_service_enabled:
+            ensure_application_id(user)
     audit("user_login", "user", user.id, {"email": user.email, "role": user.role.name if user.role else None})
     db.session.commit()
     remember = bool(payload.get("remember"))
@@ -524,6 +526,8 @@ def complete_two_factor_login():
             user.bookshop_service_enabled = True
         elif surface == "teacher":
             user.teacher_service_enabled = True
+        if user.teacher_service_enabled:
+            ensure_application_id(user)
     session.pop("pending_two_factor_login", None)
     audit("user_login_two_factor_completed", "user", user.id, {"email": user.email})
     db.session.commit()

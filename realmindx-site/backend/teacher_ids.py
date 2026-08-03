@@ -82,6 +82,21 @@ def generate_application_id():
     return f"{APPLICATION_ID_PREFIX}-{now.year}-{seq:0{_PAD}d}"
 
 
+def ensure_application_id(user):
+    """Return a valid application ID for a teacher account.
+
+    Existing valid IDs are permanent and are never changed. Missing or
+    malformed legacy values are replaced from the same concurrency-safe
+    sequence used at registration. The caller owns the surrounding
+    transaction and must commit it.
+    """
+    if is_valid_application_id(getattr(user, "application_id", None)):
+        return user.application_id
+    user.application_id = generate_application_id()
+    db.session.flush()
+    return user.application_id
+
+
 def generate_teacher_id():
     """Return the next permanent teacher ID.
 

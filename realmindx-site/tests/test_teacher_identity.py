@@ -14,6 +14,7 @@ from backend.models import Role, TeacherIdCounter, TeacherIdGlobalCounter, User,
 from backend.teacher_ids import (
     APPLICATION_ID_PATTERN,
     TEACHER_ID_PATTERN,
+    ensure_application_id,
     generate_application_id,
     generate_teacher_id,
     is_valid_application_id,
@@ -122,6 +123,135 @@ class TestTeacherIdHelpers(unittest.TestCase):
     def test_ids_are_unique(self):
         ids = {generate_application_id() for _ in range(50)}
         self.assertEqual(len(ids), 50)
+
+    def test_ensure_application_id_repairs_missing_teacher_id(self):
+        user = User(
+            email="missing-id@example.com",
+            first_name="Missing",
+            last_name="Identifier",
+            role=self.teacher_role,
+            is_active=True,
+            is_verified=True,
+            teacher_service_enabled=True,
+        )
+        user.set_password("Password123!")
+        db.session.add(user)
+        db.session.flush()
+
+        application_id = ensure_application_id(user)
+        db.session.commit()
+
+        self.assertTrue(is_valid_application_id(application_id))
+        self.assertEqual(user.application_id, application_id)
+
+    def test_ensure_application_id_preserves_valid_existing_id(self):
+        user = User(
+            email="existing-id@example.com",
+            first_name="Existing",
+            last_name="Identifier",
+            role=self.teacher_role,
+            is_active=True,
+            is_verified=True,
+            teacher_service_enabled=True,
+            application_id="RMX-APP-2025-000123",
+        )
+        user.set_password("Password123!")
+        db.session.add(user)
+        db.session.flush()
+
+        application_id = ensure_application_id(user)
+
+        self.assertEqual(application_id, "RMX-APP-2025-000123")
+        self.assertEqual(TeacherIdCounter.query.count(), 0)
+
+    def test_ensure_application_id_replaces_malformed_legacy_value(self):
+        user = User(
+            email="legacy-id@example.com",
+            first_name="Legacy",
+            last_name="Identifier",
+            role=self.teacher_role,
+            is_active=True,
+            is_verified=True,
+            teacher_service_enabled=True,
+            application_id="#76",
+        )
+        user.set_password("Password123!")
+        db.session.add(user)
+        db.session.flush()
+
+        application_id = ensure_application_id(user)
+
+        self.assertTrue(is_valid_application_id(application_id))
+        self.assertNotEqual(application_id, "#76")
+
+    def test_oauth_teacher_signup_assigns_application_id(self):
+        from flask import session
+        from backend.api.oauth import _get_or_create_user
+
+        with self.app.test_request_context("/"):
+            session["oauth_surface"] = "main"
+            session["oauth_terms_accepted"] = True
+            user, created = _get_or_create_user(
+                "google",
+                "oauth-teacher-1",
+                "oauth-teacher@example.com",
+                "OAuth",
+                "Teacher",
+            )
+
+        self.assertTrue(created)
+        self.assertTrue(user.teacher_service_enabled)
+        self.assertTrue(is_valid_application_id(user.application_id))
+
+    def test_teacher_login_repairs_bookshop_account_application_id(self):
+        bookshop_user = User(
+            email="bookshop-to-teacher@example.com",
+            first_name="Bookshop",
+            last_name="Teacher",
+            role=self.teacher_role,
+            is_active=True,
+            is_verified=True,
+            teacher_service_enabled=False,
+            bookshop_service_enabled=True,
+        )
+        bookshop_user.set_password("Password123!")
+        db.session.add(bookshop_user)
+        db.session.commit()
+
+        response = self.app.test_client().post("/api/auth/login", json={
+            "email": bookshop_user.email,
+            "password": "Password123!",
+            "surface": "teacher",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(bookshop_user)
+        self.assertTrue(bookshop_user.teacher_service_enabled)
+        self.assertTrue(is_valid_application_id(bookshop_user.application_id))
+
+    def test_existing_teacher_login_repairs_missing_application_id_without_surface(self):
+        teacher = User(
+            email="existing-teacher-gap@example.com",
+            first_name="Existing",
+            last_name="Teacher",
+            role=self.teacher_role,
+            is_active=True,
+            is_verified=True,
+            teacher_service_enabled=True,
+            application_id=None,
+        )
+        teacher.set_password("Password123!")
+        db.session.add(teacher)
+        db.session.commit()
+
+        response = self.app.test_client().post("/api/auth/login", json={
+            "email": teacher.email,
+            "password": "Password123!",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(teacher)
+        self.assertTrue(is_valid_application_id(teacher.application_id))
 
 
 class TestUserModelFields(unittest.TestCase):
