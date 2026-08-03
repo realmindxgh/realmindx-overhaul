@@ -244,8 +244,10 @@
   display: none;
   position: relative;
   flex: 0 0 auto;
+  z-index: 2;
   width: 100%;
   margin: 2px 0 6px;
+  background: #fff;
 }
 .bs-cats-search-form {
   position: relative;
@@ -310,13 +312,13 @@
   box-shadow: 0 18px 40px rgba(13,37,80,.18);
   overflow: hidden;
 }
-.bs-cats-menu-scroll {
+.bs-cats-menu-scroll,
+.bs-cats-results-scroll {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
 }
-.bs-cats-menu-scroll.has-suggestions > :not(.bs-cats-search-suggestions) { display: none; }
 .bs-cats-menu .bs-cats-search-suggestions .bs-search-sug-item,
 .bs-cats-menu .bs-cats-search-suggestions .bs-sug-all {
   padding: 9px 10px;
@@ -371,16 +373,22 @@
     left: 12px;
     right: 12px;
     width: auto;
-    max-height: calc(100svh - var(--bs-nav-h) - var(--bs-bottomnav-h) - 20px);
+    max-height: var(--bs-cats-menu-max-height, calc(100dvh - var(--bs-nav-h) - 8px));
     overflow: hidden;
     overscroll-behavior: contain;
   }
-  .bs-cats-menu-scroll {
+  .bs-cats-menu-scroll,
+  .bs-cats-results-scroll {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    scrollbar-gutter: stable;
+  }
+  .bs-cats-results-scroll {
+    display: block;
   }
   .bs-cats-flyout .bs-cats-submenu {
     position: static;
@@ -6626,11 +6634,24 @@
   .bs-related-track > * { flex-basis: calc((100% - 36px) / 3); }
 }
 @media (max-width: 767px) {
-  .bs-related-track { gap: 9px; padding-bottom: 8px; }
+  .bs-related-shell {
+    display: block;
+    width: calc(100% + 16px);
+    margin-left: -8px;
+    margin-right: -8px;
+  }
+  .bs-related-viewport {
+    grid-column: auto;
+    width: 100%;
+  }
+  .bs-related-track {
+    gap: 9px;
+    padding: 2px 8px 8px;
+    scroll-padding-inline: 8px;
+  }
   .bs-related-track > * { flex-basis: calc((100% - 9px) / 2); }
+  .bs-related-arrow { display: none; }
 }
 @media (max-width: 480px) {
-  .bs-related-track { padding-left: 4px; padding-right: 4px; }
   .bs-related-track > * { flex-basis: 72%; }
-  .bs-related-arrow { display: none; }
 }
