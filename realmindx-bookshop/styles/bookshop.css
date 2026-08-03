@@ -243,6 +243,7 @@
 .bs-cats-search-wrap {
   display: none;
   position: relative;
+  flex: 0 0 auto;
   width: 100%;
   margin: 2px 0 6px;
 }
@@ -252,26 +253,38 @@
   align-items: center;
   width: 100%;
 }
-.bs-cats-search-form input {
+.bs .bs-cats-search-form input[type="search"] {
   width: 100%;
   height: 46px;
-  padding: 0 44px 0 42px;
-  border: 1.5px solid var(--bs-border);
+  box-sizing: border-box;
+  padding: 0 72px 0 48px;
+  border: 1px solid #cbd6e6;
   border-radius: 999px;
   background: var(--bs-off-white);
   color: var(--bs-text);
   font: inherit;
   font-size: 14px;
+  line-height: normal;
+  transition: border-color .18s, box-shadow .18s, background .18s;
 }
 .bs-cats-search-form input::placeholder { color: var(--bs-muted); }
-.bs-cats-search-form input:focus {
+.bs .bs-cats-search-form input[type="search"]:focus,
+.bs .bs-cats-search-form input[type="search"]:focus-visible {
   outline: none;
+  outline-offset: 0;
   background: #fff;
-  border-color: var(--bs-navy);
-  box-shadow: 0 0 0 3px rgba(20,54,112,.12);
+  border-color: #8297b8;
+  box-shadow: 0 0 0 2px rgba(20,54,112,.08);
+  border-radius: 999px;
 }
 .bs-cats-search-form .bs-search-icn {
-  left: 14px;
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 16px;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
   color: var(--bs-navy);
 }
 .bs-cats-menu button.bs-cats-search-go {
@@ -289,17 +302,21 @@
 }
 .bs-cats-menu button.bs-cats-search-go:hover { background: var(--bs-navy-light); color: #fff; }
 .bs-cats-search-suggestions {
-  position: absolute;
-  top: calc(100% + 7px);
-  left: 0;
-  right: 0;
+  position: static;
+  flex: 0 0 auto;
+  width: 100%;
   margin-top: 0;
   border-radius: 12px;
   box-shadow: 0 18px 40px rgba(13,37,80,.18);
-  max-height: min(430px, calc(100svh - var(--bs-nav-h) - 120px));
-  overflow-y: auto;
-  z-index: 8;
+  overflow: hidden;
 }
+.bs-cats-menu-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.bs-cats-menu-scroll.has-suggestions > :not(.bs-cats-search-suggestions) { display: none; }
 .bs-cats-menu .bs-cats-search-suggestions .bs-search-sug-item,
 .bs-cats-menu .bs-cats-search-suggestions .bs-sug-all {
   padding: 9px 10px;
@@ -355,7 +372,15 @@
     right: 12px;
     width: auto;
     max-height: calc(100svh - var(--bs-nav-h) - var(--bs-bottomnav-h) - 20px);
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+  .bs-cats-menu-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
   }
   .bs-cats-flyout .bs-cats-submenu {
     position: static;

@@ -848,6 +848,8 @@ const Navbar = ({ route, navigate }) => {
                       </button>
                     )}
                   </form>
+                </div>
+                <div className={`bs-cats-menu-scroll${showMenuSuggestions ? ' has-suggestions' : ''}`}>
                   {showMenuSuggestions && (
                     <SearchSuggestionList
                       suggestions={suggestions}
@@ -858,41 +860,41 @@ const Navbar = ({ route, navigate }) => {
                       onSuggestionClickStart={() => suggestionClickRef.current = true}
                     />
                   )}
-                </div>
-                <a className="bs-cats-menu-entry" href={hrefForRoute('shop')} onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop'); }}>
-                  <Icon name="grid" size={18} className="bs-ci" /> All Books
-                </a>
-                {browseGroups.map((group) => (
-                  <div className={`bs-cats-flyout${openBrowseGroup === group.taxonomy ? ' open' : ''}`} key={group.taxonomy}>
-                    <button
-                      type="button"
-                      className="bs-cats-menu-entry has-submenu"
-                      aria-expanded={openBrowseGroup === group.taxonomy}
-                      onClick={() => setOpenBrowseGroup(current => current === group.taxonomy ? '' : group.taxonomy)}
-                    >
-                      <span className="bs-cats-menu-label"><Icon name={group.icon} size={17} className="bs-ci" /> {group.title}</span>
-                      <Icon name={openBrowseGroup === group.taxonomy ? 'chevDown' : 'chevR'} size={14} className="bs-ci" />
-                    </button>
-                    <div className="bs-cats-submenu">
-                      {group.items.map((item) => (
-                        <a
-                          key={`${group.taxonomy}-${item.id}`}
-                          href={hrefForBrowse(group.taxonomy, item.id)}
-                          onClick={(e) => { e.preventDefault(); setCatsOpen(false); setOpenBrowseGroup(''); navigate('shop', { taxonomy: group.taxonomy, value: item.id }); }}
-                        >
-                          {item.label}
-                        </a>
-                      ))}
-                      <a
-                        className="bs-cats-submenu-viewall"
-                        href={hrefForBrowse(group.taxonomy)}
-                        onClick={(e) => { e.preventDefault(); setCatsOpen(false); setOpenBrowseGroup(''); navigate('shop', { taxonomy: group.taxonomy }); }}
+                  <a className="bs-cats-menu-entry" href={hrefForRoute('shop')} onClick={(e) => { e.preventDefault(); setCatsOpen(false); navigate('shop'); }}>
+                    <Icon name="grid" size={18} className="bs-ci" /> All Books
+                  </a>
+                  {browseGroups.map((group) => (
+                    <div className={`bs-cats-flyout${openBrowseGroup === group.taxonomy ? ' open' : ''}`} key={group.taxonomy}>
+                      <button
+                        type="button"
+                        className="bs-cats-menu-entry has-submenu"
+                        aria-expanded={openBrowseGroup === group.taxonomy}
+                        onClick={() => setOpenBrowseGroup(current => current === group.taxonomy ? '' : group.taxonomy)}
                       >
-                        See all {group.allLabel.toLowerCase()}
-                      </a>
+                        <span className="bs-cats-menu-label"><Icon name={group.icon} size={17} className="bs-ci" /> {group.title}</span>
+                        <Icon name={openBrowseGroup === group.taxonomy ? 'chevDown' : 'chevR'} size={14} className="bs-ci" />
+                      </button>
+                      <div className="bs-cats-submenu">
+                        {group.items.map((item) => (
+                          <a
+                            key={`${group.taxonomy}-${item.id}`}
+                            href={hrefForBrowse(group.taxonomy, item.id)}
+                            onClick={(e) => { e.preventDefault(); setCatsOpen(false); setOpenBrowseGroup(''); navigate('shop', { taxonomy: group.taxonomy, value: item.id }); }}
+                          >
+                            {item.label}
+                          </a>
+                        ))}
+                        <a
+                          className="bs-cats-submenu-viewall"
+                          href={hrefForBrowse(group.taxonomy)}
+                          onClick={(e) => { e.preventDefault(); setCatsOpen(false); setOpenBrowseGroup(''); navigate('shop', { taxonomy: group.taxonomy }); }}
+                        >
+                          See all {group.allLabel.toLowerCase()}
+                        </a>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
 
