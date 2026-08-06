@@ -6564,7 +6564,7 @@ const TeacherReviewView = ({ session }) => {
 
       {showVerifyModal ? (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 20px' }}>
-          <div role="dialog" aria-modal="true" aria-labelledby="verify-modal-title" style={{ background: '#fff', borderRadius: 18, padding: '34px 32px 30px', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="verify-modal-title" style={{ position: 'relative', background: '#fff', borderRadius: 18, padding: '34px 32px 30px', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 72px rgba(0,0,0,0.28)' }}>
             <button className="admin-modal-close" type="button" onClick={cancelVerify} aria-label="Close" disabled={verifySaving}><Icon name="x" size={16} /></button>
             <div style={{ width: 58, height: 58, borderRadius: '50%', background: '#f0fdf4', border: '2px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#16a34a' }}>
               <Icon name="check" size={24} />
@@ -6606,9 +6606,14 @@ const TeacherReviewView = ({ session }) => {
               ))}
             </div>
             {!showVerifyConfirm ? (
-              <button className="btn btn-primary" style={{ width: '100%' }} type="button" disabled={!allChecked} onClick={openVerifyConfirm}>
-                Continue
-              </button>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={cancelVerify} disabled={verifySaving}>
+                  Back to review
+                </button>
+                <button className="btn btn-primary" style={{ flex: 1 }} type="button" disabled={!allChecked} onClick={openVerifyConfirm}>
+                  Continue
+                </button>
+              </div>
             ) : (
               <div>
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 14, padding: '14px 16px', marginBottom: 20, fontSize: '0.84rem', color: '#166534', lineHeight: 1.55 }}>
