@@ -120,7 +120,7 @@ const NAV_PERMISSION_GROUPS = NAV
           : item.key === 'whatsappDiagnostics' || item.key === 'teacherReview'
             ? ['view']
           : item.key === 'teachers'
-            ? ['view', 'edit', 'export']
+            ? ['view', 'edit', 'export', 'account.manage', 'documents.manage', 'verification.manage']
             : item.key === 'priceAdjustment'
               ? ['view', 'edit']
           : ['view', 'create', 'edit', 'delete', ...(EXPORTABLE_PERMISSION_KEYS.has(item.key) ? ['export'] : [])];
@@ -2037,11 +2037,16 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
               />
             ) : itemField.type === 'permission-list' ? (
               <div className="permission-matrix">
+                <label className="permission-action" style={{ marginBottom: 12, fontWeight: 800 }}>
+                  <input type="checkbox" checked={(itemField.groups || []).flatMap(group => group.actions.map(action => `${group.key}.${action}`)).every(option => (form[itemField.name] || []).includes(option))} onChange={event => setForm(prev => ({ ...prev, [itemField.name]: event.target.checked ? [...new Set([...(prev[itemField.name] || []), ...(itemField.groups || []).flatMap(group => group.actions.map(action => `${group.key}.${action}`))])] : (prev[itemField.name] || []).filter(option => !(itemField.groups || []).some(group => option.startsWith(`${group.key}.`))) }))} />
+                  <span>Select all permissions</span>
+                </label>
                 {(itemField.groups || []).map(group => (
                   <section className="permission-group-card" key={group.key}>
                     <div className="permission-group-head">
                       <span className="ani-icon"><Icon name={group.icon} size={15} stroke={2} /></span>
                       <strong>{group.label}</strong>
+                      <label className="permission-action" style={{ marginLeft: 'auto' }}><input type="checkbox" checked={group.actions.every(action => (form[itemField.name] || []).includes(`${group.key}.${action}`))} onChange={event => setForm(prev => { const options = group.actions.map(action => `${group.key}.${action}`); const current = prev[itemField.name] || []; return { ...prev, [itemField.name]: event.target.checked ? [...new Set([...current, ...options])] : current.filter(option => !options.includes(option)) }; })} /><span>Select all</span></label>
                     </div>
                     <div className="permission-action-row">
                       {group.actions.map(action => {
@@ -5871,6 +5876,10 @@ const TeacherReviewView = ({ session }) => {
   const [showReopenModal, setShowReopenModal] = React.useState(false);
   const [reopenNote, setReopenNote] = React.useState('');
   const [reopenSaving, setReopenSaving] = React.useState(false);
+  const [viewerFile, setViewerFile] = React.useState(null);
+  const [showManageModal, setShowManageModal] = React.useState(false);
+  const [manageForm, setManageForm] = React.useState({});
+  const [manageSaving, setManageSaving] = React.useState(false);
 
   const closeDetail = React.useCallback(() => {
     detailReqRef.current += 1;
@@ -5936,6 +5945,57 @@ const TeacherReviewView = ({ session }) => {
 
   const canView = hasSessionPermission(session, 'teachers.view');
   const canEdit = hasSessionPermission(session, 'teachers.edit');
+  const canManageAccount = hasSessionPermission(session, 'teachers.account.manage');
+  const canManageDocuments = hasSessionPermission(session, 'teachers.documents.manage');
+  const canManageVerification = hasSessionPermission(session, 'teachers.verification.manage');
+
+  const openManageModal = () => {
+    setManageForm({
+      first_name: detail?.first_name || '', last_name: detail?.last_name || '',
+      email: detail?.email || '', phone: detail?.phone || '',
+      location: detail?.review?.location || '', teaching_subject: detail?.review?.teaching_subject || '',
+      preferred_level: detail?.review?.preferred_level || '', curriculum_experience: detail?.review?.curriculum_experience || '',
+      preferred_employment_type: detail?.review?.preferred_employment_type || '', bio: detail?.review?.bio || '',
+      email_verified: Boolean(detail?.is_verified), phone_verified: Boolean(detail?.phone_verified),
+      reason: '', cv: null, certificate: null,
+    });
+    setShowManageModal(true);
+  };
+
+  const saveManagedAccount = async event => {
+    event.preventDefault();
+    if (!detail?.id || manageSaving) return;
+    setManageSaving(true);
+    try {
+      const accountChanged = canManageAccount && (
+        manageForm.first_name !== (detail.first_name || '') || manageForm.last_name !== (detail.last_name || '') ||
+        manageForm.email !== (detail.email || '') || manageForm.phone !== (detail.phone || '') ||
+        manageForm.location !== (detail.review?.location || '') || manageForm.teaching_subject !== (detail.review?.teaching_subject || '') ||
+        manageForm.preferred_level !== (detail.review?.preferred_level || '') || manageForm.curriculum_experience !== (detail.review?.curriculum_experience || '') ||
+        manageForm.preferred_employment_type !== (detail.review?.preferred_employment_type || '') || manageForm.bio !== (detail.review?.bio || '')
+      );
+      if (accountChanged) {
+        await api.adminUpdateTeacherAccount(detail.id, {
+          first_name: manageForm.first_name, last_name: manageForm.last_name,
+          email: manageForm.email, phone: manageForm.phone, location: manageForm.location,
+          teaching_subject: manageForm.teaching_subject, preferred_level: manageForm.preferred_level,
+          curriculum_experience: manageForm.curriculum_experience, preferred_employment_type: manageForm.preferred_employment_type,
+          bio: manageForm.bio, reason: manageForm.reason,
+        });
+      }
+      const verificationChanged = canManageVerification && (manageForm.email_verified !== Boolean(detail.is_verified) || manageForm.phone_verified !== Boolean(detail.phone_verified));
+      if (verificationChanged) await api.adminUpdateTeacherVerification(detail.id, { email_verified: manageForm.email_verified, phone_verified: manageForm.phone_verified, reason: manageForm.reason });
+      if (manageForm.cv && canManageDocuments) await api.adminUploadTeacherDocument(detail.id, manageForm.cv, 'cv', manageForm.reason);
+      if (manageForm.certificate && canManageDocuments) await api.adminUploadTeacherDocument(detail.id, manageForm.certificate, 'certificate', manageForm.reason);
+      if (!accountChanged && !verificationChanged && !manageForm.cv && !manageForm.certificate) throw new Error('Make at least one change before saving.');
+      await refreshDetail();
+      await fetchQueue();
+      setShowManageModal(false);
+      globalToast.success('Teacher account changes saved and recorded in the audit log.');
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not save teacher account changes.');
+    } finally { setManageSaving(false); }
+  };
 
   const openDetail = async (item) => {
     const seq = ++detailReqRef.current;
@@ -6346,18 +6406,18 @@ const TeacherReviewView = ({ session }) => {
                           <div className="teacher-detail-field is-wide">
                             <label>CV</label>
                             <span>{reviewDetail.cv_filename || 'CV'}</span>
-                            <a href={reviewDetail.cv_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <button type="button" onClick={() => setViewerFile({ id: reviewDetail.cv_file_id, name: reviewDetail.cv_filename || 'CV' })} className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               <Icon name="eye" size={14} /> View CV
-                            </a>
+                            </button>
                           </div>
                         ) : <DetailField label="CV" value="Not uploaded" />}
                         {reviewDetail.certificate_url ? (
                           <div className="teacher-detail-field is-wide">
                             <label>Certificate</label>
                             <span>{reviewDetail.certificate_filename || 'Certificate'}</span>
-                            <a href={reviewDetail.certificate_url} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <button type="button" onClick={() => setViewerFile({ id: reviewDetail.certificate_file_id, name: reviewDetail.certificate_filename || 'Certificate' })} className="btn btn-sm btn-outline-navy" style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               <Icon name="eye" size={14} /> View Certificate
-                            </a>
+                            </button>
                           </div>
                         ) : <DetailField label="Certificate" value="Not uploaded" />}
                       </div>
@@ -6386,6 +6446,11 @@ const TeacherReviewView = ({ session }) => {
                     ) : null}
 
                     <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 20, marginTop: 8 }}>
+                      {(canManageAccount || canManageDocuments || canManageVerification) ? (
+                        <button type="button" className="btn btn-outline-navy" onClick={openManageModal} style={{ marginBottom: 12 }}>
+                          <Icon name="edit" size={15} /> Manage teacher account
+                        </button>
+                      ) : null}
                       {showDetailActions()}
                     </div>
                   </>
@@ -6393,6 +6458,45 @@ const TeacherReviewView = ({ session }) => {
               </div>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {viewerFile ? (
+        <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 900 }}>
+          <div role="dialog" aria-modal="true" aria-label={`Preview ${viewerFile.name}`} style={{ background: '#fff', borderRadius: 18, width: 'min(1100px, 94vw)', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 72px rgba(0,0,0,.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--gray-200)' }}>
+              <strong style={{ color: 'var(--navy)' }}>{viewerFile.name}</strong>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <a className="btn btn-sm btn-primary" href={api.teacherFileDownloadUrl(viewerFile.id)}><Icon name="download" size={14} /> Download</a>
+                <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setViewerFile(null)}>Close</button>
+              </div>
+            </div>
+            <iframe title={viewerFile.name} src={api.teacherFilePreviewUrl(viewerFile.id)} style={{ border: 0, width: '100%', flex: 1, background: '#eef2f7' }} />
+          </div>
+        </div>
+      ) : null}
+
+      {showManageModal ? (
+        <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 850 }} onMouseDown={event => { if (event.target === event.currentTarget && !manageSaving) setShowManageModal(false); }}>
+          <form className="admin-modal-panel" onSubmit={saveManagedAccount} role="dialog" aria-modal="true" aria-label="Manage teacher account" style={{ width: 'min(720px, 94vw)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <button type="button" className="admin-modal-close" onClick={() => setShowManageModal(false)} disabled={manageSaving}><Icon name="x" size={16} /></button>
+            <h3>Manage teacher account</h3>
+            <p className="portal-field-help">Authorised staff changes are system-valid and recorded with your staff identity in the audit log.</p>
+            {canManageAccount ? <div className="profile-sections-grid" style={{ marginTop: 18 }}>
+              {[['first_name','First name'],['last_name','Last name'],['email','Email'],['phone','Phone']].map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" value={manageForm[key] || ''} onChange={event => setManageForm(prev => ({ ...prev, [key]: event.target.value }))} /></label>)}
+              {[['location','Location'],['teaching_subject','Teaching subjects'],['preferred_level','Preferred levels'],['curriculum_experience','Curriculum experience'],['preferred_employment_type','Employment types'],['bio','Professional bio']].map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><textarea className="form-textarea" rows={key === 'bio' ? 4 : 2} value={manageForm[key] || ''} onChange={event => setManageForm(prev => ({ ...prev, [key]: event.target.value }))} /></label>)}
+            </div> : null}
+            {canManageVerification ? <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', margin: '16px 0' }}>
+              <label className="portal-checkbox-row"><input type="checkbox" checked={Boolean(manageForm.email_verified)} onChange={event => setManageForm(prev => ({ ...prev, email_verified: event.target.checked }))} /> Email verified by RealMindX</label>
+              <label className="portal-checkbox-row"><input type="checkbox" checked={Boolean(manageForm.phone_verified)} onChange={event => setManageForm(prev => ({ ...prev, phone_verified: event.target.checked }))} /> Phone verified by RealMindX</label>
+            </div> : null}
+            {canManageDocuments ? <div className="profile-sections-grid" style={{ marginTop: 16 }}>
+              <label className="form-group"><span className="form-label">Replace CV</span><input type="file" className="form-input" accept=".pdf,.doc,.docx" onChange={event => setManageForm(prev => ({ ...prev, cv: event.target.files?.[0] || null }))} /></label>
+              <label className="form-group"><span className="form-label">Replace certificate</span><input type="file" className="form-input" accept=".pdf,.doc,.docx" onChange={event => setManageForm(prev => ({ ...prev, certificate: event.target.files?.[0] || null }))} /></label>
+            </div> : null}
+            <label className="form-group" style={{ marginTop: 18 }}><span className="form-label">Reason for this authorised change</span><textarea className="form-textarea" rows={3} required minLength={8} value={manageForm.reason || ''} onChange={event => setManageForm(prev => ({ ...prev, reason: event.target.value }))} placeholder="Explain the request and why this staff-assisted change is authorised." /></label>
+            <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}><button className="btn btn-primary" disabled={manageSaving}>{manageSaving ? 'Saving...' : 'Save and audit changes'}</button><button type="button" className="btn btn-outline-navy" onClick={() => setShowManageModal(false)}>Cancel</button></div>
+          </form>
         </div>
       ) : null}
 
@@ -6478,6 +6582,15 @@ const TeacherReviewView = ({ session }) => {
               Visual verification confirms that RealMindX has reviewed the submitted profile and documents for presence, readability, and reasonable consistency. It does not mean that the issuing institutions independently authenticated the documents.
             </p>
             <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', fontSize: '0.88rem', fontWeight: 800, cursor: 'pointer', borderBottom: '1px solid var(--gray-200)', color: 'var(--navy)' }}>
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={event => setChecklist(Object.fromEntries(Object.keys(checklist).map(key => [key, event.target.checked])))}
+                  aria-label="Select all verification checks"
+                />
+                <span>Select all verification checks</span>
+              </label>
               {[
                 { key: 'required_documents_present', label: 'The required CV and certificate are present' },
                 { key: 'documents_readable', label: 'The submitted documents are readable' },

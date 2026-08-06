@@ -317,7 +317,7 @@ DEFAULT_PERMISSIONS = [
             "settings": ["view", "create", "edit", "delete"],
             "admins": ["view", "create", "edit", "delete"],
             "staff": ["view", "create", "edit", "delete"],
-            "teachers": ["view", "edit", "export", "delete"],
+            "teachers": ["view", "edit", "export", "delete", "account.manage", "documents.manage", "verification.manage"],
             "auditLogs": ["view"],
             "uploads": ["create"],
         }.items()

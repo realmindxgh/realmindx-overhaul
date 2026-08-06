@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, redirect, request, send_from_directory
 from flask_wtf.csrf import CSRFError
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from .api import register_api_blueprints
 from .api.public import host_robots_response, host_sitemap_response, is_bookshop_host
@@ -173,6 +174,13 @@ def create_app(config_object=Config):
         if request.path.startswith("/api/"):
             return jsonify(error="Security token expired. Please try again."), 400
         return jsonify(error=str(error.description)), 400
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_upload_too_large(error):
+        if request.path.startswith("/api/"):
+            maximum = int(app.config.get("MAX_UPLOAD_FILE_BYTES", 100 * 1024 * 1024)) // (1024 * 1024)
+            return jsonify(error=f"The upload is too large. Maximum file size is {maximum} MB."), 413
+        return jsonify(error="The upload is too large."), 413
 
     @app.get("/uploads/<path:filepath>")
     def serve_upload(filepath):

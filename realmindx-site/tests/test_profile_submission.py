@@ -298,7 +298,7 @@ class ProfileSubmissionTests(unittest.TestCase):
         profile.review_notes = "Please upload a new CV"
         db.session.commit()
         resp = self.client.post("/api/me/uploads", data={
-            "file": (io.BytesIO(b"new cv content"), "cv_v2.pdf"),
+            "file": (io.BytesIO(b"%PDF-1.4\n%%EOF"), "cv_v2.pdf"),
             "kind": "cv",
         }, content_type="multipart/form-data")
         self.assertEqual(resp.status_code, 201)

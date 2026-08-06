@@ -138,12 +138,13 @@ export const api = {
   fetchProductReviewEligibility: (productId) => apiFetch(`/products/${productId}/review-eligibility`),
   createOrderReview: (payload) => apiFetch('/orders/reviews', { method: 'POST', body: payload }),
 
-  uploadUserFile: async (file, kind = 'document') => {
+  uploadUserFile: async (file, kind = 'document', changeReason = '') => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const csrf = await getCsrf({ force: attempt > 0 });
       const fd = new FormData();
       fd.append('file', file);
       fd.append('kind', kind);
+      if (changeReason) fd.append('change_reason', changeReason);
       const res = await fetch(url('/me/uploads'), {
         method: 'POST',
         headers: { 'X-CSRFToken': csrf },
@@ -488,6 +489,27 @@ export const api = {
     return apiFetch(`/admin/teachers/review${suffix}`);
   },
   fetchTeacherReviewDetail: (userId) => apiFetch(`/admin/teachers/${userId}/review`),
+  teacherFilePreviewUrl: (fileId) => url(`/files/${fileId}/preview`),
+  teacherFileDownloadUrl: (fileId) => url(`/files/${fileId}/download`),
+  adminUpdateTeacherAccount: (userId, payload) => apiFetch(`/admin/teachers/${userId}/account`, { method: 'PATCH', body: payload }),
+  adminUpdateTeacherVerification: (userId, payload) => apiFetch(`/admin/teachers/${userId}/verification`, { method: 'PATCH', body: payload }),
+  adminUploadTeacherDocument: async (userId, file, kind, reason) => {
+    const csrf = await getCsrf();
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('kind', kind);
+    fd.append('reason', reason);
+    const res = await fetch(url(`/admin/teachers/${userId}/documents`), {
+      method: 'POST', headers: { 'X-CSRFToken': csrf }, credentials: 'include', body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.error || (res.status === 413 ? 'The file exceeds the server upload limit.' : `Upload failed (${res.status}).`));
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  },
   startTeacherReview: (userId) => apiFetch(`/admin/teachers/${userId}/start-review`, { method: 'POST' }),
   requestTeacherRevision: (userId, note) => apiFetch(`/admin/teachers/${userId}/request-revision`, { method: 'POST', body: { note } }),
   rejectTeacherProfile: (userId, reason) => apiFetch(`/admin/teachers/${userId}/reject`, { method: 'POST', body: { reason } }),

@@ -391,6 +391,11 @@ const DashboardView = ({ user, setActive, onAction, applications = [], alerts = 
             Application ID: <strong>{user.applicationId}</strong>
           </p>
         ) : null}
+        {user.teacherId ? (
+          <p className="application-id-display" style={{ fontSize: '0.8rem', marginTop: 4 }}>
+            Teacher ID: <strong>{user.teacherId}</strong>
+          </p>
+        ) : null}
         <p>
           {user.isNew
             ? 'Your portal is almost ready. Complete your profile to start applying for teaching jobs.'
@@ -893,6 +898,8 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
           ['next_of_kin_email', 'Email Address', 'Example: ama.mensah@example.com'],
         ]
       : [
+          ['first_name', 'First Name', 'Your legal first name'],
+          ['last_name', 'Last Name', 'Your legal last name'],
           ['location', 'Location', 'Example: Accra, Tema, Kumasi'],
         ];
 
@@ -969,6 +976,9 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Teaching Subjects — searchable multi-select with custom entries */}
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Teaching Subjects <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
+              <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setForm(prev => ({ ...prev, teaching_subject: (selectedSubjects.length === filteredSubjects.length && filteredSubjects.every(value => selectedSubjects.includes(value)) ? selectedSubjects.filter(value => !filteredSubjects.includes(value)) : [...new Set([...selectedSubjects, ...filteredSubjects])]).join(', ') }))} style={{ marginBottom: 10 }}>
+                {selectedSubjects.length === filteredSubjects.length && filteredSubjects.every(value => selectedSubjects.includes(value)) ? 'Clear visible' : 'Select all visible'}
+              </button>
               {selectedSubjects.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
                   {selectedSubjects.map(s => (
@@ -1031,6 +1041,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Preferred Level checkboxes + custom entries */}
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Preferred School Level <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
+              <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setForm(prev => ({ ...prev, preferred_level: (KNOWN_LEVELS.every(value => selectedLevels.includes(value)) ? customLevels : [...new Set([...selectedLevels, ...KNOWN_LEVELS])]).join(', ') }))} style={{ marginBottom: 10 }}>{KNOWN_LEVELS.every(value => selectedLevels.includes(value)) ? 'Clear all levels' : 'Select all levels'}</button>
               <div className="portal-checkbox-grid">
                 {KNOWN_LEVELS.map(lvl => (
                   <label key={lvl} className="portal-checkbox-row">
@@ -1081,6 +1092,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Work Type checkboxes + custom entries */}
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Work Type <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
+              <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setForm(prev => ({ ...prev, preferred_employment_type: (KNOWN_WORK_TYPES.every(value => selectedWorkTypes.includes(value)) ? customWorkTypes : [...new Set([...selectedWorkTypes, ...KNOWN_WORK_TYPES])]).join(', ') }))} style={{ marginBottom: 10 }}>{KNOWN_WORK_TYPES.every(value => selectedWorkTypes.includes(value)) ? 'Clear all work types' : 'Select all work types'}</button>
               <div className="portal-checkbox-grid">
                 {KNOWN_WORK_TYPES.map(wt => (
                   <label key={wt} className="portal-checkbox-row">
@@ -1131,6 +1143,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             {/* Curriculum checkboxes */}
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Curriculum Experience <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(select all that apply)</span></label>
+              <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setForm(prev => ({ ...prev, curriculum_experience: (KNOWN_CURRICULA.every(value => selectedCurricula.includes(value)) ? customCurricula : [...new Set([...selectedCurricula, ...KNOWN_CURRICULA])]).join(', ') }))} style={{ marginBottom: 10 }}>{KNOWN_CURRICULA.every(value => selectedCurricula.includes(value)) ? 'Clear all curricula' : 'Select all curricula'}</button>
               <div className="portal-checkbox-grid portal-checkbox-grid-equal">
                 {KNOWN_CURRICULA.map(c => (
                   <label key={c} className="portal-checkbox-row">
@@ -1181,6 +1194,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Preferred Teaching Locations <span style={{ fontWeight: 400, color: 'var(--gray-600)', fontSize: '0.78rem' }}>(sets your default job alert)</span></label>
               <p className="portal-field-help">This list is shared with the bookshop delivery areas so location names stay consistent across RealMindX.</p>
+              <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setForm(prev => ({ ...prev, preferred_location_ids: (locationOptions.every(value => selectedLocationIds.includes(value.id)) ? [] : locationOptions.map(value => value.id)).join(', ') }))} style={{ marginBottom: 10 }}>{locationOptions.length > 0 && locationOptions.every(value => selectedLocationIds.includes(value.id)) ? 'Clear all locations' : 'Select all locations'}</button>
               <input
                 className="form-input"
                 type="search"
@@ -1238,6 +1252,13 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
             </>
           )}
         </div>
+        {form._requires_reason && (
+          <div className="form-group" style={{ marginTop: 16 }}>
+            <label className="form-label">Reason for changing your approved profile</label>
+            <textarea className="form-textarea" rows={3} required minLength={8} value={form.change_reason || ''} onChange={event => setForm(prev => ({ ...prev, change_reason: event.target.value }))} placeholder="Explain what changed and why this update is needed. This will be recorded in the audit log." />
+            <p className="portal-field-help">Saving will submit your profile for verification again. You can also email info@realmindxgh.com for an authorised team member to help.</p>
+          </div>
+        )}
         {error && <p className="form-error" style={{ marginTop: 12 }}>{error}</p>}
         <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</button>
@@ -1252,6 +1273,8 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
 const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, highlight }) => {
   const cvRef   = React.useRef(null);
   const certRef = React.useRef(null);
+  const [changeReason, setChangeReason] = React.useState('');
+  const [viewerFile, setViewerFile] = React.useState(null);
   React.useEffect(() => {
     if (!highlight) return;
     const ref = highlight === 'cv' ? cvRef : certRef;
@@ -1275,6 +1298,13 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
         Your profile has been submitted for review. Documents cannot be replaced until the review is complete.
       </div>
     )}
+    {user.profileStatus === 'verified' && (
+      <div style={{ background: '#fff8e1', border: '1px solid #facc15', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
+        <label className="form-label">Reason for replacing an approved document</label>
+        <textarea className="form-textarea" rows={3} value={changeReason} onChange={event => setChangeReason(event.target.value)} placeholder="Explain why the document needs to be replaced. This reason will be recorded in the audit log." />
+        <p className="portal-field-help">A replacement submits your profile for verification again. For team assistance, email info@realmindxgh.com.</p>
+      </div>
+    )}
 
     <div className="profile-sections-grid">
       {/* CV Video Tutorial */}
@@ -1292,10 +1322,10 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
                 <div className="doc-size">Attached to your job applications automatically</div>
               </div>
               <div className="doc-actions">
-                {user.cvUrl && <a className="btn btn-sm btn-outline-navy" href={user.cvUrl} target="_blank" rel="noreferrer">View</a>}
+                {user.cvFileId && <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setViewerFile({ id: user.cvFileId, name: user.cvFilename || 'CV' })}>View</button>}
                 <label className="btn btn-sm btn-outline-navy">
                   {uploadingKind === 'cv' ? 'Uploading...' : 'Replace'}
-                  <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0])} />
+                  <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
                 </label>
               </div>
             </div>
@@ -1311,7 +1341,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
               <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>PDF, DOC, or DOCX up to 10MB</p>
               <label className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>
                 {uploadingKind === 'cv' ? 'Uploading...' : 'Choose File'}
-                <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0])} />
+              <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
               </label>
             </div>
           </>
@@ -1333,13 +1363,13 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
                   <div className="doc-size">{f.size}</div>
                 </div>
                 <div className="doc-actions">
-                  {user.certificateUrl && <a className="btn btn-sm btn-outline-navy" href={user.certificateUrl} target="_blank" rel="noreferrer">View</a>}
+                  {user.certificateFileId && <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setViewerFile({ id: user.certificateFileId, name: user.certificateFilename || 'Certificate' })}>View</button>}
                 </div>
               </div>
             ))}
             <label className="btn btn-outline-navy btn-sm" style={{ marginTop: 12 }}>
               {uploadingKind === 'certificate' ? 'Uploading...' : 'Replace Certificate'}
-              <input type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0])} />
+              <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
             </label>
           </div>
         ) : (
@@ -1353,7 +1383,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
               <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>PDF or image files - Multiple allowed</p>
               <label className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>
                 {uploadingKind === 'certificate' ? 'Uploading...' : 'Choose Files'}
-                <input type="file" hidden accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0])} />
+                <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
               </label>
             </div>
           </>
@@ -1375,6 +1405,14 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
         </div>
       </div>
     </div>
+    {viewerFile && (
+      <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 800 }}>
+        <div role="dialog" aria-modal="true" aria-label={`Preview ${viewerFile.name}`} style={{ background: '#fff', borderRadius: 18, width: 'min(1050px, 94vw)', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--gray-200)' }}><strong>{viewerFile.name}</strong><div style={{ display: 'flex', gap: 8 }}><a className="btn btn-sm btn-primary" href={api.teacherFileDownloadUrl(viewerFile.id)}>Download</a><button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setViewerFile(null)}>Close</button></div></div>
+          <iframe title={viewerFile.name} src={api.teacherFilePreviewUrl(viewerFile.id)} style={{ border: 0, width: '100%', flex: 1, background: '#eef2f7' }} />
+        </div>
+      </div>
+    )}
   </div>
   );
 };
@@ -1592,6 +1630,9 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
             ].map(([field, label, options, className]) => (
               <div className="form-group" key={field}>
                 <label className="form-label">{label} <span style={{ fontWeight: 400 }}>(select all that apply)</span></label>
+                <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setForm(prev => ({ ...prev, [field]: (options.every(option => splitMulti(prev[field]).includes(option)) ? [] : options).join(', ') }))} style={{ marginBottom: 10 }}>
+                  {options.every(option => splitMulti(form[field]).includes(option)) ? `Clear all ${label.toLowerCase()}` : `Select all ${label.toLowerCase()}`}
+                </button>
                 <div className={`portal-checkbox-grid portal-checkbox-grid-equal ${className}`}>
                   {options.map(option => (
                     <label key={option} className="portal-checkbox-row">
@@ -1604,6 +1645,9 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
             ))}
             <div className="form-group">
               <label className="form-label">Preferred Locations <span style={{ fontWeight: 400 }}>(select all that apply)</span></label>
+              <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setForm(prev => ({ ...prev, location_ids: (locationOptions.every(location => selectedAlertLocationIds.includes(location.id)) ? [] : locationOptions.map(location => location.id)).join(', ') }))} style={{ marginBottom: 10 }}>
+                {locationOptions.length > 0 && locationOptions.every(location => selectedAlertLocationIds.includes(location.id)) ? 'Clear all locations' : 'Select all locations'}
+              </button>
               <input
                 className="form-input"
                 type="search"
@@ -2026,8 +2070,10 @@ const UserPortalPage = () => {
         hasCV: Boolean(profileSource.cv_file_id),
         hasCerts: Boolean(profileSource.certificate_file_id),
         cvUrl: profileSource.cv_url || '',
+        cvFileId: profileSource.cv_file_id || null,
         cvFilename: profileSource.cv_filename || '',
         certificateUrl: profileSource.certificate_url || '',
+        certificateFileId: profileSource.certificate_file_id || null,
         certificateFilename: profileSource.certificate_filename || '',
         initials,
         avatarUrl: profileSource.profile_picture_url || profileSource.avatar_url || null,
@@ -2043,6 +2089,7 @@ const UserPortalPage = () => {
         nextOfKinEmail: profileSource.next_of_kin_email || '',
         placements: profileSource.placements || [],
         applicationId: profileSource.application_id || '',
+        teacherId: profileSource.teacher_id || accountStatus?.teacher_id || '',
         profileStatus,
         submittedAt: profileSource.submitted_at || '',
         reviewNotes: profileSource.review_notes || '',
@@ -2071,7 +2118,7 @@ const UserPortalPage = () => {
     syncAccountStatusFromProfile(uploadedProfile);
   };
 
-  const handleFileUpload = async (kind, file) => {
+  const handleFileUpload = async (kind, file, suppliedReason = '') => {
     if (!file) return;
     setUploadError('');
     if (kind === 'profile_picture') setAvatarUploading(true);
@@ -2084,7 +2131,11 @@ const UserPortalPage = () => {
         }
         return;
       }
-      const result = await api.uploadUserFile(file, kind);
+      let changeReason = suppliedReason;
+      if (profileStatus === 'verified' && !changeReason && kind === 'profile_picture') {
+        changeReason = window.prompt('Why are you replacing this approved profile photo? This reason will be recorded in the audit log.') || '';
+      }
+      const result = await api.uploadUserFile(file, kind, changeReason);
       mergeUploadedProfile(result, kind);
       await refreshAccountStatus();
     } catch (err) {
@@ -2099,6 +2150,8 @@ const UserPortalPage = () => {
   const openProfileEdit = (section = 'personal') => {
     setProfileError('');
     setProfileForm({
+      first_name: firstName || '',
+      last_name: lastName || '',
       sex: profileSource.sex || '',
       age_range: profileSource.age_range || '',
       location: profileSource.location || '',
@@ -2116,6 +2169,8 @@ const UserPortalPage = () => {
       next_of_kin_email: profileSource.next_of_kin_email || '',
       years_of_experience: profileSource.years_of_experience !== undefined && profileSource.years_of_experience !== null ? profileSource.years_of_experience : '',
       date_of_birth: profileSource.date_of_birth || '',
+      change_reason: '',
+      _requires_reason: profileStatus === 'verified',
     });
     setProfileEditSection(section);
   };
@@ -2139,7 +2194,9 @@ const UserPortalPage = () => {
     setProfileError('');
     try {
       if (isApiMode()) {
-        const result = await api.updateProfile(profileForm);
+        const payload = { ...profileForm };
+        delete payload._requires_reason;
+        const result = await api.updateProfile(payload);
         setApiProfile(prev => ({ ...(prev || {}), ...(result.profile || {}) }));
         syncAccountStatusFromProfile(result.profile);
         await refreshAccountStatus();

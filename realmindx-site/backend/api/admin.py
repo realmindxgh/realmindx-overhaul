@@ -81,7 +81,7 @@ from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
 from ..profile_completion import teacher_profile_completion
 from ..sms_service import normalise_phone
-from ..teacher_ids import generate_teacher_id
+from ..teacher_ids import ensure_application_id, generate_teacher_id, is_valid_teacher_id
 from ..bookshop_search import canonical_taxonomy_value
 
 
@@ -2145,13 +2145,16 @@ def get_user(user_id):
     if profile:
         def _file_payload(file_id):
             if not file_id:
-                return {"url": None, "filename": None}
+                return {"url": None, "filename": None, "id": None, "mime_type": None, "size_bytes": None}
             f = db.session.get(UploadedFile, file_id)
             if not f:
-                return {"url": None, "filename": None}
+                return {"url": None, "filename": None, "id": None, "mime_type": None, "size_bytes": None}
             return {
                 "url": f"/uploads/{f.visibility}/{f.category}/{f.stored_filename}",
                 "filename": f.original_filename,
+                "id": f.id,
+                "mime_type": f.mime_type,
+                "size_bytes": f.size_bytes,
             }
 
         age = None
@@ -2175,8 +2178,12 @@ def get_user(user_id):
             "profile_picture_url": data.get("profile_picture_url"),
             "cv_url": cv_file["url"],
             "cv_filename": cv_file["filename"],
+            "cv_file_id": cv_file["id"],
+            "cv_mime_type": cv_file["mime_type"],
             "certificate_url": certificate_file["url"],
             "certificate_filename": certificate_file["filename"],
+            "certificate_file_id": certificate_file["id"],
+            "certificate_mime_type": certificate_file["mime_type"],
             "next_of_kin_name": profile.next_of_kin_name,
             "next_of_kin_phone": profile.next_of_kin_phone,
             "next_of_kin_relationship": profile.next_of_kin_relationship,
@@ -2278,13 +2285,16 @@ def _review_detail(user):
     if profile:
         def _file_payload(file_id):
             if not file_id:
-                return {"url": None, "filename": None}
+                return {"url": None, "filename": None, "id": None, "mime_type": None, "size_bytes": None}
             f = db.session.get(UploadedFile, file_id)
             if not f:
-                return {"url": None, "filename": None}
+                return {"url": None, "filename": None, "id": None, "mime_type": None, "size_bytes": None}
             return {
                 "url": f"/uploads/{f.visibility}/{f.category}/{f.stored_filename}",
                 "filename": f.original_filename,
+                "id": f.id,
+                "mime_type": f.mime_type,
+                "size_bytes": f.size_bytes,
             }
         cv_file = _file_payload(profile.cv_file_id)
         certificate_file = _file_payload(profile.certificate_file_id)
@@ -2298,8 +2308,12 @@ def _review_detail(user):
             "bio": profile.bio,
             "cv_url": cv_file["url"],
             "cv_filename": cv_file["filename"],
+            "cv_file_id": cv_file["id"],
+            "cv_mime_type": cv_file["mime_type"],
             "certificate_url": certificate_file["url"],
             "certificate_filename": certificate_file["filename"],
+            "certificate_file_id": certificate_file["id"],
+            "certificate_mime_type": certificate_file["mime_type"],
             "profile_status": profile.profile_status,
             "submitted_at": profile.submitted_at.isoformat() if profile.submitted_at else None,
             "reviewed_at": profile.reviewed_at.isoformat() if profile.reviewed_at else None,
@@ -2414,6 +2428,151 @@ def teacher_review_detail(user_id):
     if user.role and user.role.name != "user":
         return jsonify(error="Only teacher accounts can be reviewed."), 403
     return jsonify(_review_detail(user))
+
+
+@admin_bp.patch("/teachers/<int:user_id>/account")
+@login_required
+@permission_required("teachers.account.manage")
+def admin_update_teacher_account(user_id):
+    """Apply an authorised, auditable correction on a teacher's behalf."""
+    user = db.get_or_404(User, user_id)
+    if user.role and user.role.name != "user":
+        return jsonify(error="Only teacher accounts can be changed here."), 403
+    payload = request.get_json(silent=True) or {}
+    reason = str(payload.get("reason") or "").strip()
+    if len(reason) < 8:
+        return jsonify(error="Enter a reason of at least 8 characters for the audit log."), 400
+
+    profile = user.profile
+    if not profile:
+        profile = UserProfile(user_id=user.id)
+        db.session.add(profile)
+    changed = {}
+
+    for field in ("first_name", "last_name"):
+        if field in payload:
+            value = str(payload.get(field) or "").strip() or None
+            if field == "first_name" and not value:
+                return jsonify(error="First name is required."), 400
+            if value != getattr(user, field):
+                changed[field] = {"from": getattr(user, field), "to": value}
+                setattr(user, field, value)
+
+    if "email" in payload:
+        email = str(payload.get("email") or "").strip().lower()
+        if not email or "@" not in email:
+            return jsonify(error="Enter a valid email address."), 400
+        if User.query.filter(User.email == email, User.id != user.id).first():
+            return jsonify(error="That email is already connected to another account."), 409
+        if email != user.email:
+            changed["email"] = {"from": user.email, "to": email}
+            user.email = email
+
+    if "phone" in payload:
+        try:
+            phone = normalise_phone(payload.get("phone")) if payload.get("phone") else None
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        if phone != user.phone:
+            changed["phone"] = {"from": user.phone, "to": phone}
+            user.phone = phone
+
+    profile_fields = (
+        "location", "teaching_subject", "preferred_level", "preferred_employment_type",
+        "available_from", "curriculum_experience", "bio", "next_of_kin_name",
+        "next_of_kin_phone", "next_of_kin_relationship", "next_of_kin_email",
+    )
+    for field in profile_fields:
+        if field in payload:
+            value = payload.get(field)
+            if isinstance(value, str):
+                value = value.strip() or None
+            if value != getattr(profile, field):
+                changed[field] = {"from": getattr(profile, field), "to": value}
+                setattr(profile, field, value)
+
+    if not changed:
+        return jsonify(error="No account changes were supplied."), 400
+    log_action("teacher_account_admin_updated", "user", user.id, {
+        "reason": reason,
+        "changed_fields": changed,
+        "profile_status_preserved": profile.profile_status,
+    })
+    db.session.commit()
+    return jsonify(_review_detail(user))
+
+
+@admin_bp.patch("/teachers/<int:user_id>/verification")
+@login_required
+@permission_required("teachers.verification.manage")
+def admin_update_teacher_verification(user_id):
+    user = db.get_or_404(User, user_id)
+    if user.role and user.role.name != "user":
+        return jsonify(error="Only teacher accounts can be changed here."), 403
+    payload = request.get_json(silent=True) or {}
+    reason = str(payload.get("reason") or "").strip()
+    if len(reason) < 8:
+        return jsonify(error="Enter a reason of at least 8 characters for the audit log."), 400
+    changed = {}
+    if "email_verified" in payload:
+        verified = bool(payload.get("email_verified"))
+        if verified != bool(user.is_verified):
+            changed["email_verified"] = {"from": bool(user.is_verified), "to": verified}
+            user.is_verified = verified
+    if "phone_verified" in payload:
+        verified = bool(payload.get("phone_verified"))
+        if verified != bool(user.phone_verified):
+            changed["phone_verified"] = {"from": bool(user.phone_verified), "to": verified}
+            user.phone_verified = verified
+            user.phone_verified_at = datetime.now(timezone.utc) if verified else None
+    if not changed:
+        return jsonify(error="No verification changes were supplied."), 400
+    log_action("teacher_verification_admin_updated", "user", user.id, {"reason": reason, "changed_fields": changed})
+    db.session.commit()
+    return jsonify(_review_detail(user))
+
+
+@admin_bp.post("/teachers/<int:user_id>/documents")
+@login_required
+@permission_required("teachers.documents.manage")
+def admin_upload_teacher_document(user_id):
+    """Upload a system-valid CV/certificate replacement on a teacher's behalf."""
+    user = db.get_or_404(User, user_id)
+    if user.role and user.role.name != "user":
+        return jsonify(error="Only teacher accounts can be changed here."), 403
+    kind = str(request.form.get("kind") or "").strip().lower()
+    reason = str(request.form.get("reason") or "").strip()
+    if kind not in {"cv", "certificate"}:
+        return jsonify(error="Choose CV or certificate."), 400
+    if len(reason) < 8:
+        return jsonify(error="Enter a reason of at least 8 characters for the audit log."), 400
+    profile = user.profile
+    if not profile:
+        profile = UserProfile(user_id=user.id)
+        db.session.add(profile)
+        db.session.flush()
+    try:
+        uploaded = save_upload(request.files.get("file"), category="documents", owner_id=user.id, visibility="protected")
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    db.session.flush()
+    field = "cv_file_id" if kind == "cv" else "certificate_file_id"
+    previous_file_id = getattr(profile, field)
+    setattr(profile, field, uploaded.id)
+    log_action("teacher_document_admin_uploaded", "uploaded_file", uploaded.id, {
+        "teacher_user_id": user.id,
+        "kind": kind,
+        "reason": reason,
+        "previous_file_id": previous_file_id,
+        "profile_status_preserved": profile.profile_status,
+    })
+    db.session.commit()
+    return jsonify(file={
+        "id": uploaded.id,
+        "original_filename": uploaded.original_filename,
+        "preview_url": f"/api/files/{uploaded.id}/preview",
+        "download_url": f"/api/files/{uploaded.id}/download",
+    }, review=_review_detail(user)), 201
 
 
 def _send_revision_required_email(user, note):
@@ -2802,13 +2961,7 @@ def verify_teacher_profile(user_id):
     user_lock = db.session.query(User).with_for_update().filter_by(id=user.id).first()
     user = user_lock or user
 
-    if profile.profile_status == "under_review" and user.teacher_id:
-        return jsonify(
-            error="Inconsistent state: profile is under review but already has a Teacher ID. "
-                  "Contact support to resolve this before proceeding."
-        ), 409
-
-    if profile.profile_status == "verified" and user.teacher_id:
+    if profile.profile_status == "verified" and is_valid_teacher_id(user.teacher_id):
         return jsonify(
             application_id=user.application_id,
             teacher_id=user.teacher_id,
@@ -2837,7 +2990,9 @@ def verify_teacher_profile(user_id):
     if not cert or cert.owner_id != user.id:
         return jsonify(error="Certificate file record is invalid."), 400
 
-    if user.teacher_id:
+    ensure_application_id(user)
+    previous_teacher_id = user.teacher_id
+    if is_valid_teacher_id(user.teacher_id):
         existing_id = user.teacher_id
         issued_now = False
     else:
@@ -2848,7 +3003,8 @@ def verify_teacher_profile(user_id):
     profile.reviewed_at = datetime.now(timezone.utc)
     profile.reviewed_by_id = current_user.id
     user.teacher_id = existing_id
-    user.teacher_id_issued_at = datetime.now(timezone.utc)
+    if issued_now or not user.teacher_id_issued_at:
+        user.teacher_id_issued_at = datetime.now(timezone.utc)
 
     log_action("teacher_profile_visually_verified", "user", user.id, {
         "application_id": user.application_id,
@@ -2861,6 +3017,7 @@ def verify_teacher_profile(user_id):
         log_action("teacher_id_issued", "user", user.id, {
             "application_id": user.application_id,
             "teacher_id": user.teacher_id,
+            "replaced_malformed_id": previous_teacher_id if previous_teacher_id else None,
         })
 
     db.session.commit()

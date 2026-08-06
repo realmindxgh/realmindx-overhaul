@@ -3,7 +3,7 @@ import re
 import secrets
 
 from email_validator import EmailNotValidError, validate_email
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
 from markupsafe import escape
 from sqlalchemy.exc import IntegrityError
@@ -30,7 +30,24 @@ from ..whatsapp_service import (
 
 profile_bp = Blueprint("profile", __name__)
 
-_LOCKED_STATUSES = frozenset({"submitted", "under_review", "verified", "rejected"})
+_LOCKED_STATUSES = frozenset({"submitted", "under_review", "rejected"})
+
+
+def _queue_reverification(profile, reason, details=None):
+    """Return an approved profile to review without changing its permanent Teacher ID."""
+    if profile.profile_status != "verified":
+        return False
+    profile.profile_status = "submitted"
+    profile.submitted_at = datetime.now(timezone.utc)
+    profile.reviewed_at = None
+    profile.reviewed_by_id = None
+    profile.review_notes = None
+    audit("teacher_profile_reverification_requested", "user", current_user.id, {
+        "reason": reason,
+        "teacher_id": current_user.teacher_id,
+        **(details or {}),
+    })
+    return True
 
 
 def _sync_editable_profile_status(profile):
@@ -56,6 +73,8 @@ def profile_json(profile):
     return {
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
+        "application_id": current_user.application_id,
+        "teacher_id": current_user.teacher_id,
         "email": current_user.email,
         "phone": current_user.phone,
         "phone_verified": current_user.phone_verified,
@@ -154,7 +173,17 @@ def update_profile():
     payload = request.get_json(silent=True) or {}
     profile = get_or_create_profile()
 
-    _LOCKED_STATUSES = frozenset({"submitted", "under_review", "verified", "rejected"})
+    change_reason = str(payload.pop("change_reason", "") or "").strip()
+    was_verified = profile.profile_status == "verified"
+    if was_verified and len(change_reason) < 8:
+        return jsonify(error="Explain why you need this approved profile changed (at least 8 characters)."), 400
+    before = {field: getattr(profile, field, None) for field in (
+        "location", "teaching_subject", "preferred_level", "preferred_employment_type",
+        "available_from", "curriculum_experience", "bio", "next_of_kin_name",
+        "next_of_kin_phone", "next_of_kin_relationship", "next_of_kin_email",
+        "preferred_location_ids", "years_of_experience", "date_of_birth",
+    )}
+    identity_before = {"first_name": current_user.first_name, "last_name": current_user.last_name}
 
     if profile.profile_status in _LOCKED_STATUSES:
         return jsonify(error="Your profile is currently under review and cannot be edited."), 423
@@ -163,6 +192,13 @@ def update_profile():
         current_user.sex = str(payload.get("sex") or "").strip().lower() or None
     if "age_range" in payload:
         current_user.age_range = str(payload.get("age_range") or "").strip().lower() or None
+    if "first_name" in payload:
+        first_name = str(payload.get("first_name") or "").strip()
+        if not first_name:
+            return jsonify(error="First name is required."), 400
+        current_user.first_name = first_name
+    if "last_name" in payload:
+        current_user.last_name = str(payload.get("last_name") or "").strip() or None
     for field in [
         "location",
         "teaching_subject",
@@ -214,9 +250,18 @@ def update_profile():
             return jsonify(error="Phone changes require OTP verification in Account & Security."), 400
     _sync_profile_to_alert_preference(profile)
 
-    _sync_editable_profile_status(profile)
+    changed_fields = [field for field, previous in before.items() if getattr(profile, field, None) != previous]
+    changed_fields.extend(field for field, previous in identity_before.items() if getattr(current_user, field) != previous)
+    reverification = bool(changed_fields) and _queue_reverification(profile, change_reason or "profile_information_changed", {"changed_fields": changed_fields})
+    if not reverification:
+        _sync_editable_profile_status(profile)
 
-    audit("profile_updated", "user_profile", current_user.id, {"email": current_user.email})
+    audit("profile_updated", "user_profile", current_user.id, {
+        "email": current_user.email,
+        "change_reason": change_reason or None,
+        "changed_fields": changed_fields,
+        "reverification_requested": reverification,
+    })
     db.session.commit()
     return jsonify(profile=profile_json(profile))
 
@@ -296,9 +341,18 @@ def update_account():
     if profile and profile.profile_status in _LOCKED_STATUSES:
         return jsonify(error="Identity details cannot be changed while your profile is locked."), 423
 
+    change_reason = str(payload.get("change_reason") or "").strip()
+    if profile and profile.profile_status == "verified" and len(change_reason) < 8:
+        return jsonify(error="Explain why you need your approved name changed (at least 8 characters)."), 400
+    previous = {"first_name": current_user.first_name, "last_name": current_user.last_name}
     current_user.first_name = first_name
     current_user.last_name = last_name or None
-    audit("account_name_updated", "user", current_user.id, {"email": current_user.email})
+    names_changed = previous != {"first_name": current_user.first_name, "last_name": current_user.last_name}
+    reverification = names_changed and _queue_reverification(profile, change_reason or "identity_name_changed", {
+        "previous": previous,
+        "current": {"first_name": current_user.first_name, "last_name": current_user.last_name},
+    }) if profile else False
+    audit("account_name_updated", "user", current_user.id, {"email": current_user.email, "change_reason": change_reason or None, "previous": previous, "reverification_requested": reverification})
     db.session.commit()
     return jsonify(user=user_json(current_user))
 
@@ -695,6 +749,10 @@ def upload_user_file():
     category, profile_field, visibility = field_map.get(kind, ("documents", None, "protected"))
     profile = get_or_create_profile()
 
+    change_reason = str(request.form.get("change_reason") or "").strip()
+    if profile.profile_status == "verified" and profile_field and len(change_reason) < 8:
+        return jsonify(error="Explain why you need to replace this approved profile item (at least 8 characters)."), 400
+
     if profile_field in ("cv_file_id", "certificate_file_id") and profile.profile_status in _LOCKED_STATUSES:
         return jsonify(error="Your profile is under review and documents cannot be replaced."), 423
 
@@ -704,10 +762,17 @@ def upload_user_file():
         return jsonify(error=str(exc)), 400
     db.session.flush()
     if profile_field:
+        previous_file_id = getattr(profile, profile_field)
         setattr(profile, profile_field, uploaded.id)
-        _sync_editable_profile_status(profile)
+        reverification = _queue_reverification(profile, change_reason or f"{kind}_replaced", {
+            "previous_file_id": previous_file_id,
+            "new_file_id": uploaded.id,
+        })
+        if not reverification:
+            _sync_editable_profile_status(profile)
     audit("file_uploaded", "uploaded_file", uploaded.id, {
         "kind": kind, "filename": uploaded.original_filename, "category": uploaded.category,
+        "change_reason": change_reason or None,
     })
     db.session.commit()
     return jsonify(
@@ -717,6 +782,71 @@ def upload_user_file():
         url=_upload_url(uploaded),
         profile=profile_json(profile),
     ), 201
+
+
+def _can_access_teacher_file(uploaded):
+    if uploaded.owner_id == current_user.id:
+        return True
+    role_name = current_user.role.name if current_user.role else None
+    return role_name == "admin" or (role_name == "staff" and current_user.has_permission("teachers.view"))
+
+
+def _docx_preview_html(path, filename):
+    from docx import Document
+
+    document = Document(path)
+    body = []
+    for paragraph in document.paragraphs:
+        text = str(escape(paragraph.text or ""))
+        if text:
+            style = (paragraph.style.name or "").lower() if paragraph.style else ""
+            tag = "h1" if "title" in style or "heading 1" in style else "h2" if "heading 2" in style else "p"
+            body.append(f"<{tag}>{text}</{tag}>")
+    for table in document.tables:
+        rows = []
+        for row in table.rows:
+            cells = "".join(f"<td>{escape(cell.text or '')}</td>" for cell in row.cells)
+            rows.append(f"<tr>{cells}</tr>")
+        body.append(f"<table>{''.join(rows)}</table>")
+    return f"""<!doctype html><html><head><meta charset=\"utf-8\"><title>{escape(filename)}</title><style>
+body{{font:15px/1.6 Arial,sans-serif;color:#172554;max-width:900px;margin:0 auto;padding:48px;background:#fff}}h1,h2{{color:#082d6b}}table{{border-collapse:collapse;width:100%;margin:18px 0}}td{{border:1px solid #dbe3ef;padding:8px;vertical-align:top}}p{{white-space:pre-wrap}}
+</style></head><body>{''.join(body) or '<p>This document has no previewable text.</p>'}</body></html>"""
+
+
+@profile_bp.get("/files/<int:file_id>/preview")
+@login_required
+def preview_uploaded_file(file_id):
+    uploaded = db.get_or_404(UploadedFile, file_id)
+    if not _can_access_teacher_file(uploaded):
+        return jsonify(error="You do not have permission to view this file."), 403
+    path = uploaded.storage_path
+    extension = (uploaded.original_filename.rsplit(".", 1)[-1] if "." in uploaded.original_filename else "").lower()
+    audit("teacher_document_viewed", "uploaded_file", uploaded.id, {"owner_id": uploaded.owner_id, "filename": uploaded.original_filename})
+    db.session.commit()
+    if extension == "pdf":
+        response = send_file(path, mimetype="application/pdf", as_attachment=False, download_name=uploaded.original_filename)
+    elif extension == "docx":
+        try:
+            response = Response(_docx_preview_html(path, uploaded.original_filename), mimetype="text/html")
+        except Exception:
+            current_app.logger.exception("Could not render DOCX preview for file %s", uploaded.id)
+            return Response("<h2>Preview unavailable</h2><p>This Word document could not be rendered. Use Download to open it in Word.</p>", status=422, mimetype="text/html")
+    else:
+        return Response("<h2>Preview unavailable</h2><p>This file type cannot be displayed in the browser. Use Download to open it.</p>", status=415, mimetype="text/html")
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@profile_bp.get("/files/<int:file_id>/download")
+@login_required
+def download_uploaded_file(file_id):
+    uploaded = db.get_or_404(UploadedFile, file_id)
+    if not _can_access_teacher_file(uploaded):
+        return jsonify(error="You do not have permission to download this file."), 403
+    audit("teacher_document_downloaded", "uploaded_file", uploaded.id, {"owner_id": uploaded.owner_id, "filename": uploaded.original_filename})
+    db.session.commit()
+    return send_file(uploaded.storage_path, as_attachment=True, download_name=uploaded.original_filename, mimetype=uploaded.mime_type or None)
 
 
 def _send_submission_email(user, profile):

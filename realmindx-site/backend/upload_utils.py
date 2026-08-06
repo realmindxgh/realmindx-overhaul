@@ -1,4 +1,5 @@
 import os
+import zipfile
 
 from pathlib import Path
 from uuid import uuid4
@@ -21,8 +22,10 @@ def allowed_file(filename, category):
 def save_upload(file_storage, category, owner_id=None, visibility="protected"):
     if not file_storage or not file_storage.filename:
         raise ValueError("No file supplied.")
+    allowed = current_app.config["ALLOWED_UPLOAD_EXTENSIONS"].get(category, set())
     if not allowed_file(file_storage.filename, category):
-        raise ValueError("Unsupported file type.")
+        supported = ", ".join(sorted(ext.upper() for ext in allowed)) or "no file types"
+        raise ValueError(f"Unsupported file type. Supported types: {supported}.")
 
     safe_name = secure_filename(file_storage.filename)
     extension = safe_name.rsplit(".", 1)[1].lower()
@@ -32,13 +35,38 @@ def save_upload(file_storage, category, owner_id=None, visibility="protected"):
     target = root / stored_name
     file_storage.save(target)
 
+    size_bytes = target.stat().st_size
+    max_bytes = int(current_app.config.get("MAX_UPLOAD_FILE_BYTES", 100 * 1024 * 1024))
+    try:
+        if size_bytes == 0:
+            raise ValueError("The selected file is empty. Choose a file that contains data.")
+        if size_bytes > max_bytes:
+            raise ValueError(f"The file is too large. Maximum size is {max_bytes // (1024 * 1024)} MB.")
+        if extension == "pdf":
+            with target.open("rb") as handle:
+                if handle.read(5) != b"%PDF-":
+                    raise ValueError("This is not a valid PDF file. Re-save or export it as PDF and try again.")
+        elif extension == "docx":
+            try:
+                with zipfile.ZipFile(target) as archive:
+                    names = set(archive.namelist())
+                    if "[Content_Types].xml" not in names or "word/document.xml" not in names:
+                        raise ValueError
+            except (zipfile.BadZipFile, ValueError):
+                raise ValueError("This DOCX is damaged or is not a valid Word document. Re-save it in Word and try again.") from None
+    except Exception:
+        try:
+            target.unlink(missing_ok=True)
+        finally:
+            raise
+
     uploaded = UploadedFile(
         owner_id=owner_id,
         original_filename=safe_name,
         stored_filename=stored_name,
         storage_path=str(target),
         mime_type=file_storage.mimetype,
-        size_bytes=target.stat().st_size,
+        size_bytes=size_bytes,
         category=category,
         visibility=visibility,
     )

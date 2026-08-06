@@ -1,5 +1,7 @@
 import io
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from datetime import datetime, timezone
@@ -135,6 +137,58 @@ class TeacherReviewTests(unittest.TestCase):
             "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
         })
         self.assertEqual(resp.status_code, 403)
+
+    def test_staff_account_override_records_staff_actor_and_reason(self):
+        teacher, _ = _make_submitted_teacher(db.session, "staff-override")
+        staff_role = Role.query.filter_by(name="staff").one()
+        permission = Permission(key="teachers.account.manage", description="Manage teacher accounts")
+        db.session.add(permission)
+        staff_role.permissions.append(permission)
+        staff = User(email="staff-override@example.com", first_name="Staff", last_name="Operator", role=staff_role, is_active=True, is_verified=True)
+        staff.set_password("StaffPassword1!")
+        db.session.add(staff)
+        db.session.commit()
+        self._login_as(staff.email, "StaffPassword1!")
+        response = self.client.patch(f"/api/admin/teachers/{teacher.id}/account", json={
+            "first_name": "Corrected", "reason": "Teacher supplied corrected legal name",
+        })
+        self.assertEqual(response.status_code, 200)
+        event = AuditLog.query.filter_by(action="teacher_account_admin_updated", actor_id=staff.id).one()
+        self.assertEqual(event.details["reason"], "Teacher supplied corrected legal name")
+        self.assertIn("first_name", event.details["changed_fields"])
+
+    def test_admin_verification_override_is_system_valid_and_audited(self):
+        teacher, _ = _make_submitted_teacher(db.session, "verify-override")
+        teacher.is_verified = False
+        teacher.phone_verified = False
+        db.session.commit()
+        self._login_admin()
+        response = self.client.patch(f"/api/admin/teachers/{teacher.id}/verification", json={
+            "email_verified": True, "phone_verified": True, "reason": "Verified against original records",
+        })
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(teacher)
+        self.assertTrue(teacher.is_verified)
+        self.assertTrue(teacher.phone_verified)
+        self.assertIsNotNone(teacher.phone_verified_at)
+        self.assertIsNotNone(AuditLog.query.filter_by(action="teacher_verification_admin_updated", actor_id=self.admin_user.id).first())
+
+    def test_document_preview_is_inline_and_download_is_attachment(self):
+        teacher, profile = _make_submitted_teacher(db.session, "preview")
+        handle = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        handle.write(b"%PDF-1.4\n%%EOF")
+        handle.close()
+        self.addCleanup(lambda: os.path.exists(handle.name) and os.remove(handle.name))
+        uploaded = db.session.get(UploadedFile, profile.cv_file_id)
+        uploaded.storage_path = handle.name
+        uploaded.original_filename = "teacher-cv.pdf"
+        db.session.commit()
+        self._login_admin()
+        preview = self.client.get(f"/api/files/{uploaded.id}/preview")
+        download = self.client.get(f"/api/files/{uploaded.id}/download")
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn("inline", preview.headers.get("Content-Disposition", ""))
+        self.assertIn("attachment", download.headers.get("Content-Disposition", ""))
 
     def test_unauthorised_staff_cannot_review(self):
         staff_role = Role.query.filter_by(name="staff").one()
@@ -367,7 +421,7 @@ class TeacherReviewTests(unittest.TestCase):
         self.client.post(f"/api/admin/teachers/{teacher.id}/request-revision", json={"note": "Upload new CV."})
         self._login_as("teacher-rev6@example.com", "TeacherPassword1!")
         resp = self.client.post("/api/me/uploads", data={
-            "file": (io.BytesIO(b"new cv"), "cv_new.pdf"),
+            "file": (io.BytesIO(b"%PDF-1.4\n%%EOF"), "cv_new.pdf"),
             "kind": "cv",
         }, content_type="multipart/form-data")
         self.assertEqual(resp.status_code, 201)
@@ -866,24 +920,35 @@ class TeacherReviewTests(unittest.TestCase):
         resp = self.client.put("/api/me/account", json={"first_name": "New", "last_name": "Name"})
         self.assertEqual(resp.status_code, 423)
 
-    def test_verified_edit_blocked(self):
+    def test_verified_edit_requires_reason_and_reopens_review(self):
         teacher, profile = _make_submitted_teacher(db.session, "lock4")
         profile.profile_status = "verified"
         db.session.commit()
         self._login_as("teacher-lock4@example.com", "TeacherPassword1!")
-        resp = self.client.put("/api/me/profile", json={"bio": "New bio"})
-        self.assertEqual(resp.status_code, 423)
+        missing_reason = self.client.put("/api/me/profile", json={"bio": "New bio"})
+        self.assertEqual(missing_reason.status_code, 400)
+        resp = self.client.put("/api/me/profile", json={"bio": "New bio", "change_reason": "Updated professional experience"})
+        self.assertEqual(resp.status_code, 200)
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "submitted")
+        event = AuditLog.query.filter_by(action="teacher_profile_reverification_requested", actor_id=teacher.id).one()
+        self.assertEqual(event.details["reason"], "Updated professional experience")
 
-    def test_verified_upload_blocked(self):
+    def test_verified_upload_requires_reason_and_reopens_review(self):
         teacher, profile = _make_submitted_teacher(db.session, "lock5")
         profile.profile_status = "verified"
         db.session.commit()
         self._login_as("teacher-lock5@example.com", "TeacherPassword1!")
         resp = self.client.post("/api/me/uploads", data={
-            "file": (io.BytesIO(b"content"), "cv_new.pdf"),
+            "file": (io.BytesIO(b"%PDF-1.4\n%%EOF"), "cv_new.pdf"),
             "kind": "cv",
+            "change_reason": "Replacing an outdated curriculum vitae",
         }, content_type="multipart/form-data")
-        self.assertEqual(resp.status_code, 423)
+        self.assertEqual(resp.status_code, 201)
+        db.session.refresh(profile)
+        self.assertEqual(profile.profile_status, "submitted")
+        event = AuditLog.query.filter_by(action="teacher_profile_reverification_requested", actor_id=teacher.id).one()
+        self.assertEqual(event.details["reason"], "Replacing an outdated curriculum vitae")
 
     def test_rejected_edit_blocked(self):
         teacher, profile = _make_submitted_teacher(db.session, "lock6")
@@ -934,7 +999,7 @@ class TeacherReviewTests(unittest.TestCase):
             "teaching_details_consistent": True, "no_obvious_alteration_detected": True,
         }
 
-    def test_verify_under_review_with_existing_teacher_id_returns_409(self):
+    def test_reverification_preserves_existing_teacher_id(self):
         """under_review + teacher_id already set is inconsistent → 409."""
         teacher, profile = _make_submitted_teacher(db.session, "undrvid")
         profile.profile_status = "under_review"
@@ -946,14 +1011,14 @@ class TeacherReviewTests(unittest.TestCase):
         resp = self.client.post(
             f"/api/admin/teachers/{teacher.id}/verify", json=self._verify_payload()
         )
-        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.status_code, 200)
         db.session.refresh(teacher)
         db.session.refresh(profile)
-        self.assertEqual(profile.profile_status, "under_review")
+        self.assertEqual(profile.profile_status, "verified")
         self.assertEqual(teacher.teacher_id, "RMX-TCH-000999")
         self.assertEqual(teacher.teacher_id_issued_at, original_issued_at)
         verify_events = AuditLog.query.filter_by(action="teacher_profile_visually_verified").all()
-        self.assertEqual(len(verify_events), 0)
+        self.assertEqual(len(verify_events), 1)
         issue_events = AuditLog.query.filter_by(action="teacher_id_issued").all()
         self.assertEqual(len(issue_events), 0)
 
