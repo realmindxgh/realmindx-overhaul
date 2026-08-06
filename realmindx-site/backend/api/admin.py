@@ -2441,7 +2441,7 @@ def admin_update_teacher_account(user_id):
     payload = request.get_json(silent=True) or {}
     reason = str(payload.get("reason") or "").strip()
     if len(reason) < 8:
-        return jsonify(error="Enter a reason of at least 8 characters for the audit log."), 400
+        return jsonify(error="Enter a reason of at least 8 characters for company records."), 400
 
     profile = user.profile
     if not profile:
@@ -2512,7 +2512,7 @@ def admin_update_teacher_verification(user_id):
     payload = request.get_json(silent=True) or {}
     reason = str(payload.get("reason") or "").strip()
     if len(reason) < 8:
-        return jsonify(error="Enter a reason of at least 8 characters for the audit log."), 400
+        return jsonify(error="Enter a reason of at least 8 characters for company records."), 400
     changed = {}
     if "email_verified" in payload:
         verified = bool(payload.get("email_verified"))
@@ -2545,7 +2545,7 @@ def admin_upload_teacher_document(user_id):
     if kind not in {"cv", "certificate"}:
         return jsonify(error="Choose CV or certificate."), 400
     if len(reason) < 8:
-        return jsonify(error="Enter a reason of at least 8 characters for the audit log."), 400
+        return jsonify(error="Enter a reason of at least 8 characters for company records."), 400
     profile = user.profile
     if not profile:
         profile = UserProfile(user_id=user.id)

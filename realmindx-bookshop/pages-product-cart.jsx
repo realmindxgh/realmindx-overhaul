@@ -602,7 +602,7 @@ const CartPage = ({ navigate }) => {
       return;
     }
     if (!isApiMode()) {
-      globalToast.error('Invoice generation needs the live bookshop backend.');
+      globalToast.error('Invoice generation is temporarily unavailable. Please try again later.');
       return;
     }
     setInvoiceModalOpen(true);

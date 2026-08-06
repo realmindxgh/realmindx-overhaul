@@ -1255,7 +1255,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
         {form._requires_reason && (
           <div className="form-group" style={{ marginTop: 16 }}>
             <label className="form-label">Reason for changing your approved profile</label>
-            <textarea className="form-textarea" rows={3} required minLength={8} value={form.change_reason || ''} onChange={event => setForm(prev => ({ ...prev, change_reason: event.target.value }))} placeholder="Explain what changed and why this update is needed. This will be recorded in the audit log." />
+            <textarea className="form-textarea" rows={3} required minLength={8} value={form.change_reason || ''} onChange={event => setForm(prev => ({ ...prev, change_reason: event.target.value }))} placeholder="Explain what changed and why this update is needed. This will be kept in our records." />
             <p className="portal-field-help">Saving will submit your profile for verification again. You can also email info@realmindxgh.com for an authorised team member to help.</p>
           </div>
         )}
@@ -1301,7 +1301,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
     {user.profileStatus === 'verified' && (
       <div style={{ background: '#fff8e1', border: '1px solid #facc15', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
         <label className="form-label">Reason for replacing an approved document</label>
-        <textarea className="form-textarea" rows={3} value={changeReason} onChange={event => setChangeReason(event.target.value)} placeholder="Explain why the document needs to be replaced. This reason will be recorded in the audit log." />
+        <textarea className="form-textarea" rows={3} value={changeReason} onChange={event => setChangeReason(event.target.value)} placeholder="Explain why the document needs to be replaced. This reason will be kept in our records." />
         <p className="portal-field-help">A replacement submits your profile for verification again. For team assistance, email info@realmindxgh.com.</p>
       </div>
     )}
@@ -2133,7 +2133,7 @@ const UserPortalPage = () => {
       }
       let changeReason = suppliedReason;
       if (profileStatus === 'verified' && !changeReason && kind === 'profile_picture') {
-        changeReason = window.prompt('Why are you replacing this approved profile photo? This reason will be recorded in the audit log.') || '';
+        changeReason = window.prompt('Why are you replacing this approved profile photo? This reason will be kept in our records.') || '';
       }
       const result = await api.uploadUserFile(file, kind, changeReason);
       mergeUploadedProfile(result, kind);

@@ -2793,7 +2793,7 @@ const OrderReviewPage = ({ navigate }) => {
     setError('');
     try {
       if (!isApiMode()) {
-        throw new Error('Live order reviews are available on the connected RealMindX backend.');
+        throw new Error('Live order reviews are temporarily unavailable. Please try again later.');
       }
       await api.createOrderReview({
         order_reference: form.orderReference.trim(),

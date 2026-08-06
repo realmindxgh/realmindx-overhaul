@@ -5991,7 +5991,7 @@ const TeacherReviewView = ({ session }) => {
       await refreshDetail();
       await fetchQueue();
       setShowManageModal(false);
-      globalToast.success('Teacher account changes saved and recorded in the audit log.');
+      globalToast.success('Teacher account changes saved in company records.');
     } catch (err) {
       globalToast.error(err?.message || 'Could not save teacher account changes.');
     } finally { setManageSaving(false); }
@@ -6481,7 +6481,7 @@ const TeacherReviewView = ({ session }) => {
           <form className="admin-modal-panel" onSubmit={saveManagedAccount} role="dialog" aria-modal="true" aria-label="Manage teacher account" style={{ width: 'min(720px, 94vw)', maxHeight: '90vh', overflowY: 'auto' }}>
             <button type="button" className="admin-modal-close" onClick={() => setShowManageModal(false)} disabled={manageSaving}><Icon name="x" size={16} /></button>
             <h3>Manage teacher account</h3>
-            <p className="portal-field-help">Authorised staff changes are system-valid and recorded with your staff identity in the audit log.</p>
+            <p className="portal-field-help">Authorised changes take effect immediately and are kept in company records.</p>
             {canManageAccount ? <div className="profile-sections-grid" style={{ marginTop: 18 }}>
               {[['first_name','First name'],['last_name','Last name'],['email','Email'],['phone','Phone']].map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" value={manageForm[key] || ''} onChange={event => setManageForm(prev => ({ ...prev, [key]: event.target.value }))} /></label>)}
               {[['location','Location'],['teaching_subject','Teaching subjects'],['preferred_level','Preferred levels'],['curriculum_experience','Curriculum experience'],['preferred_employment_type','Employment types'],['bio','Professional bio']].map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><textarea className="form-textarea" rows={key === 'bio' ? 4 : 2} value={manageForm[key] || ''} onChange={event => setManageForm(prev => ({ ...prev, [key]: event.target.value }))} /></label>)}
