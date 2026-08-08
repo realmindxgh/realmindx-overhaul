@@ -560,9 +560,13 @@ const Navbar = ({ route, navigate }) => {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [moreOpen, setMoreOpen] = React.useState(false);
   const [moreMenuStyle, setMoreMenuStyle] = React.useState({});
-  const [q, setQ] = React.useState('');
-  const [debouncedQ, setDebouncedQ] = React.useState('');
+  const [navQuery, setNavQuery] = React.useState('');
+  const [menuQuery, setMenuQuery] = React.useState('');
+  const [debouncedNavQuery, setDebouncedNavQuery] = React.useState('');
+  const [debouncedMenuQuery, setDebouncedMenuQuery] = React.useState('');
   const [searchSurface, setSearchSurface] = React.useState('');
+  const [suggestionsSurface, setSuggestionsSurface] = React.useState('');
+  const activeQuery = searchSurface === 'menu' ? menuQuery : navQuery;
   const catsRef = React.useRef(null);
   const catsSearchRef = React.useRef(null);
   const moreRef = React.useRef(null);
@@ -594,6 +598,8 @@ const Navbar = ({ route, navigate }) => {
         setCatsOpen(false);
         if (!suggestionClickRef.current) {
           setSearchSurface('');
+          setMenuQuery('');
+          setSuggestionsSurface('');
         }
       }
       if (moreRef.current && !moreRef.current.contains(e.target)) {
@@ -665,9 +671,14 @@ const Navbar = ({ route, navigate }) => {
   const blurTimerRef = React.useRef(null);
 
   React.useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQ(q), 300);
+    const timer = window.setTimeout(() => setDebouncedNavQuery(navQuery), 300);
     return () => window.clearTimeout(timer);
-  }, [q]);
+  }, [navQuery]);
+
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedMenuQuery(menuQuery), 300);
+    return () => window.clearTimeout(timer);
+  }, [menuQuery]);
 
   React.useEffect(() => {
     return () => {
@@ -676,9 +687,10 @@ const Navbar = ({ route, navigate }) => {
   }, []);
 
   React.useEffect(() => {
-    const t = debouncedQ.trim();
+    const t = (searchSurface === 'menu' ? debouncedMenuQuery : debouncedNavQuery).trim();
     if (t.length < 2) {
       setSuggestions([]);
+      setSuggestionsSurface(searchSurface === 'menu' ? 'menu' : 'nav');
       return;
     }
     if (!isApiMode()) {
@@ -688,6 +700,7 @@ const Navbar = ({ route, navigate }) => {
       )));
       const local = rankByFuzzyMatch(candidates, t, book => [book.title, book.author, book.publisher, book.catName, book.subject, book.levelName, book.curriculumName, ...(book.tags || [])].filter(Boolean).join(' ')).slice(0, 6);
       setSuggestions(local);
+      setSuggestionsSurface(searchSurface === 'menu' ? 'menu' : 'nav');
       return;
     }
     if (abortRef.current) abortRef.current.abort();
@@ -705,13 +718,14 @@ const Navbar = ({ route, navigate }) => {
             imageThumb: p.image_url_thumb || null,
             author: p.author || '',
           })));
+          setSuggestionsSurface(searchSurface === 'menu' ? 'menu' : 'nav');
         }
       })
       .catch(() => {
         if (!controller.signal.aborted) setSuggestions([]);
       });
     return () => controller.abort();
-  }, [books, debouncedQ]);
+  }, [books, searchSurface, debouncedNavQuery, debouncedMenuQuery]);
 
   const go = (r, e) => {
     if (e) e.preventDefault();
@@ -720,29 +734,35 @@ const Navbar = ({ route, navigate }) => {
     setOpenBrowseGroup('');
     setMoreOpen(false);
     setSearchSurface('');
+    setSuggestionsSurface('');
+    setMenuQuery('');
     navigate(r);
   };
 
-  const submitSearch = (e) => {
+  const submitSearch = (e, queryValue) => {
     if (e) e.preventDefault();
-    const t = q.trim();
+    const t = (queryValue !== undefined ? queryValue : activeQuery).trim();
     navigate('shop', t ? { q: t, sq: ++searchSeq.current } : {});
     setCatsOpen(false);
     setOpenBrowseGroup('');
     setMoreOpen(false);
     setSearchSurface('');
+    setSuggestionsSurface('');
+    setMenuQuery('');
   };
 
   const selectSuggestion = (event, book) => {
     event.preventDefault();
     suggestionClickRef.current = false;
-    trackSearchClick({ term: q, productId: book.id, scope: 'bookshop', path: '/bookshop/products', source: 'suggestions' });
+    const term = searchSurface === 'menu' ? menuQuery : navQuery;
+    trackSearchClick({ term, productId: book.id, scope: 'bookshop', path: '/bookshop/products', source: 'suggestions' });
     navigate('product', { id: book.id, slug: productPathSegment(book) });
     setCatsOpen(false);
     setOpenBrowseGroup('');
     setMoreOpen(false);
     setSearchSurface('');
-    setQ('');
+    setSuggestionsSurface('');
+    if (searchSurface === 'menu') setMenuQuery(''); else setNavQuery('');
   };
 
   const quickSubjects = [
@@ -766,8 +786,8 @@ const Navbar = ({ route, navigate }) => {
     { route: 'documents', label: 'Education Documents', icon: 'book', description: 'Browse useful education files' },
   ];
 
-  const showNavSuggestions = suggestions.length > 0 && searchSurface === 'nav';
-  const showMenuSuggestions = suggestions.length > 0 && searchSurface === 'menu';
+  const showNavSuggestions = suggestions.length > 0 && searchSurface === 'nav' && suggestionsSurface === 'nav';
+  const showMenuSuggestions = suggestions.length > 0 && searchSurface === 'menu' && suggestionsSurface === 'menu';
 
   return (
     <>
@@ -776,20 +796,22 @@ const Navbar = ({ route, navigate }) => {
           <Logo href={hrefForRoute('home')} onClick={(e) => go('home', e)} />
 
           <div className="bs-nav-search-wrap">
-            <form className="bs-nav-search" onSubmit={submitSearch} autoComplete="off">
+            <form className="bs-nav-search" onSubmit={(e) => submitSearch(e, navQuery)} autoComplete="off">
               <Icon name="search" size={19} className="bs-search-icn" />
               <input
                 type="search"
                 data-form-icon="none"
-                value={q}
+                value={navQuery}
                 onChange={e => {
-                  setQ(e.target.value);
+                  setNavQuery(e.target.value);
                   setSearchSurface('nav');
+                  setSuggestionsSurface('nav');
                 }}
                 onFocus={() => {
                   suggestionClickRef.current = false;
                   if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
                   setSearchSurface('nav');
+                  setSuggestionsSurface('nav');
                 }}
                 onBlur={() => {
                   if (suggestionClickRef.current) return;
@@ -804,7 +826,7 @@ const Navbar = ({ route, navigate }) => {
                 aria-expanded={showNavSuggestions}
               />
               {/* Submit button — inside the input, right side, visible when query has text */}
-              {q.trim() && (
+              {navQuery.trim() && (
                 <button type="submit" className="bs-search-go" aria-label="Search">
                   <Icon name="arrow" size={15} />
                 </button>
@@ -812,7 +834,7 @@ const Navbar = ({ route, navigate }) => {
             </form>
 
             {/* Live suggestions dropdown */}
-            {showNavSuggestions && <SearchSuggestionList suggestions={suggestions} query={q} onSelect={selectSuggestion} onSubmit={submitSearch} onSuggestionClickStart={() => suggestionClickRef.current = true} />}
+              {showNavSuggestions && <SearchSuggestionList suggestions={suggestions} query={navQuery} onSelect={selectSuggestion} onSubmit={(e) => submitSearch(e, navQuery)} onSuggestionClickStart={() => suggestionClickRef.current = true} />}
           </div>
 
           <div className="bs-nav-actions">
@@ -826,6 +848,10 @@ const Navbar = ({ route, navigate }) => {
                     if (open) setOpenBrowseGroup('');
                     const next = !open;
                     setSearchSurface(next ? 'menu' : '');
+                    if (next) {
+                      setMenuQuery('');
+                      setSuggestionsSurface('');
+                    }
                     return next;
                   });
                 }}
@@ -837,24 +863,26 @@ const Navbar = ({ route, navigate }) => {
               </button>
               <div className={`bs-cats-menu${catsOpen ? ' open' : ''}`}>
                 <div className="bs-cats-search-wrap">
-                  <form className="bs-cats-search-form" onSubmit={submitSearch} autoComplete="off">
+                  <form className="bs-cats-search-form" onSubmit={(e) => submitSearch(e, menuQuery)} autoComplete="off">
                     <Icon name="search" size={18} className="bs-search-icn" />
                     <input
                       type="search"
                       data-form-icon="none"
                       ref={catsSearchRef}
-                      value={q}
+                      value={menuQuery}
                       onChange={event => {
-                        setQ(event.target.value);
+                        setMenuQuery(event.target.value);
                         setSearchSurface('menu');
+                        setSuggestionsSurface('menu');
                       }}
                       onKeyDown={event => {
-                        if (event.key === 'Enter') submitSearch(event);
+                        if (event.key === 'Enter') submitSearch(event, menuQuery);
                       }}
                       onFocus={() => {
                         suggestionClickRef.current = false;
                         if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
                         setSearchSurface('menu');
+                        setSuggestionsSurface('menu');
                       }}
                       onBlur={() => {
                         if (suggestionClickRef.current) return;
@@ -868,7 +896,7 @@ const Navbar = ({ route, navigate }) => {
                       aria-autocomplete="list"
                       aria-expanded={showMenuSuggestions}
                     />
-                    {q.trim() && (
+                    {menuQuery.trim() && (
                       <button type="submit" className="bs-cats-search-go" aria-label="Search">
                         <Icon name="arrow" size={15} />
                       </button>
@@ -879,9 +907,9 @@ const Navbar = ({ route, navigate }) => {
                   <div className="bs-cats-results-scroll">
                     <SearchSuggestionList
                       suggestions={suggestions}
-                      query={q}
+                      query={menuQuery}
                       onSelect={selectSuggestion}
-                      onSubmit={submitSearch}
+                      onSubmit={(e) => submitSearch(e, menuQuery)}
                       className="bs-cats-search-suggestions"
                       onSuggestionClickStart={() => suggestionClickRef.current = true}
                     />
