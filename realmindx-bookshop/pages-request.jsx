@@ -106,8 +106,8 @@ const RequestBookPage = ({ navigate }) => {
             <div className="bs-request-grid">
               <label className="wide"><span>Book title or search term *</span><input value={form.requested_title} onChange={event => update('requested_title', event.target.value)} required /></label>
               <label><span>Your name *</span><input value={form.customer_name} onChange={event => update('customer_name', event.target.value)} required /></label>
-              <label><span>Email address</span><input type="email" value={form.email} onChange={event => update('email', event.target.value)} /></label>
-              <label><span>Phone number</span><input type="tel" value={form.phone} onChange={event => update('phone', event.target.value)} /></label>
+              <label><span>Email address *</span><input type="email" value={form.email} onChange={event => update('email', event.target.value)} /></label>
+              <label><span>Phone number *</span><input type="tel" value={form.phone} onChange={event => update('phone', event.target.value)} /></label>
               <label><span>Author</span><input value={form.author} onChange={event => update('author', event.target.value)} /></label>
               <label><span>Publisher</span><input value={form.publisher} onChange={event => update('publisher', event.target.value)} /></label>
               <label><span>Level or class</span><input value={form.level} onChange={event => update('level', event.target.value)} /></label>
