@@ -4996,6 +4996,88 @@ const DetailSection = ({ title, children }) => (
   </section>
 );
 
+const TeacherAccountManageModal = ({ detail, onClose, canManageAccount, canManageDocuments, canManageVerification, onSaved }) => {
+  const source = detail?.review || detail?.profile || {};
+  const [manageForm, setManageForm] = React.useState(() => ({
+    first_name: detail?.first_name || '',
+    last_name: detail?.last_name || '',
+    email: detail?.email || '',
+    phone: detail?.phone || '',
+    location: source?.location || '',
+    teaching_subject: source?.teaching_subject || '',
+    preferred_level: source?.preferred_level || '',
+    curriculum_experience: source?.curriculum_experience || '',
+    preferred_employment_type: source?.preferred_employment_type || '',
+    bio: source?.bio || '',
+    email_verified: Boolean(detail?.is_verified),
+    phone_verified: Boolean(detail?.phone_verified),
+    reason: '',
+    cv: null,
+    certificate: null,
+  }));
+  const [manageSaving, setManageSaving] = React.useState(false);
+
+  const saveManagedAccount = async event => {
+    event.preventDefault();
+    if (!detail?.id || manageSaving) return;
+    setManageSaving(true);
+    try {
+      const accountChanged = canManageAccount && (
+        manageForm.first_name !== (detail.first_name || '') || manageForm.last_name !== (detail.last_name || '') ||
+        manageForm.email !== (detail.email || '') || manageForm.phone !== (detail.phone || '') ||
+        manageForm.location !== (source?.location || '') || manageForm.teaching_subject !== (source?.teaching_subject || '') ||
+        manageForm.preferred_level !== (source?.preferred_level || '') || manageForm.curriculum_experience !== (source?.curriculum_experience || '') ||
+        manageForm.preferred_employment_type !== (source?.preferred_employment_type || '') || manageForm.bio !== (source?.bio || '')
+      );
+      if (accountChanged) {
+        await api.adminUpdateTeacherAccount(detail.id, {
+          first_name: manageForm.first_name, last_name: manageForm.last_name,
+          email: manageForm.email, phone: manageForm.phone, location: manageForm.location,
+          teaching_subject: manageForm.teaching_subject, preferred_level: manageForm.preferred_level,
+          curriculum_experience: manageForm.curriculum_experience, preferred_employment_type: manageForm.preferred_employment_type,
+          bio: manageForm.bio, reason: manageForm.reason,
+        });
+      }
+      const verificationChanged = canManageVerification && (manageForm.email_verified !== Boolean(detail.is_verified) || manageForm.phone_verified !== Boolean(detail.phone_verified));
+      if (verificationChanged) await api.adminUpdateTeacherVerification(detail.id, { email_verified: manageForm.email_verified, phone_verified: manageForm.phone_verified, reason: manageForm.reason });
+      if (manageForm.cv && canManageDocuments) await api.adminUploadTeacherDocument(detail.id, manageForm.cv, 'cv', manageForm.reason);
+      if (manageForm.certificate && canManageDocuments) await api.adminUploadTeacherDocument(detail.id, manageForm.certificate, 'certificate', manageForm.reason);
+      if (!accountChanged && !verificationChanged && !manageForm.cv && !manageForm.certificate) throw new Error('Make at least one change before saving.');
+      globalToast.success('Teacher account changes saved in company records.');
+      if (onSaved) await onSaved();
+      onClose();
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not save teacher account changes.');
+    } finally {
+      setManageSaving(false);
+    }
+  };
+
+  return (
+    <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 850 }} onMouseDown={event => { if (event.target === event.currentTarget && !manageSaving) onClose(); }}>
+      <form className="admin-modal-panel" onSubmit={saveManagedAccount} role="dialog" aria-modal="true" aria-label="Manage teacher account" style={{ width: 'min(720px, 94vw)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <button type="button" className="admin-modal-close" onClick={onClose} disabled={manageSaving}><Icon name="x" size={16} /></button>
+        <h3>Manage teacher account</h3>
+        <p className="portal-field-help">Authorised changes take effect immediately and are kept in company records.</p>
+        {canManageAccount ? <div className="profile-sections-grid" style={{ marginTop: 18 }}>
+          {[['first_name','First name'],['last_name','Last name'],['email','Email'],['phone','Phone']].map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" value={manageForm[key] || ''} onChange={event => setManageForm(prev => ({ ...prev, [key]: event.target.value }))} /></label>)}
+          {[['location','Location'],['teaching_subject','Teaching subjects'],['preferred_level','Preferred levels'],['curriculum_experience','Curriculum experience'],['preferred_employment_type','Employment types'],['bio','Professional bio']].map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><textarea className="form-textarea" rows={key === 'bio' ? 4 : 2} value={manageForm[key] || ''} onChange={event => setManageForm(prev => ({ ...prev, [key]: event.target.value }))} /></label>)}
+        </div> : null}
+        {canManageVerification ? <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', margin: '16px 0' }}>
+          <label className="portal-checkbox-row"><input type="checkbox" checked={Boolean(manageForm.email_verified)} onChange={event => setManageForm(prev => ({ ...prev, email_verified: event.target.checked }))} /> Email verified by RealMindX</label>
+          <label className="portal-checkbox-row"><input type="checkbox" checked={Boolean(manageForm.phone_verified)} onChange={event => setManageForm(prev => ({ ...prev, phone_verified: event.target.checked }))} /> Phone verified by RealMindX</label>
+        </div> : null}
+        {canManageDocuments ? <div className="profile-sections-grid" style={{ marginTop: 16 }}>
+          <label className="form-group"><span className="form-label">Replace CV</span><input type="file" className="form-input" accept=".pdf,.doc,.docx" onChange={event => setManageForm(prev => ({ ...prev, cv: event.target.files?.[0] || null }))} /></label>
+          <label className="form-group"><span className="form-label">Replace certificate</span><input type="file" className="form-input" accept=".pdf,.doc,.docx" onChange={event => setManageForm(prev => ({ ...prev, certificate: event.target.files?.[0] || null }))} /></label>
+        </div> : null}
+        <label className="form-group" style={{ marginTop: 18 }}><span className="form-label">Reason for this authorised change</span><textarea className="form-textarea" rows={3} required minLength={8} value={manageForm.reason || ''} onChange={event => setManageForm(prev => ({ ...prev, reason: event.target.value }))} placeholder="Explain the request and why this staff-assisted change is authorised." /></label>
+        <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}><button className="btn btn-primary" disabled={manageSaving}>{manageSaving ? 'Saving...' : 'Save and audit changes'}</button><button type="button" className="btn btn-outline-navy" onClick={onClose}>Cancel</button></div>
+      </form>
+    </div>
+  );
+};
+
 const TeachersView = ({ session }) => {
   const [teachers, setTeachers] = React.useState(null);
   const [teacherSummary, setTeacherSummary] = React.useState(null);
@@ -5010,6 +5092,7 @@ const TeachersView = ({ session }) => {
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = React.useState(false);
   const [detail, setDetail] = React.useState(null); // full profile object for the modal
   const [detailLoading, setDetailLoading] = React.useState(false);
+  const [showManageModal, setShowManageModal] = React.useState(false);
   const [toggling, setToggling] = React.useState(null); // user id currently being toggled
   const emptyPayoutForm = React.useMemo(() => ({
     payout_method: '',
@@ -5031,6 +5114,9 @@ const TeachersView = ({ session }) => {
   const canEditTeachers = hasSessionPermission(session, 'teachers.edit');
   const canDeleteTeachers = hasSessionPermission(session, 'teachers.delete');
   const canExportTeachers = hasSessionPermission(session, 'teachers.export');
+  const canManageAccount = hasSessionPermission(session, 'teachers.account.manage');
+  const canManageDocuments = hasSessionPermission(session, 'teachers.documents.manage');
+  const canManageVerification = hasSessionPermission(session, 'teachers.verification.manage');
 
   const reload = React.useCallback(() => {
     if (!isApiMode()) return;
@@ -5634,6 +5720,18 @@ const TeachersView = ({ session }) => {
 
             {/* Modal footer */}
             <footer className="teacher-detail-modal-footer">
+              {(canManageAccount || canManageDocuments || canManageVerification) ? (
+                <button
+                  className="btn btn-outline-navy btn-sm teacher-detail-footer-action is-manage"
+                  type="button"
+                  onClick={() => setShowManageModal(true)}
+                  aria-label="Manage teacher account"
+                  title="Manage teacher account"
+                >
+                  <Icon name="edit" size={16} />
+                  <span>Manage Account</span>
+                </button>
+              ) : null}
               {canDeleteTeachers ? (
                 <button
                   className="btn btn-danger btn-sm teacher-detail-footer-action is-delete"
@@ -5667,6 +5765,16 @@ const TeachersView = ({ session }) => {
           </div>
         </div>
       )}
+      {showManageModal && detail ? (
+        <TeacherAccountManageModal
+          detail={detail}
+          onClose={() => setShowManageModal(false)}
+          canManageAccount={canManageAccount}
+          canManageDocuments={canManageDocuments}
+          canManageVerification={canManageVerification}
+          onSaved={async () => { reload(); if (detail?.id) await openDetail(detail); }}
+        />
+      ) : null}
     </div>
   );
 };
@@ -5878,8 +5986,6 @@ const TeacherReviewView = ({ session }) => {
   const [reopenSaving, setReopenSaving] = React.useState(false);
   const [viewerFile, setViewerFile] = React.useState(null);
   const [showManageModal, setShowManageModal] = React.useState(false);
-  const [manageForm, setManageForm] = React.useState({});
-  const [manageSaving, setManageSaving] = React.useState(false);
 
   const closeDetail = React.useCallback(() => {
     detailReqRef.current += 1;
@@ -5948,54 +6054,6 @@ const TeacherReviewView = ({ session }) => {
   const canManageAccount = hasSessionPermission(session, 'teachers.account.manage');
   const canManageDocuments = hasSessionPermission(session, 'teachers.documents.manage');
   const canManageVerification = hasSessionPermission(session, 'teachers.verification.manage');
-
-  const openManageModal = () => {
-    setManageForm({
-      first_name: detail?.first_name || '', last_name: detail?.last_name || '',
-      email: detail?.email || '', phone: detail?.phone || '',
-      location: detail?.review?.location || '', teaching_subject: detail?.review?.teaching_subject || '',
-      preferred_level: detail?.review?.preferred_level || '', curriculum_experience: detail?.review?.curriculum_experience || '',
-      preferred_employment_type: detail?.review?.preferred_employment_type || '', bio: detail?.review?.bio || '',
-      email_verified: Boolean(detail?.is_verified), phone_verified: Boolean(detail?.phone_verified),
-      reason: '', cv: null, certificate: null,
-    });
-    setShowManageModal(true);
-  };
-
-  const saveManagedAccount = async event => {
-    event.preventDefault();
-    if (!detail?.id || manageSaving) return;
-    setManageSaving(true);
-    try {
-      const accountChanged = canManageAccount && (
-        manageForm.first_name !== (detail.first_name || '') || manageForm.last_name !== (detail.last_name || '') ||
-        manageForm.email !== (detail.email || '') || manageForm.phone !== (detail.phone || '') ||
-        manageForm.location !== (detail.review?.location || '') || manageForm.teaching_subject !== (detail.review?.teaching_subject || '') ||
-        manageForm.preferred_level !== (detail.review?.preferred_level || '') || manageForm.curriculum_experience !== (detail.review?.curriculum_experience || '') ||
-        manageForm.preferred_employment_type !== (detail.review?.preferred_employment_type || '') || manageForm.bio !== (detail.review?.bio || '')
-      );
-      if (accountChanged) {
-        await api.adminUpdateTeacherAccount(detail.id, {
-          first_name: manageForm.first_name, last_name: manageForm.last_name,
-          email: manageForm.email, phone: manageForm.phone, location: manageForm.location,
-          teaching_subject: manageForm.teaching_subject, preferred_level: manageForm.preferred_level,
-          curriculum_experience: manageForm.curriculum_experience, preferred_employment_type: manageForm.preferred_employment_type,
-          bio: manageForm.bio, reason: manageForm.reason,
-        });
-      }
-      const verificationChanged = canManageVerification && (manageForm.email_verified !== Boolean(detail.is_verified) || manageForm.phone_verified !== Boolean(detail.phone_verified));
-      if (verificationChanged) await api.adminUpdateTeacherVerification(detail.id, { email_verified: manageForm.email_verified, phone_verified: manageForm.phone_verified, reason: manageForm.reason });
-      if (manageForm.cv && canManageDocuments) await api.adminUploadTeacherDocument(detail.id, manageForm.cv, 'cv', manageForm.reason);
-      if (manageForm.certificate && canManageDocuments) await api.adminUploadTeacherDocument(detail.id, manageForm.certificate, 'certificate', manageForm.reason);
-      if (!accountChanged && !verificationChanged && !manageForm.cv && !manageForm.certificate) throw new Error('Make at least one change before saving.');
-      await refreshDetail();
-      await fetchQueue();
-      setShowManageModal(false);
-      globalToast.success('Teacher account changes saved in company records.');
-    } catch (err) {
-      globalToast.error(err?.message || 'Could not save teacher account changes.');
-    } finally { setManageSaving(false); }
-  };
 
   const openDetail = async (item) => {
     const seq = ++detailReqRef.current;
@@ -6447,7 +6505,7 @@ const TeacherReviewView = ({ session }) => {
 
                     <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 20, marginTop: 8 }}>
                       {(canManageAccount || canManageDocuments || canManageVerification) ? (
-                        <button type="button" className="btn btn-outline-navy" onClick={openManageModal} style={{ marginBottom: 12 }}>
+                        <button type="button" className="btn btn-outline-navy" onClick={() => setShowManageModal(true)} style={{ marginBottom: 12 }}>
                           <Icon name="edit" size={15} /> Manage teacher account
                         </button>
                       ) : null}
@@ -6476,28 +6534,15 @@ const TeacherReviewView = ({ session }) => {
         </div>
       ) : null}
 
-      {showManageModal ? (
-        <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 850 }} onMouseDown={event => { if (event.target === event.currentTarget && !manageSaving) setShowManageModal(false); }}>
-          <form className="admin-modal-panel" onSubmit={saveManagedAccount} role="dialog" aria-modal="true" aria-label="Manage teacher account" style={{ width: 'min(720px, 94vw)', maxHeight: '90vh', overflowY: 'auto' }}>
-            <button type="button" className="admin-modal-close" onClick={() => setShowManageModal(false)} disabled={manageSaving}><Icon name="x" size={16} /></button>
-            <h3>Manage teacher account</h3>
-            <p className="portal-field-help">Authorised changes take effect immediately and are kept in company records.</p>
-            {canManageAccount ? <div className="profile-sections-grid" style={{ marginTop: 18 }}>
-              {[['first_name','First name'],['last_name','Last name'],['email','Email'],['phone','Phone']].map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><input className="form-input" value={manageForm[key] || ''} onChange={event => setManageForm(prev => ({ ...prev, [key]: event.target.value }))} /></label>)}
-              {[['location','Location'],['teaching_subject','Teaching subjects'],['preferred_level','Preferred levels'],['curriculum_experience','Curriculum experience'],['preferred_employment_type','Employment types'],['bio','Professional bio']].map(([key,label]) => <label className="form-group" key={key}><span className="form-label">{label}</span><textarea className="form-textarea" rows={key === 'bio' ? 4 : 2} value={manageForm[key] || ''} onChange={event => setManageForm(prev => ({ ...prev, [key]: event.target.value }))} /></label>)}
-            </div> : null}
-            {canManageVerification ? <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', margin: '16px 0' }}>
-              <label className="portal-checkbox-row"><input type="checkbox" checked={Boolean(manageForm.email_verified)} onChange={event => setManageForm(prev => ({ ...prev, email_verified: event.target.checked }))} /> Email verified by RealMindX</label>
-              <label className="portal-checkbox-row"><input type="checkbox" checked={Boolean(manageForm.phone_verified)} onChange={event => setManageForm(prev => ({ ...prev, phone_verified: event.target.checked }))} /> Phone verified by RealMindX</label>
-            </div> : null}
-            {canManageDocuments ? <div className="profile-sections-grid" style={{ marginTop: 16 }}>
-              <label className="form-group"><span className="form-label">Replace CV</span><input type="file" className="form-input" accept=".pdf,.doc,.docx" onChange={event => setManageForm(prev => ({ ...prev, cv: event.target.files?.[0] || null }))} /></label>
-              <label className="form-group"><span className="form-label">Replace certificate</span><input type="file" className="form-input" accept=".pdf,.doc,.docx" onChange={event => setManageForm(prev => ({ ...prev, certificate: event.target.files?.[0] || null }))} /></label>
-            </div> : null}
-            <label className="form-group" style={{ marginTop: 18 }}><span className="form-label">Reason for this authorised change</span><textarea className="form-textarea" rows={3} required minLength={8} value={manageForm.reason || ''} onChange={event => setManageForm(prev => ({ ...prev, reason: event.target.value }))} placeholder="Explain the request and why this staff-assisted change is authorised." /></label>
-            <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}><button className="btn btn-primary" disabled={manageSaving}>{manageSaving ? 'Saving...' : 'Save and audit changes'}</button><button type="button" className="btn btn-outline-navy" onClick={() => setShowManageModal(false)}>Cancel</button></div>
-          </form>
-        </div>
+      {showManageModal && detail ? (
+        <TeacherAccountManageModal
+          detail={detail}
+          onClose={() => setShowManageModal(false)}
+          canManageAccount={canManageAccount}
+          canManageDocuments={canManageDocuments}
+          canManageVerification={canManageVerification}
+          onSaved={async () => { await refreshDetail(); await fetchQueue(); }}
+        />
       ) : null}
 
       {showRevisionModal ? (
