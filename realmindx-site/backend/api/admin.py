@@ -6476,14 +6476,14 @@ NEWSLETTER_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 NEWSLETTER_IMAGE_RE = re.compile(r"^!\[(?:(left|right|full):)?([^\]]*)\]\(([^)\s]+)\)$", re.IGNORECASE)
 
 
-def _absolute_newsletter_url(raw_url):
+def _absolute_newsletter_url(raw_url, base_url=None):
     value = (raw_url or "").strip()
     if not value:
         return ""
     if value.startswith(("http://", "https://", "mailto:", "tel:")):
         return value
-    base_url = current_app.config.get("BASE_URL", "https://realmindxgh.com").rstrip("/")
-    return f"{base_url}/{value.lstrip('/')}"
+    origin = (base_url or current_app.config.get("BASE_URL", "https://realmindxgh.com")).rstrip("/")
+    return f"{origin}/{value.lstrip('/')}"
 
 
 def _render_newsletter_inline(text):
@@ -6551,7 +6551,7 @@ def _render_newsletter_body(body):
     )
 
 
-def _render_newsletter_sections(sections):
+def _render_newsletter_sections(sections, *, asset_base_url=None):
     if not isinstance(sections, list) or not sections:
         return ""
     blocks = []
@@ -6581,7 +6581,7 @@ def _render_newsletter_sections(sections):
 
         image_html = ""
         if image_url:
-            safe_url = escape(_absolute_newsletter_url(image_url), quote=True)
+            safe_url = escape(_absolute_newsletter_url(image_url, asset_base_url), quote=True)
             image_width = {"small": 180, "medium": 260, "large": 340}[image_size]
             if position == "full":
                 image_width = 576
@@ -6684,7 +6684,8 @@ def preview_newsletter_campaign():
     title = (payload.get("title") or subject).strip()
     body = (payload.get("body") or "").strip()
     sections = payload.get("sections") or []
-    body_html = _render_newsletter_sections(sections) if sections else _render_newsletter_body(body)
+    preview_asset_origin = request.host_url.rstrip("/")
+    body_html = _render_newsletter_sections(sections, asset_base_url=preview_asset_origin) if sections else _render_newsletter_body(body)
     if not body_html.strip():
         body_html = '<p style="margin:0;color:#53657d;">Your newsletter content will appear here.</p>'
 

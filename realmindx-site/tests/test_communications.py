@@ -859,6 +859,7 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         self.assertIn("Formatted preview", data["html"])
         self.assertIn('width="576"', data["html"])
         self.assertIn("width:100%;max-width:100%", data["html"])
+        self.assertIn('src="http://localhost/uploads/public/images/preview.jpg"', data["html"])
 
     def test_deleting_newsletter_history_does_not_delete_initiating_user(self):
         from backend.models import NewsletterCampaign
