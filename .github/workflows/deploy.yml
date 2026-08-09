@@ -68,6 +68,8 @@ jobs:
           WHATSAPP_OTP_TEMPLATE_NAME: ${{ vars.WHATSAPP_OTP_TEMPLATE_NAME }}
           WHATSAPP_OTP_TEMPLATE_LANGUAGE: ${{ vars.WHATSAPP_OTP_TEMPLATE_LANGUAGE }}
           WHATSAPP_GRAPH_API_VERSION: ${{ vars.WHATSAPP_GRAPH_API_VERSION }}
+          GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
+          BING_SITE_VERIFICATION: ${{ vars.BING_SITE_VERIFICATION }}
         run: |
           set -e
           cd /var/www/realmindx
@@ -152,6 +154,8 @@ jobs:
           upsert_env_var "WHATSAPP_OTP_TEMPLATE_NAME" "$WHATSAPP_OTP_TEMPLATE_NAME"
           upsert_env_var "WHATSAPP_OTP_TEMPLATE_LANGUAGE" "$WHATSAPP_OTP_TEMPLATE_LANGUAGE"
           upsert_env_var "WHATSAPP_GRAPH_API_VERSION" "$WHATSAPP_GRAPH_API_VERSION"
+          upsert_env_var "GOOGLE_SITE_VERIFICATION" "$GOOGLE_SITE_VERIFICATION"
+          upsert_env_var "BING_SITE_VERIFICATION" "$BING_SITE_VERIFICATION"
 
           echo "── Running database migrations ──"
           cd realmindx-site
@@ -234,4 +238,19 @@ jobs:
           echo "── Reloading nginx ──"
           systemctl reload nginx
 
+          echo "Running post-deploy SEO and AI-search smoke checks"
+          python3 scripts/seo_smoke_check.py --sample-size 12
+
           echo "✓ Deployment complete"
+
+      - name: Email deployment failure alert
+        if: failure()
+        continue-on-error: true
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SEO_ALERT_TO: info@realmindxgh.com
+          SEO_ALERT_FROM: RealMindX Monitoring <notifications@send.realmindxgh.com>
+        run: >-
+          python3 scripts/send_workflow_failure_email.py
+          --workflow "deployment or post-deployment SEO check"
+          --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

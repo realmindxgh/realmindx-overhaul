@@ -216,11 +216,15 @@ const ApplyStateError = ({ message, onClose }) => (
 );
 
 /* â”€â”€ Job Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const JobCard = ({ job, onOpen }) => (
-  <div className="job-card" onClick={() => onOpen(job)}>
+const jobPath = job => `/jobs/${job.id}-${String(job.title || 'teaching-job').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
+const JobCard = ({ job }) => (
+  <article className="job-card" onClick={event => {
+    if (!event.target.closest('a')) window.location.assign(jobPath(job));
+  }}>
     <div className="job-card-header">
       <div>
-        <div className="job-card-title">{job.title}</div>
+        <div className="job-card-title"><a href={jobPath(job)}>{job.title}</a></div>
         <div className="job-card-school">{job.school}</div>
       </div>
       <div className="job-school-logo">{job.logo}</div>
@@ -237,11 +241,11 @@ const JobCard = ({ job, onOpen }) => (
         {job.posted && <span className="job-deadline">Date Posted: {job.posted}</span>}
         {job.deadline && <span className="job-deadline">Application deadline: {job.deadline}</span>}
       </div>
-      <button className="btn btn-primary btn-sm" onClick={e => { e.stopPropagation(); onOpen(job); }}>
+      <a className="btn btn-primary btn-sm" href={jobPath(job)}>
         View & Apply
-      </button>
+      </a>
     </div>
-  </div>
+  </article>
 );
 
 /* â”€â”€ Job Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -581,6 +585,25 @@ const JobsPage = () => {
     try { return localStorage.getItem(JOB_ALERT_MODAL_KEY) !== '1'; } catch { return true; }
   });
 
+  React.useEffect(() => {
+    if (isLoadingJobs) return;
+    const match = /^\/jobs\/(\d+)(?:-|$)/.exec(window.location.pathname);
+    if (!match) return;
+    const requestedJob = jobs.find(job => String(job.id) === match[1]);
+    if (requestedJob) {
+      setSelectedJob(requestedJob);
+      setApplyState('idle');
+      setApplyError('');
+    } else if (isApiMode()) {
+      fetch(`/api/jobs/${match[1]}`, { credentials: 'include' })
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+          if (data?.job) setSelectedJob(normaliseJob(data.job));
+        })
+        .catch(() => {});
+    }
+  }, [isLoadingJobs, apiJobs]);
+
   const dismissAlertModal = () => {
     setShowAlertModal(false);
     try { localStorage.setItem(JOB_ALERT_MODAL_KEY, '1'); } catch {}
@@ -628,8 +651,6 @@ const JobsPage = () => {
       : currentPage >= totalPages - 3
         ? [1, '…', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
         : [1, '…', currentPage - 1, currentPage, currentPage + 1, '…', totalPages];
-
-  const openJob = (job) => { setSelectedJob(job); setApplyState('idle'); setApplyError(''); };
 
   const handleApply = async () => {
     if (!isTeacherLoggedIn) {
@@ -788,7 +809,7 @@ const JobsPage = () => {
               : sorted.length === 0
                 ? (hasActiveFilters ? <EmptyJobs onClear={clearFilters} /> : <NoJobsAvailable isLoggedIn={isTeacherLoggedIn} />)
                 : pageJobs.map(job => (
-                    <JobCard key={job.id} job={job} onOpen={openJob} />
+                    <JobCard key={job.id} job={job} />
                   ))
             }
 
@@ -820,7 +841,10 @@ const JobsPage = () => {
       {selectedJob && (
         <JobModal
           job={selectedJob}
-          onClose={() => setSelectedJob(null)}
+          onClose={() => {
+            if (window.location.pathname.startsWith('/jobs/')) window.location.assign('/jobs');
+            else setSelectedJob(null);
+          }}
           applyState={applyState}
           applyError={applyError}
           onApply={handleApply}

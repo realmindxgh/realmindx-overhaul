@@ -4,18 +4,8 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate,
 
 import '../realmindx-site/assets/styles.css';
 import '../realmindx-site/styles/pages.css';
-import '../realmindx-bookshop/styles/bookshop.css';
 import './route-fixes.css';
 
-import HomePage from '../realmindx-site/assets/app.jsx';
-import AboutPage from '../realmindx-site/pages/AboutPage.jsx';
-import ServicesPage, { ServiceDetailPage } from '../realmindx-site/pages/ServicesPage.jsx';
-import ContactPage from '../realmindx-site/pages/ContactPage.jsx';
-import JobsPage from '../realmindx-site/pages/JobsPage.jsx';
-import UserPortalPage from '../realmindx-site/pages/UserPortalPage.jsx';
-import AdminPortalPage from '../realmindx-site/pages/AdminPortalPage.jsx';
-import DeliveryPortalPage from '../realmindx-site/pages/DeliveryPortalPage.jsx';
-import { AdminLoginPage, PasswordResetPage, StaffLoginPage, UserLoginPage } from '../realmindx-site/pages/AuthPages.jsx';
 import { Nav, Footer } from '../realmindx-site/components/NavFooter.jsx';
 import { Icon } from '../realmindx-site/assets/components.jsx';
 import { usePublicGalleryState, usePublicNewsState, usePublicServices, usePublicServicesState, useSiteCopy, renderTextWithLinks } from './lib/siteContent.js';
@@ -24,8 +14,6 @@ import { trackNewsServiceClick, trackPageView } from './lib/analytics.js';
 import { setFavicons, setHeadLink, setHeadMeta, setStructuredData } from './lib/head.js';
 import { newsPath, servicePath, SITE_BASE_URL, SITE_DEFAULT_IMAGE, slugify } from './lib/seoRoutes.js';
 
-import BookshopApp from '../realmindx-bookshop/BookshopApp.jsx';
-import DonatePage from '../realmindx-site/pages/DonatePage.jsx';
 import { publicItems, useManagedContent } from './lib/managedContent.js';
 import { useIdleTimeout } from './lib/useIdleTimeout.js';
 import { IdleWarning } from './lib/IdleWarning.jsx';
@@ -34,6 +22,28 @@ import { getDemoSession } from './lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from './lib/authClient.js';
 import { loginPathForRole } from './lib/sessionRoutes.js';
 import { flushQueuedToast, queueToast } from './lib/toast.js';
+
+const HomePage = React.lazy(() => import('../realmindx-site/assets/app.jsx'));
+const AboutPage = React.lazy(() => import('../realmindx-site/pages/AboutPage.jsx'));
+const ServicesPage = React.lazy(() => import('../realmindx-site/pages/ServicesPage.jsx').then(module => ({ default: module.default })));
+const ServiceDetailPage = React.lazy(() => import('../realmindx-site/pages/ServicesPage.jsx').then(module => ({ default: module.ServiceDetailPage })));
+const ContactPage = React.lazy(() => import('../realmindx-site/pages/ContactPage.jsx'));
+const JobsPage = React.lazy(() => import('../realmindx-site/pages/JobsPage.jsx'));
+const UserPortalPage = React.lazy(() => import('../realmindx-site/pages/UserPortalPage.jsx'));
+const AdminPortalPage = React.lazy(() => import('../realmindx-site/pages/AdminPortalPage.jsx'));
+const DeliveryPortalPage = React.lazy(() => import('../realmindx-site/pages/DeliveryPortalPage.jsx'));
+const UserLoginPage = React.lazy(() => import('../realmindx-site/pages/AuthPages.jsx').then(module => ({ default: module.UserLoginPage })));
+const AdminLoginPage = React.lazy(() => import('../realmindx-site/pages/AuthPages.jsx').then(module => ({ default: module.AdminLoginPage })));
+const StaffLoginPage = React.lazy(() => import('../realmindx-site/pages/AuthPages.jsx').then(module => ({ default: module.StaffLoginPage })));
+const PasswordResetPage = React.lazy(() => import('../realmindx-site/pages/AuthPages.jsx').then(module => ({ default: module.PasswordResetPage })));
+const BookshopApp = React.lazy(() => import('../realmindx-bookshop/BookshopApp.jsx'));
+const DonatePage = React.lazy(() => import('../realmindx-site/pages/DonatePage.jsx'));
+
+const RouteLoading = () => (
+  <main className="route-page" aria-busy="true" aria-live="polite">
+    <div className="container" style={{ padding: '96px 20px', textAlign: 'center' }}>Loading…</div>
+  </main>
+);
 
 
 const SiteInfoPage = ({ activePage = '', eyebrow = 'RealMindX', title, body, actions = [], cards = [], children }) => (
@@ -729,11 +739,15 @@ const RouteTitle = () => {
   React.useEffect(() => {
     const path = location.pathname.replace(/\/$/, '') || '/';
     if (path.startsWith('/bookshop')) return; // handled by BookshopApp
+    if (path.startsWith('/jobs/')) return; // server-rendered job metadata remains authoritative
     let meta = PAGE_META[path] || { title: 'RealMindX Education', desc: "Ghana's educational services provider: teacher recruitment, bookshop, CPD, school transformation and more." };
     let canonicalPath = path;
     let image = DEFAULT_IMG;
     let structuredData = null;
-    let robots = shouldNoIndexPath(path) ? 'noindex,follow' : 'index,follow';
+    const knownDynamicPath = path.startsWith('/services/') || path.startsWith('/news/');
+    let robots = shouldNoIndexPath(path) || (!PAGE_META[path] && !knownDynamicPath)
+      ? 'noindex,follow'
+      : 'index,follow';
 
     if (path.startsWith('/admin')) {
       meta = { title: 'RealMindX Admin - RealMindX Education', desc: 'Secure RealMindX administration portal.' };
@@ -1124,7 +1138,7 @@ const AppRoutes = () => {
         <FlyerFocusModal />
         <InstallAppPrompt />
         <InstalledSurfaceLinkGuard />
-        <BookshopApp />
+        <React.Suspense fallback={<RouteLoading />}><BookshopApp /></React.Suspense>
       </>
     );
   }
@@ -1139,6 +1153,7 @@ const AppRoutes = () => {
       <SessionBridge />
       <IdleGuard />
       <HashScroll>
+        <React.Suspense fallback={<RouteLoading />}>
         <Routes>
         <Route path="/" element={isDeliverySubdomain ? <Navigate to="/manager/login" replace /> : <HomePage />} />
         <Route path="/about" element={<AboutPage />} />
@@ -1146,6 +1161,7 @@ const AppRoutes = () => {
         <Route path="/services/:serviceSlug" element={<ServiceDetailPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/jobs" element={<JobsPage />} />
+        <Route path="/jobs/:jobId" element={<JobsPage />} />
         <Route path="/login" element={<UserLoginPage />} />
         <Route path="/register" element={<RegisterRoute />} />
         <Route path="/reset-password" element={<PasswordResetPage />} />
@@ -1209,6 +1225,7 @@ const AppRoutes = () => {
           element={<NotFoundPage />}
         />
         </Routes>
+        </React.Suspense>
       </HashScroll>
     </BrowserRouter>
   </>

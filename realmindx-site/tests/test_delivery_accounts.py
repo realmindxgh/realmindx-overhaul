@@ -13,7 +13,7 @@ if str(SITE_ROOT) not in sys.path:
 
 from backend import create_app
 from backend.api.bookshop import order_tracking_json
-from backend.analytics import build_analytics_dashboard
+from backend.analytics import _source_from_referrer, build_analytics_dashboard
 from backend.config import Config
 from backend.delivery_service import (
     DeliveryError,
@@ -28,7 +28,7 @@ from backend.delivery_service import (
     verify_delivery_otp,
 )
 from backend.extensions import db
-from backend.models import AuditLog, DeliverySettlementLine, Order, PlatformTermsAcceptance, Product, ProductCategory, Resource, Role, UploadedFile, User
+from backend.models import AuditLog, DeliverySettlementLine, Job, Order, PlatformTermsAcceptance, Product, ProductCategory, Resource, Role, UploadedFile, User
 from backend.security import DEFAULT_TEMPORARY_PASSWORD
 
 
@@ -76,6 +76,12 @@ class DeliveryAccountTests(unittest.TestCase):
         db.session.add(order)
         db.session.flush()
         return order
+
+    def test_ai_search_referrers_are_classified_separately(self):
+        with self.app.test_request_context("/", base_url="http://localhost"):
+            self.assertEqual(_source_from_referrer("https://chatgpt.com/c/answer"), ("ChatGPT", "ai_search"))
+            self.assertEqual(_source_from_referrer("https://www.perplexity.ai/search/example"), ("Perplexity", "ai_search"))
+            self.assertEqual(_source_from_referrer(None, explicit_source="claude.ai"), ("Claude", "ai_search"))
 
     def _complete_delivery(self, order, company, rider, otp_value="654321", **assignment):
         delivery = assign_order_to_company(order, company, ("admin", 1), **assignment)
@@ -550,6 +556,17 @@ class DeliveryAccountTests(unittest.TestCase):
             self.assertIn('content="index, follow"', document, path)
             self.assertIn(f'href="https://bookshop.realmindxgh.com{path}"', document, path)
 
+        product_document = client.get(
+            "/products/mathematics-practice-book",
+            headers={"Host": "bookshop.realmindxgh.com"},
+        ).get_data(as_text=True)
+        self.assertIn("GH&#8373; 45.00", product_document)
+        self.assertIn('data-seo-prerendered="bookshop-product"', product_document)
+        subject_landing = client.get("/subjects", headers={"Host": "bookshop.realmindxgh.com"}).get_data(as_text=True)
+        self.assertIn('href="/subjects/mathematics"', subject_landing)
+        subject_detail = client.get("/subjects/mathematics", headers={"Host": "bookshop.realmindxgh.com"}).get_data(as_text=True)
+        self.assertIn('href="/products/mathematics-practice-book"', subject_detail)
+
         sitemap = client.get("/sitemap.xml", headers={"Host": "bookshop.realmindxgh.com"}).get_data(as_text=True)
         self.assertIn("/products/mathematics-practice-book", sitemap)
         self.assertIn("/categories/mathematics", sitemap)
@@ -619,6 +636,91 @@ class DeliveryAccountTests(unittest.TestCase):
             document = response.get_data(as_text=True)
             self.assertIn('content="noindex, nofollow"', document, path)
             self.assertIn(f'href="https://realmindxgh.com{path.rstrip("/")}"', document, path)
+
+    def test_seo_routes_reject_invalid_pages_and_redirect_old_product_slugs(self):
+        product = Product(
+            name="Canonical Mathematics Book",
+            slug="canonical-mathematics-book",
+            price=60,
+            stock_status="in_stock",
+            quantity_available=5,
+            subject="Mathematics",
+            is_active=True,
+        )
+        db.session.add(product)
+        db.session.commit()
+        client = self.app.test_client()
+
+        old_slug = client.get(
+            f"/products/old-mathematics-title-{product.id}",
+            headers={"Host": "bookshop.realmindxgh.com"},
+        )
+        self.assertEqual(old_slug.status_code, 301)
+        self.assertEqual(old_slug.headers["Location"], "https://bookshop.realmindxgh.com/products/canonical-mathematics-book")
+
+        invalid_taxonomy = client.get("/subjects/not-a-real-subject", headers={"Host": "bookshop.realmindxgh.com"})
+        self.assertEqual(invalid_taxonomy.status_code, 404)
+        self.assertEqual(invalid_taxonomy.headers["X-Robots-Tag"], "noindex, follow")
+        self.assertIn('content="noindex, follow"', invalid_taxonomy.get_data(as_text=True))
+
+        unknown = client.get("/not-a-real-page", headers={"Host": "realmindxgh.com"})
+        self.assertEqual(unknown.status_code, 404)
+        self.assertEqual(unknown.headers["X-Robots-Tag"], "noindex, follow")
+
+    def test_private_html_pages_are_crawlable_noindex(self):
+        client = self.app.test_client()
+        for host, path in [
+            ("realmindxgh.com", "/login"),
+            ("realmindxgh.com", "/portal/profile"),
+            ("bookshop.realmindxgh.com", "/cart"),
+            ("bookshop.realmindxgh.com", "/account"),
+        ]:
+            response = client.get(path, headers={"Host": host})
+            self.assertEqual(response.status_code, 200, path)
+            self.assertEqual(response.headers["X-Robots-Tag"], "noindex, nofollow", path)
+        main_robots = client.get("/robots.txt", headers={"Host": "realmindxgh.com"}).get_data(as_text=True)
+        bookshop_robots = client.get("/robots.txt", headers={"Host": "bookshop.realmindxgh.com"}).get_data(as_text=True)
+        self.assertNotIn("Disallow: /login", main_robots)
+        self.assertNotIn("Disallow: /cart", bookshop_robots)
+
+    def test_webmaster_verification_tags_render_when_configured(self):
+        self.app.config["GOOGLE_SITE_VERIFICATION"] = "google-test-token"
+        self.app.config["BING_SITE_VERIFICATION"] = "bing-test-token"
+        document = self.app.test_client().get("/about", headers={"Host": "realmindxgh.com"}).get_data(as_text=True)
+        self.assertIn('name="google-site-verification" content="google-test-token"', document)
+        self.assertIn('name="msvalidate.01" content="bing-test-token"', document)
+
+    def test_published_job_has_indexable_detail_page_schema_and_sitemap_entry(self):
+        job = Job(
+            title="Mathematics Teacher",
+            organisation="Example Academy",
+            location="Accra",
+            subject="Mathematics",
+            level="JHS",
+            employment_type="FULL_TIME",
+            description="Teach Mathematics and support learner progress.",
+            requirements="Teaching qualification\nNTC licence",
+            deadline=date.today() + timedelta(days=30),
+            status="published",
+        )
+        db.session.add(job)
+        db.session.commit()
+        client = self.app.test_client()
+        path = f"/jobs/{job.id}-mathematics-teacher"
+
+        response = client.get(path, headers={"Host": "realmindxgh.com"})
+        self.assertEqual(response.status_code, 200)
+        document = response.get_data(as_text=True)
+        self.assertIn('content="index,follow"', document)
+        self.assertIn('"@type": "JobPosting"', document)
+        self.assertIn("Teaching qualification", document)
+        self.assertIn(f'href="https://realmindxgh.com{path}"', document)
+
+        old_path = client.get(f"/jobs/{job.id}-old-title", headers={"Host": "realmindxgh.com"})
+        self.assertEqual(old_path.status_code, 301)
+        self.assertEqual(old_path.headers["Location"], f"https://realmindxgh.com{path}")
+        sitemap = client.get("/sitemap.xml", headers={"Host": "realmindxgh.com"}).get_data(as_text=True)
+        self.assertIn(path, sitemap)
 
     @patch("backend.api.admin._send_internal_account_access_email", return_value="sent")
     def test_admin_created_staff_gets_default_password(self, _notify):

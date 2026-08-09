@@ -31,6 +31,19 @@ SEARCH_HOSTS = {
     "yandex": "Yandex",
 }
 
+AI_SEARCH_HOSTS = {
+    "chatgpt.com": "ChatGPT",
+    "chat.openai.com": "ChatGPT",
+    "search.openai.com": "ChatGPT Search",
+    "perplexity.ai": "Perplexity",
+    "copilot.microsoft.com": "Microsoft Copilot",
+    "gemini.google.com": "Google Gemini",
+    "claude.ai": "Claude",
+    "you.com": "You.com",
+    "phind.com": "Phind",
+    "poe.com": "Poe",
+}
+
 SOCIAL_HOSTS = {
     "facebook": "Facebook",
     "instagram": "Instagram",
@@ -184,6 +197,8 @@ def _derive_page_type(path):
         return "news"
     if path == "/contact":
         return "contact"
+    if path.startswith("/jobs/"):
+        return "job_detail"
     if path == "/jobs":
         return "jobs"
     if path == "/about":
@@ -197,6 +212,10 @@ def _derive_page_type(path):
 
 def _source_from_referrer(referrer, explicit_source=None, explicit_medium=None):
     if explicit_source:
+        source_key = str(explicit_source).strip().lower()
+        for token, label in AI_SEARCH_HOSTS.items():
+            if token in source_key or token.split(".", 1)[0] == source_key:
+                return label, explicit_medium or "ai_search"
         return explicit_source, explicit_medium or "campaign"
     if not referrer:
         return "Direct", "direct"
@@ -206,6 +225,9 @@ def _source_from_referrer(referrer, explicit_source=None, explicit_medium=None):
         return "Referral", "referral"
     if not host or host == _request_host():
         return "Direct", "direct"
+    for token, label in AI_SEARCH_HOSTS.items():
+        if token in host:
+            return label, "ai_search"
     for token, label in SEARCH_HOSTS.items():
         if token in host:
             return label, "search"
@@ -1012,6 +1034,11 @@ def build_analytics_dashboard(range_info):
     abandoned_sessions = len(all_cart_sessions - purchasing_sessions)
 
     session_sources = Counter((event.traffic_source or "Direct") for event in sessions_first.values())
+    session_ai_sources = Counter(
+        (event.traffic_source or "AI search")
+        for event in sessions_first.values()
+        if event.traffic_medium == "ai_search"
+    )
     session_devices = Counter((event.device_type or UNKNOWN_LABEL) for event in sessions_first.values())
     session_browsers = Counter((event.browser or UNKNOWN_LABEL) for event in sessions_first.values())
     session_countries = Counter((event.country or UNKNOWN_LABEL) for event in sessions_first.values())
@@ -1177,6 +1204,8 @@ def build_analytics_dashboard(range_info):
             },
             "top_pages": overview_rows[:12],
             "traffic_sources": _counter_rows(session_sources, limit=8),
+            "ai_search_sources": _counter_rows(session_ai_sources, limit=8),
+            "ai_search_visits": sum(session_ai_sources.values()),
             "device_breakdown": _counter_rows(session_devices, limit=6),
             "browser_breakdown": _counter_rows(session_browsers, limit=8),
             "locations": {

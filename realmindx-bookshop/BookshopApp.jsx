@@ -1,4 +1,5 @@
 import React from 'react';
+import './styles/bookshop.css';
 import { CartProvider, CartCtx, Navbar, Footer, WhatsAppFab, ScrollToTopFab, BottomNav } from './chrome.jsx';
 import { HomePage, ShopPage, ExamPicksPage } from './pages-shop.jsx';
 import RequestBookPage from './pages-request.jsx';
@@ -31,7 +32,7 @@ const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.s
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
 
 const prefixedPath = (path) => `${PREFIX}${path}`;
-const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'login', 'signup', 'reset-password', 'account', 'orders', 'review', 'request-book']);
+const SHOP_ROBOTS_NOINDEX = new Set(['cart', 'wishlist', 'checkout', 'login', 'signup', 'reset-password', 'account', 'orders', 'review', 'request-book', 'not-found']);
 const canonicalUrlForRoute = (route, params = {}) => `${canonicalBookshopBase}${bookshopPathForRoute(route, params)}`;
 const browseParam = (taxonomy, value = '') => ({ taxonomy, value });
 const BOOKSHOP_SHIPPING_DETAILS = {
@@ -114,6 +115,7 @@ const routeFromPath = () => {
   const p = ON_SUBDOMAIN ? path : path.replace('/bookshop', '') || '/';
   const searchQuery = search.get('q') || '';
   const queryBrowse = queryBrowseParam(search);
+  if (!p || p === '/') return { route: 'home', params: {} };
   if (p === '/products') return { route: 'shop', params: { ...(queryBrowse || {}), q: searchQuery } };
   if (p.startsWith('/products/')) return { route: 'product', params: { slug: decodeURIComponent(p.split('/products/')[1] || '') } };
   if (p === '/categories') return { route: 'shop', params: { ...browseParam('category'), q: searchQuery } };
@@ -153,7 +155,7 @@ const routeFromPath = () => {
   if (p === '/collections/exam-picks') return { route: 'exam-catalogue', params: {} };
   if (p === '/collections/bece-picks') return { route: 'exam-catalogue', params: {} };
   if (p === '/collections/wassce-picks') return { route: 'exam-catalogue', params: {} };
-  return { route: 'home', params: {} };
+  return { route: 'not-found', params: {} };
 };
 
 const pathForRoute = (route, params = {}) => prefixedPath(bookshopPathForRoute(route, params));
@@ -594,6 +596,7 @@ const App = () => {
       review:   { title: 'Rate Your Order | RealMindX Bookshop', desc: 'Share feedback on your RealMindX Bookshop order.' },
       'exam-catalogue': { title: 'BECE & WASSCE Picks | Junior & Senior High Textbooks | RealMindX Bookshop', desc: 'Shop BECE (Junior High) and WASSCE (Senior High) textbooks and learning materials aligned with the GES / NaCCA Curriculum. Fast delivery across Ghana.' },
       'request-book': { title: 'Request a Book | RealMindX Bookshop', desc: 'Tell us what book you need and we will notify you when it is available.' },
+      'not-found': { title: 'Page Not Found | RealMindX Bookshop', desc: 'That address does not match a currently available RealMindX Bookshop page.' },
     };
     let currentMeta = meta[route] || { title: 'RealMindX Bookshop', desc: 'Educational books and stationery for Ghanaian students and schools.' };
     let image = BOOKSHOP_DEFAULT_IMAGE;
@@ -674,6 +677,14 @@ const App = () => {
         url: canonicalUrl,
       };
     } else if (route === 'shop' && browseTaxonomy && !params.q) {
+      if (browseValue && !activeBrowse) {
+        if (catalogLoading) return;
+        currentMeta = {
+          title: 'Catalogue Page Not Found | RealMindX Bookshop',
+          desc: 'That catalogue link does not match a current RealMindX Bookshop subject, level, curriculum, category or publisher.',
+        };
+        robots = 'noindex, follow';
+      } else {
       const taxonomyName = taxonomyLabel(browseTaxonomy);
       const browseName = activeBrowse?.name || activeBrowse?.label || taxonomyName;
       const seoProfile = getBookshopSeoProfile(
@@ -691,6 +702,7 @@ const App = () => {
         description: currentMeta.desc,
         url: canonicalUrl,
       };
+      }
     } else if (route === 'shop' && params.q) {
       currentMeta = {
         title: `Search results for "${params.q}" | RealMindX Bookshop`,
@@ -838,6 +850,13 @@ const App = () => {
     case 'exam-catalogue':
       page = <ExamPicksPage navigate={navigate} />; break;
     case 'request-book': page = <RequestBookPage navigate={navigate} />; break;
+    case 'not-found': page = (
+      <div className="bs-empty-state bs-fade-page" style={{ padding: '80px 20px' }}>
+        <h1>Page Not Found</h1>
+        <p>We could not find that bookshop page.</p>
+        <a className="bs-btn bs-btn-primary" href="/">Return to the Bookshop</a>
+      </div>
+    ); break;
     default:         page = null;
   }
   const mainClassName = `bs-page${route === 'login' || route === 'signup' || route === 'reset-password' ? ' bs-page-auth' : ''}`;

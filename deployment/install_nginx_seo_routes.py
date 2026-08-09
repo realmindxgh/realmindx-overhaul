@@ -101,6 +101,24 @@ ROUTE_BLOCK = f"""{START_MARKER}
         proxy_read_timeout 60;
     }}
 
+    location ~ ^/jobs/[^/]+/?$ {{
+        proxy_pass         http://127.0.0.1:5002;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
+    }}
+
+    location ~ ^/(login|register|signup|forgot-password|reset-password|unsubscribe|portal|bookshop)(/[^?#]*)?/?$ {{
+        proxy_pass         http://127.0.0.1:5002;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
+    }}
+
     location ~ ^/(admin|staff|delivery-company|delivery|manager|rider)(/[^?#]*)?/?$ {{
         proxy_pass         http://127.0.0.1:5002;
         proxy_set_header   Host              $host;
@@ -114,6 +132,15 @@ ROUTE_BLOCK = f"""{START_MARKER}
         types {{ application/manifest+json webmanifest; }}
         try_files $uri =404;
         add_header Cache-Control "no-cache, must-revalidate";
+    }}
+
+    location @realmindx_frontend {{
+        proxy_pass         http://127.0.0.1:5002;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
     }}
 {END_MARKER}
 """
@@ -144,7 +171,7 @@ BOOKSHOP_ROUTE_BLOCK = f"""{BOOKSHOP_START_MARKER}
         proxy_read_timeout 60;
     }}
 
-    location ~ ^/(products|subjects|levels|curriculum|curricula|categories|publishers|about|contact|privacy|terms|track|invoice|invoices|documents|education-documents)(/[^?#]*)?/?$ {{
+    location ~ ^/(products|subjects|levels|curriculum|curricula|categories|publishers|about|contact|privacy|terms|track|invoice|invoices|documents|education-documents|collections|cart|wishlist|checkout|login|signup|reset-password|account|orders|review|request-book)(/[^?#]*)?/?$ {{
         proxy_pass         http://127.0.0.1:5002;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
@@ -157,6 +184,15 @@ BOOKSHOP_ROUTE_BLOCK = f"""{BOOKSHOP_START_MARKER}
         types {{ application/manifest+json webmanifest; }}
         try_files $uri =404;
         add_header Cache-Control "no-cache, must-revalidate";
+    }}
+
+    location @realmindx_frontend {{
+        proxy_pass         http://127.0.0.1:5002;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
     }}
 {BOOKSHOP_END_MARKER}
 """
@@ -290,6 +326,15 @@ def install_upload_routes(block):
     return block[:insert_at] + UPLOAD_ROUTE_BLOCK + "\n" + block[insert_at:]
 
 
+def install_backend_fallback(block):
+    return re.sub(
+        r"(?m)^(\s*try_files\s+\$uri\s+\$uri/\s+)/index\.html(;)\s*$",
+        r"\g<1>@realmindx_frontend\g<2>",
+        block,
+        count=1,
+    )
+
+
 def install_route(text):
     text = remove_managed_block(text, START_MARKER, END_MARKER)
     for start, end, block in server_blocks(text):
@@ -299,6 +344,7 @@ def install_route(text):
             continue
         block = remove_legacy_main_routes(block)
         block = install_upload_routes(block)
+        block = install_backend_fallback(block)
         text = text[:start] + block + text[end:]
         anchor = insertion_anchor(block)
         if not anchor:
@@ -319,6 +365,7 @@ def install_bookshop_route(text):
             continue
         block = remove_legacy_bookshop_routes(block)
         block = install_upload_routes(block)
+        block = install_backend_fallback(block)
         text = text[:start] + block + text[end:]
         anchor = insertion_anchor(block)
         if not anchor:

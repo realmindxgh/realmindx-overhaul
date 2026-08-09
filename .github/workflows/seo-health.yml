@@ -1,0 +1,44 @@
+name: SEO and AI Search Health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check public search surfaces
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/seo_smoke_check.py --sample-size 30 | tee seo-health.json
+      - name: Save health report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-health-${{ github.run_id }}
+          path: seo-health.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Email SEO failure alert
+        if: failure()
+        continue-on-error: true
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SEO_ALERT_TO: info@realmindxgh.com
+          SEO_ALERT_FROM: RealMindX Monitoring <notifications@send.realmindxgh.com>
+        run: >-
+          python scripts/send_workflow_failure_email.py
+          --workflow "daily SEO and AI-search health check"
+          --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          --report seo-health.json

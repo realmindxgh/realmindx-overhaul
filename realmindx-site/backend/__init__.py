@@ -8,7 +8,15 @@ from .cli import register_cli
 from .config import Config
 from .extensions import cors, csrf, db, limiter, login_manager, migrate
 from .models import User
-from .seo_pages import bookshop_public_page, main_public_page, news_article_page, private_app_page, service_public_page
+from .seo_pages import (
+    bookshop_public_page,
+    job_public_page,
+    main_public_page,
+    news_article_page,
+    private_app_page,
+    public_not_found_page,
+    service_public_page,
+)
 
 
 def create_app(config_object=Config):
@@ -84,6 +92,33 @@ def create_app(config_object=Config):
     def service_detail(slug):
         return service_public_page(slug)
 
+    @app.get("/jobs/<segment>", strict_slashes=False)
+    def job_detail(segment):
+        return job_public_page(segment)
+
+    @app.get("/login", strict_slashes=False)
+    @app.get("/register", strict_slashes=False)
+    @app.get("/signup", strict_slashes=False)
+    @app.get("/forgot-password", strict_slashes=False)
+    @app.get("/reset-password", strict_slashes=False)
+    @app.get("/unsubscribe", strict_slashes=False)
+    @app.get("/portal", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/portal/<path:tail>", strict_slashes=False)
+    @app.get("/cart", strict_slashes=False)
+    @app.get("/wishlist", strict_slashes=False)
+    @app.get("/checkout", strict_slashes=False)
+    @app.get("/account", strict_slashes=False)
+    @app.get("/orders", strict_slashes=False)
+    @app.get("/review", strict_slashes=False)
+    @app.get("/request-book", strict_slashes=False)
+    def private_frontend_page(tail=None):
+        path = request.path.strip("/").split("/", 1)[0]
+        bookshop_only = {"cart", "wishlist", "checkout", "account", "orders", "review", "request-book"}
+        main_only = {"register", "forgot-password", "unsubscribe", "portal"}
+        if (path in bookshop_only and not is_bookshop_host()) or (path in main_only and is_bookshop_host()):
+            return public_not_found_page(request.path)
+        return private_app_page(request.path)
+
     @app.get("/delivery-company", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/delivery-company/<path:tail>", strict_slashes=False)
     def delivery_company_portal_page(tail):
@@ -128,6 +163,8 @@ def create_app(config_object=Config):
         return bookshop_public_page(f"products/{tail}".rstrip("/"))
 
     @app.get("/track", strict_slashes=False)
+    @app.get("/track-order", strict_slashes=False)
+    @app.get("/track-your-order", strict_slashes=False)
     @app.get("/invoice", strict_slashes=False)
     @app.get("/invoices", strict_slashes=False)
     @app.get("/documents", strict_slashes=False)
@@ -135,11 +172,17 @@ def create_app(config_object=Config):
     @app.get("/education-documents", strict_slashes=False)
     def bookshop_utility_page(tail=None):
         path = request.path.strip("/")
+        if path in {"track-order", "track-your-order"}:
+            return redirect("/track", code=301)
         if path == "invoices":
             return redirect("/invoice", code=301)
         if path == "education-documents":
             return redirect("/documents", code=301)
         return bookshop_public_page(path)
+
+    @app.get("/collections/<segment>", strict_slashes=False)
+    def bookshop_collection_page(segment):
+        return bookshop_public_page(f"collections/{segment}")
 
     @app.get("/subjects", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/subjects/<path:tail>", strict_slashes=False)
@@ -168,6 +211,16 @@ def create_app(config_object=Config):
     @app.get("/publishers/<path:tail>", strict_slashes=False)
     def bookshop_publishers_page(tail):
         return bookshop_public_page(f"publishers/{tail}".rstrip("/"))
+
+    @app.get("/bookshop", defaults={"tail": ""}, strict_slashes=False)
+    @app.get("/bookshop/<path:tail>", strict_slashes=False)
+    def legacy_bookshop_page(tail):
+        suffix = f"/{tail}" if tail else "/"
+        return redirect(f"https://bookshop.realmindxgh.com{suffix}", code=301)
+
+    @app.get("/<path:unmatched_path>")
+    def public_not_found(unmatched_path):
+        return public_not_found_page(unmatched_path)
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(error):

@@ -1102,6 +1102,14 @@ const AnalyticsView = ({ session }) => {
             </article>
           </div>
 
+          <section className="analytics-panel">
+            <SectionHeader
+              title="AI search referrals"
+              body={`${formatNumber(overview.ai_search_visits || 0)} visits attributed to answer engines such as ChatGPT, Perplexity, Copilot, Gemini, and Claude.`}
+            />
+            <DistributionList rows={overview.ai_search_sources || []} emptyLabel="No AI-search referrals recorded in this period." />
+          </section>
+
           <div className="analytics-two-grid">
             <article className="analytics-panel">
               <SectionHeader title="Top visited pages" body="The most-consumed public pages across the site and bookshop." />

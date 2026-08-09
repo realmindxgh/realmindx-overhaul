@@ -362,6 +362,8 @@ const Hero = () => {
             alt=""
             className={`hero-slide${i === idx ? ' active' : ''}`}
             loading={i === 0 ? 'eager' : 'lazy'}
+            fetchPriority={i === 0 ? 'high' : 'auto'}
+            decoding="async"
           />
         ))}
         <div className="hero-image-fade" />
@@ -1071,7 +1073,7 @@ const Gallery = () => {
               {galleryItems.map((g, i) => (
                 <a className="gallery-card" href={g.href || '/gallery'} key={g.id || i}>
                   <div className="gallery-img">
-                    <img src={g.image} alt={g.caption} />
+                    <img src={g.image} alt={g.caption} loading="lazy" decoding="async" />
                     <span className="gallery-tag">{g.tag}</span>
                   </div>
                   <div className="gallery-caption">{g.caption}</div>
@@ -1083,7 +1085,7 @@ const Gallery = () => {
                 {galleryItems.map((g, i) => (
                   <a className="gallery-card" href={g.href || '/gallery'} key={`${g.id || i}-dupe`} tabIndex={-1}>
                     <div className="gallery-img">
-                      <img src={g.image} alt="" />
+                      <img src={g.image} alt="" loading="lazy" decoding="async" />
                       <span className="gallery-tag">{g.tag}</span>
                     </div>
                     <div className="gallery-caption">{g.caption}</div>
@@ -1160,7 +1162,7 @@ const News = () => {
             <Reveal key={n.id || i} delay={i * 100}>
               <button className={`news-card n-${i}`} type="button" onClick={() => setActiveNews(n)}>
                 <div className="news-img">
-                  {n.img && <img src={n.img} alt={n.title} loading="lazy" />}
+                  {n.img && <img src={n.img} alt={n.title} loading="lazy" decoding="async" />}
                   <span className="news-tag">{n.cat}</span>
                 </div>
                 <div className="news-body">
@@ -1215,7 +1217,7 @@ const News = () => {
 const PartnerMark = ({ partner, compact = false }) => (
   <div className="partner-card" title={partner.name} aria-label={partner.name}>
     {partner.img ? (
-      <img src={partner.img} alt={partner.name} loading="lazy" />
+      <img src={partner.img} alt={partner.name} loading="lazy" decoding="async" />
     ) : (
       <Icon name={partner.icon} size={compact ? 28 : 40} stroke={1.5} />
     )}

@@ -2,8 +2,8 @@
 import { Nav, Footer } from '../components/NavFooter';
 import { Icon } from '../assets/components.jsx';
 import { usePublicPeople, useSiteCopy } from '../../src/lib/siteContent.js';
-const aboutMain = '/uploads/Redesign/hero/School Restructuring-3.jpg';
-const aboutAccent = '/uploads/Redesign/hero/Home Teaching-1.jpg';
+const aboutMain = '/uploads/Redesign/hero/School Restructuring-3.webp';
+const aboutAccent = '/uploads/Redesign/hero/Home Teaching-1.webp';
 
 const GOALS = [
   { num: '01', title: 'Enhance Student Performance', body: 'Provide high-quality educational support that helps students improve their academic performance and reach their potential.' },
@@ -92,11 +92,11 @@ const AboutPage = () => {
               <div className="small">Founded</div>
             </div>
             <div className="about-img-main">
-              <img src={aboutMain} alt="RealMindX team working with a school"
+              <img src={aboutMain} alt="RealMindX team working with a school" loading="lazy" decoding="async"
                 onError={e => { e.target.closest('.about-img-main').style.display = 'none'; }} />
             </div>
             <div className="about-img-accent">
-              <img src={aboutAccent} alt="RealMindX school support session"
+              <img src={aboutAccent} alt="RealMindX school support session" loading="lazy" decoding="async"
                 onError={e => { e.target.closest('.about-img-accent').style.display = 'none'; }} />
             </div>
           </div>
@@ -205,7 +205,7 @@ const AboutPage = () => {
             <div key={m.id} className="team-card">
               <div className={`team-avatar${m.img ? ' team-avatar-photo' : ''}`}>
                 {m.img ? (
-                  <img src={m.img} alt={`${m.name}, ${m.position}`} />
+                  <img src={m.img} alt={`${m.name}, ${m.position}`} loading="lazy" decoding="async" />
                 ) : (
                   <span style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: '2rem', color: 'var(--navy)' }}>
                     {m.initials || 'RM'}

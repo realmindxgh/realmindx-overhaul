@@ -26,6 +26,8 @@ class Config:
 
     BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:5173")
     BOOKSHOP_URL = os.getenv("BOOKSHOP_URL", f"{BASE_URL}/bookshop")
+    GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "")
+    BING_SITE_VERIFICATION = os.getenv("BING_SITE_VERIFICATION", "")
     EMAIL_ASSET_BASE_URL = os.getenv("EMAIL_ASSET_BASE_URL", "https://realmindxgh.com")
     BOOKSHOP_EMAIL_ASSET_BASE_URL = os.getenv("BOOKSHOP_EMAIL_ASSET_BASE_URL", "https://bookshop.realmindxgh.com")
     DELIVERY_URL = os.getenv("DELIVERY_URL", "https://delivery.realmindxgh.com")

@@ -1,12 +1,12 @@
 ﻿import React from 'react';
 import { isApiMode, api } from './apiClient.js';
 import { TEACHING_LEVELS, TEACHING_SUBJECTS, TEACHING_WORK_TYPES } from './teachingOptions.js';
-const bookshopHeroImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
-const homeTeachingImage = '/uploads/Redesign/hero/Home Teaching-1.jpg';
-const schoolStructuringImage = '/uploads/Redesign/hero/School Restructuring-3.jpg';
-const specialNeedsImage = '/uploads/Redesign/hero/Special Needs-4.jpg';
+const bookshopHeroImage = '/uploads/Redesign/hero/Books and Stationery (Hero).webp';
+const homeTeachingImage = '/uploads/Redesign/hero/Home Teaching-1.webp';
+const schoolStructuringImage = '/uploads/Redesign/hero/School Restructuring-3.webp';
+const specialNeedsImage = '/uploads/Redesign/hero/Special Needs-4.webp';
 const stationeryImage = '/uploads/Redesign/Stationery(Bookshop).jpg';
-const teacherRecruitmentImage = '/uploads/Redesign/hero/Teacher Recruitment (Services).jpg';
+const teacherRecruitmentImage = '/uploads/Redesign/hero/Teacher Recruitment (Services).webp';
 
 export const ADMIN_OWNER = 'admin@realmindxgh.com';
 const STORAGE_KEY = 'realmindx.adminManagedContent.v2';

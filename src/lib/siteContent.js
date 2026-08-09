@@ -12,11 +12,11 @@ import {
   useManagedContent,
 } from './managedContent.js';
 import { newsPath, servicePath } from './seoRoutes.js';
-const bookshopImage = '/uploads/Redesign/hero/Books and Stationery (Hero).png';
-const homeTeachingImage = '/uploads/Redesign/hero/Home Teaching-1.jpg';
-const schoolStructuringImage = '/uploads/Redesign/hero/School Restructuring-3.jpg';
-const specialNeedsImage = '/uploads/Redesign/hero/Special Needs-4.jpg';
-const teacherRecruitmentImage = '/uploads/Redesign/hero/Teacher Recruitment (Services).jpg';
+const bookshopImage = '/uploads/Redesign/hero/Books and Stationery (Hero).webp';
+const homeTeachingImage = '/uploads/Redesign/hero/Home Teaching-1.webp';
+const schoolStructuringImage = '/uploads/Redesign/hero/School Restructuring-3.webp';
+const specialNeedsImage = '/uploads/Redesign/hero/Special Needs-4.webp';
+const teacherRecruitmentImage = '/uploads/Redesign/hero/Teacher Recruitment (Services).webp';
 
 const serviceImages = {
   recruitment: teacherRecruitmentImage,

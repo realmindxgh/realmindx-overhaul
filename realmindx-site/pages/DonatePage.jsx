@@ -21,15 +21,6 @@ function loadPaystack() {
 }
 
 // â”€â”€â”€ Impact slideshow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const SLIDE_COUNT = 18;
-const SLIDES = Array.from({ length: SLIDE_COUNT }, (_, i) => {
-  const num = String(i + 1).padStart(2, '0');
-  return {
-    src: new URL(`../../src/assets/donation/impact-${num}.png`, import.meta.url).href,
-    alt: `RealMindX impact - moment ${i + 1}`,
-  };
-});
-
 const ImpactSlideshow = () => {
   const slides = useDonationSlides();
   const [idx, setIdx] = useState(0);
@@ -55,7 +46,13 @@ const ImpactSlideshow = () => {
   return (
     <div className="donate-slideshow">
       <div className="donate-slide" key={slide?.id || idx}>
-        <img src={slide?.src || slide?.img} alt={slide?.alt || slide?.label || 'RealMindX impact'} />
+        <img
+          src={slide?.src || slide?.img}
+          alt={slide?.alt || slide?.label || 'RealMindX impact'}
+          loading={idx === 0 ? 'eager' : 'lazy'}
+          fetchPriority={idx === 0 ? 'high' : 'auto'}
+          decoding="async"
+        />
         <div className="donate-slide-overlay">
           <span className="donate-slide-tag">{slide?.label || 'Our Impact'}</span>
         </div>

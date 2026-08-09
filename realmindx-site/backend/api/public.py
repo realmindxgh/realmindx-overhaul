@@ -24,7 +24,7 @@ from ..communications import mask_destination
 from ..contacts import MARKETING_ACTIVE, UNSUBSCRIBED, upsert_contact
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
-from ..models import ContactMessage, Flyer, GalleryItem, News, NewsletterSubscriber, Product, ProductCategory, Resource, SiteSetting, UploadedFile
+from ..models import ContactMessage, Flyer, GalleryItem, Job, News, NewsletterSubscriber, Product, ProductCategory, Resource, SiteSetting, UploadedFile
 from ..og_images import book_og_version, render_book_og
 from ..order_pricing import validate_promo_code_record
 from ..security import require_turnstile
@@ -36,6 +36,8 @@ BOOKSHOP_SITE_BASE_URL = "https://bookshop.realmindxgh.com"
 
 CRAWLABLE_PUBLIC_API_RULES = [
     "Allow: /api/news$",
+    "Allow: /api/jobs$",
+    "Allow: /api/jobs/",
     "Allow: /api/services$",
     "Allow: /api/settings$",
     "Allow: /api/site-copy$",
@@ -226,6 +228,7 @@ def build_main_sitemap_xml():
         sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.7),
         sitemap_row(f"{base_url}/news", changefreq="weekly", priority=0.8),
         sitemap_row(f"{base_url}/gallery", changefreq="monthly", priority=0.6),
+        sitemap_row(f"{base_url}/resources", changefreq="weekly", priority=0.7),
         sitemap_row(f"{base_url}/donate", changefreq="monthly", priority=0.7),
         sitemap_row(f"{base_url}/privacy", changefreq="yearly", priority=0.3),
         sitemap_row(f"{base_url}/terms", changefreq="yearly", priority=0.3),
@@ -235,6 +238,19 @@ def build_main_sitemap_xml():
     for item in public_rows(service_rows):
         slug = slugify(item.get("id") or item.get("slug") or item.get("label") or item.get("title"))
         urls.append(sitemap_row(f"{base_url}/services/{slug}", changefreq="monthly", priority=0.8))
+
+    job_rows = Job.query.filter_by(status="published").order_by(Job.created_at.desc()).all()
+    for row in job_rows:
+        slug = slugify(row.title)
+        lastmod = row.updated_at or row.created_at
+        urls.append(
+            sitemap_row(
+                f"{base_url}/jobs/{row.id}-{escape(slug)}",
+                lastmod=lastmod.date().isoformat() if lastmod else None,
+                changefreq="weekly",
+                priority=0.8,
+            )
+        )
 
     news_rows = (
         News.query
@@ -274,6 +290,7 @@ def build_bookshop_sitemap_xml():
         sitemap_row(f"{base_url}/track", changefreq="monthly", priority=0.5),
         sitemap_row(f"{base_url}/invoice", changefreq="monthly", priority=0.5),
         sitemap_row(f"{base_url}/documents", changefreq="weekly", priority=0.6),
+        sitemap_row(f"{base_url}/collections/exam-picks", changefreq="weekly", priority=0.8),
         sitemap_row(f"{base_url}/about", changefreq="monthly", priority=0.6),
         sitemap_row(f"{base_url}/contact", changefreq="monthly", priority=0.6),
         sitemap_row(f"{base_url}/privacy", changefreq="yearly", priority=0.3),
@@ -373,14 +390,6 @@ def host_robots_response(host=None):
             *CRAWLABLE_PUBLIC_API_RULES,
             "",
             "Disallow: /api/",
-            "Disallow: /cart",
-            "Disallow: /checkout",
-            "Disallow: /wishlist",
-            "Disallow: /login",
-            "Disallow: /signup",
-            "Disallow: /account",
-            "Disallow: /orders",
-            "",
             f"Sitemap: {BOOKSHOP_SITE_BASE_URL}/sitemap.xml",
         ]) + "\n"
     else:
@@ -390,14 +399,7 @@ def host_robots_response(host=None):
             *CRAWLABLE_PUBLIC_API_RULES,
             "",
             "Disallow: /api/",
-            "Disallow: /login",
-            "Disallow: /register",
-            "Disallow: /signup",
-            "Disallow: /portal",
-            "Disallow: /admin",
-            "Disallow: /admin/",
             "Disallow: /oauth/",
-            "Disallow: /unsubscribe",
             "",
             f"Sitemap: {MAIN_SITE_BASE_URL}/sitemap.xml",
         ]) + "\n"

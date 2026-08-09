@@ -79,10 +79,10 @@ const ServiceDocContent = ({ service, variant = 'overview' }) => {
           <figure className="service-doc-image-card">
             {isOverview ? (
               <Link to={detailHref} className="service-doc-image-link">
-                <img src={doc.img} alt={`${service.label} service`} loading="lazy" />
+                <img src={doc.img} alt={`${service.label} service`} loading="lazy" decoding="async" />
               </Link>
             ) : (
-              <img src={doc.img} alt={`${service.label} service`} loading="lazy" />
+              <img src={doc.img} alt={`${service.label} service`} loading="lazy" decoding="async" />
             )}
             {doc.badge && <figcaption>{doc.badge}</figcaption>}
           </figure>
@@ -434,7 +434,7 @@ export const ServiceDetailPage = () => {
               <div className="managed-card-grid">
                 {related.map(item => (
                   <article key={item.id} className="managed-card">
-                    {item.img && <img src={item.img} alt={`${item.label} service`} />}
+                    {item.img && <img src={item.img} alt={`${item.label} service`} loading="lazy" decoding="async" />}
                     <p className="overline">{item.tag}</p>
                     <h2>{item.label}</h2>
                     <p>{item.summary}</p>
