@@ -104,10 +104,41 @@ def check_noindex(base_url, path, failures, expected_status):
     return {"url": url, "status": status, "robots": combined.strip()}
 
 
-def run(main_url, bookshop_url, sample_size, *, skip_sitemap_fetches=False, strict_ai_crawler=False):
+def crawler_disallowed_at_root(robots_body, crawler_name):
+    """Return whether a crawler's explicit or wildcard robots group disallows all paths."""
+    groups = {}
+    agents = []
+    for raw_line in robots_body.splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line or ":" not in line:
+            continue
+        key, value = (part.strip() for part in line.split(":", 1))
+        key = key.lower()
+        value = value.lower()
+        if key == "user-agent":
+            agents = [value]
+            groups.setdefault(value, [])
+        elif key in {"allow", "disallow"} and agents:
+            for agent in agents:
+                groups.setdefault(agent, []).append((key, value))
+    directives = groups.get(crawler_name.lower()) or groups.get("*", [])
+    return any(key == "disallow" and value == "/" for key, value in directives)
+
+
+def check_ai_search_policy(base_url, failures):
+    robots_url = urljoin(base_url, "/robots.txt")
+    status, _, _, robots_body = fetch(robots_url)
+    blocked = crawler_disallowed_at_root(robots_body, "OAI-SearchBot") if status == 200 else None
+    if status != 200:
+        failures.append(f"{robots_url}: expected 200 for AI-search crawler policy, got {status}")
+    elif blocked:
+        failures.append(f"{robots_url}: OAI-SearchBot is disallowed from the public site")
+    return {"robots_url": robots_url, "status": status, "oai_searchbot_allowed_by_robots": not blocked if blocked is not None else None}
+
+
+def run(main_url, bookshop_url, sample_size, *, skip_sitemap_fetches=False):
     failures = []
-    warnings = []
-    results = {"main": [], "bookshop": [], "sitemaps": {}, "warnings": warnings}
+    results = {"main": [], "bookshop": [], "sitemaps": {}}
     for path in ["/", "/services", "/jobs", "/news"]:
         results["main"].append(check_indexable(main_url, path, failures))
     for path in ["/", "/products", "/subjects", "/documents"]:
@@ -136,10 +167,7 @@ def run(main_url, bookshop_url, sample_size, *, skip_sitemap_fetches=False, stri
             if status != 200 or final_url.rstrip("/") != url.rstrip("/"):
                 failures.append(f"sitemap URL {url}: status={status}, final={final_url}")
 
-    ai_status, _, _, ai_body = fetch(urljoin(main_url, "/services"), user_agent="OAI-SearchBot/1.0")
-    if ai_status != 200 or inspect_html(ai_body).h1 < 1:
-        message = f"AI crawler check failed for {main_url}/services: status={ai_status}"
-        (failures if strict_ai_crawler else warnings).append(message)
+    results["ai_search_policy"] = check_ai_search_policy(main_url, failures)
     results["failures"] = failures
     return results
 
@@ -154,18 +182,12 @@ def main():
         action="store_true",
         help="Parse sitemap indexes without fetching their canonical URLs (useful for local host aliases).",
     )
-    parser.add_argument(
-        "--strict-ai-crawler",
-        action="store_true",
-        help="Fail when the OpenAI search crawler is blocked; use this for recurring monitoring.",
-    )
     args = parser.parse_args()
     results = run(
         args.main_url.rstrip("/"),
         args.bookshop_url.rstrip("/"),
         max(1, args.sample_size),
         skip_sitemap_fetches=args.skip_sitemap_fetches,
-        strict_ai_crawler=args.strict_ai_crawler,
     )
     print(json.dumps(results, indent=2))
     return 1 if results["failures"] else 0

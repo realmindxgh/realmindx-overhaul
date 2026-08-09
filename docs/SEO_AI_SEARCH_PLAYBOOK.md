@@ -6,7 +6,7 @@
 - Keep one canonical URL for each product, job, service, article, and catalogue concept.
 - Do not publish invented reviews, credentials, partnerships, statistics, authors, or FAQ claims.
 - AI training access and AI search access are separate decisions. RealMindX may block training crawlers while allowing answer/search crawlers.
-- Cloudflare must allow OpenAI's `OAI-SearchBot` to fetch public pages. The daily health workflow treats a block as an alert; the post-deployment check records it as a warning so a third-party edge policy cannot leave an otherwise sound release marked as failed.
+- Cloudflare controls verified crawler access separately from `robots.txt`. Keep `OAI-SearchBot` unblocked in Cloudflare's AI Crawl Control when AI search visibility is desired. The automated health check validates the published `robots.txt` policy; it does not impersonate a verified bot.
 
 ## Monthly search review
 
