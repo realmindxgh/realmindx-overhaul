@@ -21,7 +21,11 @@ from ..default_content import (
 from ..analytics import queue_analytics_event, queue_analytics_events
 from ..audit import audit
 from ..communications import mask_destination
-from ..contacts import MARKETING_ACTIVE, UNSUBSCRIBED, upsert_contact
+from ..contacts import (
+    UNSUBSCRIBED,
+    upsert_contact,
+    upsert_newsletter_subscription,
+)
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
 from ..extensions import db, limiter
 from ..models import ContactMessage, Flyer, GalleryItem, Job, News, NewsletterSubscriber, Product, ProductCategory, Resource, SiteSetting, UploadedFile
@@ -459,6 +463,15 @@ def contact():
     db.session.flush()
     ticket_reference = f"RMX-{contact_message.id:06d}"
     contact_message.ticket_reference = ticket_reference
+    upsert_contact(
+        email,
+        full_name=name,
+        phone=contact_message.phone,
+        source="enquiry",
+        source_record_id=contact_message.id,
+        metadata={"ticket_reference": ticket_reference, "service": contact_message.source},
+        activity_at=contact_message.created_at or datetime.now(timezone.utc),
+    )
     audit("contact_message_submitted", "contact_message", contact_message.id, {
         "email": email, "subject": subject, "source": contact_message.source,
         "ticket": ticket_reference,
@@ -559,12 +572,10 @@ def newsletter():
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
     existing = NewsletterSubscriber.query.filter_by(email=email).first()
-    subscriber = upsert_contact(
+    subscriber, _contact = upsert_newsletter_subscription(
         email,
-        source=payload.get("source") or "newsletter_form",
-        communication_status=MARKETING_ACTIVE,
+        source=payload.get("source") or "site",
     )
-    subscriber.confirmed_at = subscriber.confirmed_at or datetime.now(timezone.utc)
     status = "already_subscribed" if existing and existing.communication_status != UNSUBSCRIBED else "subscribed"
     audit("newsletter_subscription", "newsletter_subscriber", None, {
         "email": email, "status": status, "source": payload.get("source") or "site",

@@ -266,6 +266,17 @@ export const api = {
   adminDelete: (collection, id) => apiFetch(`/admin/${collection}/${id}`, { method: 'DELETE' }),
   adminReplyMessage: (id, message) => apiFetch(`/admin/messages/${id}/reply`, { method: 'POST', body: { message } }),
   adminSendNewsletter: (payload) => apiFetch('/admin/newsletters/send', { method: 'POST', body: payload }),
+  adminContacts: (params = {}) => {
+    const sp = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') sp.set(key, value);
+    });
+    return apiFetch(`/admin/contacts${sp.toString() ? `?${sp}` : ''}`);
+  },
+  adminContact: (id) => apiFetch(`/admin/contacts/${id}`),
+  adminCreateContact: (payload) => apiFetch('/admin/contacts', { method: 'POST', body: payload }),
+  adminUpdateContact: (id, payload) => apiFetch(`/admin/contacts/${id}`, { method: 'PUT', body: payload }),
+  adminSendContactEmail: (id, payload) => apiFetch(`/admin/contacts/${id}/email`, { method: 'POST', body: payload }),
   adminExportUrl: (collection, format = 'csv') => url(`/admin/${collection}/export?format=${encodeURIComponent(format)}`),
   adminPreviewProductImport: async (catalogFile) => {
     const csrf = await getCsrf();

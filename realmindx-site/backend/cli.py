@@ -6,9 +6,10 @@ from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 
 from .delivery_locations import format_location_aliases, normalize_location_key, split_location_aliases
+from .contacts import normalize_contact_email, upsert_contact
 from .extensions import db
 from .image_variants import ensure_product_image_variants, product_image_variant_status
-from .models import ContactChangeToken, DeliveryZone, Permission, Product, Role, User, UserProfile
+from .models import Contact, ContactChangeToken, ContactMessage, DeliveryZone, NewsletterSubscriber, Order, Permission, Product, Role, User, UserProfile
 from .promo_affiliates import send_monthly_promo_statements
 from .email_service import OutboundEmail, app_email_shell, send_email
 
@@ -311,6 +312,7 @@ DEFAULT_PERMISSIONS = [
             "gallery": ["view", "create", "edit", "delete", "export"],
             "resources": ["view", "create", "edit", "delete", "export"],
             "messages": ["view", "edit", "delete"],
+            "contacts": ["view", "create", "edit", "email"],
             "newsletters": ["view", "create", "edit", "delete", "export"],
             "alerts": ["view", "edit"],
             "analytics": ["view", "export"],
@@ -354,6 +356,80 @@ def seed_permissions():
 
 
 def register_cli(app):
+    @app.cli.command("backfill-contacts")
+    @click.option("--apply", "apply_changes", is_flag=True, help="Persist the idempotent backfill. Without this flag the command is a dry run.")
+    def backfill_contacts_command(apply_changes):
+        teacher_rows = (
+            User.query.join(User.role)
+            .filter(Role.name == "user", User.teacher_service_enabled.is_(True))
+            .all()
+        )
+        order_rows = Order.query.all()
+        newsletter_rows = NewsletterSubscriber.query.all()
+        enquiry_rows = ContactMessage.query.all()
+        source_emails = {
+            "teacher": [row.email for row in teacher_rows if row.email],
+            "bookshop": [row.email for row in order_rows if row.email],
+            "newsletter": [row.email for row in newsletter_rows if row.email],
+            "enquiry": [row.email for row in enquiry_rows if row.email],
+        }
+        normalized = {
+            source: {normalize_contact_email(email) for email in emails}
+            for source, emails in source_emails.items()
+        }
+        union = set().union(*normalized.values()) if normalized else set()
+        click.echo("Contact backfill dry run" if not apply_changes else "Applying contact backfill")
+        for source, emails in source_emails.items():
+            click.echo(f"{source}: rows={len(emails)} unique={len(normalized[source])} duplicates={len(emails) - len(normalized[source])}")
+        click.echo(f"unique_contacts={len(union)} existing_contacts={Contact.query.count()}")
+        for left, right in (("teacher", "bookshop"), ("teacher", "newsletter"), ("bookshop", "newsletter")):
+            click.echo(f"overlap_{left}_{right}={len(normalized[left] & normalized[right])}")
+        if not apply_changes:
+            return
+
+        for user in teacher_rows:
+            upsert_contact(
+                user.email,
+                full_name=user.full_name,
+                phone=user.phone,
+                source="teacher",
+                source_record_id=user.id,
+                metadata={"application_id": user.application_id},
+                activity_at=user.last_login_at or user.updated_at or user.created_at,
+            )
+        for order in order_rows:
+            upsert_contact(
+                order.email,
+                full_name=order.customer_name,
+                phone=order.phone,
+                source="bookshop",
+                source_record_id=order.id,
+                metadata={"latest_order_id": order.id, "latest_order_reference": order.order_reference},
+                activity_at=order.paid_at or order.updated_at or order.created_at,
+            )
+        for subscriber in newsletter_rows:
+            origins = set(subscriber.sources or [subscriber.source])
+            contact = upsert_contact(
+                subscriber.email,
+                source="newsletter",
+                source_record_id=subscriber.id,
+                metadata={"signup_sources": sorted(origins)},
+                activity_at=subscriber.updated_at or subscriber.created_at,
+            )
+            subscriber.contact = contact
+        for message in enquiry_rows:
+            upsert_contact(
+                message.email,
+                full_name=message.name,
+                phone=message.phone,
+                source="enquiry",
+                source_record_id=message.id,
+                metadata={"ticket_reference": message.ticket_reference, "service": message.source},
+                activity_at=message.updated_at or message.created_at,
+            )
+        db.session.commit()
+        click.echo(f"Backfill complete: contacts={Contact.query.count()}")
+
     @app.cli.command("seed-permissions")
     def seed_permissions_command():
         seed_permissions()

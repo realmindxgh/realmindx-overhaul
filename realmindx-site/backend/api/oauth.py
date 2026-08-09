@@ -25,6 +25,7 @@ from flask import Blueprint, current_app, redirect, request, session, url_for
 from flask_login import login_user
 
 from ..extensions import db
+from ..contacts import upsert_contact_safely
 from ..models import AuthIdentity, Role, User, UserProfile
 from ..teacher_ids import ensure_application_id
 
@@ -171,6 +172,16 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
         if user.teacher_service_enabled:
             ensure_application_id(user)
         db.session.add(UserProfile(user_id=user.id))
+        if user.teacher_service_enabled:
+            upsert_contact_safely(
+                user.email,
+                full_name=user.full_name,
+                phone=user.phone,
+                source="teacher",
+                source_record_id=user.id,
+                metadata={"application_id": user.application_id, "provider": provider},
+                logger=current_app.logger,
+            )
         if terms_now:
             db.session.add(TermsAcceptance(
                 user_id=user.id,
@@ -204,6 +215,16 @@ def _login_and_redirect(user, frontend_path=None):
             user.teacher_service_enabled = True
         if user.teacher_service_enabled:
             ensure_application_id(user)
+            upsert_contact_safely(
+                user.email,
+                full_name=user.full_name,
+                phone=user.phone,
+                source="teacher",
+                source_record_id=user.id,
+                metadata={"application_id": user.application_id},
+                activity_at=datetime.now(timezone.utc),
+                logger=current_app.logger,
+            )
     session.permanent = True
     login_user(user, remember=True)
     user.last_login_at = datetime.now(timezone.utc)

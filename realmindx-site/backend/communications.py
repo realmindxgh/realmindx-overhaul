@@ -116,12 +116,17 @@ def record_attempt(
     retry_count: int = 0,
     initiated_by: int | None = None,
     batch_id: str | None = None,
+    contact_id: int | None = None,
+    subject: str | None = None,
+    error_message: str | None = None,
+    idempotency_key: str | None = None,
 ):
     from .extensions import db
     from .models import CommunicationAttempt
 
     now = datetime.now(timezone.utc)
     attempt = CommunicationAttempt(
+        contact_id=contact_id,
         channel=channel,
         purpose=purpose,
         recipient_user_id=recipient_user_id,
@@ -132,6 +137,9 @@ def record_attempt(
         status=status,
         provider_message_id=provider_message_id,
         error_code=error_code,
+        error_message=(error_message or "")[:500] or None,
+        subject=(subject or "")[:255] or None,
+        idempotency_key=idempotency_key,
         retry_count=retry_count,
         initiated_by=initiated_by,
         batch_id=batch_id,

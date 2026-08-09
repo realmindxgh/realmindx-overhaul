@@ -2,6 +2,7 @@ import base64
 import smtplib
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 from email.message import EmailMessage as SmtpEmailMessage
 from html import escape
@@ -617,7 +618,36 @@ def _email_attempt(
     status: str,
     provider_message_id: str | None = None,
     error_code: str | None = None,
+    error_message: str | None = None,
+    contact_id: int | None = None,
+    initiated_by: int | None = None,
+    batch_id: str | None = None,
+    subject: str | None = None,
+    idempotency_key: str | None = None,
+    attempt_id: int | None = None,
 ):
+    if attempt_id:
+        from .extensions import db
+        from .models import CommunicationAttempt
+
+        attempt = db.session.get(CommunicationAttempt, attempt_id)
+        if attempt:
+            now = datetime.now(timezone.utc)
+            attempt.provider = provider
+            attempt.mode = mode
+            attempt.status = status
+            attempt.provider_message_id = provider_message_id
+            attempt.error_code = error_code
+            attempt.error_message = (error_message or "")[:500] or None
+            attempt.masked_destination = masked_dst
+            attempt.template_name = template_name
+            attempt.contact_id = contact_id
+            attempt.initiated_by = initiated_by
+            attempt.batch_id = batch_id
+            attempt.subject = (subject or "")[:255] or None
+            attempt.accepted_at = now if status in ("accepted", "sent") else None
+            attempt.failed_at = now if status in ("failed", "rejected") else None
+            return attempt.id
     record_attempt(
         channel=channel,
         purpose=purpose,
@@ -629,6 +659,12 @@ def _email_attempt(
         status=status,
         provider_message_id=provider_message_id,
         error_code=error_code,
+        error_message=error_message,
+        contact_id=contact_id,
+        initiated_by=initiated_by,
+        batch_id=batch_id,
+        subject=subject,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -638,6 +674,11 @@ def send_email(
     purpose: str = "transactional",
     recipient_user_id: int | None = None,
     template_name: str | None = None,
+    contact_id: int | None = None,
+    initiated_by: int | None = None,
+    batch_id: str | None = None,
+    idempotency_key: str | None = None,
+    attempt_id: int | None = None,
 ) -> CommunicationResult:
     mode = resolve_communication_mode()
     masked_dst = mask_destination("email", message.to)
@@ -645,7 +686,13 @@ def send_email(
     purpose = purpose or "transactional"
 
     if mode == "disabled":
-        _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "none", mode, "disabled")
+        _email_attempt(
+            "email", purpose, recipient_user_id, masked_dst, template_name, "none", mode, "disabled",
+            error_code="mode_disabled", error_message="Email delivery is disabled in this environment.",
+            contact_id=contact_id, initiated_by=initiated_by, batch_id=batch_id,
+            subject=message.subject, idempotency_key=idempotency_key,
+            attempt_id=attempt_id,
+        )
         return CommunicationResult(
             channel="email", purpose=purpose, provider="none", mode=mode,
             status="disabled",
@@ -658,7 +705,12 @@ def send_email(
 
     if mode == "mock":
         mock_id = f"mock-{uuid.uuid4().hex}"
-        _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "mock", mode, "mocked", provider_message_id=mock_id)
+        _email_attempt(
+            "email", purpose, recipient_user_id, masked_dst, template_name, "mock", mode, "mocked",
+            provider_message_id=mock_id, contact_id=contact_id, initiated_by=initiated_by,
+            batch_id=batch_id, subject=message.subject, idempotency_key=idempotency_key,
+            attempt_id=attempt_id,
+        )
         current_app.logger.info("[email mock] %s -> %s", purpose, masked_dst)
         return CommunicationResult(
             channel="email", purpose=purpose, provider="mock", mode=mode,
@@ -704,7 +756,12 @@ def send_email(
             )
             response.raise_for_status()
             provider_id = response.json().get("id")
-            _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "resend", mode, "accepted", provider_message_id=provider_id)
+            _email_attempt(
+                "email", purpose, recipient_user_id, masked_dst, template_name, "resend", mode, "accepted",
+                provider_message_id=provider_id, contact_id=contact_id, initiated_by=initiated_by,
+                batch_id=batch_id, subject=message.subject, idempotency_key=idempotency_key,
+                attempt_id=attempt_id,
+            )
             current_app.logger.info("[email resend] %s accepted for %s", purpose, masked_dst)
             return CommunicationResult(
                 channel="email", purpose=purpose, provider="resend", mode=mode,
@@ -764,7 +821,12 @@ def send_email(
                     smtp.starttls()
                 smtp.login(mail_username, mail_password)
                 smtp.send_message(smtp_message)
-            _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "smtp", mode, "accepted")
+            _email_attempt(
+                "email", purpose, recipient_user_id, masked_dst, template_name, "smtp", mode, "accepted",
+                contact_id=contact_id, initiated_by=initiated_by, batch_id=batch_id,
+                subject=message.subject, idempotency_key=idempotency_key,
+                attempt_id=attempt_id,
+            )
             current_app.logger.info("[email smtp] %s accepted for %s", purpose, masked_dst)
             return CommunicationResult(
                 channel="email", purpose=purpose, provider="smtp", mode=mode,
@@ -794,7 +856,13 @@ def send_email(
         primary_error = "provider_error"
         error_msg = "Email delivery failed — all providers attempted."
 
-    _email_attempt("email", purpose, recipient_user_id, masked_dst, template_name, "none", mode, "failed", error_code=primary_error)
+    _email_attempt(
+        "email", purpose, recipient_user_id, masked_dst, template_name, "none", mode, "failed",
+        error_code=primary_error, error_message=error_msg, contact_id=contact_id,
+        initiated_by=initiated_by, batch_id=batch_id, subject=message.subject,
+        idempotency_key=idempotency_key,
+        attempt_id=attempt_id,
+    )
     return CommunicationResult(
         channel="email", purpose=purpose, provider="none", mode=mode,
         status="failed",

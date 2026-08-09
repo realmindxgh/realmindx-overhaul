@@ -161,6 +161,7 @@ jobs:
           cd realmindx-site
           .venv/bin/python -m flask --app backend:create_app db upgrade heads
           .venv/bin/python -m flask --app backend:create_app seed-permissions
+          .venv/bin/python -m flask --app backend:create_app backfill-contacts --apply
           .venv/bin/python scripts/ensure_whatsapp_subscription.py
 
           echo "── Backfilling optimized product image variants ──"

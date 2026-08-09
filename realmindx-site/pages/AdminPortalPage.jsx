@@ -113,6 +113,8 @@ const NAV_PERMISSION_GROUPS = NAV
       ? ['view', 'export']
       : item.key === 'alerts'
         ? ['view', 'edit']
+        : item.key === 'contacts'
+          ? ['view', 'create', 'edit', 'email']
         : item.key === 'receiptsInvoices'
           ? ['view']
         : item.key === 'staff'
@@ -2852,6 +2854,81 @@ const ProductImportPanel = ({ onImported, onClose }) => {
   );
 };
 
+const ContactsView = ({ session }) => {
+  const [filters, setFilters] = React.useState({ q: '', source: '', page: 1, page_size: 25 });
+  const [data, setData] = React.useState({ items: [], summary: {}, pagination: {} });
+  const [selected, setSelected] = React.useState(null);
+  const [draft, setDraft] = React.useState({ full_name: '', email: '', phone: '' });
+  const [emailDraft, setEmailDraft] = React.useState({ subject: '', message: '' });
+  const [loading, setLoading] = React.useState(false);
+  const [notice, setNotice] = React.useState('');
+  const canCreate = hasSessionPermission(session, 'contacts.create');
+  const canEdit = hasSessionPermission(session, 'contacts.edit');
+  const canEmail = hasSessionPermission(session, 'contacts.email');
+  const canCampaign = hasSessionPermission(session, 'newsletters.create');
+
+  const load = React.useCallback(async () => {
+    if (!isApiMode()) return;
+    setLoading(true);
+    try { setData(await api.adminContacts(filters)); }
+    catch (err) { setNotice(err.message || 'Could not load contacts.'); }
+    finally { setLoading(false); }
+  }, [filters]);
+  React.useEffect(() => { load(); }, [load]);
+
+  const openContact = async id => {
+    try {
+      const result = await api.adminContact(id);
+      setSelected(result.item);
+      setDraft({ full_name: result.item.full_name || '', email: result.item.email, phone: result.item.phone || '' });
+    } catch (err) { setNotice(err.message || 'Could not load this contact.'); }
+  };
+  const save = async event => {
+    event.preventDefault();
+    try {
+      if (selected?.id) await api.adminUpdateContact(selected.id, draft);
+      else await api.adminCreateContact(draft);
+      setSelected(null); setNotice('Contact saved.'); await load();
+    } catch (err) { setNotice(err.message || 'Could not save the contact.'); }
+  };
+  const send = async event => {
+    event.preventDefault();
+    try {
+      await api.adminSendContactEmail(selected.id, { ...emailDraft, idempotency_key: crypto.randomUUID() });
+      setEmailDraft({ subject: '', message: '' }); setNotice('Email accepted for delivery.'); await openContact(selected.id);
+    } catch (err) { setNotice(err.message || 'Could not send the email.'); }
+  };
+  const summary = data.summary || {};
+  return <div className="admin-view">
+    <div className="admin-page-header">
+      <div><p className="overline">Audience directory</p><h1>Contacts</h1><p>One deduplicated view of teachers, customers, subscribers, schools, and enquiries.</p></div>
+      {canCreate && <button className="btn btn-primary btn-sm" onClick={() => { setSelected({}); setDraft({ full_name: '', email: '', phone: '' }); }}>Add contact</button>}
+    </div>
+    <div className="admin-stats-grid">
+      {[['All contacts', summary.total_contacts], ['Teachers', summary.teachers], ['Bookshop clients', summary.bookshop], ['Newsletter', summary.newsletter], ['Schools', summary.schools]].map(([label, value]) => <div className="admin-stat-card" key={label}><span>{label}</span><strong>{value ?? 0}</strong></div>)}
+    </div>
+    <div className="newsletter-audience-filters" style={{ margin: '18px 0' }}>
+      <input className="form-input" value={filters.q} onChange={e => setFilters(p => ({ ...p, q: e.target.value, page: 1 }))} placeholder="Search name, email, or phone" />
+      <select className="form-select" value={filters.source} onChange={e => setFilters(p => ({ ...p, source: e.target.value, page: 1 }))}><option value="">All sources</option>{['teacher','bookshop','newsletter','school','enquiry','client','admin_added'].map(x => <option key={x}>{x}</option>)}</select>
+    </div>
+    {notice && <p className="admin-image-help">{notice}</p>}
+    <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>Contact</th><th>Phone</th><th>Sources</th><th>Last activity</th></tr></thead><tbody>
+      {loading ? <tr><td colSpan="4">Loading contacts…</td></tr> : data.items.map(row => <tr key={row.id} onClick={() => openContact(row.id)} style={{ cursor: 'pointer' }}><td><strong>{row.full_name || 'Unnamed contact'}</strong><br/><small>{row.email}</small></td><td>{row.phone || '—'}</td><td>{row.sources.map(x => x.source).join(', ')}</td><td>{row.last_activity_at ? new Date(row.last_activity_at).toLocaleDateString() : '—'}</td></tr>)}
+    </tbody></table></div>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}><button className="btn btn-outline-navy btn-sm" disabled={!data.pagination?.has_prev} onClick={() => setFilters(p => ({ ...p, page: p.page - 1 }))}>Previous</button><span>Page {data.pagination?.page || 1} of {data.pagination?.pages || 1}</span><button className="btn btn-outline-navy btn-sm" disabled={!data.pagination?.has_next} onClick={() => setFilters(p => ({ ...p, page: p.page + 1 }))}>Next</button></div>
+    {canCampaign && <NewsletterComposer onSent={load} />}
+    {selected && ReactDOM.createPortal(<div className="admin-modal-backdrop" onMouseDown={e => e.target === e.currentTarget && setSelected(null)}><div className="admin-modal"><div className="admin-modal-header"><h2>{selected.id ? 'Contact details' : 'Add contact'}</h2><button onClick={() => setSelected(null)}>×</button></div><form className="admin-form-grid" onSubmit={save}>
+      <label className="form-group"><span className="form-label">Name</span><input className="form-input" value={draft.full_name} disabled={selected.id && !canEdit} onChange={e => setDraft(p => ({ ...p, full_name: e.target.value }))}/></label>
+      <label className="form-group"><span className="form-label">Email</span><input className="form-input" type="email" value={draft.email} disabled={Boolean(selected.id)} onChange={e => setDraft(p => ({ ...p, email: e.target.value }))}/></label>
+      <label className="form-group"><span className="form-label">Phone</span><input className="form-input" value={draft.phone} disabled={selected.id && !canEdit} onChange={e => setDraft(p => ({ ...p, phone: e.target.value }))}/></label>
+      {(!selected.id || canEdit) && <button className="btn btn-primary btn-sm">Save</button>}
+    </form>{selected.id && <><p><strong>Sources:</strong> {(selected.sources || []).map(x => x.source).join(', ') || 'None'}</p>
+      {canEmail && <form className="admin-reply-panel" onSubmit={send}><h3>Send an official RealMindX email</h3><p>This operational message uses the platform's branded letterhead.</p><input className="form-input" required placeholder="Subject" value={emailDraft.subject} onChange={e => setEmailDraft(p => ({ ...p, subject: e.target.value }))}/><textarea className="form-textarea" required rows="5" placeholder="Message" value={emailDraft.message} onChange={e => setEmailDraft(p => ({ ...p, message: e.target.value }))}/><button className="btn btn-primary btn-sm">Send email</button></form>}
+      <h3>Email history</h3>{(selected.emails || []).map(item => <p key={item.id}><strong>{item.subject}</strong> — {item.status}<br/><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</small></p>)}</>}
+    </div></div>, document.body)}
+  </div>;
+};
+
 const NewsletterComposer = ({ onSent }) => {
   const [form, setForm] = React.useState({
     brand: 'realmindx',
@@ -2865,7 +2942,7 @@ const NewsletterComposer = ({ onSent }) => {
     image_file_id: '',
     manual_recipients: '',
   });
-  const [audienceFilters, setAudienceFilters] = React.useState({ q: '', source: '', status: '' });
+  const [audienceFilters, setAudienceFilters] = React.useState({ q: '', source: '' });
   const [contacts, setContacts] = React.useState([]);
   const [selectedContacts, setSelectedContacts] = React.useState(new Set());
   const [loadingAudience, setLoadingAudience] = React.useState(false);
@@ -2883,7 +2960,7 @@ const NewsletterComposer = ({ onSent }) => {
       Object.entries(audienceFilters).forEach(([key, value]) => {
         if (value) sp.set(key, value);
       });
-      const data = await api.adminListWithQuery('newsletters', sp.toString());
+      const data = await api.adminListWithQuery('newsletters/audience', sp.toString());
       setContacts(data.items || []);
     } catch (err) {
       setStatus(err.message || 'Could not load contacts.');
@@ -2909,7 +2986,7 @@ const NewsletterComposer = ({ onSent }) => {
     setSelectedContacts(prev => {
       const next = new Set(prev);
       contacts.forEach(contact => {
-        if (contact.communication_status !== 'unsubscribed' && contact.is_active !== false) next.add(contact.id);
+        if (contact.newsletter_status !== 'unsubscribed') next.add(contact.id);
       });
       return next;
     });
@@ -2934,7 +3011,7 @@ const NewsletterComposer = ({ onSent }) => {
       const result = await api.adminSendNewsletter({
         ...form,
         title: form.title || form.subject,
-        recipient_ids: Array.from(selectedContacts),
+        contact_ids: Array.from(selectedContacts),
         recipient_emails: form.manual_recipients,
         image_file_id: form.image_file_id ? Number(form.image_file_id) : null,
         sections: (form.sections || []).map(section => ({
@@ -3029,13 +3106,7 @@ const NewsletterComposer = ({ onSent }) => {
           <div className="newsletter-audience-panel">
             <div className="newsletter-audience-filters">
               <input className="form-input" value={audienceFilters.q} onChange={setFilter('q')} placeholder="Search emails" />
-              <input className="form-input" value={audienceFilters.source} onChange={setFilter('source')} placeholder="Source e.g. cart_invoice" />
-              <select className="form-select" value={audienceFilters.status} onChange={setFilter('status')}>
-                <option value="">Any status</option>
-                <option value="marketing_active">Marketing active</option>
-                <option value="transactional_only">Transactional only</option>
-                <option value="unsubscribed">Unsubscribed</option>
-              </select>
+              <input className="form-input" value={audienceFilters.source} onChange={setFilter('source')} placeholder="Source e.g. teacher, bookshop, enquiry" />
               <button type="button" className="btn btn-outline-navy btn-sm" onClick={selectVisible}>Select visible</button>
             </div>
             <div className="newsletter-contact-list">
@@ -3045,20 +3116,20 @@ const NewsletterComposer = ({ onSent }) => {
                     type="checkbox"
                     checked={selectedContacts.has(contact.id)}
                     onChange={() => toggleContact(contact.id)}
-                    disabled={contact.communication_status === 'unsubscribed' || contact.is_active === false}
+                    disabled={contact.newsletter_status === 'unsubscribed'}
                   />
                   <span>
                     <strong>{contact.email}</strong>
-                    <small>{(contact.sources || [contact.source]).join(', ')} · {contact.communication_status}</small>
+                    <small>{(contact.sources || []).map(source => source.source || source).join(', ') || 'contact'}{contact.newsletter_status === 'unsubscribed' ? ' · newsletter unsubscribed' : ''}</small>
                   </span>
                 </label>
               ))}
             </div>
             <label className="form-group" style={{ marginTop: 12 }}>
-              <span className="form-label">Manual recipients</span>
-              <textarea className="form-textarea" rows={3} value={form.manual_recipients} onChange={set('manual_recipients')} placeholder="Paste additional public school or institution emails, separated by commas or new lines." />
+              <span className="form-label">Other gathered contacts by email</span>
+              <textarea className="form-textarea" rows={3} value={form.manual_recipients} onChange={set('manual_recipients')} placeholder="Paste emails already present in the RealMindX contacts directory, separated by commas or new lines." />
             </label>
-            <p className="admin-image-help">{selectedContacts.size} saved contact(s) selected. Manual recipients will be added to contacts with campaign source metadata.</p>
+            <p className="admin-image-help">{selectedContacts.size} gathered contact(s) selected. Choose the sender address above before sending.</p>
           </div>
         </div>
       </div>

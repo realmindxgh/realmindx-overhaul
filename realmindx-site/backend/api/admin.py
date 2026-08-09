@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from flask_login import current_user, login_required
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
 
@@ -39,8 +39,11 @@ from ..contacts import (
     TRANSACTIONAL_ONLY,
     UNSUBSCRIBED,
     contact_json,
+    newsletter_subscriber_json,
     normalize_contact_email,
+    remove_contact_source,
     upsert_contact,
+    upsert_contact_safely,
 )
 from ..default_content import (
     DEFAULT_DONATION_SLIDES,
@@ -98,14 +101,19 @@ from ..models import (
     AnalyticsEvent,
     AuditLog,
     BookRequest,
+    CommunicationAttempt,
+    Contact,
+    ContactSource,
     ContactMessage,
     CartInvoice,
+    BookshopPaymentIntent,
     DeliveryCompany,
     DeliveryCompanyUser,
     DeliveryEvent,
     DeliveryOtp,
     DeliveryRider,
     DeliverySettlementBatch,
+    DeliverySettlementLine,
     DeliveryZone,
     Flyer,
     Job,
@@ -2111,10 +2119,18 @@ def delete_user(user_id):
         return jsonify(error="This teacher has placement history and cannot be permanently deleted. Disable the account instead."), 409
 
     log_action("delete_user", "user", user.id, {"email": user.email})
-    # Clean every direct users.id foreign key consistently. Required account-
-    # owned rows are deleted; nullable historical references are anonymised.
-    # This also covers authentication tokens and alert preferences that do not
-    # have ORM cascade relationships and previously caused production 500s.
+    teacher_source = ContactSource.query.filter_by(source="teacher", source_record_id=str(user.id)).first()
+    if teacher_source:
+        remove_contact_source(teacher_source.contact, "teacher")
+    _clear_user_foreign_keys(user)
+    db.session.expire(user)
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify(message="Teacher account deleted.")
+
+
+def _clear_user_foreign_keys(user):
+    """Delete account-owned rows and anonymise nullable historical user references."""
     users_table = User.__table__
     for table in db.metadata.tables.values():
         if table is users_table or table.name == "teacher_placements":
@@ -2128,10 +2144,6 @@ def delete_user(user_id):
                 db.session.execute(table.update().where(predicate).values({column.name: None}))
             else:
                 db.session.execute(table.delete().where(predicate))
-    db.session.expire(user)
-    db.session.delete(user)
-    db.session.commit()
-    return jsonify(message="Teacher account deleted.")
 
 
 @admin_bp.get("/users/<int:user_id>")
@@ -2493,6 +2505,16 @@ def admin_update_teacher_account(user_id):
 
     if not changed:
         return jsonify(error="No account changes were supplied."), 400
+    if user.teacher_service_enabled:
+        upsert_contact_safely(
+            user.email,
+            full_name=user.full_name,
+            phone=user.phone,
+            source="teacher",
+            source_record_id=user.id,
+            metadata={"application_id": user.application_id},
+            logger=current_app.logger,
+        )
     log_action("teacher_account_admin_updated", "user", user.id, {
         "reason": reason,
         "changed_fields": changed,
@@ -3143,6 +3165,8 @@ def delete_staff(user_id):
     if not user.role or user.role.name != "staff":
         return jsonify(error="Only staff accounts can be deleted here."), 400
     log_action("delete_staff", "user", user.id, {"email": user.email})
+    _clear_user_foreign_keys(user)
+    db.session.expire(user)
     db.session.delete(user)
     db.session.commit()
     return jsonify(message="Staff account deleted.")
@@ -3250,6 +3274,8 @@ def delete_admin(user_id):
     if user.id == current_user.id:
         return jsonify(error="You cannot delete the admin account you are currently using."), 400
     log_action("delete_admin", "user", user.id, {"email": user.email})
+    _clear_user_foreign_keys(user)
+    db.session.expire(user)
     db.session.delete(user)
     db.session.commit()
     return jsonify(message="Admin account deleted.")
@@ -5611,8 +5637,33 @@ def _send_order_status_email(order, status, cancel_reason=""):
 @permission_required("orders.delete")
 def delete_order(order_id):
     order = db.get_or_404(Order, order_id)
+    if DeliverySettlementLine.query.filter_by(order_id=order.id).first():
+        return jsonify(error="This order has settlement history and cannot be permanently deleted."), 409
+    normalized_email = normalize_contact_email(order.email)
+    BookshopPaymentIntent.query.filter_by(order_id=order.id).update({"order_id": None})
+    CartInvoice.query.filter_by(converted_order_id=order.id).update({"converted_order_id": None})
+    ProductReview.query.filter_by(order_id=order.id).update({"order_id": None})
     log_action("delete_order", "order", order.id, {"order_reference": order.order_reference})
     db.session.delete(order)
+    db.session.flush()
+    remaining_orders = Order.query.filter(
+        func.lower(Order.email) == normalized_email,
+        Order.id != order_id,
+    ).order_by(Order.created_at.asc()).all()
+    contact = Contact.query.filter_by(email=normalized_email).first()
+    if contact:
+        if remaining_orders:
+            source = ContactSource.query.filter_by(contact_id=contact.id, source="bookshop").first()
+            if source:
+                source.first_seen_at = remaining_orders[0].created_at
+                source.last_seen_at = remaining_orders[-1].updated_at or remaining_orders[-1].created_at
+                source.details = {
+                    **(source.details or {}),
+                    "latest_order_id": remaining_orders[-1].id,
+                    "latest_order_reference": remaining_orders[-1].order_reference,
+                }
+        else:
+            remove_contact_source(contact, "bookshop")
     db.session.commit()
     return jsonify(message="Order deleted.")
 
@@ -6100,6 +6151,221 @@ def delete_message(message_id):
     return jsonify(message="Message deleted.")
 
 
+def _contact_summary():
+    def source_count(source):
+        return (
+            db.session.query(func.count(func.distinct(Contact.id)))
+            .join(ContactSource, ContactSource.contact_id == Contact.id)
+            .filter(ContactSource.source == source)
+            .scalar()
+            or 0
+        )
+
+    return {
+        "total_contacts": Contact.query.count(),
+        "teachers": source_count("teacher"),
+        "bookshop": source_count("bookshop"),
+        "newsletter": source_count("newsletter"),
+        "schools": source_count("school"),
+    }
+
+
+@admin_bp.get("/contacts")
+@login_required
+@permission_required("contacts.view")
+def list_contacts():
+    query = Contact.query
+    q = (request.args.get("q") or "").strip()
+    source = (request.args.get("source") or "").strip().lower()
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            Contact.full_name.ilike(like),
+            Contact.email.ilike(like),
+            Contact.phone.ilike(like),
+        ))
+    if source:
+        query = query.filter(Contact.sources.any(ContactSource.source == source))
+    page = max(request.args.get("page", 1, type=int), 1)
+    page_size = min(max(request.args.get("page_size", 25, type=int), 1), 100)
+    pagination = query.order_by(Contact.last_activity_at.desc(), Contact.id.desc()).paginate(
+        page=page,
+        per_page=page_size,
+        error_out=False,
+    )
+    return jsonify(
+        items=[contact_json(row) for row in pagination.items],
+        summary=_contact_summary(),
+        pagination={
+            "page": pagination.page,
+            "page_size": pagination.per_page,
+            "pages": pagination.pages,
+            "total": pagination.total,
+            "has_next": pagination.has_next,
+            "has_prev": pagination.has_prev,
+        },
+    )
+
+
+def _communication_attempt_json(row):
+    return {
+        "id": row.id,
+        "subject": row.subject or row.template_name or "Email",
+        "purpose": row.purpose,
+        "provider": row.provider,
+        "provider_message_id": row.provider_message_id,
+        "status": row.status,
+        "error_code": row.error_code,
+        "error_message": row.error_message,
+        "initiated_by": row.initiated_by,
+        "requested_at": row.requested_at.isoformat() if row.requested_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@admin_bp.get("/contacts/<int:contact_id>")
+@login_required
+@permission_required("contacts.view")
+def get_contact(contact_id):
+    row = db.get_or_404(Contact, contact_id)
+    payload = contact_json(row)
+    payload["emails"] = [
+        _communication_attempt_json(attempt)
+        for attempt in CommunicationAttempt.query.filter_by(contact_id=row.id, channel="email")
+        .order_by(CommunicationAttempt.requested_at.desc())
+        .limit(50)
+        .all()
+    ]
+    payload["linked_records"] = {
+        "teachers": [
+            {"id": user.id, "application_id": user.application_id, "created_at": user.created_at.isoformat() if user.created_at else None}
+            for user in User.query.filter(func.lower(User.email) == row.email).limit(5).all()
+            if user.teacher_service_enabled
+        ],
+        "orders": [
+            {
+                "id": order.id,
+                "order_reference": order.order_reference,
+                "status": order.status,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+            }
+            for order in Order.query.filter(func.lower(Order.email) == row.email)
+            .order_by(Order.created_at.desc())
+            .limit(20)
+            .all()
+        ],
+    }
+    return jsonify(item=payload)
+
+
+@admin_bp.post("/contacts")
+@login_required
+@permission_required("contacts.create")
+def create_contact():
+    payload = request.get_json(silent=True) or {}
+    try:
+        row = upsert_contact(
+            payload.get("email"),
+            full_name=(payload.get("full_name") or "").strip() or None,
+            phone=(payload.get("phone") or "").strip() or None,
+            source="admin_added",
+            metadata={"created_by": current_user.id},
+        )
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    log_action("create_contact", "contact", row.id, {"email": row.email})
+    db.session.commit()
+    return jsonify(item=contact_json(row)), 201
+
+
+@admin_bp.put("/contacts/<int:contact_id>")
+@login_required
+@permission_required("contacts.edit")
+def update_contact(contact_id):
+    row = db.get_or_404(Contact, contact_id)
+    payload = request.get_json(silent=True) or {}
+    if "full_name" in payload:
+        row.full_name = (payload.get("full_name") or "").strip() or None
+    if "phone" in payload:
+        row.phone = (payload.get("phone") or "").strip() or None
+    log_action("update_contact", "contact", row.id)
+    db.session.commit()
+    return jsonify(item=contact_json(row))
+
+
+@admin_bp.post("/contacts/<int:contact_id>/email")
+@login_required
+@permission_required("contacts.email")
+def send_contact_email(contact_id):
+    row = db.get_or_404(Contact, contact_id)
+    payload = request.get_json(silent=True) or {}
+    subject = (payload.get("subject") or "").strip()
+    message = (payload.get("message") or "").strip()
+    idempotency_key = (payload.get("idempotency_key") or "").strip()
+    if not subject or not message:
+        return jsonify(error="Subject and message are required."), 400
+    if len(idempotency_key) < 8 or len(idempotency_key) > 80:
+        return jsonify(error="A valid send request identifier is required."), 400
+
+    existing = CommunicationAttempt.query.filter_by(idempotency_key=idempotency_key).first()
+    if existing:
+        if existing.contact_id != row.id:
+            return jsonify(error="That send request identifier is already in use."), 409
+        return jsonify(message="This email request was already processed.", attempt=_communication_attempt_json(existing))
+
+    now = datetime.now(timezone.utc)
+    attempt = CommunicationAttempt(
+        contact_id=row.id,
+        channel="email",
+        purpose="transactional",
+        recipient_user_id=None,
+        masked_destination=mask_destination("email", row.email),
+        template_name="admin_contact_email",
+        provider="pending",
+        mode=resolve_communication_mode(),
+        status="queued",
+        initiated_by=current_user.id,
+        idempotency_key=idempotency_key,
+        subject=subject,
+        requested_at=now,
+    )
+    db.session.add(attempt)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        existing = CommunicationAttempt.query.filter_by(idempotency_key=idempotency_key).first()
+        if existing:
+            return jsonify(message="This email request was already processed.", attempt=_communication_attempt_json(existing))
+        raise
+
+    result = send_email(
+        OutboundEmail(
+            to=row.email,
+            subject=subject,
+            html=app_email_shell(
+                subject,
+                f"<p>{escape(message).replace(chr(10), '<br>')}</p>",
+                eyebrow="RealMindX",
+                preheader=subject,
+            ),
+            text=message,
+        ),
+        purpose="transactional",
+        recipient_user_id=None,
+        template_name="admin_contact_email",
+        contact_id=row.id,
+        initiated_by=current_user.id,
+        attempt_id=attempt.id,
+    )
+    log_action("send_contact_email", "contact", row.id, {"attempt_id": attempt.id, "status": result.status})
+    db.session.commit()
+    return jsonify(
+        message="Email accepted for delivery." if result.status in ("queued", "accepted", "sent", "delivered", "mocked") else "Email delivery failed.",
+        attempt=_communication_attempt_json(attempt),
+    ), 200 if result.status in ("queued", "accepted", "sent", "delivered", "mocked") else 502
+
+
 @admin_bp.get("/newsletters")
 @login_required
 @permission_required("newsletters.view")
@@ -6129,7 +6395,33 @@ def list_newsletters():
     if tag:
         query = query.filter(NewsletterSubscriber.tags.contains([tag]))
     rows = query.order_by(NewsletterSubscriber.created_at.desc()).limit(500).all()
-    return jsonify(items=[contact_json(r) for r in rows])
+    return jsonify(items=[newsletter_subscriber_json(r) for r in rows])
+
+
+@admin_bp.get("/newsletters/audience")
+@login_required
+@permission_required("newsletters.view")
+def list_newsletter_audience():
+    query = Contact.query
+    q = (request.args.get("q") or "").strip()
+    source = (request.args.get("source") or "").strip().lower()
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(Contact.full_name.ilike(like), Contact.email.ilike(like), Contact.phone.ilike(like)))
+    if source:
+        query = query.filter(Contact.sources.any(ContactSource.source == source))
+    rows = query.order_by(Contact.last_activity_at.desc(), Contact.id.desc()).limit(500).all()
+    items = []
+    for row in rows:
+        item = contact_json(row)
+        subscriber = row.newsletter_subscription
+        item["newsletter_status"] = (
+            UNSUBSCRIBED
+            if subscriber and (not subscriber.is_active or subscriber.communication_status == UNSUBSCRIBED)
+            else subscriber.communication_status if subscriber else None
+        )
+        items.append(item)
+    return jsonify(items=items)
 
 
 @admin_bp.post("/newsletters")
@@ -6141,21 +6433,41 @@ def create_newsletter_contact():
         email = normalize_contact_email(payload.get("email"))
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
-    source = (payload.get("source") or "manual_institution_import").strip()
-    status = (payload.get("communication_status") or payload.get("status") or MARKETING_ACTIVE).strip()
+    source = (payload.get("source") or "admin_added").strip()
+    status = payload.get("communication_status") or MARKETING_ACTIVE
     tags = payload.get("tags") or []
     if isinstance(tags, str):
         tags = [item.strip() for item in re.split(r"[,;]+", tags) if item.strip()]
-    row = upsert_contact(
+    contact = upsert_contact(
         email,
-        source=source,
-        communication_status=status,
-        tags=tags,
-        notes=(payload.get("notes") or "").strip() or None,
+        full_name=(payload.get("full_name") or "").strip() or None,
+        phone=(payload.get("phone") or "").strip() or None,
+        source="admin_added",
+        metadata={"admin_source": source, "tags": tags},
     )
+    row = NewsletterSubscriber.query.filter_by(email=email).first()
+    if not row:
+        row = NewsletterSubscriber(
+            email=email,
+            source=source,
+            sources=[source],
+            tags=tags,
+            communication_status=status,
+            is_active=status != UNSUBSCRIBED,
+            confirmed_at=datetime.now(timezone.utc),
+            unsubscribe_token=secrets.token_urlsafe(32),
+            notes=(payload.get("notes") or "").strip() or None,
+            contact=contact,
+        )
+        db.session.add(row)
+    else:
+        row.contact = contact
+        row.tags = tags
+        row.communication_status = status
+        row.is_active = status != UNSUBSCRIBED
     db.session.commit()
     log_action("create_newsletter_contact", "newsletter_subscriber", row.id, {"email": row.email, "source": source})
-    return jsonify(item=contact_json(row)), 201
+    return jsonify(item=newsletter_subscriber_json(row)), 201
 
 
 NEWSLETTER_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
@@ -6329,49 +6641,52 @@ def send_newsletter_campaign():
     }.get(sender, "RealMindX Updates")
     from_email = _campaign_from_email(sender)
     base_url = current_app.config.get("SITE_BASE_URL", "https://realmindxgh.com").rstrip("/")
-    recipient_ids = payload.get("recipient_ids") or []
+    contact_ids = payload.get("contact_ids") or []
+    recipient_ids = payload.get("recipient_ids") or []  # legacy subscriber IDs
     recipient_emails = payload.get("recipient_emails") or payload.get("recipients") or []
     if isinstance(recipient_emails, str):
         recipient_emails = [item.strip() for item in re.split(r"[\s,;]+", recipient_emails) if item.strip()]
-    subscribers = []
+    recipients = []
     seen = set()
+    if contact_ids:
+        recipients.extend((contact, contact.newsletter_subscription) for contact in Contact.query.filter(Contact.id.in_(contact_ids)).all())
     if recipient_ids:
-        subscribers.extend(NewsletterSubscriber.query.filter(NewsletterSubscriber.id.in_(recipient_ids)).all())
+        recipients.extend((subscriber.contact, subscriber) for subscriber in NewsletterSubscriber.query.filter(NewsletterSubscriber.id.in_(recipient_ids)).all() if subscriber.contact)
     for raw_email in recipient_emails:
         try:
             email = normalize_contact_email(raw_email)
         except ValueError:
             continue
-        row = NewsletterSubscriber.query.filter_by(email=email).first()
-        if not row:
-            row = upsert_contact(
-                email,
-                source="manual_campaign_recipient",
-                communication_status=MARKETING_ACTIVE,
-                tags=["campaign"],
-            )
-        subscribers.append(row)
-    if not subscribers:
+        contact = Contact.query.filter_by(email=email).first()
+        if contact:
+            recipients.append((contact, contact.newsletter_subscription))
+    if not recipients:
         subscribers = NewsletterSubscriber.query.filter(
             NewsletterSubscriber.is_active.is_(True),
-            NewsletterSubscriber.communication_status != UNSUBSCRIBED,
+            NewsletterSubscriber.communication_status == MARKETING_ACTIVE,
+            NewsletterSubscriber.contact_id.is_not(None),
         ).order_by(NewsletterSubscriber.email.asc()).all()
+        recipients = [(subscriber.contact, subscriber) for subscriber in subscribers if subscriber.contact]
 
     sent = 0
     mocked = 0
     failed = 0
-    for subscriber in subscribers:
-        if subscriber.email in seen:
+    for contact, subscriber in recipients:
+        if contact.email in seen:
             continue
-        seen.add(subscriber.email)
-        if subscriber.communication_status == UNSUBSCRIBED or not subscriber.is_active:
+        seen.add(contact.email)
+        if subscriber and (subscriber.communication_status == UNSUBSCRIBED or not subscriber.is_active):
             continue
-        if not subscriber.unsubscribe_token:
+        if subscriber and not subscriber.unsubscribe_token:
             subscriber.unsubscribe_token = secrets.token_urlsafe(32)
-        unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
+        source_labels = [link.source for link in contact.sources] or ["RealMindX contacts"]
+        footer_note = f'You are receiving this RealMindX email because your address is listed under {escape(", ".join(source_labels))}.'
+        if subscriber:
+            unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
+            footer_note += f' <a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe from newsletters</a>.'
         result = send_email(
             OutboundEmail(
-                to=subscriber.email,
+                to=contact.email,
                 subject=subject,
                 from_email=from_email,
                 html=shell(
@@ -6382,16 +6697,14 @@ def send_newsletter_campaign():
                     eyebrow=eyebrow,
                     preheader=payload.get("preheader") or payload.get("summary") or title,
                     hero_image_url=image_url,
-                    footer_note=(
-                        f'You are receiving this RealMindX email because your address is listed under '
-                        f'{escape(", ".join(subscriber.sources or [subscriber.source or "RealMindX contacts"]))}. '
-                        f'<a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe</a>.'
-                    ),
+                    footer_note=footer_note,
                 ),
             ),
-            purpose="marketing",
+            purpose="transactional",
             recipient_user_id=None,
             template_name="newsletter_campaign",
+            contact_id=contact.id,
+            initiated_by=current_user.id,
         )
         if result.status == "mocked":
             mocked += 1
@@ -6428,6 +6741,7 @@ def send_newsletter_campaign():
 def update_newsletter_subscriber(subscriber_id):
     row = db.get_or_404(NewsletterSubscriber, subscriber_id)
     payload = request.get_json(silent=True) or {}
+    requested_status = payload.get("communication_status") or payload.get("status")
     if "is_active" in payload:
         row.is_active = bool(payload["is_active"])
         if not row.is_active:
@@ -6451,7 +6765,7 @@ def update_newsletter_subscriber(subscriber_id):
         row.notes = (payload.get("notes") or "").strip() or None
     log_action("update_newsletter_subscriber", "newsletter_subscriber", row.id)
     db.session.commit()
-    return jsonify(item=contact_json(row))
+    return jsonify(item=newsletter_subscriber_json(row))
 
 
 @admin_bp.delete("/newsletters/<int:subscriber_id>")
@@ -6459,8 +6773,12 @@ def update_newsletter_subscriber(subscriber_id):
 @permission_required("newsletters.delete")
 def delete_newsletter_subscriber(subscriber_id):
     row = db.get_or_404(NewsletterSubscriber, subscriber_id)
+    contact = row.contact
     log_action("delete_newsletter_subscriber", "newsletter_subscriber", row.id, {"email": row.email})
     db.session.delete(row)
+    db.session.flush()
+    if contact:
+        remove_contact_source(contact, "newsletter")
     db.session.commit()
     return jsonify(message="Subscriber deleted.")
 

@@ -29,7 +29,7 @@ def _multi_taxonomy_terms(taxonomy, raw):
 
 from ..book_requests import BookRequestError, create_request, request_json
 from ..checkout_details import upsert_checkout_detail
-from ..contacts import TRANSACTIONAL_ONLY, upsert_contact
+from ..contacts import upsert_contact
 from ..email_service import (
     EmailAttachment,
     OutboundEmail,
@@ -371,6 +371,20 @@ def _create_order_from_checkout(
     assign_invoice_id(order)
     db.session.add(order)
     db.session.flush()
+    upsert_contact(
+        order.email,
+        full_name=order.customer_name,
+        phone=order.phone,
+        source="bookshop",
+        source_record_id=order.id,
+        metadata={
+            "first_order_id": order.id,
+            "latest_order_id": order.id,
+            "latest_order_reference": order.order_reference,
+            "user_id": order.user_id,
+        },
+        activity_at=order.created_at or paid_at or datetime.now(timezone.utc),
+    )
     for item in checkout["order_items"]:
         db.session.add(OrderItem(
             order_id=order.id,
@@ -405,10 +419,14 @@ def _create_order_from_checkout(
                 try:
                     upsert_contact(
                         contact_email,
-                        source="cart_invoice",
-                        communication_status=TRANSACTIONAL_ONLY,
-                        last_invoice_used_at=now,
-                        last_order_at=now,
+                        source="enquiry",
+                        source_record_id=cart_invoice.id,
+                        metadata={
+                            "interaction": "cart_invoice",
+                            "invoice_id": cart_invoice.invoice_id,
+                            "converted_order_id": order.id,
+                        },
+                        activity_at=now,
                     )
                 except ValueError:
                     continue
@@ -1110,10 +1128,10 @@ def email_cart_invoice():
     for recipient in recipients:
         upsert_contact(
             recipient,
-            source="cart_invoice",
-            communication_status=TRANSACTIONAL_ONLY,
-            tags=["bookshop", "invoice"],
-            last_invoice_generated_at=now,
+            source="enquiry",
+            source_record_id=invoice.id,
+            metadata={"interaction": "cart_invoice", "invoice_id": invoice.invoice_id},
+            activity_at=now,
         )
         result = _send_cart_invoice_email(invoice, recipient)
         if result.status == "mocked":
@@ -1836,6 +1854,12 @@ def bulk_order():
     details = (payload.get("details") or payload.get("message") or "").strip()
     if not name or not details:
         return jsonify(error="Name and order details are required."), 400
+    upsert_contact(
+        email,
+        full_name=name,
+        source="enquiry",
+        metadata={"interaction": "bulk_order", "channel": "bookshop"},
+    )
     send_email(
         OutboundEmail(
             to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],

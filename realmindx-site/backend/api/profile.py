@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..audit import audit
+from ..contacts import upsert_contact_safely
 from ..checkout_details import checkout_detail_json, list_checkout_details, upsert_checkout_detail
 from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_email
 from ..extensions import db, limiter
@@ -721,6 +722,17 @@ def verify_contact_change():
     challenge.status = "verified"
     challenge.verified_at = now
     challenge.active_lock_key = None
+    if current_user.teacher_service_enabled:
+        upsert_contact_safely(
+            current_user.email,
+            full_name=current_user.full_name,
+            phone=current_user.phone,
+            source="teacher",
+            source_record_id=current_user.id,
+            metadata={"application_id": current_user.application_id},
+            activity_at=now,
+            logger=current_app.logger,
+        )
     ContactChangeToken.query.filter(
         ContactChangeToken.user_id == current_user.id,
         ContactChangeToken.field == challenge.field,

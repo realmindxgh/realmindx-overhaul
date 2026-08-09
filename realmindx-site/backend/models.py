@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from flask_login import UserMixin
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import CheckConstraint, UniqueConstraint
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .extensions import db
@@ -858,10 +858,68 @@ class AnalyticsEvent(TimestampMixin, db.Model):
     news = db.relationship("News")
 
 
+class Contact(TimestampMixin, db.Model):
+    __tablename__ = "contacts"
+    __table_args__ = (
+        CheckConstraint("email = lower(trim(email))", name="ck_contacts_email_normalized"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    full_name = db.Column(db.String(160), nullable=True, index=True)
+    phone = db.Column(db.String(40), nullable=True, index=True)
+    first_seen_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    last_activity_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+    sources = db.relationship(
+        "ContactSource",
+        back_populates="contact",
+        cascade="all, delete-orphan",
+    )
+    newsletter_subscription = db.relationship(
+        "NewsletterSubscriber",
+        back_populates="contact",
+        uselist=False,
+    )
+
+
+class ContactSource(TimestampMixin, db.Model):
+    __tablename__ = "contact_sources"
+    __table_args__ = (
+        UniqueConstraint("contact_id", "source", name="uq_contact_sources_contact_source"),
+        CheckConstraint(
+            "source IN ('teacher','bookshop','newsletter','school','enquiry','client','admin_added')",
+            name="ck_contact_sources_source",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contacts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source = db.Column(db.String(40), nullable=False, index=True)
+    source_record_id = db.Column(db.String(80), nullable=True, index=True)
+    first_seen_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    last_seen_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    details = db.Column("metadata", db.JSON, default=dict, nullable=False)
+
+    contact = db.relationship("Contact", back_populates="sources")
+
+
 class NewsletterSubscriber(TimestampMixin, db.Model):
     __tablename__ = "newsletter_subscribers"
 
     id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contacts.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     source = db.Column(db.String(80), default="site", nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -875,6 +933,7 @@ class NewsletterSubscriber(TimestampMixin, db.Model):
     last_invoice_used_at = db.Column(db.DateTime(timezone=True), nullable=True)
     last_order_at = db.Column(db.DateTime(timezone=True), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    contact = db.relationship("Contact", back_populates="newsletter_subscription")
 
 
 class News(TimestampMixin, db.Model):
@@ -1109,6 +1168,12 @@ class CommunicationAttempt(TimestampMixin, db.Model):
     __tablename__ = "communication_attempts"
 
     id = db.Column(db.Integer, primary_key=True)
+    contact_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contacts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     channel = db.Column(db.String(20), nullable=False, index=True)
     purpose = db.Column(db.String(40), nullable=False, index=True)
     recipient_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
@@ -1119,6 +1184,9 @@ class CommunicationAttempt(TimestampMixin, db.Model):
     mode = db.Column(db.String(12), nullable=False)
     status = db.Column(db.String(20), nullable=False, index=True)
     error_code = db.Column(db.String(60), nullable=True)
+    error_message = db.Column(db.String(500), nullable=True)
+    subject = db.Column(db.String(255), nullable=True)
+    idempotency_key = db.Column(db.String(80), unique=True, nullable=True, index=True)
     retry_count = db.Column(db.Integer, default=0)
     initiated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     batch_id = db.Column(db.String(40), nullable=True, index=True)
@@ -1126,3 +1194,4 @@ class CommunicationAttempt(TimestampMixin, db.Model):
     accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
     delivered_at = db.Column(db.DateTime(timezone=True), nullable=True)
     failed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    contact = db.relationship("Contact")

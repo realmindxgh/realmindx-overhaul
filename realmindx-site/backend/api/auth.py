@@ -14,9 +14,10 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy.exc import IntegrityError
 
 from ..audit import audit
+from ..contacts import remove_contact_source, upsert_contact_safely
 from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_email
 from ..extensions import db, limiter
-from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, BookRequest, BookshopPaymentIntent, CheckoutDetail, CommunicationAttempt, ContactChangeToken, ContactMessage, DeliverySettlementBatch, EmailVerificationToken, Job, JobAlertPreference, NewsletterSubscriber, Order, OrderDelivery, PasswordResetToken, PlatformTermsAcceptance, Role, TermsAcceptance, UploadedFile, User, UserProfile, WhatsAppWebhookEvent
+from ..models import AccountSecurityCode, AnalyticsEvent, AuditLog, AuthIdentity, BookRequest, BookshopPaymentIntent, CheckoutDetail, CommunicationAttempt, ContactChangeToken, ContactMessage, ContactSource, DeliverySettlementBatch, EmailVerificationToken, Job, JobAlertPreference, NewsletterSubscriber, Order, OrderDelivery, PasswordResetToken, PlatformTermsAcceptance, Role, TermsAcceptance, UploadedFile, User, UserProfile, WhatsAppWebhookEvent
 from ..profile_completion import CURRENT_TERMS_VERSION, account_status
 from ..security import make_token, read_token, require_turnstile, seconds
 from ..serializers import user_json
@@ -316,6 +317,16 @@ def signup():
             return jsonify(error="Could not complete registration. Please try again."), 500
     db.session.flush()
     db.session.add(UserProfile(user_id=user.id))
+    if user.teacher_service_enabled:
+        upsert_contact_safely(
+            user.email,
+            full_name=user.full_name,
+            phone=user.phone,
+            source="teacher",
+            source_record_id=user.id,
+            metadata={"application_id": user.application_id},
+            logger=current_app.logger,
+        )
     terms_acceptance = TermsAcceptance(
         user_id=user.id,
         terms_type="platform_terms",
@@ -498,6 +509,16 @@ def login():
             user.teacher_service_enabled = True
         if user.teacher_service_enabled:
             ensure_application_id(user)
+            upsert_contact_safely(
+                user.email,
+                full_name=user.full_name,
+                phone=user.phone,
+                source="teacher",
+                source_record_id=user.id,
+                metadata={"application_id": user.application_id},
+                activity_at=now,
+                logger=current_app.logger,
+            )
     audit("user_login", "user", user.id, {"email": user.email, "role": user.role.name if user.role else None})
     db.session.commit()
     remember = bool(payload.get("remember"))
@@ -528,6 +549,16 @@ def complete_two_factor_login():
             user.teacher_service_enabled = True
         if user.teacher_service_enabled:
             ensure_application_id(user)
+            upsert_contact_safely(
+                user.email,
+                full_name=user.full_name,
+                phone=user.phone,
+                source="teacher",
+                source_record_id=user.id,
+                metadata={"application_id": user.application_id},
+                activity_at=now,
+                logger=current_app.logger,
+            )
     session.pop("pending_two_factor_login", None)
     audit("user_login_two_factor_completed", "user", user.id, {"email": user.email})
     db.session.commit()
@@ -716,12 +747,27 @@ def decline_terms():
         DeliverySettlementBatch.query.filter_by(prepared_by_id=user.id).update({"prepared_by_id": None})
         BookRequest.query.filter_by(resolved_by_id=user.id).update({"resolved_by_id": None})
 
-        # -- Anonymise newsletter subscription if it matches the account email --
-        NewsletterSubscriber.query.filter_by(email=user.email).delete()
+        # -- Remove account-linked contact sources without deleting independent order history --
+        teacher_source = ContactSource.query.filter_by(source="teacher", source_record_id=str(user.id)).first()
+        contact = teacher_source.contact if teacher_source else None
+        subscription = NewsletterSubscriber.query.filter_by(email=user.email).first()
+        if subscription:
+            subscription_contact = subscription.contact
+            db.session.delete(subscription)
+            db.session.flush()
+            if subscription_contact:
+                remove_contact_source(subscription_contact, "newsletter")
+        if contact and db.session.get(type(contact), contact.id):
+            remove_contact_source(contact, "teacher")
 
         # -- DELETE volatile session/token data --
         AnalyticsEvent.query.filter_by(user_id=user.id).delete()
         CheckoutDetail.query.filter_by(user_id=user.id).delete()
+        challenge_ids = [row[0] for row in db.session.query(ContactChangeToken.id).filter_by(user_id=user.id).all()]
+        if challenge_ids:
+            WhatsAppWebhookEvent.query.filter(WhatsAppWebhookEvent.challenge_id.in_(challenge_ids)).update(
+                {"challenge_id": None}, synchronize_session=False
+            )
         ContactChangeToken.query.filter_by(user_id=user.id).delete()
         EmailVerificationToken.query.filter_by(user_id=user.id).delete()
         AccountSecurityCode.query.filter_by(user_id=user.id).delete()
