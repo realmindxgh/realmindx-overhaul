@@ -230,22 +230,25 @@ const NewsArticleBody = ({ item, onLinkClick }) => {
     <div className="news-article-body" onClick={onLinkClick}>
       {introParagraphs.map((paragraph, index) => <p key={`intro-${index}`}>{renderTextWithLinks(paragraph)}</p>)}
       {sections.map((section, index) => {
-        const imagePosition = section.image_position === 'auto'
+        const storedImagePosition = section.image_position === 'full' ? 'top' : section.image_position;
+        const imagePosition = storedImagePosition === 'auto'
           ? (index % 2 === 0 ? 'right' : 'left')
-          : (section.image_position || 'right');
+          : (storedImagePosition || 'top');
         const imageSize = section.image_size || 'medium';
+        const sectionImage = newsAssetUrl(section.image_url) ? (
+          <figure className={`news-section-image position-${imagePosition} size-${imageSize}`}>
+            <img src={newsAssetUrl(section.image_url)} alt={section.caption || section.heading || item.title} />
+            {section.caption && <figcaption>{section.caption}</figcaption>}
+          </figure>
+        ) : null;
+        const sectionBody = String(section.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, paragraphIndex) => (
+          <p key={`section-${index}-p-${paragraphIndex}`}>{renderTextWithLinks(paragraph)}</p>
+        ));
         return (
           <section className="news-article-section" key={section.id || `${item.id}-section-${index}`}>
             {section.heading && <h3>{section.heading}</h3>}
-            {newsAssetUrl(section.image_url) && (
-              <figure className={`news-section-image position-${imagePosition} size-${imageSize}`}>
-              <img src={newsAssetUrl(section.image_url)} alt={section.caption || section.heading || item.title} />
-              {section.caption && <figcaption>{section.caption}</figcaption>}
-              </figure>
-            )}
-            {String(section.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, paragraphIndex) => (
-              <p key={`section-${index}-p-${paragraphIndex}`}>{renderTextWithLinks(paragraph)}</p>
-            ))}
+            {imagePosition === 'bottom' ? sectionBody : sectionImage}
+            {imagePosition === 'bottom' ? sectionImage : sectionBody}
           </section>
         );
       })}

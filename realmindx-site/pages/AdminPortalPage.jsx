@@ -1901,7 +1901,7 @@ const ArticleSectionsField = ({ sections, onChange }) => {
       heading: '',
       body: '',
       caption: '',
-      image_position: 'auto',
+      image_position: 'top',
       image_size: 'medium',
       image_file_id: '',
       image_url: '',
@@ -1929,6 +1929,22 @@ const ArticleSectionsField = ({ sections, onChange }) => {
                 placeholder="Example: Why this programme matters"
               />
             </label>
+            <div className="form-group article-section-image-group" style={{ gridColumn: '1 / -1' }}>
+              <span className="form-label">Section Image</span>
+              <ImageUploadField
+                fieldName={`section_image_${index}`}
+                currentFileId={section.image_file_id || ''}
+                currentUrl={section.image_url || ''}
+                aspectRatio={16/9}
+                cropTitle="Crop Article Section Image (16:9)"
+                guide={[
+                  { icon: 'target',   text: 'Default ratio: 16:9. Unlock the ratio in the cropper when the source image needs a different shape.' },
+                  { icon: 'image',    text: 'Drag the crop box, its edges, or its corners to choose the exact part of the image to keep.' },
+                  { icon: 'camera',   text: 'Recommended source size: at least 900 x 506 px. The image caption and placement controls are directly below.' },
+                ]}
+                onChange={(fileId, fileUrl) => updateSection(index, { image_file_id: fileId, image_url: fileUrl })}
+              />
+            </div>
             <label className="form-group">
               <span className="form-label">Image Caption</span>
               <input
@@ -1939,16 +1955,17 @@ const ArticleSectionsField = ({ sections, onChange }) => {
               />
             </label>
             <label className="form-group">
-              <span className="form-label">Desktop Image Position</span>
+              <span className="form-label">Image Placement</span>
               <select
                 className="form-select"
-                value={section.image_position || 'auto'}
+                value={section.image_position === 'full' ? 'top' : (section.image_position || 'top')}
                 onChange={event => updateSection(index, { image_position: event.target.value })}
               >
-                <option value="auto">Alternate right and left</option>
-                <option value="right">Right</option>
-                <option value="left">Left</option>
-                <option value="full">Full width</option>
+                <option value="top">Above section text</option>
+                <option value="bottom">Below section text</option>
+                <option value="left">Left of text</option>
+                <option value="right">Right of text</option>
+                <option value="auto">Alternate left and right</option>
               </select>
             </label>
             <label className="form-group">
@@ -1971,29 +1988,13 @@ const ArticleSectionsField = ({ sections, onChange }) => {
                 placeholder="Write and format this section."
               />
             </div>
-            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <span className="form-label">Section Image</span>
-              <ImageUploadField
-                fieldName={`section_image_${index}`}
-                currentFileId={section.image_file_id || ''}
-                currentUrl={section.image_url || ''}
-                aspectRatio={16/9}
-                cropTitle="Crop Article Section Image (16:9)"
-                guide={[
-                  { icon: 'target',   text: 'Ideal ratio: 16:9. Used inline within the article body.' },
-                  { icon: 'image',    text: 'Crop tip: pick an image directly relevant to this section\'s heading and text. Inline images should illustrate the content, not just decorate it.' },
-                  { icon: 'camera',   text: 'Minimum size: 900 x 506 px. Add a caption in the field below the image to give readers context.' },
-                ]}
-                onChange={(fileId, fileUrl) => updateSection(index, { image_file_id: fileId, image_url: fileUrl })}
-              />
-            </div>
           </div>
         </section>
       ))}
       <button type="button" className="btn btn-outline-navy btn-sm" onClick={addSection}>
         Add Article Section
       </button>
-      <p className="admin-image-help">Desktop images can sit beside the section text. On phones, every section image remains full width for readability.</p>
+      <p className="admin-image-help">Images can appear above, below, or beside section text. On phones, every section image remains full width for readability.</p>
     </div>
   );
 };
@@ -3024,7 +3025,7 @@ const ContactsView = ({ session }) => {
 };
 
 const NewsletterWorkspace = ({ onSent }) => {
-  const emptySection = () => ({ heading: '', body: '', caption: '', image_position: 'auto', image_size: 'medium', image_file_id: '', image_url: '' });
+  const emptySection = () => ({ heading: '', body: '', caption: '', image_position: 'top', image_size: 'medium', image_file_id: '', image_url: '' });
   const emptyForm = { brand: 'realmindx', sender: 'news', subject: '', title: '', preheader: '', sections: [emptySection()], cta_label: '', cta_url: '', image_file_id: '', manual_recipients: '' };
   const [tab, setTab] = React.useState('compose');
   const [form, setForm] = React.useState(emptyForm);

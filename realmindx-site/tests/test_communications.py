@@ -861,6 +861,51 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         self.assertIn("width:100%;max-width:100%", data["html"])
         self.assertIn('src="http://localhost/uploads/public/images/preview.jpg"', data["html"])
 
+    def test_newsletter_preview_can_place_section_image_after_text(self):
+        from backend.models import UploadedFile
+        image = UploadedFile(
+            original_filename="bottom.jpg",
+            stored_filename="bottom.jpg",
+            storage_path="images/bottom.jpg",
+            mime_type="image/jpeg",
+            size_bytes=100,
+            category="images",
+            visibility="public",
+        )
+        db.session.add(image)
+        db.session.commit()
+
+        response = self.client.post("/api/admin/newsletters/preview", json={
+            "subject": "Placement preview",
+            "title": "Placement preview",
+            "sections": [{
+                "heading": "Before the image",
+                "body": "<p>Section body before image</p>",
+                "image_position": "bottom",
+                "image_file_id": image.id,
+            }],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_json()["html"]
+        self.assertLess(html.index("Section body before image"), html.index("bottom.jpg"))
+        self.assertIn('width="576"', html)
+
+    def test_news_section_preserves_bottom_image_placement(self):
+        response = self.client.post("/api/admin/news", json={
+            "title": "Bottom image placement",
+            "body": "Introductory copy",
+            "sections": [{
+                "heading": "Section heading",
+                "body": "Section copy",
+                "caption": "Section image",
+                "image_position": "bottom",
+            }],
+        })
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()["sections"][0]["image_position"], "bottom")
+
     def test_deleting_newsletter_history_does_not_delete_initiating_user(self):
         from backend.models import NewsletterCampaign
         campaign = NewsletterCampaign(

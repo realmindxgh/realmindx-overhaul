@@ -150,26 +150,33 @@ def _article_markup(row, sections, image_url):
         heading = section.get("heading")
         section_image = _absolute_url(section.get("image_url"))
         image_position = section.get("image_position") or "auto"
+        if image_position == "full":
+            image_position = "top"
         if image_position == "auto":
             image_position = "right" if section_index % 2 == 0 else "left"
         image_size = section.get("image_size") or "medium"
         if heading:
             pieces.append(f"<h2>{escape(heading)}</h2>")
+        image_pieces = []
         if section_image:
-            pieces.append(
+            image_pieces.append(
                 f'<figure class="news-section-image position-{escape(image_position, quote=True)} '
                 f'size-{escape(image_size, quote=True)}"><img src="{escape(section_image, quote=True)}" '
                 f'alt="{escape(section.get("caption") or heading or row.title, quote=True)}" />'
             )
             if section.get("caption"):
-                pieces.append(f"<figcaption>{escape(section['caption'])}</figcaption>")
-            pieces.append("</figure>")
+                image_pieces.append(f"<figcaption>{escape(section['caption'])}</figcaption>")
+            image_pieces.append("</figure>")
+        if image_position != "bottom":
+            pieces.extend(image_pieces)
         section_body = section.get("body") or ""
         if contains_rich_html(section_body):
             pieces.append(f'<div class="rich-article-content">{sanitize_rich_html(section_body)}</div>')
         else:
             for paragraph in _paragraphs(section_body):
                 pieces.append(f"<p>{escape(paragraph)}</p>")
+        if image_position == "bottom":
+            pieces.extend(image_pieces)
     pieces.extend(["</div>", "</article>", "</main>"])
     return "".join(pieces)
 

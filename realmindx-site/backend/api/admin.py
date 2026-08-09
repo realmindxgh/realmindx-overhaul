@@ -5690,8 +5690,8 @@ def _clean_news_sections(sections):
         caption = (section.get("caption") or "").strip()
         image_position = (section.get("image_position") or "auto").strip().lower()
         image_size = (section.get("image_size") or "medium").strip().lower()
-        if image_position not in {"auto", "left", "right", "full"}:
-            image_position = "auto"
+        if image_position not in {"auto", "left", "right", "full", "top", "bottom"}:
+            image_position = "top"
         if image_size not in {"small", "medium", "large"}:
             image_size = "medium"
         image_file_id = section.get("image_file_id") or None
@@ -6565,9 +6565,11 @@ def _render_newsletter_sections(sections, *, asset_base_url=None):
             image_file = db.session.get(UploadedFile, image_file_id)
             image_url = _upload_public_url(image_file) if image_file else ""
         position = (section.get("image_position") or "auto").strip().lower()
+        if position == "full":
+            position = "top"
         if position == "auto":
             position = "right" if index % 2 == 0 else "left"
-        if position not in {"left", "right", "full"}:
+        if position not in {"left", "right", "top", "bottom"}:
             position = "right"
         image_size = (section.get("image_size") or "medium").strip().lower()
         if image_size not in {"small", "medium", "large"}:
@@ -6583,7 +6585,7 @@ def _render_newsletter_sections(sections, *, asset_base_url=None):
         if image_url:
             safe_url = escape(_absolute_newsletter_url(image_url, asset_base_url), quote=True)
             image_width = {"small": 180, "medium": 260, "large": 340}[image_size]
-            if position == "full":
+            if position in {"top", "bottom"}:
                 image_width = 576
                 image_style = "display:block;width:100%;max-width:100%;height:auto;border-radius:12px;border:1px solid #dce5f0;"
             else:
@@ -6598,16 +6600,16 @@ def _render_newsletter_sections(sections, *, asset_base_url=None):
             if caption:
                 image_html += f'<p style="margin:8px 0 0;color:#53657d;font-size:12px;line-height:1.4;">{caption}</p>'
 
-        if image_html and position != "full":
+        if image_html and position in {"left", "right"}:
             image_cell = f'<td class="newsletter-section-image" width="42%" style="width:42%;vertical-align:top;padding:0 0 16px;">{image_html}</td>'
             text_cell = f'<td class="newsletter-section-text" style="vertical-align:top;padding:0 0 16px;">{text_html}</td>'
             cells = image_cell + '<td width="18" style="width:18px;">&nbsp;</td>' + text_cell if position == "left" else text_cell + '<td width="18" style="width:18px;">&nbsp;</td>' + image_cell
             blocks.append(f'<table class="newsletter-section-row" role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 22px;"><tr>{cells}</tr></table>')
         else:
+            full_image = f'<div style="margin:0 0 14px;">{image_html}</div>' if image_html else ""
             blocks.append(
                 '<div style="margin:0 0 24px;">'
-                + (f'<div style="margin:0 0 14px;">{image_html}</div>' if image_html else "")
-                + text_html
+                + (text_html + full_image if position == "bottom" else full_image + text_html)
                 + '</div>'
             )
     return (

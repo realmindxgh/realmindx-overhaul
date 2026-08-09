@@ -1,18 +1,23 @@
-/**
- * ImageCropModal — drag/zoom/pinch crop before upload.
- * No dependencies beyond React. Uses Canvas API.
- *
- * Props:
- *   src         – data URL of the image to crop
- *   aspectRatio – width/height ratio of crop frame (default 1 = square)
- *   title       – modal heading
- *   onCrop(file, dataUrl) – called with the cropped File + preview URL
- *   onCancel()  – called when user dismisses
- */
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+const initialCrop = (width, height, aspect) => {
+  if (!width || !height) return undefined;
+  if (!aspect) return { unit: '%', x: 5, y: 5, width: 90, height: 90 };
+  return centerCrop(
+    makeAspectCrop({ unit: '%', width: 90 }, aspect, width, height),
+    width,
+    height,
+  );
+};
 
-const FRAME = 520; // crop frame long edge in CSS px
+const ratioLabel = aspect => {
+  if (Math.abs(aspect - 16 / 9) < 0.001) return '16:9';
+  if (Math.abs(aspect - 16 / 7) < 0.001) return '16:7';
+  if (Math.abs(aspect - 1) < 0.001) return '1:1';
+  return `${aspect.toFixed(2)}:1`;
+};
 
 export default function ImageCropModal({
   src,
@@ -21,233 +26,130 @@ export default function ImageCropModal({
   onCrop,
   onCancel,
 }) {
-  const canvasRef  = useRef(null);
-  const imgRef     = useRef(null);
-  const drag       = useRef({ on: false, sx: 0, sy: 0, ox: 0, oy: 0 });
-  const lastTouches = useRef(null);
+  const imageRef = useRef(null);
+  const [crop, setCrop] = useState(undefined);
+  const [completedCrop, setCompletedCrop] = useState(undefined);
+  const [ratioLocked, setRatioLocked] = useState(true);
 
-  const [loaded, setLoaded] = useState(false);
-  const [scale,  setScale]  = useState(1);
-  const [minSc,  setMinSc]  = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    setCrop(undefined);
+    setCompletedCrop(undefined);
+    setRatioLocked(true);
+  }, [src, aspectRatio]);
 
-  // Crop frame size
-  const CW = aspectRatio >= 1 ? FRAME : Math.round(FRAME * aspectRatio);
-  const CH = aspectRatio >= 1 ? Math.round(FRAME / aspectRatio) : FRAME;
-  // Canvas size (crop frame + padding)
-  const PAD = 40;
-  const VW = CW + PAD * 2;
-  const VH = CH + PAD * 2;
-  const cropX = PAD;
-  const cropY = PAD;
+  const setDefaultCrop = useCallback(() => {
+    const image = imageRef.current;
+    if (!image) return;
+    setCrop(initialCrop(image.width, image.height, ratioLocked ? aspectRatio : undefined));
+    setCompletedCrop(undefined);
+  }, [aspectRatio, ratioLocked]);
 
-  // ── Clamp offset so image always covers crop frame ──────────────
-  const clamp = useCallback((ox, oy, sc) => {
-    const img = imgRef.current;
-    if (!img) return { x: ox, y: oy };
-    const dw = img.naturalWidth  * sc;
-    const dh = img.naturalHeight * sc;
-    const imgX = (VW - dw) / 2 + ox;
-    const imgY = (VH - dh) / 2 + oy;
-    const maxOx = ox - Math.min(0, imgX - cropX);
-    const minOx = ox - Math.max(0, imgX + dw - (cropX + CW));
-    const maxOy = oy - Math.min(0, imgY - cropY);
-    const minOy = oy - Math.max(0, imgY + dh - (cropY + CH));
-    return {
-      x: Math.max(minOx, Math.min(maxOx, ox)),
-      y: Math.max(minOy, Math.min(maxOy, oy)),
-    };
-  }, [VW, VH, cropX, cropY, CW, CH]);
-
-  // ── Draw ─────────────────────────────────────────────────────────
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    const img    = imgRef.current;
-    if (!canvas || !img || !loaded) return;
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, VW, VH);
-
-    // Image
-    const dw = img.naturalWidth  * scale;
-    const dh = img.naturalHeight * scale;
-    const ix = (VW - dw) / 2 + offset.x;
-    const iy = (VH - dh) / 2 + offset.y;
-    ctx.drawImage(img, ix, iy, dw, dh);
-
-    // Dark vignette outside crop
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(0, 0,           VW,      cropY);           // top
-    ctx.fillRect(0, cropY + CH,  VW,      VH);              // bottom
-    ctx.fillRect(0, cropY,       cropX,   CH);              // left
-    ctx.fillRect(cropX + CW, cropY, PAD,  CH);              // right
-
-    // Gold crop border
-    ctx.strokeStyle = '#ffcc01';
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(cropX, cropY, CW, CH);
-
-    // Rule-of-thirds grid
-    ctx.strokeStyle = 'rgba(255,204,1,0.25)';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 3; i++) {
-      ctx.beginPath();
-      ctx.moveTo(cropX + CW * i / 3, cropY);
-      ctx.lineTo(cropX + CW * i / 3, cropY + CH);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(cropX, cropY + CH * i / 3);
-      ctx.lineTo(cropX + CW, cropY + CH * i / 3);
-      ctx.stroke();
-    }
-
-    // Corner handles
-    const hs = 14;
-    ctx.strokeStyle = '#ffcc01';
-    ctx.lineWidth = 3;
-    [[cropX, cropY, 1, 1], [cropX+CW, cropY, -1, 1],
-     [cropX, cropY+CH, 1, -1], [cropX+CW, cropY+CH, -1, -1]].forEach(([x, y, dx, dy]) => {
-      ctx.beginPath(); ctx.moveTo(x, y + dy * hs); ctx.lineTo(x, y); ctx.lineTo(x + dx * hs, y); ctx.stroke();
-    });
-  }, [loaded, scale, offset, VW, VH, cropX, cropY, CW, CH, PAD]);
-
-  useEffect(() => { draw(); }, [draw]);
-
-  // ── Image load ───────────────────────────────────────────────────
-  const onLoad = useCallback(() => {
-    const img = imgRef.current;
-    if (!img) return;
-    const ms = Math.max(CW / img.naturalWidth, CH / img.naturalHeight);
-    setMinSc(ms);
-    setScale(ms * 1.01); // tiny zoom so image fully covers frame
-    setOffset({ x: 0, y: 0 });
-    setLoaded(true);
-  }, [CW, CH]);
-
-  // ── Mouse drag ───────────────────────────────────────────────────
-  const onMouseDown  = e => { drag.current = { on: true, sx: e.clientX, sy: e.clientY, ox: offset.x, oy: offset.y }; };
-  const onMouseMove  = useCallback(e => {
-    if (!drag.current.on) return;
-    setOffset(clamp(drag.current.ox + e.clientX - drag.current.sx, drag.current.oy + e.clientY - drag.current.sy, scale));
-  }, [clamp, scale]);
-  const onMouseUp    = () => { drag.current.on = false; };
-
-  // ── Scroll zoom ──────────────────────────────────────────────────
-  const onWheel = useCallback(e => {
-    e.preventDefault();
-    const ns = Math.max(minSc, Math.min(scale * (e.deltaY < 0 ? 1.12 : 0.9), minSc * 6));
-    setScale(ns);
-    setOffset(o => clamp(o.x, o.y, ns));
-  }, [scale, minSc, clamp]);
-
-  // ── Touch ────────────────────────────────────────────────────────
-  const onTouchStart = e => {
-    if (e.touches.length === 1) {
-      const t = e.touches[0];
-      drag.current = { on: true, sx: t.clientX, sy: t.clientY, ox: offset.x, oy: offset.y };
-    }
-    lastTouches.current = Array.from(e.touches);
+  const handleImageLoad = event => {
+    imageRef.current = event.currentTarget;
+    setCrop(initialCrop(event.currentTarget.width, event.currentTarget.height, aspectRatio));
   };
-  const onTouchMove = useCallback(e => {
-    e.preventDefault();
-    if (e.touches.length === 1 && drag.current.on) {
-      const t = e.touches[0];
-      setOffset(clamp(drag.current.ox + t.clientX - drag.current.sx, drag.current.oy + t.clientY - drag.current.sy, scale));
-    } else if (e.touches.length === 2 && lastTouches.current?.length === 2) {
-      const d = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      const prev = d(lastTouches.current[0], lastTouches.current[1]);
-      const curr = d(e.touches[0], e.touches[1]);
-      const ns = Math.max(minSc, Math.min(scale * (curr / prev), minSc * 6));
-      setScale(ns);
-      setOffset(o => clamp(o.x, o.y, ns));
+
+  const toggleRatio = () => {
+    const nextLocked = !ratioLocked;
+    setRatioLocked(nextLocked);
+    const image = imageRef.current;
+    if (image) {
+      setCrop(initialCrop(image.width, image.height, nextLocked ? aspectRatio : undefined));
+      setCompletedCrop(undefined);
     }
-    lastTouches.current = Array.from(e.touches);
-  }, [scale, minSc, clamp]);
-  const onTouchEnd = () => { drag.current.on = false; };
+  };
 
-  // ── Export crop at FULL source resolution ────────────────────────
-  // Map the crop frame back to native image pixels so no quality is lost.
+  const useFullImage = () => {
+    setRatioLocked(false);
+    setCrop({ unit: '%', x: 0, y: 0, width: 100, height: 100 });
+    setCompletedCrop(undefined);
+  };
+
   const applyCrop = () => {
-    const img = imgRef.current;
-    if (!img) return;
+    const image = imageRef.current;
+    if (!image || !crop) return;
 
-    // Image position in canvas space
-    const dw = img.naturalWidth  * scale;
-    const dh = img.naturalHeight * scale;
-    const ix = (VW - dw) / 2 + offset.x;
-    const iy = (VH - dh) / 2 + offset.y;
+    const pixelCrop = completedCrop || {
+      x: image.width * (crop.x || 0) / 100,
+      y: image.height * (crop.y || 0) / 100,
+      width: image.width * (crop.width || 100) / 100,
+      height: image.height * (crop.height || 100) / 100,
+    };
+    if (!pixelCrop.width || !pixelCrop.height) return;
 
-    // Convert crop frame to source image coordinates (pixels in the original file)
-    const srcX = (cropX - ix) / scale;
-    const srcY = (cropY - iy) / scale;
-    const srcW = CW / scale;
-    const srcH = CH / scale;
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    const sourceX = Math.max(0, Math.round(pixelCrop.x * scaleX));
+    const sourceY = Math.max(0, Math.round(pixelCrop.y * scaleY));
+    const sourceWidth = Math.min(image.naturalWidth - sourceX, Math.round(pixelCrop.width * scaleX));
+    const sourceHeight = Math.min(image.naturalHeight - sourceY, Math.round(pixelCrop.height * scaleY));
 
-    // Output at the true source resolution — preserves every pixel from the original
-    const outW = Math.round(srcW);
-    const outH = Math.round(srcH);
+    const output = document.createElement('canvas');
+    output.width = sourceWidth;
+    output.height = sourceHeight;
+    const context = output.getContext('2d');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(
+      image,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      sourceWidth,
+      sourceHeight,
+    );
 
-    const out = document.createElement('canvas');
-    out.width  = outW;
-    out.height = outH;
-    const ctx = out.getContext('2d');
-    ctx.imageSmoothingEnabled  = true;
-    ctx.imageSmoothingQuality  = 'high';
-    ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
-
-    const dataUrl = out.toDataURL('image/jpeg', 0.95);
-    out.toBlob(blob => {
-      onCrop(new File([blob], 'cropped.jpg', { type: 'image/jpeg' }), dataUrl);
+    const dataUrl = output.toDataURL('image/jpeg', 0.95);
+    output.toBlob(blob => {
+      if (blob) onCrop(new File([blob], 'cropped.jpg', { type: 'image/jpeg' }), dataUrl);
     }, 'image/jpeg', 0.95);
   };
 
+  const dimensions = completedCrop?.width && completedCrop?.height
+    ? `${Math.round(completedCrop.width * (imageRef.current?.naturalWidth || 1) / (imageRef.current?.width || 1))} × ${Math.round(completedCrop.height * (imageRef.current?.naturalHeight || 1) / (imageRef.current?.height || 1))} px`
+    : '';
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 10001,
-      background: 'rgba(10,22,55,0.88)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 16, backdropFilter: 'blur(6px)',
-    }}>
-      <div style={{ position: 'relative', background: '#fff', borderRadius: 18, padding: '24px 24px 20px', maxWidth: `min(${VW + 80}px, 95vw)`, width: '100%', maxHeight: 'calc(100svh - 32px)', overflowY: 'auto' }}>
-        <button type="button" onClick={onCancel} aria-label="Close image cropper" style={{
-          position: 'sticky', top: 0, zIndex: 3, float: 'right', marginBottom: -38,
-          width: 38, height: 38, display: 'grid', placeItems: 'center',
-          border: '1.5px solid #d9e1ee', borderRadius: '50%',
-          background: '#fff', color: '#143670', fontSize: 23,
-          lineHeight: 1, cursor: 'pointer',
-        }}>&times;</button>
-        <h3 style={{ margin: '0 0 4px', fontFamily: 'Montserrat,sans-serif', fontWeight: 900, fontSize: 17, color: '#143670' }}>{title}</h3>
-        <p style={{ margin: '0 0 14px', fontSize: 12.5, color: '#6b7a99' }}>Drag to reposition · Scroll or pinch to zoom</p>
+    <div className="image-crop-modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onCancel()}>
+      <div className="image-crop-modal" role="dialog" aria-modal="true" aria-labelledby="image-crop-title">
+        <div className="image-crop-modal-header">
+          <div>
+            <h3 id="image-crop-title">{title}</h3>
+            <p>Drag the crop area or resize it using any edge or corner.</p>
+          </div>
+          <button type="button" className="image-crop-close" onClick={onCancel} aria-label="Close image cropper">&times;</button>
+        </div>
 
-        <canvas
-          ref={canvasRef} width={VW} height={VH}
-          style={{ display: 'block', borderRadius: 10, cursor: 'grab', touchAction: 'none', width: '100%' }}
-          onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
-          onWheel={onWheel}
-          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-        />
-
-        <img ref={imgRef} src={src} onLoad={onLoad} style={{ display: 'none' }} alt="" crossOrigin="anonymous" />
-
-        <div style={{
-          position: 'sticky', bottom: -20, zIndex: 3,
-          display: 'flex', gap: 10, margin: '14px -24px -20px',
-          padding: '14px 24px 20px', borderTop: '1px solid #e2e8f0',
-          background: '#fff', boxShadow: '0 -12px 24px rgba(13,39,82,.06)',
-        }}>
-          <button type="button" onClick={applyCrop} style={{
-            flex: 1, padding: '12px', background: '#143670', color: '#fff',
-            border: 'none', borderRadius: 9, fontFamily: 'Montserrat,sans-serif',
-            fontWeight: 800, fontSize: 14, cursor: 'pointer',
-          }}>
-            Apply Crop
+        <div className="image-crop-toolbar">
+          <button type="button" className={`btn btn-sm ${ratioLocked ? 'btn-primary' : 'btn-outline-navy'}`} onClick={toggleRatio}>
+            {ratioLocked ? `Ratio locked (${ratioLabel(aspectRatio)})` : 'Free crop'}
           </button>
-          <button type="button" onClick={onCancel} style={{
-            padding: '12px 18px', background: 'none', color: '#6b7a99',
-            border: '1.5px solid #e2e8f0', borderRadius: 9,
-            fontFamily: 'Montserrat,sans-serif', fontWeight: 600, fontSize: 14, cursor: 'pointer',
-          }}>
-            Cancel
-          </button>
+          <button type="button" className="btn btn-outline-navy btn-sm" onClick={setDefaultCrop}>Reset crop</button>
+          <button type="button" className="btn btn-outline-navy btn-sm" onClick={useFullImage}>Use full image</button>
+          {dimensions ? <span className="image-crop-dimensions">Output: {dimensions}</span> : null}
+        </div>
+
+        <div className="image-crop-stage">
+          <ReactCrop
+            crop={crop}
+            onChange={(_, percentCrop) => setCrop(percentCrop)}
+            onComplete={(pixelCrop) => setCompletedCrop(pixelCrop)}
+            aspect={ratioLocked ? aspectRatio : undefined}
+            minWidth={32}
+            minHeight={32}
+            keepSelection
+            ruleOfThirds
+          >
+            <img ref={imageRef} src={src} onLoad={handleImageLoad} alt="Crop preview" />
+          </ReactCrop>
+        </div>
+
+        <div className="image-crop-modal-actions">
+          <button type="button" className="btn btn-primary" onClick={applyCrop} disabled={!crop}>Apply crop</button>
+          <button type="button" className="btn btn-outline-navy" onClick={onCancel}>Cancel</button>
         </div>
       </div>
     </div>
