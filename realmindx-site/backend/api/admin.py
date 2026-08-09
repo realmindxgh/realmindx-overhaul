@@ -65,6 +65,7 @@ from ..email_service import (
 )
 from ..extensions import db
 from ..image_variants import ensure_product_image_variants, reset_product_image_variants
+from ..rich_text import contains_rich_html, sanitize_rich_html
 from ..delivery_locations import format_location_aliases
 from ..delivery_service import (
     DeliveryError,
@@ -120,6 +121,7 @@ from ..models import (
     JobAlertPreference,
     JobApplication,
     NewsletterSubscriber,
+    NewsletterCampaign,
     News,
     Order,
     OrderDelivery,
@@ -6176,7 +6178,7 @@ def _contact_summary():
 def list_contacts():
     query = Contact.query
     q = (request.args.get("q") or "").strip()
-    source = (request.args.get("source") or "").strip().lower()
+    source = (request.args.get("source") or "").strip().lower().replace(" ", "_")
     if q:
         like = f"%{q}%"
         query = query.filter(or_(
@@ -6521,6 +6523,12 @@ def _render_newsletter_image(match):
 
 
 def _render_newsletter_body(body):
+    if contains_rich_html(body):
+        return (
+            '<div class="newsletter-rich" style="background:#ffffff;color:#1a2a40;">'
+            + sanitize_rich_html(body)
+            + '</div>'
+        )
     blocks = []
     for block in re.split(r"\n\s*\n", body or ""):
         clean = block.strip()
@@ -6611,6 +6619,35 @@ def _campaign_from_email(sender):
     return current_app.config.get("NEWSLETTER_FROM_EMAIL")
 
 
+def _newsletter_campaign_json(row, *, include_content=False):
+    payload = {
+        "id": row.id,
+        "subject": row.subject,
+        "title": row.title,
+        "brand": row.brand,
+        "sender": row.sender,
+        "recipient_count": row.recipient_count,
+        "sent_count": row.sent_count,
+        "mocked_count": row.mocked_count,
+        "failed_count": row.failed_count,
+        "status": row.status,
+        "sent_at": row.sent_at.isoformat() if row.sent_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+    if include_content:
+        payload["content"] = row.content or {}
+        payload["audience"] = row.audience or {}
+    return payload
+
+
+@admin_bp.get("/newsletters/campaigns")
+@login_required
+@permission_required("newsletters.view")
+def list_newsletter_campaigns():
+    rows = NewsletterCampaign.query.order_by(NewsletterCampaign.sent_at.desc(), NewsletterCampaign.id.desc()).limit(100).all()
+    return jsonify(items=[_newsletter_campaign_json(row, include_content=True) for row in rows])
+
+
 @admin_bp.post("/newsletters/send")
 @login_required
 @permission_required("newsletters.create")
@@ -6661,12 +6698,7 @@ def send_newsletter_campaign():
         if contact:
             recipients.append((contact, contact.newsletter_subscription))
     if not recipients:
-        subscribers = NewsletterSubscriber.query.filter(
-            NewsletterSubscriber.is_active.is_(True),
-            NewsletterSubscriber.communication_status == MARKETING_ACTIVE,
-            NewsletterSubscriber.contact_id.is_not(None),
-        ).order_by(NewsletterSubscriber.email.asc()).all()
-        recipients = [(subscriber.contact, subscriber) for subscriber in subscribers if subscriber.contact]
+        return jsonify(error="Select at least one gathered contact before sending."), 400
 
     sent = 0
     mocked = 0
@@ -6674,9 +6706,9 @@ def send_newsletter_campaign():
     for contact, subscriber in recipients:
         if contact.email in seen:
             continue
-        seen.add(contact.email)
         if subscriber and (subscriber.communication_status == UNSUBSCRIBED or not subscriber.is_active):
             continue
+        seen.add(contact.email)
         if subscriber and not subscriber.unsubscribe_token:
             subscriber.unsubscribe_token = secrets.token_urlsafe(32)
         source_labels = [link.source for link in contact.sources] or ["RealMindX contacts"]
@@ -6713,10 +6745,38 @@ def send_newsletter_campaign():
         else:
             failed += 1
 
+    campaign = NewsletterCampaign(
+        subject=subject,
+        title=title,
+        brand=brand,
+        sender=sender,
+        content={
+            "subject": subject,
+            "title": title,
+            "brand": brand,
+            "sender": sender,
+            "preheader": payload.get("preheader") or "",
+            "body": body,
+            "sections": sections,
+            "cta_label": payload.get("cta_label") or "",
+            "cta_url": payload.get("cta_url") or "",
+            "image_file_id": image_file_id,
+        },
+        audience={"contact_ids": contact_ids, "recipient_emails": recipient_emails},
+        recipient_count=len(seen),
+        sent_count=sent,
+        mocked_count=mocked,
+        failed_count=failed,
+        status="failed" if failed and not (sent or mocked) else "partial" if failed else "completed",
+        initiated_by=current_user.id,
+        sent_at=datetime.now(timezone.utc),
+    )
+    db.session.add(campaign)
+    db.session.flush()
     log_action(
         "send_newsletter_campaign",
         "newsletter",
-        None,
+        campaign.id,
         {
             "subject": subject,
             "brand": brand,
@@ -6732,6 +6792,7 @@ def send_newsletter_campaign():
         sent=sent,
         mocked=mocked,
         failed=failed,
+        campaign=_newsletter_campaign_json(campaign, include_content=True),
     )
 
 

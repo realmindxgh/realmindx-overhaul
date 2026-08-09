@@ -536,6 +536,29 @@ export const useSiteCopyState = ({ waitForApi = false } = {}) => {
 
 export const useSiteCopy = () => useSiteCopyState().copy;
 
+const SAFE_RICH_TEXT_TAGS = new Set(['P', 'DIV', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'A', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H2', 'H3', 'H4']);
+export const hasRichTextHtml = value => /<\/?(?:p|div|br|strong|b|em|i|u|s|a|ul|ol|li|blockquote|h[2-4])\b/i.test(String(value || ''));
+export const sanitizedRichTextHtml = value => {
+  if (typeof DOMParser === 'undefined') return '';
+  const doc = new DOMParser().parseFromString(`<div>${String(value || '')}</div>`, 'text/html');
+  [...doc.body.querySelectorAll('*')].forEach(node => {
+    if (['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT'].includes(node.tagName)) { node.remove(); return; }
+    if (!SAFE_RICH_TEXT_TAGS.has(node.tagName)) { node.replaceWith(...node.childNodes); return; }
+    [...node.attributes].forEach(attribute => {
+      const name = attribute.name.toLowerCase();
+      if (node.tagName === 'A' && ['href', 'target', 'rel'].includes(name)) return;
+      if (name === 'style' && /^text-align:\s*(left|center|right|justify);?$/i.test(attribute.value)) return;
+      node.removeAttribute(attribute.name);
+    });
+    if (node.tagName === 'A') {
+      const href = node.getAttribute('href') || '';
+      if (!/^(https?:|mailto:|tel:|\/|#)/i.test(href)) node.removeAttribute('href');
+      else { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener noreferrer'); }
+    }
+  });
+  return doc.body.firstElementChild?.innerHTML || '';
+};
+
 export const renderTextWithLinks = (text) => {
   if (!text) return '';
   // Match markdown [link text](url) only

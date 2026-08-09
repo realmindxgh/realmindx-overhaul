@@ -380,13 +380,13 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
             {book.short || book.full || `${book.desc}. A trusted, classroom-ready edition used by schools across Ghana.`}
           </p>
 
-          <div className="bs-pdp-bulk-note">
+          {['textbooks', 'work-books'].includes(book.cat) && book.bulkDiscountPct > 0 && <div className="bs-pdp-bulk-note">
             <span className="bs-pdp-bulk-note-icon" aria-hidden="true"><Icon name="gift" size={18} /></span>
             <div>
               <strong>Bulk Discount Available</strong>
-              <p>Purchase at least 10 copies of this book to receive a 10% discount.</p>
+              <p>Purchase at least {book.bulkMinQty} copies of this book to receive a {book.bulkDiscountPct}% discount.</p>
             </div>
-          </div>
+          </div>}
 
           <div className="bs-pdp-actions">
             <div className="bs-pdp-cart-row">

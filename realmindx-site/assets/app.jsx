@@ -18,6 +18,8 @@ import {
   useSiteCopy,
   useTestimonials,
   renderTextWithLinks,
+  hasRichTextHtml,
+  sanitizedRichTextHtml,
 } from '../../src/lib/siteContent.js';
 
 // ====================== Nav ======================
@@ -1187,9 +1189,7 @@ const News = () => {
               <p className="overline">{activeNews.cat}{activeNews.date ? ` · ${activeNews.date}` : ''}</p>
               <h2>{activeNews.title}</h2>
               {activeNews.excerpt && <p className="news-modal-summary">{activeNews.excerpt}</p>}
-              {String(activeNews.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => (
-                <p key={`intro-${index}`}>{renderTextWithLinks(paragraph)}</p>
-              ))}
+              {hasRichTextHtml(activeNews.body) ? <div className="rich-article-content" dangerouslySetInnerHTML={{ __html: sanitizedRichTextHtml(activeNews.body) }} /> : String(activeNews.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <p key={`intro-${index}`}>{renderTextWithLinks(paragraph)}</p>)}
               {(activeNews.sections || []).map((section, index) => (
                 <section className="news-modal-section" key={section.id || index}>
                   {section.heading && <h3>{section.heading}</h3>}
@@ -1199,9 +1199,7 @@ const News = () => {
                       {section.caption && <figcaption>{section.caption}</figcaption>}
                     </figure>
                   )}
-                  {String(section.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, paragraphIndex) => (
-                    <p key={`section-${index}-${paragraphIndex}`}>{renderTextWithLinks(paragraph)}</p>
-                  ))}
+                  {hasRichTextHtml(section.body) ? <div className="rich-article-content" dangerouslySetInnerHTML={{ __html: sanitizedRichTextHtml(section.body) }} /> : String(section.body || '').split(/\n\s*\n/).filter(Boolean).map((paragraph, paragraphIndex) => <p key={`section-${index}-${paragraphIndex}`}>{renderTextWithLinks(paragraph)}</p>)}
                 </section>
               ))}
               <a className="btn btn-primary" href={activeNews.href || '/news'}>Open News Page <Icon name="arrow" size={15} /></a>

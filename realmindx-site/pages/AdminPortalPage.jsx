@@ -922,6 +922,102 @@ const ServiceLinkTextarea = ({ value, onChange, rows = 5, placeholder, textareaC
   );
 };
 
+const RICH_TEXT_TAGS = new Set(['P', 'DIV', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'A', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H2', 'H3', 'H4']);
+const richTextHtml = value => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!/<\/?[a-z][\s\S]*>/i.test(raw)) {
+    const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return escaped.split(/\n\s*\n/).map(paragraph => `<p>${paragraph.replace(/\n/g, '<br>')}</p>`).join('');
+  }
+  const doc = new DOMParser().parseFromString(`<div>${raw}</div>`, 'text/html');
+  [...doc.body.querySelectorAll('*')].forEach(node => {
+    if (['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT'].includes(node.tagName)) { node.remove(); return; }
+    if (!RICH_TEXT_TAGS.has(node.tagName)) {
+      node.replaceWith(...node.childNodes);
+      return;
+    }
+    [...node.attributes].forEach(attribute => {
+      const name = attribute.name.toLowerCase();
+      if (node.tagName === 'A' && ['href', 'target', 'rel'].includes(name)) return;
+      if (name === 'style' && /^text-align:\s*(left|center|right|justify);?$/i.test(attribute.value)) return;
+      node.removeAttribute(attribute.name);
+    });
+    if (node.tagName === 'A') {
+      const href = node.getAttribute('href') || '';
+      if (!/^(https?:|mailto:|tel:|\/|#)/i.test(href)) node.removeAttribute('href');
+      else { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener noreferrer'); }
+    }
+  });
+  return doc.body.firstElementChild?.innerHTML || '';
+};
+
+const RichTextEditor = ({ value, onChange, placeholder = 'Write here…' }) => {
+  const { items: services } = usePublicServicesState();
+  const editorRef = React.useRef(null);
+  const selectionRef = React.useRef(null);
+  const [serviceHref, setServiceHref] = React.useState('');
+  React.useEffect(() => {
+    if (!serviceHref && services.length) setServiceHref(services[0]?.href || '');
+  }, [serviceHref, services]);
+  React.useEffect(() => {
+    const editor = editorRef.current;
+    const next = richTextHtml(value);
+    if (editor && editor.innerHTML !== next && document.activeElement !== editor) editor.innerHTML = next;
+  }, [value]);
+  const rememberSelection = () => {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode)) selectionRef.current = selection.getRangeAt(0).cloneRange();
+  };
+  const restoreSelection = () => {
+    if (!selectionRef.current) return;
+    const selection = window.getSelection();
+    selection.removeAllRanges(); selection.addRange(selectionRef.current);
+  };
+  const run = (command, argument = null) => {
+    editorRef.current?.focus();
+    restoreSelection();
+    document.execCommand(command, false, argument);
+    onChange(richTextHtml(editorRef.current?.innerHTML || ''));
+    rememberSelection();
+  };
+  const addLink = () => {
+    const url = window.prompt('Paste the link URL');
+    if (url) run('createLink', url.trim());
+  };
+  const insertServiceLink = () => {
+    const service = services.find(item => item.href === serviceHref) || services[0];
+    if (!service) return;
+    editorRef.current?.focus(); restoreSelection();
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed) document.execCommand('createLink', false, service.href);
+    else document.execCommand('insertHTML', false, `<a href="${service.href}">${service.label}</a>`);
+    onChange(richTextHtml(editorRef.current?.innerHTML || '')); rememberSelection();
+  };
+  const button = (label, command, title, argument = null) => (
+    <button type="button" className="rich-editor-button" title={title} aria-label={title} onMouseDown={event => event.preventDefault()} onClick={() => run(command, argument)}>{label}</button>
+  );
+  return <div className="rich-editor">
+    <div className="rich-editor-toolbar" role="toolbar" aria-label="Text formatting">
+      <select className="rich-editor-format" aria-label="Text style" defaultValue="p" onChange={event => { run('formatBlock', event.target.value); event.target.value = 'p'; }}>
+        <option value="p">Paragraph</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="blockquote">Quote</option>
+      </select>
+      <span className="rich-editor-divider" />
+      {button(<strong>B</strong>, 'bold', 'Bold')}{button(<em>I</em>, 'italic', 'Italic')}{button(<u>U</u>, 'underline', 'Underline')}{button(<s>S</s>, 'strikeThrough', 'Strikethrough')}
+      <button type="button" className="rich-editor-button" title="Insert link" aria-label="Insert link" onMouseDown={event => event.preventDefault()} onClick={addLink}>↗</button>
+      <button type="button" className="rich-editor-button" title="Remove link" aria-label="Remove link" onMouseDown={event => event.preventDefault()} onClick={() => run('unlink')}>×↗</button>
+      <span className="rich-editor-divider" />
+      {button('• List', 'insertUnorderedList', 'Bulleted list')}{button('1. List', 'insertOrderedList', 'Numbered list')}
+      <span className="rich-editor-divider" />
+      {button('≡', 'justifyLeft', 'Align left')}{button('≡', 'justifyCenter', 'Align centre')}{button('≡', 'justifyRight', 'Align right')}{button('☰', 'justifyFull', 'Justify')}
+      <span className="rich-editor-divider" />
+      {button('↶', 'undo', 'Undo')}{button('↷', 'redo', 'Redo')}{button('Tx', 'removeFormat', 'Clear formatting')}
+      {services.length ? <><span className="rich-editor-divider" /><select className="rich-editor-service" aria-label="Service link" value={serviceHref} onChange={event => setServiceHref(event.target.value)}>{services.map(service => <option key={service.href || service.id} value={service.href}>{service.label}</option>)}</select><button type="button" className="rich-editor-service-button" onMouseDown={event => event.preventDefault()} onClick={insertServiceLink}>Insert service link</button></> : null}
+    </div>
+    <div ref={editorRef} className="rich-editor-content" contentEditable suppressContentEditableWarning data-placeholder={placeholder} onInput={event => { rememberSelection(); onChange(richTextHtml(event.currentTarget.innerHTML)); }} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onFocus={rememberSelection} />
+  </div>;
+};
+
 const normalizeFormValue = (value, itemField) => {
   if (itemField.type === 'number') return value === '' ? null : Number(value);
   if (itemField.type === 'checkbox') return Boolean(value);
@@ -1869,11 +1965,10 @@ const ArticleSectionsField = ({ sections, onChange }) => {
             </label>
             <div className="form-group article-section-body-group" style={{ gridColumn: '1 / -1' }}>
               <span className="form-label">Section Body</span>
-              <ServiceLinkTextarea
+              <RichTextEditor
                 value={section.body || ''}
                 onChange={body => updateSection(index, { body })}
-                rows={5}
-                placeholder="Write this part of the article. Use blank lines for separate paragraphs."
+                placeholder="Write and format this section."
               />
             </div>
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -2083,10 +2178,9 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
               />
             ) : itemField.type === 'textarea' ? (
               config.collection === 'news' && itemField.name === 'body' ? (
-                <ServiceLinkTextarea
+                <RichTextEditor
                   value={form[itemField.name]}
                   onChange={value => setForm(prev => ({ ...prev, [itemField.name]: value }))}
-                  rows={4}
                   placeholder={fieldPlaceholder(itemField, config)}
                 />
               ) : (
@@ -2929,7 +3023,98 @@ const ContactsView = ({ session }) => {
   </div>;
 };
 
-const NewsletterComposer = ({ onSent }) => {
+const NewsletterWorkspace = ({ onSent }) => {
+  const emptySection = () => ({ heading: '', body: '', caption: '', image_position: 'auto', image_size: 'medium', image_file_id: '', image_url: '' });
+  const emptyForm = { brand: 'realmindx', sender: 'news', subject: '', title: '', preheader: '', sections: [emptySection()], cta_label: '', cta_url: '', image_file_id: '', manual_recipients: '' };
+  const [tab, setTab] = React.useState('compose');
+  const [form, setForm] = React.useState(emptyForm);
+  const [contacts, setContacts] = React.useState([]);
+  const [selected, setSelected] = React.useState(new Set());
+  const [filters, setFilters] = React.useState({ q: '', source: '' });
+  const [history, setHistory] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+  const [error, setError] = React.useState('');
+
+  const loadAudience = React.useCallback(async () => {
+    if (!isApiMode()) return;
+    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString();
+    try { setContacts((await api.adminListWithQuery('newsletters/audience', query)).items || []); }
+    catch (err) { setError(err.message || 'Could not load contacts.'); }
+  }, [filters]);
+  const loadHistory = React.useCallback(async () => {
+    if (!isApiMode()) return;
+    try { setHistory((await api.adminList('newsletters/campaigns')).items || []); }
+    catch (err) { setError(err.message || 'Could not load newsletter history.'); }
+  }, []);
+  React.useEffect(() => { loadAudience(); loadHistory(); }, [loadAudience, loadHistory]);
+
+  const toggle = id => setSelected(previous => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const loadCampaign = campaign => {
+    const content = campaign.content || {};
+    setForm({ ...emptyForm, ...content, sections: content.sections?.length ? content.sections : [emptySection()], manual_recipients: (campaign.audience?.recipient_emails || []).join('\n') });
+    setSelected(new Set(campaign.audience?.contact_ids || []));
+    setResult(null); setError(''); setTab('compose');
+    globalToast.success('Past newsletter loaded. Review it, then send when ready.');
+  };
+  const submit = async event => {
+    event.preventDefault(); setError(''); setResult(null);
+    if (!form.subject.trim() || !(form.sections || []).some(section => (section.heading || '').trim() || (section.body || '').trim() || section.image_file_id)) {
+      setError('Add a subject and at least one newsletter section.'); return;
+    }
+    setSending(true);
+    try {
+      const response = await api.adminSendNewsletter({ ...form, title: form.title || form.subject, contact_ids: [...selected], recipient_emails: form.manual_recipients, image_file_id: form.image_file_id ? Number(form.image_file_id) : null });
+      setResult(response); setForm(emptyForm); setSelected(new Set());
+      globalToast.success(response.message || 'Newsletter sent successfully.');
+      await loadHistory(); onSent?.(); setTab('history');
+    } catch (err) { setError(err.message || 'Newsletter could not be sent.'); globalToast.error(err.message || 'Newsletter could not be sent.'); }
+    finally { setSending(false); }
+  };
+
+  const tabs = [['compose', 'Compose'], ['audience', `Audience (${selected.size})`], ['history', `History (${history.length})`]];
+  return <form className="newsletter-workspace" onSubmit={submit}>
+    <div className="newsletter-workspace-head"><div><p className="overline">Newsletter</p><h2>Campaign workspace</h2><p>Build, target, send, and reuse newsletters without leaving this page.</p></div></div>
+    <div className="newsletter-tabs">{tabs.map(([key, label]) => <button key={key} type="button" className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}</div>
+    {result && ReactDOM.createPortal(
+      <div className="admin-modal-backdrop newsletter-success-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setResult(null); }}>
+        <section className="admin-modal-panel newsletter-success-modal" role="dialog" aria-modal="true" aria-labelledby="newsletter-success-title">
+          <div className="newsletter-success-mark" aria-hidden="true"><Icon name="check" size={28} /></div>
+          <p className="overline">Send complete</p>
+          <h2 id="newsletter-success-title">Newsletter sent successfully</h2>
+          <p>{result.message || 'The campaign has been accepted for delivery.'}</p>
+          <div className="newsletter-success-counts">
+            <div><strong>{result.sent || 0}</strong><span>Sent</span></div>
+            <div><strong>{result.mocked || 0}</strong><span>Test mode</span></div>
+            <div><strong>{result.failed || 0}</strong><span>Failed</span></div>
+          </div>
+          <p className="newsletter-success-note">This campaign and its delivery result are now saved in Newsletter History.</p>
+          <button type="button" className="btn btn-primary" onClick={() => setResult(null)}>View newsletter history</button>
+        </section>
+      </div>,
+      document.body
+    )}
+    {error && <div className="newsletter-error">{error}</div>}
+
+    {tab === 'compose' && <div className="newsletter-panel newsletter-compose-panel">
+      <div className="newsletter-compact-grid">
+        <label className="form-group"><span className="form-label">Sender address</span><select className="form-select" value={form.sender} onChange={e => setForm(p => ({ ...p, sender: e.target.value }))}><option value="news">news@send.realmindxgh.com</option><option value="sales">sales@send.realmindxgh.com</option><option value="bookshop">Bookshop sender</option><option value="default">Default RealMindX sender</option></select></label>
+        <label className="form-group"><span className="form-label">Letterhead</span><select className="form-select" value={form.brand} onChange={e => setForm(p => ({ ...p, brand: e.target.value }))}><option value="realmindx">RealMindX Education</option><option value="bookshop">RealMindX Bookshop</option></select></label>
+        <label className="form-group newsletter-subject"><span className="form-label">Subject</span><input className="form-input" value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} placeholder="What should recipients see in their inbox?" /></label>
+      </div>
+      <div className="newsletter-options newsletter-options-visible"><div className="newsletter-options-heading"><span className="form-label">Email details</span><small>Optional inbox and call-to-action details.</small></div><div className="newsletter-compact-grid"><label className="form-group"><span className="form-label">Email title</span><input className="form-input" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} /></label><label className="form-group"><span className="form-label">Preheader</span><input className="form-input" value={form.preheader} onChange={e => setForm(p => ({ ...p, preheader: e.target.value }))} /></label><label className="form-group"><span className="form-label">Button label</span><input className="form-input" value={form.cta_label} onChange={e => setForm(p => ({ ...p, cta_label: e.target.value }))} /></label><label className="form-group"><span className="form-label">Button URL</span><input className="form-input" value={form.cta_url} onChange={e => setForm(p => ({ ...p, cta_url: e.target.value }))} /></label></div></div>
+      <div className="newsletter-section-editor"><div className="newsletter-section-heading"><div><span className="form-label">Content</span><small>Add only the sections you need.</small></div></div><ArticleSectionsField sections={form.sections} onChange={sections => setForm(p => ({ ...p, sections }))} /></div>
+    </div>}
+
+    {tab === 'audience' && <div className="newsletter-panel newsletter-audience-panel-new"><div className="newsletter-audience-toolbar"><div className="newsletter-audience-search"><Icon name="search" size={16}/><input value={filters.q} onChange={e => setFilters(p => ({ ...p, q: e.target.value }))} placeholder="Search by name or email"/></div><select className="form-select" value={filters.source} onChange={e => setFilters(p => ({ ...p, source: e.target.value }))}><option value="">All contact sources</option>{['teacher','bookshop','newsletter','enquiry','school','client','admin_added'].map(source => <option key={source}>{statusLabel(source)}</option>)}</select><div className="newsletter-audience-actions"><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => setSelected(new Set(contacts.filter(c => c.newsletter_status !== 'unsubscribed').map(c => c.id)))}>Select all shown</button><button type="button" className="btn btn-ghost btn-sm" disabled={!selected.size} onClick={() => setSelected(new Set())}>Clear</button></div></div><div className="newsletter-audience-meta"><span><strong>{contacts.length}</strong> contacts shown</span><span className={selected.size ? 'has-selection' : ''}><strong>{selected.size}</strong> selected</span></div><div className="newsletter-contact-grid">{contacts.map(contact => { const source = (contact.sources || [])[0]?.source || 'contact'; const name = contact.full_name || contact.email; const initials = name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase(); const isSelected = selected.has(contact.id); return <label key={contact.id} className={`newsletter-contact-chip${isSelected ? ' is-selected' : ''}${contact.newsletter_status === 'unsubscribed' ? ' is-disabled' : ''}`}><input type="checkbox" checked={isSelected} disabled={contact.newsletter_status === 'unsubscribed'} onChange={() => toggle(contact.id)}/><span className="newsletter-contact-avatar" aria-hidden="true">{initials}</span><span className="newsletter-contact-copy"><strong>{name}</strong><small>{contact.full_name ? contact.email : 'Email contact'}</small></span><span className="newsletter-contact-source">{statusLabel(source)}</span><span className="newsletter-contact-check" aria-hidden="true">{isSelected ? '✓' : ''}</span></label>})}</div><label className="form-group newsletter-manual"><span className="form-label">Paste gathered contact emails</span><textarea className="form-textarea" rows="3" value={form.manual_recipients} onChange={e => setForm(p => ({ ...p, manual_recipients: e.target.value }))} placeholder="Only addresses already in the contacts directory will be used."/></label></div>}
+
+    {tab === 'history' && <div className="newsletter-panel"><div className="newsletter-history-head"><div><h3>Sent newsletters</h3><p>Delivery results and reusable campaign content.</p></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={loadHistory}>Refresh</button></div>{history.length ? <div className="newsletter-history-list">{history.map(campaign => <article key={campaign.id} className="newsletter-history-card"><div><span className={`newsletter-status ${campaign.status}`}>{campaign.status}</span><h4>{campaign.subject}</h4><p>{campaign.sender} · {campaign.sent_at ? new Date(campaign.sent_at).toLocaleString() : ''}</p></div><div className="newsletter-history-counts"><strong>{campaign.recipient_count}</strong><small>recipients</small><span>{campaign.sent_count + campaign.mocked_count} successful · {campaign.failed_count} failed</span></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => loadCampaign(campaign)}>Edit & resend</button></article>)}</div> : <div className="newsletter-empty"><h3>No newsletter history yet</h3><p>Your next send will appear here with its delivery result and reusable content.</p></div>}</div>}
+    {tab === 'audience' && <div className="newsletter-sendbar"><div><strong>{selected.size || 'No'} contact{selected.size === 1 ? '' : 's'} selected</strong><small>Review this audience before sending.</small></div><button className="btn btn-primary" disabled={sending}>{sending ? 'Sending…' : 'Send newsletter'}</button></div>}
+  </form>;
+};
+
+const LegacyNewsletterComposer = ({ onSent }) => {
   const [form, setForm] = React.useState({
     brand: 'realmindx',
     sender: 'news',
@@ -3354,6 +3539,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [showProductImport, setShowProductImport] = React.useState(false);
   const [showProductActions, setShowProductActions] = React.useState(false);
   const [showBookRequests, setShowBookRequests] = React.useState(false);
+  const [showNewsletterSubscribers, setShowNewsletterSubscribers] = React.useState(false);
   const [pendingBookRequests, setPendingBookRequests] = React.useState(0);
   const [actionStatus, setActionStatus] = React.useState(null);
   const [missingImageStats, setMissingImageStats] = React.useState(null);
@@ -4040,6 +4226,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {config.collection === 'newsletters' && (
+            <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setShowNewsletterSubscribers(true)}>View Subscribers ({rows.length})</button>
+          )}
           {config.collection === 'products' && hasSessionPermission(session, 'bookRequests.view') && (
             <button className="btn btn-primary btn-sm book-requests-button" type="button" onClick={() => setShowBookRequests(true)}>Book Requests{pendingBookRequests ? ` (${pendingBookRequests})` : ''}</button>
           )}
@@ -4099,7 +4288,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       <BookRequestsModal open={config.collection === 'products' && showBookRequests} onClose={() => setShowBookRequests(false)} session={session} onToast={setActionStatus} onPendingCount={setPendingBookRequests} />
 
       {config.collection === 'newsletters' && (
-        <NewsletterComposer onSent={() => fetchCollection(config.collection)} />
+        <NewsletterWorkspace onSent={() => fetchCollection(config.collection)} />
       )}
 
       {actionStatus && ReactDOM.createPortal(
@@ -4199,7 +4388,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         </section>
       )}
 
-      {config.collection !== 'products' && <div className="admin-table-card">
+      {config.collection !== 'products' && (config.collection !== 'newsletters' || showNewsletterSubscribers) && <div className={config.collection === 'newsletters' ? 'admin-modal-backdrop newsletter-subscribers-backdrop' : ''} role={config.collection === 'newsletters' ? 'presentation' : undefined} onMouseDown={event => { if (config.collection === 'newsletters' && event.target === event.currentTarget) setShowNewsletterSubscribers(false); }}><section className={config.collection === 'newsletters' ? 'admin-modal-panel newsletter-subscribers-modal' : ''} role={config.collection === 'newsletters' ? 'dialog' : undefined} aria-modal={config.collection === 'newsletters' ? 'true' : undefined} aria-label={config.collection === 'newsletters' ? 'Newsletter subscribers' : undefined}>{config.collection === 'newsletters' && <><button className="admin-modal-close" type="button" onClick={() => setShowNewsletterSubscribers(false)} aria-label="Close"><Icon name="x" size={16} /></button><div className="newsletter-subscribers-title"><p className="overline">Newsletter audience</p><h2>Subscribers</h2><p>Search, review, edit, or remove newsletter subscriber records.</p></div></>}<div className="admin-table-card">
         <div className="atc-header" style={{ flexWrap: 'wrap', gap: 10 }}>
           <h3>{sorted.length} Record{sorted.length !== 1 ? 's' : ''}{sorted.length > tablePageSize ? ` (page ${tablePage} of ${totalTablePages})` : ''}</h3>
           <div className="admin-table-tools">
@@ -4360,7 +4549,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           <button className="btn btn-outline-navy btn-sm" disabled={tablePage === totalTablePages} onClick={() => setTablePage(p => p + 1)}>Next →</button>
         </div>
       )}
-      </div>}
+      </div></section></div>}
 
       {orderDetail && (
         <div className="admin-receipt-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setOrderDetail(null)}>

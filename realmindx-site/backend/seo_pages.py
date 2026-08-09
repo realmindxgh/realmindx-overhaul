@@ -22,6 +22,7 @@ from .api.public import (
 from .extensions import db
 from .models import DeliveryZone, Job, News, Product, ProductCategory, ProductReview, Resource
 from .og_images import book_og_public_url
+from .rich_text import contains_rich_html, sanitize_rich_html
 
 
 SITE_DEFAULT_IMAGE = f"{MAIN_SITE_BASE_URL}/static/assets/social/realmindx-education-og-1200x630.png?v=20260622"
@@ -140,8 +141,11 @@ def _article_markup(row, sections, image_url):
     ])
     if row.summary:
         pieces.append(f'<p class="news-article-lead">{escape(row.summary)}</p>')
-    for paragraph in _paragraphs(row.body):
-        pieces.append(f"<p>{escape(paragraph)}</p>")
+    if contains_rich_html(row.body):
+        pieces.append(f'<div class="rich-article-content">{sanitize_rich_html(row.body)}</div>')
+    else:
+        for paragraph in _paragraphs(row.body):
+            pieces.append(f"<p>{escape(paragraph)}</p>")
     for section_index, section in enumerate(sections):
         heading = section.get("heading")
         section_image = _absolute_url(section.get("image_url"))
@@ -160,8 +164,12 @@ def _article_markup(row, sections, image_url):
             if section.get("caption"):
                 pieces.append(f"<figcaption>{escape(section['caption'])}</figcaption>")
             pieces.append("</figure>")
-        for paragraph in _paragraphs(section.get("body")):
-            pieces.append(f"<p>{escape(paragraph)}</p>")
+        section_body = section.get("body") or ""
+        if contains_rich_html(section_body):
+            pieces.append(f'<div class="rich-article-content">{sanitize_rich_html(section_body)}</div>')
+        else:
+            for paragraph in _paragraphs(section_body):
+                pieces.append(f"<p>{escape(paragraph)}</p>")
     pieces.extend(["</div>", "</article>", "</main>"])
     return "".join(pieces)
 
