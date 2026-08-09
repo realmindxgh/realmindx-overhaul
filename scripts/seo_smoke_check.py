@@ -104,9 +104,10 @@ def check_noindex(base_url, path, failures, expected_status):
     return {"url": url, "status": status, "robots": combined.strip()}
 
 
-def run(main_url, bookshop_url, sample_size, *, skip_sitemap_fetches=False):
+def run(main_url, bookshop_url, sample_size, *, skip_sitemap_fetches=False, strict_ai_crawler=False):
     failures = []
-    results = {"main": [], "bookshop": [], "sitemaps": {}}
+    warnings = []
+    results = {"main": [], "bookshop": [], "sitemaps": {}, "warnings": warnings}
     for path in ["/", "/services", "/jobs", "/news"]:
         results["main"].append(check_indexable(main_url, path, failures))
     for path in ["/", "/products", "/subjects", "/documents"]:
@@ -137,7 +138,8 @@ def run(main_url, bookshop_url, sample_size, *, skip_sitemap_fetches=False):
 
     ai_status, _, _, ai_body = fetch(urljoin(main_url, "/services"), user_agent="OAI-SearchBot/1.0")
     if ai_status != 200 or inspect_html(ai_body).h1 < 1:
-        failures.append(f"AI crawler check failed for {main_url}/services: status={ai_status}")
+        message = f"AI crawler check failed for {main_url}/services: status={ai_status}"
+        (failures if strict_ai_crawler else warnings).append(message)
     results["failures"] = failures
     return results
 
@@ -152,12 +154,18 @@ def main():
         action="store_true",
         help="Parse sitemap indexes without fetching their canonical URLs (useful for local host aliases).",
     )
+    parser.add_argument(
+        "--strict-ai-crawler",
+        action="store_true",
+        help="Fail when the OpenAI search crawler is blocked; use this for recurring monitoring.",
+    )
     args = parser.parse_args()
     results = run(
         args.main_url.rstrip("/"),
         args.bookshop_url.rstrip("/"),
         max(1, args.sample_size),
         skip_sitemap_fetches=args.skip_sitemap_fetches,
+        strict_ai_crawler=args.strict_ai_crawler,
     )
     print(json.dumps(results, indent=2))
     return 1 if results["failures"] else 0

@@ -328,7 +328,7 @@ def install_upload_routes(block):
 
 def install_backend_fallback(block):
     return re.sub(
-        r"(?m)^(\s*try_files\s+\$uri\s+\$uri/\s+)/index\.html(;)\s*$",
+        r"(?m)(location\s+/\s*\{\s*try_files\s+\$uri\s+\$uri/\s+)/index\.html(?:\?\$query_string)?(\s*;)",
         r"\g<1>@realmindx_frontend\g<2>",
         block,
         count=1,

@@ -21,7 +21,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python scripts/seo_smoke_check.py --sample-size 30 | tee seo-health.json
+          python scripts/seo_smoke_check.py --sample-size 30 --strict-ai-crawler | tee seo-health.json
       - name: Save health report
         if: always()
         uses: actions/upload-artifact@v4
