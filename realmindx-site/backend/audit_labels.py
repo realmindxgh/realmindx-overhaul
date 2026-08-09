@@ -97,6 +97,7 @@ ACTION_LABELS = {
     "teacher_document_downloaded": "Downloaded a teacher document",
     "teacher_profile_submitted": "Teacher submitted profile for review",
     "send_newsletter_campaign": "Sent a newsletter campaign",
+    "delete_newsletter_campaign": "Deleted a newsletter campaign record",
     "settlement_exported": "Exported a delivery settlement",
     "toggle_user_active": "Changed whether an account can sign in",
     "two_factor_change_requested": "Requested a two-step verification change",

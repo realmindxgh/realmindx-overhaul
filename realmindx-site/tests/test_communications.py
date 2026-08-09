@@ -832,6 +832,54 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         data = resp.get_json()
         self.assertEqual(data["eligible"], 0)
 
+    def test_newsletter_preview_uses_selected_letterhead(self):
+        from backend.models import UploadedFile
+        image = UploadedFile(
+            original_filename="preview.jpg",
+            stored_filename="preview.jpg",
+            storage_path="images/preview.jpg",
+            mime_type="image/jpeg",
+            size_bytes=100,
+            category="images",
+            visibility="public",
+        )
+        db.session.add(image)
+        db.session.commit()
+        response = self.client.post("/api/admin/newsletters/preview", json={
+            "brand": "bookshop",
+            "sender": "bookshop",
+            "subject": "Preview subject",
+            "title": "Preview title",
+            "sections": [{"heading": "Hello", "body": "<p>Formatted preview</p>", "image_position": "full", "image_file_id": image.id}],
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["brand"], "bookshop")
+        self.assertIn("RealMindX Bookshop", data["html"])
+        self.assertIn("Formatted preview", data["html"])
+        self.assertIn('width="576"', data["html"])
+        self.assertIn("width:100%;max-width:100%", data["html"])
+
+    def test_deleting_newsletter_history_does_not_delete_initiating_user(self):
+        from backend.models import NewsletterCampaign
+        campaign = NewsletterCampaign(
+            subject="Saved campaign",
+            title="Saved campaign",
+            content={"sections": [{"body": "Saved content"}]},
+            audience={"contact_ids": [123]},
+            initiated_by=self.admin.id,
+        )
+        db.session.add(campaign)
+        db.session.commit()
+        campaign_id = campaign.id
+        admin_id = self.admin.id
+
+        response = self.client.delete(f"/api/admin/newsletters/campaigns/{campaign_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(db.session.get(NewsletterCampaign, campaign_id))
+        self.assertIsNotNone(db.session.get(User, admin_id))
+
 
 class NewsletterUnsubscribeEndpointTests(unittest.TestCase):
     def setUp(self):

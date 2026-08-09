@@ -266,6 +266,8 @@ export const api = {
   adminDelete: (collection, id) => apiFetch(`/admin/${collection}/${id}`, { method: 'DELETE' }),
   adminReplyMessage: (id, message) => apiFetch(`/admin/messages/${id}/reply`, { method: 'POST', body: { message } }),
   adminSendNewsletter: (payload) => apiFetch('/admin/newsletters/send', { method: 'POST', body: payload }),
+  adminPreviewNewsletter: (payload) => apiFetch('/admin/newsletters/preview', { method: 'POST', body: payload }),
+  adminDeleteNewsletterCampaign: (id) => apiFetch(`/admin/newsletters/campaigns/${id}`, { method: 'DELETE' }),
   adminContacts: (params = {}) => {
     const sp = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {

@@ -6569,6 +6569,9 @@ def _render_newsletter_sections(sections):
             position = "right" if index % 2 == 0 else "left"
         if position not in {"left", "right", "full"}:
             position = "right"
+        image_size = (section.get("image_size") or "medium").strip().lower()
+        if image_size not in {"small", "medium", "large"}:
+            image_size = "medium"
 
         text_html = ""
         if heading:
@@ -6579,10 +6582,18 @@ def _render_newsletter_sections(sections):
         image_html = ""
         if image_url:
             safe_url = escape(_absolute_newsletter_url(image_url), quote=True)
+            image_width = {"small": 180, "medium": 260, "large": 340}[image_size]
+            if position == "full":
+                image_width = 576
+                image_style = "display:block;width:100%;max-width:100%;height:auto;border-radius:12px;border:1px solid #dce5f0;"
+            else:
+                image_style = (
+                    f"display:block;width:100%;max-width:{image_width}px;height:auto;border-radius:12px;"
+                    "border:1px solid #dce5f0;"
+                )
             image_html = (
-                f'<img src="{safe_url}" alt="{caption or heading or "Campaign image"}" width="260" '
-                'style="display:block;width:100%;max-width:260px;height:auto;border-radius:12px;'
-                'border:1px solid #dce5f0;" />'
+                f'<img src="{safe_url}" alt="{caption or heading or "Campaign image"}" width="{image_width}" '
+                f'style="{image_style}" />'
             )
             if caption:
                 image_html += f'<p style="margin:8px 0 0;color:#53657d;font-size:12px;line-height:1.4;">{caption}</p>'
@@ -6646,6 +6657,63 @@ def _newsletter_campaign_json(row, *, include_content=False):
 def list_newsletter_campaigns():
     rows = NewsletterCampaign.query.order_by(NewsletterCampaign.sent_at.desc(), NewsletterCampaign.id.desc()).limit(100).all()
     return jsonify(items=[_newsletter_campaign_json(row, include_content=True) for row in rows])
+
+
+@admin_bp.delete("/newsletters/campaigns/<int:campaign_id>")
+@login_required
+@permission_required("newsletters.delete")
+def delete_newsletter_campaign(campaign_id):
+    campaign = db.get_or_404(NewsletterCampaign, campaign_id)
+    audit_details = {
+        "subject": campaign.subject,
+        "sender": campaign.sender,
+        "sent_at": campaign.sent_at.isoformat() if campaign.sent_at else None,
+    }
+    db.session.delete(campaign)
+    log_action("delete_newsletter_campaign", "newsletter", campaign_id, audit_details)
+    db.session.commit()
+    return jsonify(success=True, deleted_id=campaign_id)
+
+
+@admin_bp.post("/newsletters/preview")
+@login_required
+@permission_required("newsletters.create")
+def preview_newsletter_campaign():
+    payload = request.get_json(silent=True) or {}
+    subject = (payload.get("subject") or "Newsletter preview").strip()
+    title = (payload.get("title") or subject).strip()
+    body = (payload.get("body") or "").strip()
+    sections = payload.get("sections") or []
+    body_html = _render_newsletter_sections(sections) if sections else _render_newsletter_body(body)
+    if not body_html.strip():
+        body_html = '<p style="margin:0;color:#53657d;">Your newsletter content will appear here.</p>'
+
+    image_url = None
+    image_file_id = payload.get("image_file_id")
+    if image_file_id:
+        image_file = db.session.get(UploadedFile, image_file_id)
+        image_url = _upload_public_url(image_file) if image_file else None
+
+    brand = (payload.get("brand") or "realmindx").strip().lower()
+    is_bookshop = brand == "bookshop"
+    shell = bookshop_email_shell if is_bookshop else app_email_shell
+    sender = (payload.get("sender") or ("bookshop" if is_bookshop else "news")).strip().lower()
+    eyebrow = {
+        "sales": "RealMindX Sales",
+        "bookshop": "RealMindX Bookshop Updates",
+        "news": "RealMindX Updates",
+    }.get(sender, "RealMindX Updates")
+    html = shell(
+        title,
+        body_html,
+        payload.get("cta_label") or None,
+        payload.get("cta_url") or None,
+        eyebrow=eyebrow,
+        preheader=payload.get("preheader") or payload.get("summary") or title,
+        hero_image_url=image_url,
+        footer_note="Preview only. Recipient-specific contact and unsubscribe information will appear in the sent email.",
+    )
+    return jsonify(html=html, subject=subject, brand=brand, sender=sender)
 
 
 @admin_bp.post("/newsletters/send")

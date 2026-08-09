@@ -3034,6 +3034,10 @@ const NewsletterWorkspace = ({ onSent }) => {
   const [history, setHistory] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [sending, setSending] = React.useState(false);
+  const [previewing, setPreviewing] = React.useState(false);
+  const [preview, setPreview] = React.useState(null);
+  const [deletingCampaign, setDeletingCampaign] = React.useState(null);
+  const [deleting, setDeleting] = React.useState(false);
   const [result, setResult] = React.useState(null);
   const [error, setError] = React.useState('');
 
@@ -3058,6 +3062,34 @@ const NewsletterWorkspace = ({ onSent }) => {
     setResult(null); setError(''); setTab('compose');
     globalToast.success('Past newsletter loaded. Review it, then send when ready.');
   };
+  const campaignPayload = () => ({
+    ...form,
+    title: form.title || form.subject,
+    contact_ids: [...selected],
+    recipient_emails: form.manual_recipients,
+    image_file_id: form.image_file_id ? Number(form.image_file_id) : null,
+    sections: (form.sections || []).map(section => ({ ...section, image_file_id: section.image_file_id ? Number(section.image_file_id) : null })),
+  });
+  const generatePreview = async (payload, device) => {
+    setError(''); setPreviewing(true);
+    try {
+      const response = await api.adminPreviewNewsletter(payload);
+      setPreview({ ...response, device });
+    } catch (err) { setError(err.message || 'Newsletter preview could not be generated.'); }
+    finally { setPreviewing(false); }
+  };
+  const openPreview = device => generatePreview(campaignPayload(), device);
+  const viewCampaign = campaign => generatePreview({ ...(campaign.content || {}), subject: campaign.subject, title: campaign.title || campaign.subject }, 'desktop');
+  const deleteCampaign = async () => {
+    if (!deletingCampaign) return;
+    setDeleting(true); setError('');
+    try {
+      await api.adminDeleteNewsletterCampaign(deletingCampaign.id);
+      setDeletingCampaign(null); await loadHistory();
+      globalToast.success('Newsletter history record deleted.');
+    } catch (err) { setError(err.message || 'Newsletter history could not be deleted.'); }
+    finally { setDeleting(false); }
+  };
   const submit = async event => {
     event.preventDefault(); setError(''); setResult(null);
     if (!form.subject.trim() || !(form.sections || []).some(section => (section.heading || '').trim() || (section.body || '').trim() || section.image_file_id)) {
@@ -3065,7 +3097,7 @@ const NewsletterWorkspace = ({ onSent }) => {
     }
     setSending(true);
     try {
-      const response = await api.adminSendNewsletter({ ...form, title: form.title || form.subject, contact_ids: [...selected], recipient_emails: form.manual_recipients, image_file_id: form.image_file_id ? Number(form.image_file_id) : null });
+      const response = await api.adminSendNewsletter(campaignPayload());
       setResult(response); setForm(emptyForm); setSelected(new Set());
       globalToast.success(response.message || 'Newsletter sent successfully.');
       await loadHistory(); onSent?.(); setTab('history');
@@ -3105,11 +3137,14 @@ const NewsletterWorkspace = ({ onSent }) => {
       </div>
       <div className="newsletter-options newsletter-options-visible"><div className="newsletter-options-heading"><span className="form-label">Email details</span><small>Optional inbox and call-to-action details.</small></div><div className="newsletter-compact-grid"><label className="form-group"><span className="form-label">Email title</span><input className="form-input" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} /></label><label className="form-group"><span className="form-label">Preheader</span><input className="form-input" value={form.preheader} onChange={e => setForm(p => ({ ...p, preheader: e.target.value }))} /></label><label className="form-group"><span className="form-label">Button label</span><input className="form-input" value={form.cta_label} onChange={e => setForm(p => ({ ...p, cta_label: e.target.value }))} /></label><label className="form-group"><span className="form-label">Button URL</span><input className="form-input" value={form.cta_url} onChange={e => setForm(p => ({ ...p, cta_url: e.target.value }))} /></label></div></div>
       <div className="newsletter-section-editor"><div className="newsletter-section-heading"><div><span className="form-label">Content</span><small>Add only the sections you need.</small></div></div><ArticleSectionsField sections={form.sections} onChange={sections => setForm(p => ({ ...p, sections }))} /></div>
+      <div className="newsletter-compose-actions"><div className="newsletter-preview-actions"><span>Preview</span><button type="button" className="btn btn-outline-navy btn-sm" disabled={previewing} onClick={() => openPreview('mobile')}><Icon name="mobile" size={17}/> Phone</button><button type="button" className="btn btn-outline-navy btn-sm" disabled={previewing} onClick={() => openPreview('desktop')}><Icon name="monitor" size={17}/> Desktop</button></div><button type="button" className="btn btn-primary" onClick={() => setTab('audience')}>Select audience <Icon name="arrow" size={16}/></button></div>
     </div>}
 
     {tab === 'audience' && <div className="newsletter-panel newsletter-audience-panel-new"><div className="newsletter-audience-toolbar"><div className="newsletter-audience-search"><Icon name="search" size={16}/><input value={filters.q} onChange={e => setFilters(p => ({ ...p, q: e.target.value }))} placeholder="Search by name or email"/></div><select className="form-select" value={filters.source} onChange={e => setFilters(p => ({ ...p, source: e.target.value }))}><option value="">All contact sources</option>{['teacher','bookshop','newsletter','enquiry','school','client','admin_added'].map(source => <option key={source}>{statusLabel(source)}</option>)}</select><div className="newsletter-audience-actions"><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => setSelected(new Set(contacts.filter(c => c.newsletter_status !== 'unsubscribed').map(c => c.id)))}>Select all shown</button><button type="button" className="btn btn-ghost btn-sm" disabled={!selected.size} onClick={() => setSelected(new Set())}>Clear</button></div></div><div className="newsletter-audience-meta"><span><strong>{contacts.length}</strong> contacts shown</span><span className={selected.size ? 'has-selection' : ''}><strong>{selected.size}</strong> selected</span></div><div className="newsletter-contact-grid">{contacts.map(contact => { const source = (contact.sources || [])[0]?.source || 'contact'; const name = contact.full_name || contact.email; const initials = name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase(); const isSelected = selected.has(contact.id); return <label key={contact.id} className={`newsletter-contact-chip${isSelected ? ' is-selected' : ''}${contact.newsletter_status === 'unsubscribed' ? ' is-disabled' : ''}`}><input type="checkbox" checked={isSelected} disabled={contact.newsletter_status === 'unsubscribed'} onChange={() => toggle(contact.id)}/><span className="newsletter-contact-avatar" aria-hidden="true">{initials}</span><span className="newsletter-contact-copy"><strong>{name}</strong><small>{contact.full_name ? contact.email : 'Email contact'}</small></span><span className="newsletter-contact-source">{statusLabel(source)}</span><span className="newsletter-contact-check" aria-hidden="true">{isSelected ? '✓' : ''}</span></label>})}</div><label className="form-group newsletter-manual"><span className="form-label">Paste gathered contact emails</span><textarea className="form-textarea" rows="3" value={form.manual_recipients} onChange={e => setForm(p => ({ ...p, manual_recipients: e.target.value }))} placeholder="Only addresses already in the contacts directory will be used."/></label></div>}
 
-    {tab === 'history' && <div className="newsletter-panel"><div className="newsletter-history-head"><div><h3>Sent newsletters</h3><p>Delivery results and reusable campaign content.</p></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={loadHistory}>Refresh</button></div>{history.length ? <div className="newsletter-history-list">{history.map(campaign => <article key={campaign.id} className="newsletter-history-card"><div><span className={`newsletter-status ${campaign.status}`}>{campaign.status}</span><h4>{campaign.subject}</h4><p>{campaign.sender} · {campaign.sent_at ? new Date(campaign.sent_at).toLocaleString() : ''}</p></div><div className="newsletter-history-counts"><strong>{campaign.recipient_count}</strong><small>recipients</small><span>{campaign.sent_count + campaign.mocked_count} successful · {campaign.failed_count} failed</span></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => loadCampaign(campaign)}>Edit & resend</button></article>)}</div> : <div className="newsletter-empty"><h3>No newsletter history yet</h3><p>Your next send will appear here with its delivery result and reusable content.</p></div>}</div>}
+    {tab === 'history' && <div className="newsletter-panel"><div className="newsletter-history-head"><div><h3>Sent newsletters</h3><p>Delivery results and reusable campaign content.</p></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={loadHistory}>Refresh</button></div>{history.length ? <div className="newsletter-history-list">{history.map(campaign => <article key={campaign.id} className="newsletter-history-card"><div><span className={`newsletter-status ${campaign.status}`}>{campaign.status}</span><h4>{campaign.subject}</h4><p>{campaign.sender} · {campaign.sent_at ? new Date(campaign.sent_at).toLocaleString() : ''}</p></div><div className="newsletter-history-counts"><strong>{campaign.recipient_count}</strong><small>recipients</small><span>{campaign.sent_count + campaign.mocked_count} successful · {campaign.failed_count} failed</span></div><div className="newsletter-history-actions"><button type="button" className="btn btn-outline-navy btn-sm" disabled={previewing} onClick={() => viewCampaign(campaign)}><Icon name="eye" size={15}/> View</button><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => loadCampaign(campaign)}><Icon name="edit" size={15}/> Edit & resend</button><button type="button" className="btn btn-sm newsletter-history-delete" onClick={() => setDeletingCampaign(campaign)}><Icon name="trash" size={15}/> Delete</button></div></article>)}</div> : <div className="newsletter-empty"><h3>No newsletter history yet</h3><p>Your next send will appear here with its delivery result and reusable content.</p></div>}</div>}
+    {preview && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-preview-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPreview(null); }}><section className={`admin-modal-panel newsletter-preview-modal is-${preview.device}`} role="dialog" aria-modal="true" aria-label={`${preview.device} newsletter preview`}><button className="admin-modal-close" type="button" onClick={() => setPreview(null)} aria-label="Close"><Icon name="x" size={16}/></button><header className="newsletter-preview-head"><div><p className="overline">{preview.device} preview</p><h2>{preview.subject || 'Newsletter preview'}</h2><p>{preview.brand === 'bookshop' ? 'RealMindX Bookshop letterhead' : 'RealMindX Education letterhead'}</p></div><div className="newsletter-preview-switch"><button type="button" className={preview.device === 'mobile' ? 'active' : ''} onClick={() => setPreview(p => ({ ...p, device: 'mobile' }))}><Icon name="mobile" size={17}/> Phone</button><button type="button" className={preview.device === 'desktop' ? 'active' : ''} onClick={() => setPreview(p => ({ ...p, device: 'desktop' }))}><Icon name="monitor" size={17}/> Desktop</button></div></header><div className="newsletter-preview-stage"><iframe title="Newsletter email preview" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={preview.html}/></div></section></div>, document.body)}
+    {deletingCampaign && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-delete-backdrop" role="presentation" onMouseDown={event => { if (!deleting && event.target === event.currentTarget) setDeletingCampaign(null); }}><section className="admin-modal-panel newsletter-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="newsletter-delete-title"><div className="newsletter-delete-icon"><Icon name="trash" size={22}/></div><p className="overline">Delete history record</p><h2 id="newsletter-delete-title">Delete this newsletter?</h2><p><strong>{deletingCampaign.subject}</strong> will be removed from Newsletter History. Contacts, subscribers, delivery records, uploaded images, and audit records will not be deleted.</p><div className="newsletter-delete-actions"><button type="button" className="btn btn-outline-navy" disabled={deleting} onClick={() => setDeletingCampaign(null)}>Keep newsletter</button><button type="button" className="btn newsletter-delete-confirm" disabled={deleting} onClick={deleteCampaign}>{deleting ? 'Deleting…' : 'Delete newsletter'}</button></div></section></div>, document.body)}
     {tab === 'audience' && <div className="newsletter-sendbar"><div><strong>{selected.size || 'No'} contact{selected.size === 1 ? '' : 's'} selected</strong><small>Review this audience before sending.</small></div><button className="btn btn-primary" disabled={sending}>{sending ? 'Sending…' : 'Send newsletter'}</button></div>}
   </form>;
 };
