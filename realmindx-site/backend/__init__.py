@@ -196,11 +196,14 @@ def create_app(config_object=Config):
 
     @app.get("/curriculum", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/curriculum/<path:tail>", strict_slashes=False)
+    def bookshop_curriculum_page(tail):
+        return bookshop_public_page(f"curriculum/{tail}".rstrip("/"))
+
     @app.get("/curricula", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/curricula/<path:tail>", strict_slashes=False)
-    def bookshop_curriculum_page(tail):
-        prefix = "curricula" if request.path.strip("/").startswith("curricula") else "curriculum"
-        return bookshop_public_page(f"{prefix}/{tail}".rstrip("/"))
+    def legacy_bookshop_curricula_page(tail):
+        suffix = f"/{tail}" if tail else ""
+        return redirect(f"https://bookshop.realmindxgh.com/curriculum{suffix}", code=301)
 
     @app.get("/categories", defaults={"tail": ""}, strict_slashes=False)
     @app.get("/categories/<path:tail>", strict_slashes=False)

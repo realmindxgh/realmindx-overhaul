@@ -667,6 +667,16 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(unknown.status_code, 404)
         self.assertEqual(unknown.headers["X-Robots-Tag"], "noindex, follow")
 
+    def test_bookshop_curriculum_alias_redirects_to_the_sitemap_canonical(self):
+        client = self.app.test_client()
+        canonical = client.get("/curriculum", headers={"Host": "bookshop.realmindxgh.com"})
+        self.assertEqual(canonical.status_code, 200)
+        self.assertIn('href="https://bookshop.realmindxgh.com/curriculum"', canonical.get_data(as_text=True))
+
+        alias = client.get("/curricula", headers={"Host": "bookshop.realmindxgh.com"})
+        self.assertEqual(alias.status_code, 301)
+        self.assertEqual(alias.headers["Location"], "https://bookshop.realmindxgh.com/curriculum")
+
     def test_private_html_pages_are_crawlable_noindex(self):
         client = self.app.test_client()
         for host, path in [
