@@ -253,6 +253,14 @@ class SecurityHardeningTests(unittest.TestCase):
 
 
 class ProductionConfigValidationTests(unittest.TestCase):
+    def test_delivery_nginx_site_inherits_global_server_token_policy(self):
+        project_root = SITE_ROOT.parent
+        global_config = (project_root / "deployment" / "nginx.conf").read_text(encoding="utf-8")
+        delivery_config = (project_root / "deployment" / "delivery.realmindxgh.com.conf").read_text(encoding="utf-8")
+
+        self.assertIn("server_tokens off;", global_config)
+        self.assertNotIn("server_tokens", delivery_config)
+
     def test_production_rejects_weak_signing_key(self):
         class WeakProductionConfig(SecurityTestConfig):
             TESTING = False
