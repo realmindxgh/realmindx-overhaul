@@ -70,6 +70,12 @@ class Config:
         "https://new.realmindxgh.com",
     ]
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
+    REQUIRE_SHARED_RATE_LIMIT_STORAGE = _bool_env("REQUIRE_SHARED_RATE_LIMIT_STORAGE", False)
+
+    # Start privileged-account MFA as a visible, non-blocking prompt. A later
+    # enforcement phase should only be enabled after every internal user has
+    # enrolled and recovery/support procedures have been rehearsed.
+    PRIVILEGED_MFA_MODE = os.getenv("PRIVILEGED_MFA_MODE", "prompt").strip().lower()
 
     UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", str(BASE_DIR / "uploads"))
     MAX_UPLOAD_FILE_BYTES = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
@@ -85,6 +91,9 @@ class Config:
         "documents": 10 * 1024 * 1024,
         "resources": 25 * 1024 * 1024,
     }
+    UPLOAD_MALWARE_SCANNING_ENABLED = _bool_env("UPLOAD_MALWARE_SCANNING_ENABLED", False)
+    UPLOAD_MALWARE_SCANNER_PATH = os.getenv("UPLOAD_MALWARE_SCANNER_PATH", "clamdscan").strip()
+    UPLOAD_MALWARE_SCAN_TIMEOUT_SECONDS = int(os.getenv("UPLOAD_MALWARE_SCAN_TIMEOUT_SECONDS", "30"))
 
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "RealMindX <notifications@send.realmindxgh.com>")
     ADMIN_CC_EMAIL = os.getenv("ADMIN_CC_EMAIL", "realmindxgh@gmail.com")  # secondary inbox CC

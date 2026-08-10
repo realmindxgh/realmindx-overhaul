@@ -3,6 +3,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 from werkzeug.datastructures import FileStorage
 
 
@@ -126,6 +128,71 @@ class SecurityHardeningTests(unittest.TestCase):
         response = self.client.get("/api/admin/staff")
         self.assertEqual(response.status_code, 428)
         self.assertEqual(response.get_json()["code"], "password_change_required")
+
+    def test_readiness_checks_database_and_shared_rate_limit_storage(self):
+        response = self.client.get("/health/ready")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["status"], "ok")
+
+        self.app.config["REQUIRE_SHARED_RATE_LIMIT_STORAGE"] = True
+        self.app.config["RATELIMIT_STORAGE_URI"] = "memory://"
+        response = self.client.get("/health/ready")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json(), {"service": "realmindx-api", "status": "unavailable"})
+
+    def test_upload_scanning_fails_safely_and_removes_the_file(self):
+        self.app.config["UPLOAD_MALWARE_SCANNING_ENABLED"] = True
+        self.app.config["UPLOAD_MALWARE_SCANNER_PATH"] = "clamdscan"
+
+        with patch("backend.upload_utils.shutil.which", return_value="/usr/bin/clamdscan"), patch(
+            "backend.upload_utils.subprocess.run",
+            return_value=SimpleNamespace(returncode=1),
+        ):
+            with self.assertRaisesRegex(ValueError, "malware scanner"):
+                save_upload(
+                    FileStorage(stream=io.BytesIO(b"%PDF-test"), filename="document.pdf"),
+                    category="documents",
+                )
+
+        self.assertEqual(list(Path(self.temp_dir.name).rglob("*.pdf")), [])
+
+    def test_upload_scanner_outage_is_retryable_and_readiness_blocking(self):
+        admin = self._user("scanner-admin@example.com", "admin")
+        self._login(admin.email)
+        self.app.config["UPLOAD_MALWARE_SCANNING_ENABLED"] = True
+        self.app.config["UPLOAD_MALWARE_SCANNER_PATH"] = "missing-clamdscan"
+
+        with patch("backend.upload_utils.shutil.which", return_value=None):
+            self.assertEqual(self.client.get("/health/ready").status_code, 503)
+            response = self.client.post(
+                "/api/admin/uploads",
+                data={
+                    "category": "documents",
+                    "visibility": "protected",
+                    "file": (io.BytesIO(b"%PDF-test"), "document.pdf"),
+                },
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["code"], "upload_security_unavailable")
+        self.assertIn("try again later", response.get_json()["error"].lower())
+        self.assertEqual(list(Path(self.temp_dir.name).rglob("*.pdf")), [])
+
+    def test_privileged_mfa_rollout_is_visible_without_locking_out_admins(self):
+        admin = self._user("mfa-admin@example.com", "admin")
+        self._login(admin.email)
+
+        status = self.client.get("/api/auth/security-status")
+        self.assertEqual(status.status_code, 200)
+        self.assertTrue(status.get_json()["privileged_account"])
+        self.assertEqual(status.get_json()["privileged_mfa_mode"], "prompt")
+        self.assertTrue(status.get_json()["mfa_recommended"])
+
+        me = self.client.get("/api/auth/me").get_json()["user"]
+        self.assertTrue(me["mfa_recommended"])
+        self.assertFalse(me["two_factor_enabled"])
+        self.assertEqual(self.client.get("/api/admin/staff").status_code, 200)
 
     def test_protected_upload_requires_owner_or_authorised_internal_user(self):
         owner = self._user("owner@example.com")
@@ -251,7 +318,6 @@ class SecurityHardeningTests(unittest.TestCase):
             self.assertEqual(analytics.status_code, 202)
             db.drop_all()
 
-
     def _csrf_client(self):
         csrf_app = create_app(CsrfTestConfig)
         ctx = csrf_app.app_context()
@@ -320,6 +386,17 @@ class SecurityHardeningTests(unittest.TestCase):
 
 
 class ProductionConfigValidationTests(unittest.TestCase):
+    def test_deployment_is_serialized_pinned_and_health_gated(self):
+        workflow = (SITE_ROOT.parent / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+        self.assertIn("group: realmindx-production", workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+        self.assertIn("DEPLOY_COMMIT: ${{ github.sha }}", workflow)
+        self.assertIn('git reset --hard "$DEPLOY_COMMIT"', workflow)
+        self.assertNotIn("git reset --hard origin/main", workflow)
+        self.assertIn('wait_for_api "/health/ready"', workflow)
+        self.assertIn("Publishing the frontend atomically", workflow)
+        self.assertIn("rollback_release", workflow)
+
     def test_delivery_nginx_site_inherits_global_server_token_policy(self):
         project_root = SITE_ROOT.parent
         global_config = (project_root / "deployment" / "nginx.conf").read_text(encoding="utf-8")

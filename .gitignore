@@ -49,6 +49,8 @@ dist-codex/
 .qa-shots/
 tmp/
 realmindx-site/tmp/
+.codex-remote-attachments/
+artifacts/
 
 # Logs
 *.log

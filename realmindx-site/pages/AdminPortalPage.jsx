@@ -6126,13 +6126,57 @@ const buildInternalSession = (user, fallbackLabel = 'Admin') => {
     permissions: user.permissions || [],
     directPermissions: user.direct_permissions || [],
     mustChangePassword: Boolean(user.must_change_password ?? user.mustChangePassword),
+    twoFactorEnabled: Boolean(user.two_factor_enabled ?? user.twoFactorEnabled),
+    mfaRecommended: Boolean(user.mfa_recommended ?? user.mfaRecommended),
   };
 };
 
-const AccountView = ({ session, onPasswordChanged }) => {
+const AccountView = ({ session, onPasswordChanged, onTwoFactorChanged }) => {
   const [form, setForm] = React.useState({ current_password: '', new_password: '', confirm_password: '' });
   const [status, setStatus] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
+  const [security, setSecurity] = React.useState({
+    enabled: Boolean(session?.twoFactorEnabled),
+    recommended: false,
+    loading: isApiMode(),
+    error: '',
+  });
+  const [securityModal, setSecurityModal] = React.useState(false);
+  const [twoFactorForm, setTwoFactorForm] = React.useState({
+    step: 'password',
+    currentPassword: '',
+    otp: '',
+    saving: false,
+    message: '',
+    error: '',
+  });
+
+  const loadSecurity = React.useCallback(async () => {
+    if (!isApiMode()) {
+      setSecurity(current => ({ ...current, loading: false }));
+      return;
+    }
+    setSecurity(current => ({ ...current, loading: true, error: '' }));
+    try {
+      const result = await api.fetchSecurityStatus();
+      setSecurity({
+        enabled: Boolean(result.two_factor_enabled),
+        recommended: Boolean(result.mfa_recommended),
+        loading: false,
+        error: '',
+      });
+    } catch (error) {
+      setSecurity(current => ({
+        ...current,
+        loading: false,
+        error: error?.message || 'Could not load two-factor settings. Try again.',
+      }));
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadSecurity();
+  }, [loadSecurity]);
 
   const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
@@ -6160,9 +6204,63 @@ const AccountView = ({ session, onPasswordChanged }) => {
     }
   };
 
+  const openTwoFactorModal = async () => {
+    setTwoFactorForm({ step: 'password', currentPassword: '', otp: '', saving: false, message: '', error: '' });
+    setSecurityModal(true);
+    await loadSecurity();
+  };
+
+  const requestTwoFactorChange = async event => {
+    event.preventDefault();
+    const action = security.enabled ? 'disable' : 'enable';
+    setTwoFactorForm(current => ({ ...current, saving: true, error: '', message: '' }));
+    try {
+      const result = await api.requestTwoFactorChange({
+        action,
+        current_password: twoFactorForm.currentPassword,
+      });
+      setTwoFactorForm(current => ({
+        ...current,
+        step: 'code',
+        saving: false,
+        message: result.message || `A security code was sent to ${session?.email}.`,
+      }));
+    } catch (error) {
+      setTwoFactorForm(current => ({
+        ...current,
+        saving: false,
+        error: error?.message || 'Could not start that security change. Try again.',
+      }));
+    }
+  };
+
+  const confirmTwoFactorChange = async event => {
+    event.preventDefault();
+    const otp = twoFactorForm.otp.replace(/\D/g, '');
+    if (otp.length !== 6) {
+      setTwoFactorForm(current => ({ ...current, error: 'Enter the 6 digit code from your email.' }));
+      return;
+    }
+    setTwoFactorForm(current => ({ ...current, saving: true, error: '' }));
+    try {
+      const result = await api.confirmTwoFactorChange({ otp });
+      const enabled = Boolean(result.two_factor_enabled);
+      setSecurity(current => ({ ...current, enabled, recommended: !enabled, error: '' }));
+      onTwoFactorChanged?.(enabled, Boolean(result.mfa_recommended));
+      setSecurityModal(false);
+      globalToast.success(result.message || 'Two-factor authentication updated.');
+    } catch (error) {
+      setTwoFactorForm(current => ({
+        ...current,
+        saving: false,
+        error: error?.message || 'Could not verify that code. Check it and try again.',
+      }));
+    }
+  };
+
   return (
     <div style={{ padding: '32px 28px' }}>
-      <div className="admin-table-card" style={{ maxWidth: 520, padding: '32px 36px' }}>
+      <div className="admin-table-card" style={{ maxWidth: 720, padding: '32px 36px', marginBottom: 20 }}>
         <h3 style={{ margin: '0 0 4px' }}>My Account</h3>
         <p style={{ color: 'var(--gray-600)', fontSize: '0.88rem', margin: '0 0 28px' }}>
           Signed in as <strong>{session?.firstName} {session?.lastName}</strong>{session?.email ? ` (${session.email})` : ''}
@@ -6188,6 +6286,98 @@ const AccountView = ({ session, onPasswordChanged }) => {
           </button>
         </form>
       </div>
+
+      <div className="admin-table-card" style={{ maxWidth: 720, padding: '28px 36px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 360px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: security.enabled ? '#ecfdf3' : '#fff7ed', color: security.enabled ? '#027a48' : '#b54708' }}>
+                <Icon name={security.enabled ? 'check' : 'shield'} size={18} />
+              </span>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.98rem', color: 'var(--navy)' }}>Email two-factor authentication</h4>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: security.enabled ? '#027a48' : '#b54708' }}>
+                  {security.loading ? 'Checking status...' : security.enabled ? 'On' : 'Recommended for internal accounts'}
+                </span>
+              </div>
+            </div>
+            <p style={{ color: 'var(--gray-600)', fontSize: '0.86rem', lineHeight: 1.65, margin: 0 }}>
+              {security.enabled
+                ? 'Each sign-in requires a short-lived code sent to your verified email after your password.'
+                : 'Add a second sign-in step to protect administrative access if a password is exposed. Setup takes about a minute and does not sign you out.'}
+            </p>
+            {security.error ? <p style={{ color: '#b42318', fontSize: '0.82rem', margin: '10px 0 0' }}>{security.error}</p> : null}
+          </div>
+          <button type="button" className={security.enabled ? 'btn btn-outline-navy' : 'btn btn-primary'} onClick={openTwoFactorModal} disabled={security.loading}>
+            {security.enabled ? 'Manage 2FA' : 'Turn on 2FA'}
+          </button>
+        </div>
+      </div>
+
+      {securityModal ? (
+        <div
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget && !twoFactorForm.saving) setSecurityModal(false); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(12, 22, 46, 0.62)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <form
+            className="admin-table-card"
+            onSubmit={twoFactorForm.step === 'code' ? confirmTwoFactorChange : requestTwoFactorChange}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="two-factor-modal-title"
+            style={{ position: 'relative', width: '100%', maxWidth: 540, padding: '30px 32px 26px', borderRadius: 20, boxShadow: '0 28px 80px rgba(9, 20, 43, 0.24)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 22 }}>
+              <div>
+                <span className="auth-badge" style={{ display: 'inline-flex', marginBottom: 10 }}>Account security</span>
+                <h3 id="two-factor-modal-title" style={{ margin: '0 0 7px', color: 'var(--navy)' }}>
+                  {security.enabled ? 'Turn off two-factor authentication' : 'Turn on two-factor authentication'}
+                </h3>
+                <p style={{ margin: 0, color: 'var(--gray-600)', fontSize: '0.86rem', lineHeight: 1.6 }}>
+                  {twoFactorForm.step === 'code'
+                    ? <>Enter the 6 digit code sent to <strong>{session?.email}</strong>.</>
+                    : <>Confirm with your current password. We will send a short-lived code to <strong>{session?.email}</strong>.</>}
+                </p>
+              </div>
+              <button type="button" className="admin-modal-close" onClick={() => setSecurityModal(false)} disabled={twoFactorForm.saving} aria-label="Close two-factor settings"><Icon name="x" size={16} /></button>
+            </div>
+
+            {twoFactorForm.step === 'code' ? (
+              <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
+                Security code
+                <input
+                  autoFocus
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={twoFactorForm.otp}
+                  onChange={event => setTwoFactorForm(current => ({ ...current, otp: event.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                  required
+                  style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '1rem', letterSpacing: '0.16em' }}
+                />
+              </label>
+            ) : (
+              <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
+                Current password
+                <PasswordRevealInput autoFocus name="two_factor_password" value={twoFactorForm.currentPassword} onChange={event => setTwoFactorForm(current => ({ ...current, currentPassword: event.target.value }))} autoComplete="current-password" required />
+              </label>
+            )}
+            {twoFactorForm.message ? <p style={{ margin: '12px 0 0', color: '#027a48', fontSize: '0.83rem' }}>{twoFactorForm.message}</p> : null}
+            {twoFactorForm.error ? <p style={{ margin: '12px 0 0', color: '#b42318', fontSize: '0.83rem' }}>{twoFactorForm.error}</p> : null}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24, flexWrap: 'wrap' }}>
+              {twoFactorForm.step === 'code' ? (
+                <button type="button" className="btn btn-outline-navy" disabled={twoFactorForm.saving} onClick={() => setTwoFactorForm(current => ({ ...current, step: 'password', otp: '', message: '', error: '' }))}>Start again</button>
+              ) : (
+                <button type="button" className="btn btn-outline-navy" disabled={twoFactorForm.saving} onClick={() => setSecurityModal(false)}>Cancel</button>
+              )}
+              <button type="submit" className={security.enabled && twoFactorForm.step === 'password' ? 'btn btn-outline-navy' : 'btn btn-primary'} disabled={twoFactorForm.saving}>
+                {twoFactorForm.saving ? 'Please wait...' : twoFactorForm.step === 'code' ? 'Confirm code' : security.enabled ? 'Continue to disable' : 'Send security code'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -7084,6 +7274,15 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
     setSession(nextSession);
   }, [session]);
 
+  const updateTwoFactorFlag = React.useCallback((enabled, recommended) => {
+    setSession(current => {
+      if (!current) return current;
+      const nextSession = { ...current, twoFactorEnabled: Boolean(enabled), mfaRecommended: Boolean(recommended) };
+      saveDemoSession(nextSession);
+      return nextSession;
+    });
+  }, []);
+
   const canViewActive = React.useCallback((key, nextSession = session) => {
     const item = NAV.find(entry => entry.key === key);
     return !item || canAccessAdminItem(item, nextSession);
@@ -7184,7 +7383,7 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
           : activeView === 'whatsappDiagnostics'
           ? <WhatsAppDiagnosticsView />
           : activeView === 'account'
-          ? <AccountView session={session} onPasswordChanged={clearPasswordRotationFlag} />
+          ? <AccountView session={session} onPasswordChanged={clearPasswordRotationFlag} onTwoFactorChanged={updateTwoFactorFlag} />
           : CONFIG[activeView]
             ? <ManagedTableView config={CONFIG[activeView]} rows={content[CONFIG[activeView].collection] || []} session={session} />
             : null;
@@ -7242,6 +7441,18 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
             </button>
           </div>
         </div>
+        {session?.mfaRecommended === true && activeView !== 'account' ? (
+          <div
+            role="status"
+            style={{ margin: '18px 28px 0', padding: '14px 16px', border: '1px solid #fed7aa', borderRadius: 12, background: '#fff7ed', color: '#9a3412', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: '1 1 360px' }}>
+              <Icon name="shield" size={19} />
+              <span style={{ fontSize: '0.84rem', lineHeight: 1.55 }}><strong>Protect this internal account.</strong> Add an emailed security code to sign-in; setup takes about a minute and will not interrupt this session.</span>
+            </div>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setActiveView('account')}>Set up 2FA</button>
+          </div>
+        ) : null}
         {view}
       </main>
       {session?.mustChangePassword ? (

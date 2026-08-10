@@ -66,6 +66,15 @@ def _make_complete_profile(user, session):
     return profile
 
 
+def _drop_all_with_sqlite_foreign_keys_disabled():
+    """Drop cyclic test tables on the same connection that disables FK checks."""
+    db.session.remove()
+    with db.engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys = OFF")
+        db.metadata.drop_all(bind=connection)
+        connection.commit()
+
+
 class AccountLifecycleTests(unittest.TestCase):
     """Test the full account lifecycle end-to-end via API calls."""
 
@@ -83,10 +92,7 @@ class AccountLifecycleTests(unittest.TestCase):
         self.client = self.app.test_client()
 
     def tearDown(self):
-        db.session.execute(db.text("PRAGMA foreign_keys = OFF"))
-        db.session.commit()
-        db.drop_all()
-        db.session.remove()
+        _drop_all_with_sqlite_foreign_keys_disabled()
         self.context.pop()
 
     def _register_user(self, email="new@teacher.com", password="TestPass123!", surface="teacher"):
@@ -1104,10 +1110,7 @@ class ProfilePartialUpdateTests(unittest.TestCase):
         self.client = self.app.test_client()
 
     def tearDown(self):
-        db.session.execute(db.text("PRAGMA foreign_keys = OFF"))
-        db.session.commit()
-        db.drop_all()
-        db.session.remove()
+        _drop_all_with_sqlite_foreign_keys_disabled()
         self.context.pop()
 
     # ---- helpers ----

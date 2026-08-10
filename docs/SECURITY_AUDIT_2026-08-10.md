@@ -9,7 +9,19 @@ This was a defensive source/configuration assessment, not an intrusive productio
 
 The review confirmed several exploitable weaknesses. The highest-risk paths were a shared temporary account password, insufficient authorization on protected upload URLs, globally disabled CSRF enforcement, anonymous customer-data lookup by email, a legacy unauthenticated numeric-order payment initializer, and automatic OAuth account linking based only on an email claim.
 
-The confirmed application vulnerabilities have been remediated in the local/current repository state. Security regression tests were added. Dependency scans now report no known vulnerabilities. Remaining work is primarily operational: shared rate-limit storage, mandatory MFA for internal users, malware scanning, CSP nonce/hash adoption, and infrastructure-level validation.
+The confirmed application vulnerabilities have been remediated in the local/current repository state. Security regression tests were added. Dependency scans now report no known vulnerabilities. The repository also now contains a staged, local-only operational hardening layer: serialized and commit-pinned deployment, isolated dependency preparation, API readiness gates, automatic code/environment/frontend/Nginx rollback, atomic frontend publication, a non-blocking internal-account MFA rollout, and optional fail-closed ClamAV upload scanning. Infrastructure activation and Linux staging validation are still required before these controls should be deployed.
+
+## Operational-risk hardening prepared locally
+
+- Deployments are serialized and pinned to the exact GitHub workflow commit, preventing overlapping releases and frontend/backend commit drift.
+- Python dependencies are prepared and validated in a versioned virtual environment before the live service switches to them. The previous code, virtual environment, environment file, frontend, and managed Nginx configuration are retained for automatic rollback if readiness or smoke checks fail.
+- The frontend is staged and renamed into place only after the new backend reports ready. This avoids serving a partial `rsync` result or a frontend that expects a backend which has not started successfully.
+- `/health` remains a lightweight liveness check. `/health/ready` verifies the database and, when their rollout flags are enabled, shared rate-limit storage and the upload malware scanner. The public response is deliberately generic.
+- Admin and staff accounts receive a visible but non-blocking email-2FA recommendation, with a focused setup modal. This phase does not lock anyone out. Mandatory enforcement is intentionally deferred until enrollment and recovery procedures are complete.
+- Optional ClamAV scanning occurs after structural validation and before an upload is recorded. Detected or unscanned files are deleted; scanner outages produce a retryable 503 message instead of silently accepting the file.
+- Database migrations are deliberately not auto-downgraded during rollback. Every production migration must remain backward-compatible with the immediately previous application release; destructive migrations require a separate expand/migrate/contract rollout.
+
+These changes have not been deployed, committed, pushed, or activated in production as part of this operational-risk pass.
 
 ## Confirmed findings and disposition
 
@@ -32,15 +44,16 @@ The confirmed application vulnerabilities have been remediated in the local/curr
 
 ### Priority 0 — before treating the deployment as fully hardened
 
-1. Configure `RATELIMIT_STORAGE_URI` to a shared Redis-compatible backend. `memory://` is per worker, resets on restart, and cannot enforce a reliable distributed limit.
-2. Validate the deployment artifacts on a staging/production-equivalent Linux host: `nginx -t`, `systemd-analyze verify`, service startup, CSRF/login/payment/webhook smoke tests, and upload ownership tests. The Windows workstation cannot fully validate Nginx or systemd behavior.
-3. Core production startup preconditions were redacted-checked and are present: production mode, a strong signing key, secure-cookie mode, explicit HTTPS CORS origins, and Turnstile configuration. Separately confirm every external webhook has its required signing secret and a monitored failure path; secret values were intentionally not inspected.
-4. Review older order/invoice capability identifiers. New identifiers are substantially stronger, but old database rows retain their historical values. Public order-reference responses are now sanitized and order references no longer expose invoices; a rotation/migration can further reduce legacy-link risk.
+1. Provision a monitored Redis-compatible backend, configure `RATELIMIT_STORAGE_URI`, verify connectivity, and only then set `REQUIRE_SHARED_RATE_LIMIT_STORAGE=true`. The readiness gate will reject a release if shared storage is required but missing or unreachable.
+2. Install and monitor `clamd`/`clamdscan`, keep signatures current, test with an approved EICAR staging sample, and only then set `UPLOAD_MALWARE_SCANNING_ENABLED=true`. Until activated, structural file validation remains in place but uploads are not antivirus-scanned.
+3. Validate the deployment artifacts on a staging/production-equivalent Linux host: `nginx -t`, `systemd-analyze verify`, the first versioned-virtualenv switch, forced readiness failure/rollback, service startup, CSRF/login/payment/webhook smoke tests, and upload ownership/scanner tests. The Windows workstation cannot fully validate Nginx or systemd behavior.
+4. Core production startup preconditions were redacted-checked and are present: production mode, a strong signing key, secure-cookie mode, explicit HTTPS CORS origins, and Turnstile configuration. Separately confirm every external webhook has its required signing secret and a monitored failure path; secret values were intentionally not inspected.
+5. Review older order/invoice capability identifiers. New identifiers are substantially stronger, but old database rows retain their historical values. Public order-reference responses are now sanitized and order references no longer expose invoices; a rotation/migration can further reduce legacy-link risk.
 
 ### Priority 1
 
-1. Require MFA for every admin and staff account, with recovery-code and account-recovery procedures. Two-factor support exists but is not enforced globally.
-2. Add antivirus/content-disarm scanning for uploaded PDF, DOCX, and resource files before staff or customers can download them. Structural validation is not malware detection.
+1. Complete the prompt-only MFA enrollment phase for every admin and staff account, then design and test enforcement with recovery codes, a break-glass account, identity verification, and support procedures. Do not enable a blocking policy until those safeguards exist.
+2. Consider content-disarm/reconstruction for high-risk office documents even after ClamAV is active. Antivirus reduces risk but does not guarantee a document is safe.
 3. Replace CSP `script-src 'unsafe-inline'` with nonces or hashes. Inline styles can be addressed separately after the React styling strategy is reviewed.
 4. Build an explicit, re-authenticated OAuth account-linking and unlinking UI. The secure current behavior refuses implicit linking, which can inconvenience existing users who try a second provider.
 5. Pin Python transitive dependencies with a reviewed lock/constraints file and pin GitHub Actions to immutable commit SHAs.
@@ -53,15 +66,17 @@ The confirmed application vulnerabilities have been remediated in the local/curr
 
 ## Verification evidence
 
-- Dedicated security hardening suite: 12 tests passed.
-- Complete backend suite: 453 tests passed with zero failures against an export of the exact security-only Git index. This includes account lifecycle, delivery, migration/seed, authentication, authorization, communications, and the dedicated security regression suite.
+- Dedicated operational/security hardening suite: 18 tests passed.
+- The expanded backend suite contains 461 tests. The complete run passed 460 and exposed one SQLite teardown-only foreign-key cleanup race after its test body passed. Teardown was made connection-safe, and the complete 66-test affected module then passed. Combined verification therefore has a passing result for every test; CI now runs this full suite before deployment.
 - The stale legacy-teacher assertion was reconciled with the established login behavior: missing teacher application IDs are intentionally backfilled on login. The authentication/signup module passes all 21 tests.
 - Production Vite build passed.
 - `npm audit --audit-level=high`: 0 vulnerabilities.
 - `nanoid` resolution: 3.3.17.
 - Python `pip-audit` against `requirements.txt`: no known vulnerabilities found in the resolved dependency set.
+- `pip install --dry-run -r requirements.txt` resolved Redis support without modifying the application virtual environment.
 - `pip check`: no broken requirements.
 - Python compile check passed.
+- Deployment shell syntax validation passed, and regression assertions cover serialization, exact-commit checkout, readiness polling, rollback, and atomic frontend publication.
 - `git diff --check` passed.
 - Redacted high-confidence secret-signature scan of eligible tracked files found no matches. Protected environment/key files were excluded and not read.
 - Read-only production checks found the API and Nginx services active, the public health endpoint returning HTTP 200, and the required Python runtime modules importable. No production state was changed.
@@ -72,14 +87,14 @@ During the audit, concurrent work created and pushed commits on `main`/`origin/m
 
 ## Files touched by this audit
 
-- Repository/CI: `.github/workflows/deploy.yml`, `.gitignore`, `package.json`, `package-lock.json`.
+- Repository/CI: `.env.example`, `.github/workflows/deploy.yml`, `.gitignore`, `package.json`, `package-lock.json`.
 - Deployment: `deployment/nginx.conf`, `deployment/delivery.realmindxgh.com.conf`, `deployment/realmindx-api.service`.
 - Bookshop UI: `realmindx-bookshop/BookshopApp.jsx`, `realmindx-bookshop/pages-checkout.jsx`.
 - Backend core: `realmindx-site/backend/__init__.py`, `analytics.py`, `audit.py`, `config.py`, `security.py`, `upload_utils.py`, `delivery_service.py`, `invoices.py`, `rich_text.py`.
 - Backend APIs: `realmindx-site/backend/api/admin.py`, `bookshop.py`, `delivery.py`, `oauth.py`, `public.py`, `whatsapp.py`.
 - Portal UI: `realmindx-site/pages/AdminPortalPage.jsx`, `AuthPages.jsx`, `DeliveryPortalPage.jsx`, `UserPortalPage.jsx`.
 - Frontend API client: `src/lib/apiClient.js`.
-- Tests: `realmindx-site/tests/test_account_lifecycle.py`, `test_auth_signup.py`, `test_delivery_accounts.py`, `test_security_hardening.py`.
+- Dependencies/tests: `realmindx-site/requirements.txt`, `realmindx-site/tests/test_account_lifecycle.py`, `test_auth_signup.py`, `test_delivery_accounts.py`, `test_security_hardening.py`.
 - Report: `docs/SECURITY_AUDIT_2026-08-10.md`.
 
 Some overlapping files were absorbed into the concurrent commits described above. Unrelated newsletter, model, CSS, attachment, and artifact changes were not authored or modified as part of this audit.
@@ -90,6 +105,6 @@ Some overlapping files were absorbed into the concurrent commits described above
 - Static review searches covered route decorators, authorization, uploads, outbound requests, subprocess/execution patterns, file serving, raw HTML, SQL execution, webhooks/callbacks, payment/order identifiers, and frontend direct API fetches.
 - Secret scan: a redacted PowerShell signature scan over eligible tracked text files. It excluded `.env*`, private-key formats, and binary files and emitted only file/category metadata if matched.
 - Node: `npm audit --json`, `npm audit --audit-level=high`, `npm ls nanoid`, `npm install --package-lock-only`, and `npm run build`, with the workstation system CA enabled for registry TLS.
-- Python: `pip check`, `compileall`, focused `unittest` runs, and the complete `pytest tests -q` suite.
+- Python: `pip check`, dependency dry-run, `compileall`, focused test runs, the complete `pytest tests -q` suite, and a deterministic rerun of the affected account-lifecycle module.
 - Python dependency audit: `pip-audit` was installed in an isolated system-temporary virtualenv, configured to use the Windows certificate store, and run successfully against `realmindx-site/requirements.txt`. The application virtualenv and dependency manifests were not changed by this audit tooling.
-- File modifications were performed with patch-based edits. No database migration, production mutation, service restart, deployment, or push was performed by this audit. The reviewed changes were prepared as one local commit only.
+- File modifications were performed with patch-based edits. No database migration, production mutation, service restart, deployment, commit, or push was performed by this operational-risk pass.

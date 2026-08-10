@@ -1,5 +1,6 @@
 from flask import Flask, current_app, jsonify, redirect, request, send_from_directory
 from flask_wtf.csrf import CSRFError
+from sqlalchemy import text
 from urllib.parse import urlparse
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -19,6 +20,7 @@ from .seo_pages import (
     public_not_found_page,
     service_public_page,
 )
+from .upload_utils import UploadSecurityUnavailable, malware_scanner_ready
 
 
 def create_app(config_object=Config):
@@ -92,6 +94,12 @@ def create_app(config_object=Config):
         origins = app.config.get("CORS_ORIGINS") or []
         if any("*" in str(origin) or not str(origin).lower().startswith("https://") for origin in origins):
             raise RuntimeError("Production CORS_ORIGINS must contain explicit HTTPS origins only.")
+        if str(app.config.get("PRIVILEGED_MFA_MODE") or "").lower() not in {"off", "prompt"}:
+            raise RuntimeError("PRIVILEGED_MFA_MODE must be 'off' or 'prompt'.")
+        if str(app.config.get("RATELIMIT_STORAGE_URI") or "").lower().startswith("memory://"):
+            app.logger.warning(
+                "Rate limiting uses per-process memory. Configure shared storage before enabling its readiness gate."
+            )
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -120,6 +128,10 @@ def create_app(config_object=Config):
             'camera=(), microphone=(), geolocation=(), payment=(self "https://checkout.paystack.com")',
         )
         return response
+
+    @app.errorhandler(UploadSecurityUnavailable)
+    def upload_security_unavailable(error):
+        return jsonify(error=str(error), code="upload_security_unavailable"), 503
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -164,6 +176,32 @@ def create_app(config_object=Config):
 
     @app.get("/health")
     def health():
+        return jsonify(status="ok", service="realmindx-api")
+
+    @app.get("/health/ready")
+    def readiness():
+        try:
+            db.session.execute(text("SELECT 1"))
+        except Exception:
+            app.logger.exception("Database readiness check failed.")
+            return jsonify(status="unavailable", service="realmindx-api"), 503
+
+        storage_uri = str(app.config.get("RATELIMIT_STORAGE_URI") or "")
+        shared_limiter_required = app.config.get("REQUIRE_SHARED_RATE_LIMIT_STORAGE", False)
+        if shared_limiter_required and storage_uri.lower().startswith("memory://"):
+            app.logger.error("Shared rate-limit storage is required but has not been configured.")
+            return jsonify(status="unavailable", service="realmindx-api"), 503
+        if shared_limiter_required:
+            try:
+                storage_ready = limiter.storage.check()
+            except Exception:
+                storage_ready = False
+            if not storage_ready:
+                app.logger.error("Shared rate-limit storage is configured but unavailable.")
+                return jsonify(status="unavailable", service="realmindx-api"), 503
+        if not malware_scanner_ready(app.config):
+            app.logger.error("Upload malware scanning is enabled but its scanner is unavailable.")
+            return jsonify(status="unavailable", service="realmindx-api"), 503
         return jsonify(status="ok", service="realmindx-api")
 
     @app.get("/sitemap.xml")

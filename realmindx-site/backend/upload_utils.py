@@ -1,5 +1,7 @@
 import os
 import mimetypes
+import shutil
+import subprocess
 import zipfile
 
 from pathlib import Path
@@ -11,6 +13,67 @@ from werkzeug.utils import secure_filename
 
 from .extensions import db
 from .models import UploadedFile
+
+
+class UploadSecurityUnavailable(RuntimeError):
+    """Raised when required malware scanning cannot safely complete."""
+
+
+def malware_scanner_ready(config):
+    """Return whether the configured clamd client and daemon are reachable."""
+    if not config.get("UPLOAD_MALWARE_SCANNING_ENABLED", False):
+        return True
+    scanner = str(config.get("UPLOAD_MALWARE_SCANNER_PATH") or "").strip()
+    executable = shutil.which(scanner) if scanner else None
+    if not executable:
+        return False
+    try:
+        result = subprocess.run(
+            [executable, "--ping", "1:0"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _scan_upload_for_malware(target):
+    if not current_app.config.get("UPLOAD_MALWARE_SCANNING_ENABLED", False):
+        return
+
+    scanner = str(current_app.config.get("UPLOAD_MALWARE_SCANNER_PATH") or "").strip()
+    executable = shutil.which(scanner) if scanner else None
+    if not executable:
+        raise UploadSecurityUnavailable(
+            "File security scanning is temporarily unavailable. Your file was not retained; please try again later."
+        )
+
+    timeout = max(1, int(current_app.config.get("UPLOAD_MALWARE_SCAN_TIMEOUT_SECONDS", 30)))
+    try:
+        result = subprocess.run(
+            [executable, "--no-summary", "--fdpass", str(target)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise UploadSecurityUnavailable(
+            "File security scanning is temporarily unavailable. Your file was not retained; please try again later."
+        ) from None
+
+    if result.returncode == 1:
+        raise ValueError(
+            "For your security, this file was rejected by our malware scanner. "
+            "Check it with antivirus software or export a fresh copy, then try again."
+        )
+    if result.returncode != 0:
+        raise UploadSecurityUnavailable(
+            "File security scanning is temporarily unavailable. Your file was not retained; please try again later."
+        )
 
 
 def allowed_file(filename, category):
@@ -79,6 +142,7 @@ def save_upload(file_storage, category, owner_id=None, visibility="protected"):
                         raise ValueError
             except (zipfile.BadZipFile, ValueError):
                 raise ValueError("This DOCX is damaged or is not a valid Word document. Re-save it in Word and try again.") from None
+        _scan_upload_for_malware(target)
     except Exception:
         try:
             target.unlink(missing_ok=True)

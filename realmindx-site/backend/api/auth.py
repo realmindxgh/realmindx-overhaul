@@ -40,6 +40,18 @@ def _public_account_requires_verification(user):
     return role_name == "user" and not user.is_verified
 
 
+def _privileged_mfa_status(user):
+    role_name = user.role.name if user.role else ""
+    privileged = role_name in {"admin", "staff"}
+    configured_mode = str(current_app.config.get("PRIVILEGED_MFA_MODE") or "off").lower()
+    mode = configured_mode if configured_mode in {"off", "prompt"} else "off"
+    return {
+        "privileged_account": privileged,
+        "privileged_mfa_mode": mode if privileged else "optional",
+        "mfa_recommended": privileged and mode == "prompt" and not user.two_factor_enabled,
+    }
+
+
 PROVIDER_LABELS = {
     "apple": "Apple",
     "facebook": "Facebook",
@@ -608,6 +620,7 @@ def security_status():
         two_factor_enabled=bool(current_user.two_factor_enabled),
         two_factor_method="email",
         email=current_user.email,
+        **_privileged_mfa_status(current_user),
     )
 
 
@@ -674,6 +687,7 @@ def confirm_two_factor_change():
     return jsonify(
         message=f"Two-factor authentication has been {'enabled' if current_user.two_factor_enabled else 'disabled'}.",
         two_factor_enabled=current_user.two_factor_enabled,
+        **_privileged_mfa_status(current_user),
     )
 
 
@@ -688,7 +702,9 @@ def me_status():
 def me():
     if not current_user.is_authenticated:
         return jsonify(user=None), 200
-    return jsonify(user=user_json(current_user))
+    payload = user_json(current_user)
+    payload.update(_privileged_mfa_status(current_user))
+    return jsonify(user=payload)
 
 
 @auth_bp.post("/accept-terms")
