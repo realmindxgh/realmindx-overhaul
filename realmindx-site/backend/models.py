@@ -953,6 +953,45 @@ class NewsletterCampaign(TimestampMixin, db.Model):
     status = db.Column(db.String(30), default="completed", nullable=False, index=True)
     initiated_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     sent_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    recipients = db.relationship(
+        "NewsletterCampaignRecipient",
+        back_populates="campaign",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class NewsletterCampaignRecipient(TimestampMixin, db.Model):
+    __tablename__ = "newsletter_campaign_recipients"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "email", name="uq_newsletter_campaign_recipient_email"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(
+        db.Integer,
+        db.ForeignKey("newsletter_campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    contact_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contacts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    email = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(30), nullable=False, default="pending", index=True)
+    provider = db.Column(db.String(40), nullable=True)
+    provider_message_id = db.Column(db.String(255), nullable=True)
+    error_code = db.Column(db.String(80), nullable=True)
+    error_message = db.Column(db.String(500), nullable=True)
+    attempt_count = db.Column(db.Integer, nullable=False, default=0)
+    attempts = db.Column(db.JSON, nullable=False, default=list)
+    last_attempt_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    campaign = db.relationship("NewsletterCampaign", back_populates="recipients")
+    contact = db.relationship("Contact", foreign_keys=[contact_id])
 
 
 class News(TimestampMixin, db.Model):

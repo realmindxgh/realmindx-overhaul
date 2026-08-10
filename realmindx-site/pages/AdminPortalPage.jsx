@@ -371,7 +371,7 @@ const CONFIG = {
       field('default_delivery_payable', 'Default Company Payable (GHS)', 'number', { help: 'The amount this company earns per successful delivery unless overridden during assignment.' }),
       field('notes', 'Internal Notes', 'textarea'),
       field('manager_name', 'First Manager Name', 'text', { help: 'Used when creating the first company manager.' }),
-      field('manager_phone', 'First Manager Phone', 'text', { help: 'Creates portal access with temporary password 12345678 and requires a first-login password change.' }),
+      field('manager_phone', 'First Manager Phone', 'text', { help: 'Creates portal access with a unique temporary password and requires a first-login password change.' }),
       field('is_active', 'Active', 'checkbox'),
     ],
     columns: ['name', 'contact_phone', 'contact_email', 'active_deliveries', 'completed_deliveries', 'status'],
@@ -3039,6 +3039,10 @@ const NewsletterWorkspace = ({ onSent }) => {
   const [preview, setPreview] = React.useState(null);
   const [deletingCampaign, setDeletingCampaign] = React.useState(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [recipientCampaign, setRecipientCampaign] = React.useState(null);
+  const [recipientDetails, setRecipientDetails] = React.useState(null);
+  const [loadingRecipients, setLoadingRecipients] = React.useState(false);
+  const [resendingRecipient, setResendingRecipient] = React.useState(null);
   const [result, setResult] = React.useState(null);
   const [error, setError] = React.useState('');
 
@@ -3091,6 +3095,38 @@ const NewsletterWorkspace = ({ onSent }) => {
     } catch (err) { setError(err.message || 'Newsletter history could not be deleted.'); }
     finally { setDeleting(false); }
   };
+  const loadCampaignRecipients = async campaign => {
+    setRecipientCampaign(campaign); setRecipientDetails(null); setLoadingRecipients(true); setError('');
+    try { setRecipientDetails(await api.adminNewsletterCampaignRecipients(campaign.id)); }
+    catch (err) { setError(err.message || 'Recipient details could not be loaded.'); setRecipientCampaign(null); }
+    finally { setLoadingRecipients(false); }
+  };
+  const refreshCampaignRecipients = async campaign => {
+    const details = await api.adminNewsletterCampaignRecipients(campaign.id);
+    setRecipientDetails(details);
+    if (details.campaign) setRecipientCampaign(previous => ({ ...(previous || campaign), ...details.campaign }));
+    await loadHistory();
+  };
+  const resendRecipient = async recipientId => {
+    if (!recipientCampaign) return;
+    setResendingRecipient(recipientId); setError('');
+    try {
+      await api.adminResendNewsletterRecipient(recipientCampaign.id, recipientId);
+      await refreshCampaignRecipients(recipientCampaign);
+      globalToast.success('Recipient resend completed.');
+    } catch (err) { globalToast.error(err.message || 'Recipient could not be resent.'); }
+    finally { setResendingRecipient(null); }
+  };
+  const resendAllFailed = async () => {
+    if (!recipientCampaign) return;
+    setResendingRecipient('all'); setError('');
+    try {
+      await api.adminResendFailedNewsletterRecipients(recipientCampaign.id);
+      await refreshCampaignRecipients(recipientCampaign);
+      globalToast.success('All failed recipients were retried.');
+    } catch (err) { globalToast.error(err.message || 'Failed recipients could not be resent.'); }
+    finally { setResendingRecipient(null); }
+  };
   const submit = async event => {
     event.preventDefault(); setError(''); setResult(null);
     if (!form.subject.trim() || !(form.sections || []).some(section => (section.heading || '').trim() || (section.body || '').trim() || section.image_file_id)) {
@@ -3107,6 +3143,9 @@ const NewsletterWorkspace = ({ onSent }) => {
   };
 
   const tabs = [['compose', 'Compose'], ['audience', `Audience (${selected.size})`], ['history', `History (${history.length})`]];
+  const recipientRows = recipientDetails?.recipients || [];
+  const successfulRecipients = recipientRows.filter(recipient => recipient.successful);
+  const failedRecipients = recipientRows.filter(recipient => !recipient.successful);
   return <form className="newsletter-workspace" onSubmit={submit}>
     <div className="newsletter-workspace-head"><div><p className="overline">Newsletter</p><h2>Campaign workspace</h2><p>Build, target, send, and reuse newsletters without leaving this page.</p></div></div>
     <div className="newsletter-tabs">{tabs.map(([key, label]) => <button key={key} type="button" className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}</div>
@@ -3143,7 +3182,8 @@ const NewsletterWorkspace = ({ onSent }) => {
 
     {tab === 'audience' && <div className="newsletter-panel newsletter-audience-panel-new"><div className="newsletter-audience-toolbar"><div className="newsletter-audience-search"><Icon name="search" size={16}/><input value={filters.q} onChange={e => setFilters(p => ({ ...p, q: e.target.value }))} placeholder="Search by name or email"/></div><select className="form-select" value={filters.source} onChange={e => setFilters(p => ({ ...p, source: e.target.value }))}><option value="">All contact sources</option>{['teacher','bookshop','newsletter','enquiry','school','client','admin_added'].map(source => <option key={source}>{statusLabel(source)}</option>)}</select><div className="newsletter-audience-actions"><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => setSelected(new Set(contacts.filter(c => c.newsletter_status !== 'unsubscribed').map(c => c.id)))}>Select all shown</button><button type="button" className="btn btn-ghost btn-sm" disabled={!selected.size} onClick={() => setSelected(new Set())}>Clear</button></div></div><div className="newsletter-audience-meta"><span><strong>{contacts.length}</strong> contacts shown</span><span className={selected.size ? 'has-selection' : ''}><strong>{selected.size}</strong> selected</span></div><div className="newsletter-contact-grid">{contacts.map(contact => { const source = (contact.sources || [])[0]?.source || 'contact'; const name = contact.full_name || contact.email; const initials = name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase(); const isSelected = selected.has(contact.id); return <label key={contact.id} className={`newsletter-contact-chip${isSelected ? ' is-selected' : ''}${contact.newsletter_status === 'unsubscribed' ? ' is-disabled' : ''}`}><input type="checkbox" checked={isSelected} disabled={contact.newsletter_status === 'unsubscribed'} onChange={() => toggle(contact.id)}/><span className="newsletter-contact-avatar" aria-hidden="true">{initials}</span><span className="newsletter-contact-copy"><strong>{name}</strong><small>{contact.full_name ? contact.email : 'Email contact'}</small></span><span className="newsletter-contact-source">{statusLabel(source)}</span><span className="newsletter-contact-check" aria-hidden="true">{isSelected ? '✓' : ''}</span></label>})}</div><label className="form-group newsletter-manual"><span className="form-label">Paste gathered contact emails</span><textarea className="form-textarea" rows="3" value={form.manual_recipients} onChange={e => setForm(p => ({ ...p, manual_recipients: e.target.value }))} placeholder="Only addresses already in the contacts directory will be used."/></label></div>}
 
-    {tab === 'history' && <div className="newsletter-panel"><div className="newsletter-history-head"><div><h3>Sent newsletters</h3><p>Delivery results and reusable campaign content.</p></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={loadHistory}>Refresh</button></div>{history.length ? <div className="newsletter-history-list">{history.map(campaign => <article key={campaign.id} className="newsletter-history-card"><div><span className={`newsletter-status ${campaign.status}`}>{campaign.status}</span><h4>{campaign.subject}</h4><p>{campaign.sender} · {campaign.sent_at ? new Date(campaign.sent_at).toLocaleString() : ''}</p></div><div className="newsletter-history-counts"><strong>{campaign.recipient_count}</strong><small>recipients</small><span>{campaign.sent_count + campaign.mocked_count} successful · {campaign.failed_count} failed</span></div><div className="newsletter-history-actions"><button type="button" className="btn btn-outline-navy btn-sm" disabled={previewing} onClick={() => viewCampaign(campaign)}><Icon name="eye" size={15}/> View</button><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => loadCampaign(campaign)}><Icon name="edit" size={15}/> Edit & resend</button><button type="button" className="btn btn-sm newsletter-history-delete" onClick={() => setDeletingCampaign(campaign)}><Icon name="trash" size={15}/> Delete</button></div></article>)}</div> : <div className="newsletter-empty"><h3>No newsletter history yet</h3><p>Your next send will appear here with its delivery result and reusable content.</p></div>}</div>}
+    {tab === 'history' && <div className="newsletter-panel"><div className="newsletter-history-head"><div><h3>Sent newsletters</h3><p>Delivery results and reusable campaign content.</p></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={loadHistory}>Refresh</button></div>{history.length ? <div className="newsletter-history-list">{history.map(campaign => <article key={campaign.id} className="newsletter-history-card"><div><span className={`newsletter-status ${campaign.status}`}>{campaign.status}</span><h4>{campaign.subject}</h4><p>{campaign.sender} · {campaign.sent_at ? new Date(campaign.sent_at).toLocaleString() : ''}</p></div><div className="newsletter-history-counts"><div className="newsletter-recipient-total"><strong>{campaign.recipient_count}</strong><small>recipient{campaign.recipient_count === 1 ? '' : 's'}</small></div><div className="newsletter-history-result-line"><button type="button" className="newsletter-view-recipients" onClick={() => loadCampaignRecipients(campaign)}>View recipients</button><span>{campaign.sent_count + campaign.mocked_count} successful · {campaign.failed_count} failed</span></div></div><div className="newsletter-history-actions"><button type="button" className="btn btn-outline-navy btn-sm" disabled={previewing} onClick={() => viewCampaign(campaign)}><Icon name="eye" size={15}/> View</button><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => loadCampaign(campaign)}><Icon name="edit" size={15}/> Edit & resend</button><button type="button" className="btn btn-sm newsletter-history-delete" onClick={() => setDeletingCampaign(campaign)}><Icon name="trash" size={15}/> Delete</button></div></article>)}</div> : <div className="newsletter-empty"><h3>No newsletter history yet</h3><p>Your next send will appear here with its delivery result and reusable content.</p></div>}</div>}
+    {recipientCampaign && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-recipients-backdrop" role="presentation" onMouseDown={event => { if (!resendingRecipient && event.target === event.currentTarget) setRecipientCampaign(null); }}><section className="admin-modal-panel newsletter-recipients-modal" role="dialog" aria-modal="true" aria-labelledby="newsletter-recipients-title"><button className="admin-modal-close" type="button" disabled={Boolean(resendingRecipient)} onClick={() => setRecipientCampaign(null)} aria-label="Close"><Icon name="x" size={16}/></button><header className="newsletter-recipients-head"><p className="overline">Campaign recipients</p><h2 id="newsletter-recipients-title">{recipientCampaign.subject}</h2><p>{recipientCampaign.recipient_count} recipient{recipientCampaign.recipient_count === 1 ? '' : 's'} · {recipientCampaign.sent_count + recipientCampaign.mocked_count} successful · {recipientCampaign.failed_count} failed</p></header>{loadingRecipients ? <div className="newsletter-recipients-loading">Loading recipient results…</div> : !recipientDetails?.details_available ? <div className="newsletter-recipients-unavailable"><h3>Recipient-level results unavailable</h3><p>This historical campaign predates recipient-level tracking, and its aggregate outcome cannot be mapped safely to individual addresses.</p></div> : <div className="newsletter-recipient-columns"><section className="newsletter-recipient-column is-success"><div className="newsletter-recipient-column-head"><div><h3>Successful</h3><span>{successfulRecipients.length}</span></div></div><div className="newsletter-recipient-table" role="table" aria-label="Successful newsletter recipients">{successfulRecipients.length ? successfulRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id}><div role="cell"><strong>{recipient.email}</strong><small>{statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div></div>) : <p className="newsletter-recipient-empty">No successful recipients.</p>}</div></section><section className="newsletter-recipient-column is-failed"><div className="newsletter-recipient-column-head"><div><h3>Failed</h3><span>{failedRecipients.length}</span></div><button type="button" className="btn btn-sm newsletter-resend-all" disabled={!failedRecipients.some(recipient => ['disabled','failed','rejected','expired'].includes(recipient.status)) || Boolean(resendingRecipient)} onClick={resendAllFailed}>{resendingRecipient === 'all' ? 'Resending…' : 'Resend all'}</button></div><div className="newsletter-recipient-table" role="table" aria-label="Failed newsletter recipients">{failedRecipients.length ? failedRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id}><div role="cell"><strong>{recipient.email}</strong><small>{recipient.error_message || statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div><button type="button" className="btn btn-outline-navy btn-sm" disabled={!['disabled','failed','rejected','expired'].includes(recipient.status) || Boolean(resendingRecipient)} onClick={() => resendRecipient(recipient.id)}>{resendingRecipient === recipient.id ? 'Resending…' : 'Resend'}</button></div>) : <p className="newsletter-recipient-empty">No failed recipients.</p>}</div></section></div>}</section></div>, document.body)}
     {preview && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-preview-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPreview(null); }}><section className={`admin-modal-panel newsletter-preview-modal is-${preview.device}`} role="dialog" aria-modal="true" aria-label={`${preview.device} newsletter preview`}><button className="admin-modal-close" type="button" onClick={() => setPreview(null)} aria-label="Close"><Icon name="x" size={16}/></button><header className="newsletter-preview-head"><div><p className="overline">{preview.device} preview</p><h2>{preview.subject || 'Newsletter preview'}</h2><p>{preview.brand === 'bookshop' ? 'RealMindX Bookshop letterhead' : 'RealMindX Education letterhead'}</p></div><div className="newsletter-preview-switch"><button type="button" className={preview.device === 'mobile' ? 'active' : ''} onClick={() => setPreview(p => ({ ...p, device: 'mobile' }))}><Icon name="mobile" size={17}/> Phone</button><button type="button" className={preview.device === 'desktop' ? 'active' : ''} onClick={() => setPreview(p => ({ ...p, device: 'desktop' }))}><Icon name="monitor" size={17}/> Desktop</button></div></header><div className="newsletter-preview-stage"><iframe title="Newsletter email preview" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={preview.html}/></div></section></div>, document.body)}
     {deletingCampaign && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-delete-backdrop" role="presentation" onMouseDown={event => { if (!deleting && event.target === event.currentTarget) setDeletingCampaign(null); }}><section className="admin-modal-panel newsletter-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="newsletter-delete-title"><div className="newsletter-delete-icon"><Icon name="trash" size={22}/></div><p className="overline">Delete history record</p><h2 id="newsletter-delete-title">Delete this newsletter?</h2><p><strong>{deletingCampaign.subject}</strong> will be removed from Newsletter History. Contacts, subscribers, delivery records, uploaded images, and audit records will not be deleted.</p><div className="newsletter-delete-actions"><button type="button" className="btn btn-outline-navy" disabled={deleting} onClick={() => setDeletingCampaign(null)}>Keep newsletter</button><button type="button" className="btn newsletter-delete-confirm" disabled={deleting} onClick={deleteCampaign}>{deleting ? 'Deleting…' : 'Delete newsletter'}</button></div></section></div>, document.body)}
     {tab === 'audience' && <div className="newsletter-sendbar"><div><strong>{selected.size || 'No'} contact{selected.size === 1 ? '' : 's'} selected</strong><small>Review this audience before sending.</small></div><button className="btn btn-primary" disabled={sending}>{sending ? 'Sending…' : 'Send newsletter'}</button></div>}
@@ -3711,7 +3751,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     setActionStatus(null);
     try {
       const result = await api.adminResetInternalPassword(config.collection, getItemId(row));
-      const temporaryPassword = result?.temporary_password || '12345678';
+      const temporaryPassword = result?.temporary_password || '';
       const copied = await copyTextToClipboard(temporaryPassword);
       await fetchCollection(config.collection, { force: true });
       setActionStatus({
@@ -4074,7 +4114,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     setCompanyDetailError('');
     try {
       const result = await api.adminCreateDeliveryCompanyManager(companyDetail.company.id, companyManagerForm);
-      const temporaryPassword = result?.temporary_password || '12345678';
+      const temporaryPassword = result?.temporary_password || '';
       const copied = await copyTextToClipboard(temporaryPassword);
       await refreshCompanyDetail();
       setCompanyManagerForm({ name: '', phone: '' });
@@ -4091,7 +4131,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     setCompanyDetailError('');
     try {
       const result = await api.adminResetCompanyUserPassword(managerId);
-      const temporaryPassword = result?.temporary_password || '12345678';
+      const temporaryPassword = result?.temporary_password || '';
       const copied = await copyTextToClipboard(temporaryPassword);
       await refreshCompanyDetail();
       setActionStatus({ type: 'success', message: `Company manager password reset to ${temporaryPassword}${copied ? ' and copied to the clipboard' : ''}.` });
@@ -4707,7 +4747,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               <div>
                 {canManageDeliveryCompanies && (
                   <div className="delivery-company-create-row">
-                    <div><h4>Create Company Manager</h4><p>Temporary password 12345678 is copied after creation and must be changed on first login.</p></div>
+                    <div><h4>Create Company Manager</h4><p>A unique temporary password is copied after creation and must be changed on first login.</p></div>
                     <input className="form-input" placeholder="Manager name" value={companyManagerForm.name} onChange={e => setCompanyManagerForm(prev => ({ ...prev, name: e.target.value }))} />
                     <input className="form-input" placeholder="Phone number" value={companyManagerForm.phone} onChange={e => setCompanyManagerForm(prev => ({ ...prev, phone: e.target.value }))} />
                     <button className="btn btn-primary btn-sm" type="button" disabled={companyDetailBusy} onClick={createCompanyManager}>Create Manager</button>
@@ -4718,7 +4758,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                   {(companyDetail.managers || []).map(manager => (
                     <div className="delivery-company-person-row" key={manager.id}>
                       <div><strong>{manager.name}</strong><span>{manager.phone} | {manager.is_active ? 'Active' : 'Inactive'}{manager.must_change_password ? ' | Password change required' : ''} | Terms {manager.terms?.accepted ? `accepted ${manager.terms.accepted_at ? new Date(manager.terms.accepted_at).toLocaleString() : ''}` : 'pending'}</span></div>
-                      {canManageDeliveryCompanies && <button className="btn btn-outline-navy btn-sm" type="button" disabled={companyDetailBusy} onClick={() => resetCompanyManagerPassword(manager.id)}>Reset to 12345678</button>}
+                      {canManageDeliveryCompanies && <button className="btn btn-outline-navy btn-sm" type="button" disabled={companyDetailBusy} onClick={() => resetCompanyManagerPassword(manager.id)}>Reset password</button>}
                     </div>
                   ))}
                 </div>

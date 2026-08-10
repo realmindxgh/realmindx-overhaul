@@ -128,7 +128,6 @@ export const api = {
   bulkPriceAdjust: (type, value, direction) => apiFetch('/admin/products/bulk-price-adjust', { method: 'POST', body: { type, value, direction } }),
   bulkDeliveryAdjust: (type, value, direction) => apiFetch('/admin/delivery-zones/bulk-adjust', { method: 'POST', body: { type, value, direction } }),
   initPaystackCheckout: (payload) => apiFetch('/orders/paystack/initialize', { method: 'POST', body: payload }),
-  initPaystackPayment: (orderId, callbackUrl) => apiFetch(`/orders/${orderId}/paystack/initialize`, { method: 'POST', body: { callback_url: callbackUrl } }),
   verifyPaystackPayment: (reference, { legacy = false } = {}) => apiFetch('/orders/paystack/verify', {
     method: 'POST',
     body: legacy ? { order_reference: reference } : { payment_intent_reference: reference },
@@ -172,6 +171,8 @@ export const api = {
   fetchProfile: () => apiFetch('/me/profile'),
   submitProfile: () => apiFetch('/me/profile/submit', { method: 'POST' }),
   updateAccount: (payload) => apiFetch('/me/account', { method: 'PUT', body: payload }),
+  acceptTerms: () => apiFetch('/auth/accept-terms', { method: 'POST' }),
+  declineTerms: () => apiFetch('/auth/decline-terms', { method: 'POST' }),
   fetchCheckoutDetails: () => apiFetch('/me/checkout-details'),
   saveCheckoutDetails: (payload) => apiFetch('/me/checkout-details', { method: 'POST', body: payload }),
   updateCheckoutDetails: (detailId, payload) => apiFetch(`/me/checkout-details/${detailId}`, { method: 'PUT', body: payload }),
@@ -268,6 +269,15 @@ export const api = {
   adminSendNewsletter: (payload) => apiFetch('/admin/newsletters/send', { method: 'POST', body: payload }),
   adminPreviewNewsletter: (payload) => apiFetch('/admin/newsletters/preview', { method: 'POST', body: payload }),
   adminDeleteNewsletterCampaign: (id) => apiFetch(`/admin/newsletters/campaigns/${id}`, { method: 'DELETE' }),
+  adminNewsletterCampaignRecipients: (id) => apiFetch(`/admin/newsletters/campaigns/${id}/recipients`),
+  adminResendNewsletterRecipient: (campaignId, recipientId) => apiFetch(
+    `/admin/newsletters/campaigns/${campaignId}/recipients/${recipientId}/resend`,
+    { method: 'POST' },
+  ),
+  adminResendFailedNewsletterRecipients: (campaignId) => apiFetch(
+    `/admin/newsletters/campaigns/${campaignId}/recipients/resend-failed`,
+    { method: 'POST' },
+  ),
   adminContacts: (params = {}) => {
     const sp = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {

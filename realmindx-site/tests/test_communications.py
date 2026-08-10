@@ -907,7 +907,10 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         self.assertEqual(response.get_json()["sections"][0]["image_position"], "bottom")
 
     def test_deleting_newsletter_history_does_not_delete_initiating_user(self):
-        from backend.models import NewsletterCampaign
+        from backend.models import Contact, NewsletterCampaign, NewsletterCampaignRecipient
+        contact = Contact(email="history-recipient@example.com", full_name="History Recipient")
+        db.session.add(contact)
+        db.session.flush()
         campaign = NewsletterCampaign(
             subject="Saved campaign",
             title="Saved campaign",
@@ -916,15 +919,169 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
             initiated_by=self.admin.id,
         )
         db.session.add(campaign)
+        db.session.flush()
+        recipient = NewsletterCampaignRecipient(
+            campaign_id=campaign.id,
+            contact_id=contact.id,
+            email=contact.email,
+            status="accepted",
+            attempt_count=1,
+            attempts=[{"status": "accepted"}],
+        )
+        db.session.add(recipient)
         db.session.commit()
         campaign_id = campaign.id
+        recipient_id = recipient.id
         admin_id = self.admin.id
 
         response = self.client.delete(f"/api/admin/newsletters/campaigns/{campaign_id}")
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(db.session.get(NewsletterCampaign, campaign_id))
+        self.assertIsNone(db.session.get(NewsletterCampaignRecipient, recipient_id))
         self.assertIsNotNone(db.session.get(User, admin_id))
+
+    def test_newsletter_recipient_results_and_individual_retry(self):
+        from backend.models import Contact, NewsletterCampaign, NewsletterCampaignRecipient
+        contact = Contact(email="failed-recipient@example.com", full_name="Failed Recipient")
+        campaign = NewsletterCampaign(
+            subject="Retry campaign",
+            title="Retry campaign",
+            brand="realmindx",
+            sender="news",
+            content={"sections": [{"body": "<p>Retry this newsletter</p>"}]},
+            audience={"contact_ids": [], "recipient_emails": [contact.email]},
+            recipient_count=1,
+            failed_count=1,
+            status="failed",
+            initiated_by=self.admin.id,
+        )
+        db.session.add_all([contact, campaign])
+        db.session.flush()
+        recipient = NewsletterCampaignRecipient(
+            campaign_id=campaign.id,
+            contact_id=contact.id,
+            email=contact.email,
+            status="failed",
+            error_code="provider_rejected",
+            error_message="Provider rejected the original attempt.",
+            attempt_count=1,
+            attempts=[{"status": "failed", "error_code": "provider_rejected"}],
+        )
+        db.session.add(recipient)
+        db.session.commit()
+
+        detail = self.client.get(f"/api/admin/newsletters/campaigns/{campaign.id}/recipients")
+        self.assertEqual(detail.status_code, 200)
+        self.assertTrue(detail.get_json()["details_available"])
+        self.assertEqual(detail.get_json()["recipients"][0]["email"], contact.email)
+
+        retry = self.client.post(
+            f"/api/admin/newsletters/campaigns/{campaign.id}/recipients/{recipient.id}/resend"
+        )
+        self.assertEqual(retry.status_code, 200)
+        db.session.refresh(recipient)
+        db.session.refresh(campaign)
+        self.assertEqual(recipient.status, "mocked")
+        self.assertEqual(recipient.attempt_count, 2)
+        self.assertEqual(len(recipient.attempts), 2)
+        self.assertEqual(campaign.mocked_count, 1)
+        self.assertEqual(campaign.failed_count, 0)
+        self.assertEqual(campaign.status, "completed")
+
+    def test_newsletter_send_persists_each_recipient_result(self):
+        from backend.models import Contact, NewsletterCampaignRecipient
+        contact = Contact(email="campaign-recipient@example.com", full_name="Campaign Recipient")
+        db.session.add(contact)
+        db.session.commit()
+
+        response = self.client.post("/api/admin/newsletters/send", json={
+            "subject": "Recipient tracking",
+            "title": "Recipient tracking",
+            "sections": [{"body": "<p>Tracked delivery</p>"}],
+            "contact_ids": [contact.id],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        campaign_id = response.get_json()["campaign"]["id"]
+        recipient = NewsletterCampaignRecipient.query.filter_by(campaign_id=campaign_id).one()
+        self.assertEqual(recipient.email, contact.email)
+        self.assertEqual(recipient.status, "mocked")
+        self.assertEqual(recipient.attempt_count, 1)
+        self.assertEqual(len(recipient.attempts), 1)
+
+    def test_resend_all_retries_only_failed_newsletter_recipients(self):
+        from backend.models import Contact, NewsletterCampaign, NewsletterCampaignRecipient
+        contacts = [
+            Contact(email="failed-one@example.com", full_name="Failed One"),
+            Contact(email="failed-two@example.com", full_name="Failed Two"),
+            Contact(email="already-sent@example.com", full_name="Already Sent"),
+        ]
+        campaign = NewsletterCampaign(
+            subject="Bulk retry campaign",
+            title="Bulk retry campaign",
+            content={"sections": [{"body": "<p>Retry failed recipients</p>"}]},
+            audience={},
+            recipient_count=3,
+            sent_count=1,
+            failed_count=2,
+            status="partial",
+            initiated_by=self.admin.id,
+        )
+        db.session.add_all([*contacts, campaign])
+        db.session.flush()
+        rows = [
+            NewsletterCampaignRecipient(campaign_id=campaign.id, contact_id=contacts[0].id, email=contacts[0].email, status="failed", attempt_count=1, attempts=[{"status": "failed"}]),
+            NewsletterCampaignRecipient(campaign_id=campaign.id, contact_id=contacts[1].id, email=contacts[1].email, status="rejected", attempt_count=1, attempts=[{"status": "rejected"}]),
+            NewsletterCampaignRecipient(campaign_id=campaign.id, contact_id=contacts[2].id, email=contacts[2].email, status="accepted", attempt_count=1, attempts=[{"status": "accepted"}]),
+        ]
+        db.session.add_all(rows)
+        db.session.commit()
+
+        response = self.client.post(f"/api/admin/newsletters/campaigns/{campaign.id}/recipients/resend-failed")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.get_json()["results"]), 2)
+        db.session.refresh(campaign)
+        self.assertEqual(campaign.mocked_count, 2)
+        self.assertEqual(campaign.sent_count, 1)
+        self.assertEqual(campaign.failed_count, 0)
+        self.assertEqual(campaign.status, "completed")
+        self.assertEqual(rows[2].attempt_count, 1)
+
+    def test_deleting_contact_preserves_newsletter_recipient_history(self):
+        from backend.models import Contact, NewsletterCampaign, NewsletterCampaignRecipient
+        contact = Contact(email="deleted-contact@example.com", full_name="Deleted Contact")
+        campaign = NewsletterCampaign(
+            subject="Preserved recipient",
+            title="Preserved recipient",
+            content={"sections": [{"body": "<p>History</p>"}]},
+            audience={},
+            recipient_count=1,
+            sent_count=1,
+            status="completed",
+        )
+        db.session.add_all([contact, campaign])
+        db.session.flush()
+        recipient = NewsletterCampaignRecipient(
+            campaign_id=campaign.id,
+            contact_id=contact.id,
+            email=contact.email,
+            status="accepted",
+            attempt_count=1,
+            attempts=[{"status": "accepted"}],
+        )
+        db.session.add(recipient)
+        db.session.commit()
+        recipient_id = recipient.id
+
+        db.session.delete(contact)
+        db.session.commit()
+
+        preserved = db.session.get(NewsletterCampaignRecipient, recipient_id)
+        self.assertIsNotNone(preserved)
+        self.assertIsNone(preserved.contact_id)
+        self.assertEqual(preserved.email, "deleted-contact@example.com")
 
 
 class NewsletterUnsubscribeEndpointTests(unittest.TestCase):

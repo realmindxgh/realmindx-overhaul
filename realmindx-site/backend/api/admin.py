@@ -122,6 +122,7 @@ from ..models import (
     JobApplication,
     NewsletterSubscriber,
     NewsletterCampaign,
+    NewsletterCampaignRecipient,
     News,
     Order,
     OrderDelivery,
@@ -146,7 +147,7 @@ from ..promo_affiliates import (
     send_promo_usage_notification,
     usage_snapshot,
 )
-from ..security import DEFAULT_TEMPORARY_PASSWORD, admin_or_staff_required, admin_required, permission_required
+from ..security import generate_temporary_password, admin_or_staff_required, admin_required, permission_required
 from ..settlement_service import (
     SettlementError, apply_adjustment, batch_json, line_json, mark_settled,
     raise_dispute, resolve_dispute,
@@ -288,7 +289,7 @@ def slugify(value):
     return slug or "item"
 
 
-def _send_internal_account_access_email(user, role_name):
+def _send_internal_account_access_email(user, role_name, temporary_password):
     login_path = "/staff/login" if role_name == "staff" else "/admin/login"
     login_url = f"{current_app.config['BASE_URL'].rstrip('/')}{login_path}"
     role_label = "Staff" if role_name == "staff" else "Admin"
@@ -297,7 +298,7 @@ def _send_internal_account_access_email(user, role_name):
         f"<p>Your RealMindX {role_label.lower()} account has been created or reset.</p>"
         '<div style="background:#f5f8fc;border:1px solid #d9e3f0;border-radius:10px;padding:18px 20px;margin:20px 0;">'
         f"<p style=\"margin:0 0 8px;\"><strong>Email:</strong> {escape(user.email)}</p>"
-        f"<p style=\"margin:0;\"><strong>Temporary password:</strong> {escape(DEFAULT_TEMPORARY_PASSWORD)}</p>"
+        f"<p style=\"margin:0;\"><strong>Temporary password:</strong> {escape(temporary_password)}</p>"
         "</div>"
         "<p>You must change this password immediately after your first sign-in.</p>"
     )
@@ -316,7 +317,7 @@ def _send_internal_account_access_email(user, role_name):
                 ),
                 text=(
                     f"Your RealMindX {role_label} account is ready. Email: {user.email}. "
-                    f"Temporary password: {DEFAULT_TEMPORARY_PASSWORD}. Login: {login_url}. "
+                    f"Temporary password: {temporary_password}. Login: {login_url}. "
                     "Change the password on first sign-in."
                 ),
             ),
@@ -3101,17 +3102,18 @@ def create_staff():
         is_active=payload.get("status", "active") != "inactive",
         must_change_password=True,
     )
-    user.set_password(DEFAULT_TEMPORARY_PASSWORD)
+    temporary_password = generate_temporary_password()
+    user.set_password(temporary_password)
     user.direct_permissions = permissions
     db.session.add_all([role, user])
     db.session.flush()
     db.session.add(UserProfile(user_id=user.id))
     log_action("create_staff", "user", user.id, {"permissions": [p.key for p in permissions]})
-    notification_status = _send_internal_account_access_email(user, "staff")
+    notification_status = _send_internal_account_access_email(user, "staff", temporary_password)
     db.session.commit()
     return jsonify(
         user=_staff_payload(user),
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        temporary_password=temporary_password,
         notification={"email": notification_status, "email_to": user.email},
     ), 201
 
@@ -3181,16 +3183,17 @@ def reset_staff_password(user_id):
     user = db.get_or_404(User, user_id)
     if not user.role or user.role.name != "staff":
         return jsonify(error="Only staff accounts can be reset here."), 400
-    user.set_password(DEFAULT_TEMPORARY_PASSWORD)
+    temporary_password = generate_temporary_password()
+    user.set_password(temporary_password)
     user.must_change_password = True
     user.failed_login_count = 0
     user.locked_until = None
-    notification_status = _send_internal_account_access_email(user, "staff")
+    notification_status = _send_internal_account_access_email(user, "staff", temporary_password)
     log_action("reset_staff_password", "user", user.id, {"email": user.email})
     db.session.commit()
     return jsonify(
         message="Staff password reset. They must change it on next login.",
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        temporary_password=temporary_password,
         notification={"email": notification_status, "email_to": user.email},
     )
 
@@ -3224,16 +3227,17 @@ def create_admin():
         is_active=payload.get("status", "active") != "inactive",
         must_change_password=True,
     )
-    user.set_password(DEFAULT_TEMPORARY_PASSWORD)
+    temporary_password = generate_temporary_password()
+    user.set_password(temporary_password)
     db.session.add_all([role, user])
     db.session.flush()
     db.session.add(UserProfile(user_id=user.id))
     log_action("create_admin", "user", user.id, {"email": user.email})
-    notification_status = _send_internal_account_access_email(user, "admin")
+    notification_status = _send_internal_account_access_email(user, "admin", temporary_password)
     db.session.commit()
     return jsonify(
         user=_admin_payload(user),
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        temporary_password=temporary_password,
         notification={"email": notification_status, "email_to": user.email},
     ), 201
 
@@ -3292,16 +3296,17 @@ def reset_admin_password(user_id):
         return jsonify(error="Only admin accounts can be reset here."), 400
     if user.id == current_user.id:
         return jsonify(error="Use My Account to change your own password."), 400
-    user.set_password(DEFAULT_TEMPORARY_PASSWORD)
+    temporary_password = generate_temporary_password()
+    user.set_password(temporary_password)
     user.must_change_password = True
     user.failed_login_count = 0
     user.locked_until = None
-    notification_status = _send_internal_account_access_email(user, "admin")
+    notification_status = _send_internal_account_access_email(user, "admin", temporary_password)
     log_action("reset_admin_password", "user", user.id, {"email": user.email})
     db.session.commit()
     return jsonify(
         message="Admin password reset. They must change it on next login.",
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        temporary_password=temporary_password,
         notification={"email": notification_status, "email_to": user.email},
     )
 
@@ -4695,13 +4700,14 @@ def create_delivery_company():
         company, manager = create_company(payload, actor=actor_from_user(current_user))
     except DeliveryError as exc:
         return _delivery_error_response(exc)
-    notification = send_portal_access_notification(manager, "manager") if manager else None
+    temporary_password = getattr(manager, "_temporary_password", None) if manager else None
+    notification = send_portal_access_notification(manager, "manager", temporary_password) if manager else None
     log_action("create_delivery_company", "delivery_company", company.id, {"name": company.name})
     db.session.commit()
     return jsonify(
         company=delivery_company_json(company),
         manager=delivery_company_user_json(manager) if manager else None,
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD if manager else None,
+        temporary_password=temporary_password,
         notification=notification,
     ), 201
 
@@ -4808,12 +4814,13 @@ def create_delivery_company_manager(company_id):
         manager = create_company_user(company, payload, actor=actor_from_user(current_user))
     except DeliveryError as exc:
         return _delivery_error_response(exc)
-    notification = send_portal_access_notification(manager, "manager")
+    temporary_password = getattr(manager, "_temporary_password", None)
+    notification = send_portal_access_notification(manager, "manager", temporary_password)
     log_action("create_delivery_company_manager", "delivery_company_user", manager.id, {"company_id": company.id})
     db.session.commit()
     return jsonify(
         manager=delivery_company_user_json(manager),
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        temporary_password=temporary_password,
         notification=notification,
     ), 201
 
@@ -4854,15 +4861,15 @@ def update_delivery_company_user(company_user_id):
 def reset_delivery_company_user_password(company_user_id):
     company_user = db.get_or_404(DeliveryCompanyUser, company_user_id)
     try:
-        reset_portal_password(company_user.user)
+        temporary_password = reset_portal_password(company_user.user)
     except DeliveryError as exc:
         return _delivery_error_response(exc)
-    notification = send_portal_access_notification(company_user, "manager")
+    notification = send_portal_access_notification(company_user, "manager", temporary_password)
     log_action("reset_delivery_company_user_password", "delivery_company_user", company_user.id)
     db.session.commit()
     return jsonify(
         message="Company manager password reset. They must change it on next login.",
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        temporary_password=temporary_password,
         notification=notification,
     )
 
@@ -5154,7 +5161,7 @@ def _receipt_invoice_order_row(order):
         "document_type": "receipt",
         "document_label": "Receipt",
         "document_id": document_id,
-        "lookup_id": order.order_reference or document_id,
+        "lookup_id": document_id,
         "order_reference": order.order_reference,
         "customer_name": order.customer_name,
         "email": order.email,
@@ -6653,12 +6660,214 @@ def _newsletter_campaign_json(row, *, include_content=False):
     return payload
 
 
+NEWSLETTER_SUCCESS_STATUSES = {"mocked", "queued", "accepted", "sent", "delivered"}
+NEWSLETTER_FAILED_STATUSES = {"disabled", "failed", "rejected", "expired", "skipped"}
+
+
+def _newsletter_recipient_json(row):
+    attempts = row.attempts or []
+    return {
+        "id": row.id,
+        "campaign_id": row.campaign_id,
+        "contact_id": row.contact_id,
+        "email": row.email,
+        "status": row.status,
+        "successful": row.status in NEWSLETTER_SUCCESS_STATUSES,
+        "provider": row.provider,
+        "error_code": row.error_code,
+        "error_message": row.error_message,
+        "attempt_count": row.attempt_count,
+        "last_attempt_at": row.last_attempt_at.isoformat() if row.last_attempt_at else None,
+        "attempts": attempts,
+    }
+
+
+def _newsletter_attempt_json(result, attempted_at):
+    return {
+        "status": result.status,
+        "provider": result.provider,
+        "provider_message_id": result.provider_message_id,
+        "error_code": result.error_code,
+        "error_message": result.error_message,
+        "attempted_at": attempted_at.isoformat(),
+    }
+
+
+def _apply_newsletter_result(recipient, result, attempted_at):
+    recipient.status = result.status
+    recipient.provider = result.provider
+    recipient.provider_message_id = result.provider_message_id
+    recipient.error_code = result.error_code
+    recipient.error_message = (result.error_message or "")[:500] or None
+    recipient.attempt_count = int(recipient.attempt_count or 0) + 1
+    recipient.attempts = list(recipient.attempts or []) + [_newsletter_attempt_json(result, attempted_at)]
+    recipient.last_attempt_at = attempted_at
+
+
+def _refresh_newsletter_campaign_counts(campaign):
+    rows = list(campaign.recipients)
+    campaign.recipient_count = len(rows)
+    campaign.mocked_count = sum(row.status == "mocked" for row in rows)
+    campaign.sent_count = sum(row.status in (NEWSLETTER_SUCCESS_STATUSES - {"mocked"}) for row in rows)
+    campaign.failed_count = sum(row.status in NEWSLETTER_FAILED_STATUSES for row in rows)
+    successful = campaign.sent_count + campaign.mocked_count
+    campaign.status = (
+        "failed" if campaign.failed_count and not successful
+        else "partial" if campaign.failed_count
+        else "completed"
+    )
+
+
+def _send_saved_newsletter_recipient(campaign, recipient):
+    contact = db.session.get(Contact, recipient.contact_id) if recipient.contact_id else None
+    if contact is None:
+        contact = Contact.query.filter(func.lower(Contact.email) == recipient.email.lower()).first()
+    if contact is None:
+        raise ValueError("This recipient is no longer in the contacts directory.")
+    subscriber = contact.newsletter_subscription
+    if subscriber and (subscriber.communication_status == UNSUBSCRIBED or not subscriber.is_active):
+        raise ValueError("This recipient has unsubscribed and cannot be resent this newsletter.")
+
+    content = campaign.content or {}
+    sections = content.get("sections") or []
+    body = (content.get("body") or "").strip()
+    body_html = _render_newsletter_sections(sections) if sections else _render_newsletter_body(body)
+    brand = (campaign.brand or content.get("brand") or "realmindx").strip().lower()
+    sender = (campaign.sender or content.get("sender") or "news").strip().lower()
+    shell = bookshop_email_shell if brand == "bookshop" else app_email_shell
+    eyebrow = {
+        "sales": "RealMindX Sales",
+        "bookshop": "RealMindX Bookshop Updates",
+        "news": "RealMindX Updates",
+    }.get(sender, "RealMindX Updates")
+    hero_image_url = None
+    if content.get("image_file_id"):
+        image_file = db.session.get(UploadedFile, content["image_file_id"])
+        hero_image_url = _upload_public_url(image_file) if image_file else None
+    source_labels = [link.source for link in contact.sources] or ["RealMindX contacts"]
+    footer_note = f'You are receiving this RealMindX email because your address is listed under {escape(", ".join(source_labels))}.'
+    if subscriber:
+        if not subscriber.unsubscribe_token:
+            subscriber.unsubscribe_token = secrets.token_urlsafe(32)
+        base_url = current_app.config.get("SITE_BASE_URL", "https://realmindxgh.com").rstrip("/")
+        unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
+        footer_note += f' <a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe from newsletters</a>.'
+
+    return send_email(
+        OutboundEmail(
+            to=contact.email,
+            subject=campaign.subject,
+            from_email=_campaign_from_email(sender),
+            html=shell(
+                campaign.title,
+                body_html,
+                content.get("cta_label") or None,
+                content.get("cta_url") or None,
+                eyebrow=eyebrow,
+                preheader=content.get("preheader") or campaign.title,
+                hero_image_url=hero_image_url,
+                footer_note=footer_note,
+            ),
+        ),
+        purpose="transactional",
+        recipient_user_id=None,
+        template_name="newsletter_campaign_retry",
+        contact_id=contact.id,
+        initiated_by=current_user.id,
+        batch_id=f"newsletter-{campaign.id}",
+        idempotency_key=f"newsletter-{campaign.id}-recipient-{recipient.id}-{uuid4().hex}",
+    )
+
+
 @admin_bp.get("/newsletters/campaigns")
 @login_required
 @permission_required("newsletters.view")
 def list_newsletter_campaigns():
     rows = NewsletterCampaign.query.order_by(NewsletterCampaign.sent_at.desc(), NewsletterCampaign.id.desc()).limit(100).all()
     return jsonify(items=[_newsletter_campaign_json(row, include_content=True) for row in rows])
+
+
+@admin_bp.get("/newsletters/campaigns/<int:campaign_id>/recipients")
+@login_required
+@permission_required("newsletters.view")
+def list_newsletter_campaign_recipients(campaign_id):
+    campaign = db.get_or_404(NewsletterCampaign, campaign_id)
+    rows = (
+        NewsletterCampaignRecipient.query
+        .filter_by(campaign_id=campaign.id)
+        .order_by(NewsletterCampaignRecipient.status.asc(), NewsletterCampaignRecipient.email.asc())
+        .all()
+    )
+    return jsonify(
+        campaign=_newsletter_campaign_json(campaign),
+        recipients=[_newsletter_recipient_json(row) for row in rows],
+        details_available=bool(rows),
+    )
+
+
+def _retry_newsletter_recipients(campaign, recipients):
+    results = []
+    for recipient in recipients:
+        attempted_at = datetime.now(timezone.utc)
+        try:
+            result = _send_saved_newsletter_recipient(campaign, recipient)
+            _apply_newsletter_result(recipient, result, attempted_at)
+            results.append(_newsletter_recipient_json(recipient))
+        except ValueError as exc:
+            results.append({**_newsletter_recipient_json(recipient), "retry_error": str(exc)})
+    _refresh_newsletter_campaign_counts(campaign)
+    return results
+
+
+@admin_bp.post("/newsletters/campaigns/<int:campaign_id>/recipients/<int:recipient_id>/resend")
+@login_required
+@permission_required("newsletters.create")
+def resend_newsletter_recipient(campaign_id, recipient_id):
+    campaign = db.get_or_404(NewsletterCampaign, campaign_id)
+    recipient = NewsletterCampaignRecipient.query.filter_by(
+        id=recipient_id,
+        campaign_id=campaign.id,
+    ).first_or_404()
+    if recipient.status not in NEWSLETTER_FAILED_STATUSES:
+        return jsonify(error="Only failed newsletter deliveries can be resent."), 409
+    results = _retry_newsletter_recipients(campaign, [recipient])
+    log_action(
+        "resend_newsletter_recipient",
+        "newsletter",
+        campaign.id,
+        {"recipient_id": recipient.id, "status": recipient.status},
+    )
+    db.session.commit()
+    retry_error = results[0].get("retry_error")
+    if retry_error:
+        return jsonify(error=retry_error, recipient=results[0], campaign=_newsletter_campaign_json(campaign)), 409
+    return jsonify(recipient=results[0], campaign=_newsletter_campaign_json(campaign))
+
+
+@admin_bp.post("/newsletters/campaigns/<int:campaign_id>/recipients/resend-failed")
+@login_required
+@permission_required("newsletters.create")
+def resend_failed_newsletter_recipients(campaign_id):
+    campaign = db.get_or_404(NewsletterCampaign, campaign_id)
+    failed_rows = NewsletterCampaignRecipient.query.filter(
+        NewsletterCampaignRecipient.campaign_id == campaign.id,
+        NewsletterCampaignRecipient.status.in_(NEWSLETTER_FAILED_STATUSES),
+    ).all()
+    if not failed_rows:
+        return jsonify(error="This campaign has no failed recipients to resend."), 409
+    results = _retry_newsletter_recipients(campaign, failed_rows)
+    log_action(
+        "resend_failed_newsletter_recipients",
+        "newsletter",
+        campaign.id,
+        {
+            "requested": len(failed_rows),
+            "successful": sum(row.get("status") in NEWSLETTER_SUCCESS_STATUSES for row in results),
+            "failed": sum(row.get("status") in NEWSLETTER_FAILED_STATUSES or bool(row.get("retry_error")) for row in results),
+        },
+    )
+    db.session.commit()
+    return jsonify(results=results, campaign=_newsletter_campaign_json(campaign))
 
 
 @admin_bp.delete("/newsletters/campaigns/<int:campaign_id>")
@@ -6774,6 +6983,7 @@ def send_newsletter_campaign():
     sent = 0
     mocked = 0
     failed = 0
+    delivery_results = []
     for contact, subscriber in recipients:
         if contact.email in seen:
             continue
@@ -6787,6 +6997,7 @@ def send_newsletter_campaign():
         if subscriber:
             unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
             footer_note += f' <a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe from newsletters</a>.'
+        attempted_at = datetime.now(timezone.utc)
         result = send_email(
             OutboundEmail(
                 to=contact.email,
@@ -6809,6 +7020,7 @@ def send_newsletter_campaign():
             contact_id=contact.id,
             initiated_by=current_user.id,
         )
+        delivery_results.append((contact, result, attempted_at))
         if result.status == "mocked":
             mocked += 1
         elif result.status in ("queued", "accepted", "sent", "delivered"):
@@ -6844,6 +7056,17 @@ def send_newsletter_campaign():
     )
     db.session.add(campaign)
     db.session.flush()
+    for contact, result, attempted_at in delivery_results:
+        recipient = NewsletterCampaignRecipient(
+            campaign_id=campaign.id,
+            contact_id=contact.id,
+            email=contact.email,
+            status="pending",
+            attempt_count=0,
+            attempts=[],
+        )
+        _apply_newsletter_result(recipient, result, attempted_at)
+        db.session.add(recipient)
     log_action(
         "send_newsletter_campaign",
         "newsletter",
