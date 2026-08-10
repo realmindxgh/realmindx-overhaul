@@ -1,13 +1,27 @@
 from datetime import timedelta
 from functools import wraps
+import secrets
 
 import requests
-from flask import abort, current_app, request
+from flask import abort, current_app, jsonify, request
 from flask_login import current_user
 from itsdangerous import URLSafeTimedSerializer
 
 
-DEFAULT_TEMPORARY_PASSWORD = "12345678"
+
+def generate_temporary_password():
+    """Return a unique, high-entropy password suitable for one-time delivery."""
+    return secrets.token_urlsafe(18)
+
+
+def _require_password_rotation():
+    if getattr(current_user, "must_change_password", False):
+        response = jsonify(
+            error="Change your temporary password before continuing.",
+            code="password_change_required",
+        )
+        response.status_code = 428
+        abort(response)
 
 
 def serializer():
@@ -28,6 +42,7 @@ def permission_required(permission_key):
         def wrapped(*args, **kwargs):
             if not current_user.is_authenticated:
                 abort(401)
+            _require_password_rotation()
             role_name = current_user.role.name if current_user.role else ""
             if role_name == "admin":
                 return view(*args, **kwargs)
@@ -45,6 +60,7 @@ def admin_or_staff_required(view):
     def wrapped(*args, **kwargs):
         if not current_user.is_authenticated:
             abort(401)
+        _require_password_rotation()
         role_name = current_user.role.name if current_user.role else ""
         if role_name not in {"admin", "staff"}:
             abort(403)
@@ -58,6 +74,7 @@ def admin_required(view):
     def wrapped(*args, **kwargs):
         if not current_user.is_authenticated:
             abort(401)
+        _require_password_rotation()
         if not current_user.role or current_user.role.name != "admin":
             abort(403)
         return view(*args, **kwargs)
@@ -81,7 +98,7 @@ def verify_turnstile_token(token):
             data={
                 "secret": secret,
                 "response": token,
-                "remoteip": request.headers.get("CF-Connecting-IP") or request.remote_addr,
+                "remoteip": request.remote_addr,
             },
             timeout=8,
         )
