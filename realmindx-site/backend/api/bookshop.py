@@ -117,11 +117,11 @@ def submit_book_request():
 
 
 def new_order_reference():
-    return f"RMX-{uuid4().hex[:8].upper()}"
+    return f"RMX-{uuid4().hex[:20].upper()}"
 
 
 def new_payment_reference():
-    return f"RMX-PAY-{uuid4().hex[:12].upper()}"
+    return f"RMX-PAY-{uuid4().hex[:24].upper()}"
 
 
 def find_delivery_zone(payload):
@@ -834,8 +834,30 @@ def list_delivery_zones():
     return jsonify(items=[delivery_zone_json(zone) for zone in zones])
 
 
-def order_tracking_json(order):
-    payload = order_json(order, include_delivery=False)
+def order_tracking_json(order, *, include_invoice_id=False):
+    payload = {
+        "order_reference": order.order_reference,
+        "delivery_method": order.delivery_method,
+        "delivery_zone_name": order.delivery_zone_name,
+        "delivery_fee": float(order.delivery_fee or 0),
+        "status": normalize_order_status(order.status),
+        "payment_status": order.payment_status,
+        "payment_method": order.payment_method,
+        "subtotal_amount": float(order.subtotal_amount) if order.subtotal_amount is not None else None,
+        "bulk_discount_amount": float(order.bulk_discount_amount or 0),
+        "promo_discount_amount": float(order.promo_discount_amount or 0),
+        "total_amount": float(order.total_amount) if order.total_amount is not None else None,
+        "items": [
+            {
+                "product_name": item.product_name,
+                "unit_price": float(item.unit_price),
+                "quantity": item.quantity,
+            }
+            for item in order.items
+        ],
+    }
+    if include_invoice_id:
+        payload["invoice_id"] = getattr(order, "invoice_id", None)
     payload["created_at"] = order.created_at.isoformat() if order.created_at else None
     payload["updated_at"] = order.updated_at.isoformat() if order.updated_at else None
     payload["paid_at"] = order.paid_at.isoformat() if order.paid_at else None
@@ -883,21 +905,15 @@ def order_tracking_json(order):
 def track_orders():
     query = (request.args.get("q") or request.args.get("query") or "").strip()
     if not query:
-        return jsonify(error="Enter your order reference or checkout email."), 400
+        return jsonify(error="Enter your order reference."), 400
 
     orders_query = _placed_orders(Order.query)
     if re.fullmatch(r"RMX-[A-Za-z0-9-]+", query):
         orders_query = orders_query.filter(Order.order_reference.ilike(query.upper()))
-    elif "@" in query:
-        try:
-            email = clean_email(query)
-        except ValueError:
-            return jsonify(error="Enter a valid order reference or checkout email."), 400
-        orders_query = orders_query.filter_by(email=email)
     else:
-        return jsonify(error="Enter a valid RMX order reference or checkout email."), 400
+        return jsonify(error="Enter a valid RMX order reference."), 400
 
-    orders = orders_query.order_by(Order.created_at.desc()).limit(5).all()
+    orders = orders_query.order_by(Order.created_at.desc()).limit(1).all()
     return jsonify(items=[order_tracking_json(order) for order in orders])
 
 
@@ -1182,12 +1198,9 @@ def lookup_invoice(invoice_id):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
         return response
 
-    order = _placed_orders(Order.query).filter(
-        or_(Order.invoice_id == lookup_id, Order.order_reference == lookup_id)
-    ).first()
+    order = _placed_orders(Order.query).filter(Order.invoice_id == lookup_id).first()
     if order:
-        document_type = "receipt" if (order.order_reference or "").upper() == lookup_id else "invoice"
-        response = jsonify(invoice=invoice_json(order, document_type=document_type))
+        response = jsonify(invoice=invoice_json(order, document_type="invoice"))
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
         response.headers["Cache-Control"] = "private, no-store"
         return response
@@ -1212,9 +1225,7 @@ def lookup_invoice(invoice_id):
 @limiter.limit("30/minute")
 def invoice_pdf(invoice_id):
     lookup_id = (invoice_id or "").strip().upper()
-    order = _placed_orders(Order.query).filter(
-        or_(Order.invoice_id == lookup_id, Order.order_reference == lookup_id)
-    ).first()
+    order = _placed_orders(Order.query).filter(Order.invoice_id == lookup_id).first()
     cart_invoice = None
     if not order:
         cart_invoice = CartInvoice.query.filter_by(invoice_id=lookup_id).first()
@@ -1225,7 +1236,7 @@ def invoice_pdf(invoice_id):
         return response
 
     receipt_requested = request.args.get("document") == "receipt"
-    is_receipt = bool(order and (receipt_requested or (order.order_reference or "").upper() == lookup_id))
+    is_receipt = bool(order and receipt_requested)
     if order and is_receipt:
         stream = build_receipt_pdf(order)
     else:
@@ -1296,7 +1307,7 @@ def my_orders():
     total = query.count()
     orders = query.offset((page - 1) * per_page).limit(per_page).all()
     return jsonify(
-        items=[order_tracking_json(order) for order in orders],
+        items=[order_tracking_json(order, include_invoice_id=True) for order in orders],
         total=total,
         page=page,
         per_page=per_page,
@@ -1659,49 +1670,10 @@ def initialize_paystack_checkout():
 @bookshop_bp.post("/orders/<int:order_id>/paystack/initialize")
 @limiter.limit("8/hour")
 def initialize_paystack_payment(order_id):
-    order = db.get_or_404(Order, order_id)
-    if order.payment_method != "online":
-        return jsonify(error="This order is set for payment on delivery."), 400
-    secret_key = current_app.config.get("PAYSTACK_SECRET_KEY")
-    if not secret_key:
-        return jsonify(error="Paystack is not configured for this environment."), 503
-    if order.payment_status == "paid":
-        return jsonify(order=order_json(order), message="Order is already paid.")
-    if not order.total_amount or order.total_amount <= 0:
-        return jsonify(error="Order total must be greater than zero before payment."), 400
-
-    payload = request.get_json(silent=True) or {}
-    order.payment_reference = order.payment_reference or new_payment_reference()
-    amount_pesewas = int(Decimal(str(order.total_amount)) * 100)
-    callback_url = payload.get("callback_url") or f"{current_app.config['BOOKSHOP_URL'].rstrip('/')}/order-success?ref={order.order_reference}"
-    try:
-        response = requests.post(
-            "https://api.paystack.co/transaction/initialize",
-            headers={"Authorization": f"Bearer {secret_key}", "Content-Type": "application/json"},
-            json={
-                "email": order.email,
-                "amount": amount_pesewas,
-                "reference": order.payment_reference,
-                "callback_url": callback_url,
-                "metadata": {
-                    "order_id": order.id,
-                    "order_reference": order.order_reference,
-                    "delivery_fee": float(order.delivery_fee or 0),
-                },
-            },
-            timeout=15,
-        )
-        response.raise_for_status()
-        data = response.json().get("data") or {}
-    except requests.RequestException:
-        current_app.logger.exception("Paystack transaction initialization failed for order %s", order.order_reference)
-        return jsonify(error="Payment initialization failed. Please try again or contact RealMindX Bookshop."), 502
-    order.payment_provider = "paystack"
-    order.payment_status = "pending"
-    order.payment_access_code = data.get("access_code")
-    order.payment_authorization_url = data.get("authorization_url")
-    db.session.commit()
-    return jsonify(order=order_json(order), payment=data)
+    return jsonify(
+        error="This legacy payment endpoint is disabled. Start payment through checkout.",
+        code="legacy_payment_endpoint_disabled",
+    ), 410
 
 
 @bookshop_bp.post("/orders/paystack/verify")
@@ -1715,7 +1687,7 @@ def verify_paystack_payment():
             return jsonify(error="Payment attempt not found."), 404
         if intent.order_id:
             return jsonify(
-                order=order_json(intent.order),
+                order=order_tracking_json(intent.order, include_invoice_id=True),
                 payment_intent=_payment_intent_json(intent),
                 message="Payment is already confirmed.",
             )
@@ -1748,7 +1720,7 @@ def verify_paystack_payment():
         except ValueError as exc:
             return jsonify(error=str(exc), payment_intent=_payment_intent_json(intent)), 409
         return jsonify(
-            order=order_json(order),
+            order=order_tracking_json(order, include_invoice_id=True),
             payment_intent=_payment_intent_json(intent),
             message="Payment confirmed and order placed." if newly_confirmed else "Payment was already confirmed.",
         )
@@ -1763,7 +1735,10 @@ def verify_paystack_payment():
     if order.payment_method != "online":
         return jsonify(error="This order is not awaiting an online payment."), 400
     if order.payment_status == "paid":
-        return jsonify(order=order_json(order), message="Payment is already confirmed.")
+        return jsonify(
+            order=order_tracking_json(order, include_invoice_id=True),
+            message="Payment is already confirmed.",
+        )
     if not order.payment_reference:
         return jsonify(error="Paystack payment has not been initialized for this order."), 409
 
@@ -1786,9 +1761,12 @@ def verify_paystack_payment():
     try:
         newly_confirmed = _confirm_paystack_order(order, data, "callback_verification")
     except ValueError as exc:
-        return jsonify(error=str(exc), order=order_json(order)), 409
+        return jsonify(
+            error=str(exc),
+            order=order_tracking_json(order, include_invoice_id=True),
+        ), 409
     return jsonify(
-        order=order_json(order),
+        order=order_tracking_json(order, include_invoice_id=True),
         message="Payment confirmed and order placed." if newly_confirmed else "Payment was already confirmed.",
     )
 
@@ -1865,7 +1843,11 @@ def bulk_order():
             to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
             from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
             subject="New RealMindX bulk order enquiry",
-            html=bookshop_email_shell("Bulk order enquiry", f"<p><strong>{name}</strong> ({email}) requested:</p><p>{details}</p>"),
+            html=bookshop_email_shell(
+                "Bulk order enquiry",
+                f"<p><strong>{escape(name)}</strong> ({escape(email)}) requested:</p>"
+                f"<p>{escape(details).replace(chr(10), '<br>')}</p>",
+            ),
         ),
         purpose="admin_alert",
         recipient_user_id=None,

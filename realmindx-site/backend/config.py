@@ -46,17 +46,16 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", False)
-    PERMANENT_SESSION_LIFETIME = timedelta(days=31)
-    SESSION_REFRESH_EACH_REQUEST = True
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
+    SESSION_REFRESH_EACH_REQUEST = False
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SECURE = SESSION_COOKIE_SECURE
-    REMEMBER_COOKIE_DURATION = timedelta(days=31)
-    REMEMBER_COOKIE_REFRESH_EACH_REQUEST = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+    REMEMBER_COOKIE_DURATION = timedelta(days=14)
+    REMEMBER_COOKIE_REFRESH_EACH_REQUEST = False
 
     WTF_CSRF_TIME_LIMIT = int(os.getenv("WTF_CSRF_TIME_LIMIT", "3600"))
-    # REST API routes are already protected by CORS + session auth.
-    # Disable automatic CSRF checking — the API has no HTML form POST targets.
-    WTF_CSRF_CHECK_DEFAULT = False
+    WTF_CSRF_CHECK_DEFAULT = True
     WTF_CSRF_TRUSTED_ORIGINS = [
         "https://realmindxgh.com",
         "https://www.realmindxgh.com",
@@ -72,8 +71,13 @@ class Config:
     MAX_CONTENT_LENGTH = MAX_UPLOAD_FILE_BYTES + (5 * 1024 * 1024)
     ALLOWED_UPLOAD_EXTENSIONS = {
         "images": {"jpg", "jpeg", "png", "webp"},
-        "documents": {"pdf", "doc", "docx", "odt", "rtf"},
+        "documents": {"pdf", "docx"},
         "resources": {"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "csv"},
+    }
+    UPLOAD_CATEGORY_MAX_BYTES = {
+        "images": 12 * 1024 * 1024,
+        "documents": 10 * 1024 * 1024,
+        "resources": 25 * 1024 * 1024,
     }
 
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "RealMindX <notifications@send.realmindxgh.com>")

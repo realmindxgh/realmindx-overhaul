@@ -27,7 +27,7 @@ from ..contacts import (
     upsert_newsletter_subscription,
 )
 from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
-from ..extensions import db, limiter
+from ..extensions import csrf, db, limiter
 from ..models import ContactMessage, Flyer, GalleryItem, Job, News, NewsletterSubscriber, Product, ProductCategory, Resource, SiteSetting, UploadedFile
 from ..og_images import book_og_version, render_book_og
 from ..order_pricing import validate_promo_code_record
@@ -420,6 +420,7 @@ def clean_email(email):
 
 
 @public_bp.post("/analytics/events")
+@csrf.exempt
 @limiter.limit("240/minute")
 def collect_analytics_events():
     payload = request.get_json(silent=True) or {}
@@ -646,7 +647,7 @@ def initialize_donation_paystack():
 
     reference = f"RMX-DON-{uuid4().hex[:12].upper()}"
     base_url = (current_app.config.get("BASE_URL") or request.host_url.rstrip("/")).rstrip("/")
-    callback_url = payload.get("callback_url") or f"{base_url}/donate"
+    callback_url = f"{base_url}/donate"
     try:
         response = requests.post(
             "https://api.paystack.co/transaction/initialize",

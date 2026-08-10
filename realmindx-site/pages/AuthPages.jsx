@@ -277,6 +277,8 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
       setMode('register');
       setError(`No RealMindX account exists yet for that ${providerLabel} email. Create an account below, accept the terms, then continue with ${providerLabel}.`);
       window.setTimeout(() => termsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 260);
+    } else if (oauthError === 'account_link_required') {
+      setError(`An account already uses that email. Sign in with its existing method; social accounts are not linked by email alone for security.`);
     } else if (oauthError === 'provider_unavailable') {
       setError('That social sign-in provider is temporarily unavailable. Please use email and password.');
     } else if (oauthError?.endsWith('_failed')) {

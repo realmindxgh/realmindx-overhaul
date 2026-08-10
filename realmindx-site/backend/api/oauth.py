@@ -24,7 +24,7 @@ from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, current_app, redirect, request, session, url_for
 from flask_login import login_user
 
-from ..extensions import db
+from ..extensions import csrf, db
 from ..contacts import upsert_contact_safely
 from ..models import AuthIdentity, Role, User, UserProfile
 from ..teacher_ids import ensure_application_id
@@ -43,6 +43,14 @@ SAFE_NEXT_PREFIXES = (
     "/register",
     "/signup",
 )
+
+
+class OAuthAccountLinkRequired(Exception):
+    """Raised when a social identity would otherwise be linked by email alone."""
+
+
+def _account_link_required(provider):
+    return redirect(f"{_base_url()}/login?error=account_link_required&provider={provider}")
 
 
 def _base_url():
@@ -142,8 +150,11 @@ def _get_or_create_user(provider, provider_user_id, email, first_name, last_name
     if identity:
         return identity.user, False
 
-    # Check if email already exists (merge providers on same email)
+    # Never attach a new external identity to an existing account based only on
+    # an email claim. Account linking must be an explicit, authenticated action.
     user = User.query.filter_by(email=email.lower()).first() if email else None
+    if user:
+        raise OAuthAccountLinkRequired
 
     created = False
     if not user:
@@ -289,6 +300,7 @@ def apple_login():
 
 
 @oauth_bp.post("/auth/apple/callback")
+@csrf.exempt
 def apple_callback():
     if not current_app.config.get("APPLE_CLIENT_ID"):
         return redirect(f"{_base_url()}/login?error=provider_unavailable&provider=apple")
@@ -310,6 +322,9 @@ def apple_callback():
         if terms_error:
             return terms_error
         return _login_and_redirect(user)
+    except OAuthAccountLinkRequired:
+        db.session.rollback()
+        return _account_link_required("apple")
     except Exception as exc:
         current_app.logger.warning("Apple OAuth callback failed: %s", exc)
         return _oauth_failure("apple")
@@ -344,6 +359,9 @@ def google_callback():
         if terms_error:
             return terms_error
         return _login_and_redirect(user)
+    except OAuthAccountLinkRequired:
+        db.session.rollback()
+        return _account_link_required("google")
     except Exception:
         db.session.rollback()
         current_app.logger.exception("Google OAuth callback failed")
@@ -379,6 +397,9 @@ def microsoft_callback():
         if terms_error:
             return terms_error
         return _login_and_redirect(user)
+    except OAuthAccountLinkRequired:
+        db.session.rollback()
+        return _account_link_required("microsoft")
     except Exception:
         db.session.rollback()
         current_app.logger.exception("Microsoft OAuth callback failed")
@@ -415,6 +436,9 @@ def facebook_callback():
         if terms_error:
             return terms_error
         return _login_and_redirect(user)
+    except OAuthAccountLinkRequired:
+        db.session.rollback()
+        return _account_link_required("facebook")
     except Exception:
         db.session.rollback()
         current_app.logger.exception("Facebook OAuth callback failed")

@@ -29,7 +29,6 @@ from backend.delivery_service import (
 )
 from backend.extensions import db
 from backend.models import AuditLog, DeliverySettlementLine, Job, Order, PlatformTermsAcceptance, Product, ProductCategory, Resource, Role, UploadedFile, User
-from backend.security import DEFAULT_TEMPORARY_PASSWORD
 
 
 class DeliveryTestConfig(Config):
@@ -92,7 +91,7 @@ class DeliveryAccountTests(unittest.TestCase):
         complete_delivery_with_otp(delivery, otp_value, ("rider", rider.user_id))
         return delivery
 
-    def _accept_company_terms(self, client, current_password=DEFAULT_TEMPORARY_PASSWORD):
+    def _accept_company_terms(self, client, current_password):
         changed = client.post("/api/auth/change-password", json={
             "current_password": current_password,
             "new_password": "ChangedPassword123!",
@@ -108,7 +107,7 @@ class DeliveryAccountTests(unittest.TestCase):
         self.assertEqual(accepted.status_code, 200)
         return accepted.get_json()
 
-    def _accept_rider_terms(self, client, current_password=DEFAULT_TEMPORARY_PASSWORD):
+    def _accept_rider_terms(self, client, current_password):
         changed = client.post("/api/auth/change-password", json={
             "current_password": current_password,
             "new_password": "ChangedRiderPassword123!",
@@ -224,10 +223,10 @@ class DeliveryAccountTests(unittest.TestCase):
         db.session.commit()
 
         client = self.app.test_client()
-        login = client.post("/api/delivery/company/login", json={"phone": manager_two.phone, "password": DEFAULT_TEMPORARY_PASSWORD})
+        login = client.post("/api/delivery/company/login", json={"phone": manager_two.phone, "password": manager_two._temporary_password})
         self.assertEqual(login.status_code, 200)
         self.assertEqual(client.get("/api/delivery/company/settlements").status_code, 428)
-        self._accept_company_terms(client)
+        self._accept_company_terms(client, manager_two._temporary_password)
         listing = client.get("/api/delivery/company/settlements")
         self.assertEqual(listing.status_code, 200)
         self.assertEqual(listing.get_json()["items"], [])
@@ -255,7 +254,7 @@ class DeliveryAccountTests(unittest.TestCase):
 
     @patch("backend.delivery_service.send_email", return_value=Mock(status="accepted"))
     @patch("backend.delivery_service.send_sms", return_value=Mock(status="accepted"))
-    def test_delivery_accounts_use_default_temporary_password(self, _sms, _email):
+    def test_delivery_accounts_use_unique_temporary_passwords(self, _sms, _email):
         company, manager = create_company({
             "name": "Fast Delivery",
             "contact_email": "dispatch@example.com",
@@ -265,8 +264,10 @@ class DeliveryAccountTests(unittest.TestCase):
         rider = create_rider(company, {"name": "First Rider", "phone": "+233242222222"})
         db.session.commit()
 
-        self.assertTrue(manager.user.check_password(DEFAULT_TEMPORARY_PASSWORD))
-        self.assertTrue(rider.user.check_password(DEFAULT_TEMPORARY_PASSWORD))
+        self.assertTrue(manager.user.check_password(manager._temporary_password))
+        self.assertTrue(rider.user.check_password(rider._temporary_password))
+        self.assertNotEqual(manager._temporary_password, rider._temporary_password)
+        self.assertGreaterEqual(len(manager._temporary_password), 20)
         self.assertTrue(manager.user.must_change_password)
         self.assertTrue(rider.user.must_change_password)
 
@@ -309,25 +310,28 @@ class DeliveryAccountTests(unittest.TestCase):
         client = self.app.test_client()
         login = client.post("/api/delivery/company/login", json={
             "phone": manager_one.phone,
-            "password": DEFAULT_TEMPORARY_PASSWORD,
+            "password": manager_one._temporary_password,
         })
         self.assertEqual(login.status_code, 200)
         blocked = client.post("/api/delivery/company/riders", json={"name": "Blocked Rider", "phone": "0247777777"})
         self.assertEqual(blocked.status_code, 428)
-        self.assertEqual(blocked.get_json()["code"], "terms_acceptance_required")
+        self.assertEqual(blocked.get_json()["code"], "password_change_required")
 
-        accepted = self._accept_company_terms(client)
+        accepted = self._accept_company_terms(client, manager_one._temporary_password)
         self.assertTrue(accepted["terms"]["accepted"])
         self.assertEqual(PlatformTermsAcceptance.query.filter_by(user_id=manager_one.user_id).count(), 1)
         self.assertEqual(client.get(f"/api/delivery/company/riders/{rider_one.id}").status_code, 200)
         self.assertEqual(client.get(f"/api/delivery/company/riders/{rider_two.id}").status_code, 404)
         created = client.post("/api/delivery/company/riders", json={"name": "New Rider", "phone": "0247777777"})
         self.assertEqual(created.status_code, 201)
-        self.assertEqual(created.get_json()["temporary_password"], DEFAULT_TEMPORARY_PASSWORD)
+        created_password = created.get_json()["temporary_password"]
+        self.assertGreaterEqual(len(created_password), 20)
 
         reset = client.post(f"/api/delivery/company/riders/{rider_one.id}/reset-password")
         self.assertEqual(reset.status_code, 200)
-        self.assertEqual(reset.get_json()["temporary_password"], DEFAULT_TEMPORARY_PASSWORD)
+        reset_password = reset.get_json()["temporary_password"]
+        self.assertNotEqual(reset_password, rider_one._temporary_password)
+        self.assertTrue(rider_one.user.check_password(reset_password))
         self.assertTrue(rider_one.user.must_change_password)
 
     @patch("backend.delivery_service.send_email", return_value=Mock(status="failed"))
@@ -396,7 +400,7 @@ class DeliveryAccountTests(unittest.TestCase):
 
         response = self.app.test_client().post("/api/delivery/rider/login", json={
             "phone": "233201234567",
-            "password": DEFAULT_TEMPORARY_PASSWORD,
+            "password": rider._temporary_password,
         })
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.get_json()["code"], "inactive_account")
@@ -417,12 +421,13 @@ class DeliveryAccountTests(unittest.TestCase):
         db.session.commit()
 
         client = self.app.test_client()
-        login = client.post("/api/delivery/rider/login", json={"phone": rider.phone, "password": DEFAULT_TEMPORARY_PASSWORD})
+        login = client.post("/api/delivery/rider/login", json={"phone": rider.phone, "password": rider._temporary_password})
         self.assertEqual(login.status_code, 200)
         self.assertEqual(client.get("/api/delivery/rider/deliveries").status_code, 428)
-        self.assertEqual(client.post("/api/delivery/company/terms/accept", json={}).status_code, 403)
-        accepted = self._accept_rider_terms(client)
+        self.assertEqual(client.post("/api/delivery/company/terms/accept", json={}).status_code, 428)
+        accepted = self._accept_rider_terms(client, rider._temporary_password)
         self.assertTrue(accepted["terms"]["accepted"])
+        self.assertEqual(client.post("/api/delivery/company/terms/accept", json={}).status_code, 403)
         items = client.get("/api/delivery/rider/deliveries").get_json()["items"]
         self.assertEqual([item["id"] for item in items], [delivery.id])
 
@@ -760,9 +765,10 @@ class DeliveryAccountTests(unittest.TestCase):
             "permissions": [],
         })
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.get_json()["temporary_password"], DEFAULT_TEMPORARY_PASSWORD)
+        temporary_password = response.get_json()["temporary_password"]
+        self.assertGreaterEqual(len(temporary_password), 20)
         staff = User.query.filter_by(email="staff@example.com").one()
-        self.assertTrue(staff.check_password(DEFAULT_TEMPORARY_PASSWORD))
+        self.assertTrue(staff.check_password(temporary_password))
         self.assertTrue(staff.must_change_password)
 
 

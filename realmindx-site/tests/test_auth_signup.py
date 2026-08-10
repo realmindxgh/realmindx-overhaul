@@ -137,9 +137,9 @@ class SignupTests(unittest.TestCase):
         self.assertIn("teacher_id", data["user"])
         self.assertIsNone(data["user"]["teacher_id"])
 
-    # -- existing users without application_id still work --
+    # -- existing teacher users receive the required application ID --
 
-    def test_existing_user_without_application_id_serializes(self):
+    def test_existing_teacher_without_application_id_is_backfilled_on_login(self):
         role = Role.query.filter_by(name="user").first()
         user = User(
             email="old@example.com",
@@ -161,7 +161,8 @@ class SignupTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertIn("application_id", data["user"])
-        self.assertIsNone(data["user"]["application_id"])
+        self.assertRegex(data["user"]["application_id"], r"^RMX-APP-\d{4}-\d{6}$")
+        self.assertEqual(db.session.get(User, user.id).application_id, data["user"]["application_id"])
 
     # -- signup still works for bookshop users (non-teacher) --
 

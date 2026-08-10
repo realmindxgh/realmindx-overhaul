@@ -409,13 +409,13 @@ class AccountLifecycleTests(unittest.TestCase):
         db.session.flush()
 
         upload_resp = self.client.post("/api/me/uploads", data={
-            "file": (io.BytesIO(b"cv content"), "cv.pdf"),
+            "file": (io.BytesIO(b"%PDF-1.4\ncv content"), "cv.pdf"),
             "kind": "cv",
         }, content_type="multipart/form-data")
         self.assertEqual(upload_resp.status_code, 201)
 
         upload_resp2 = self.client.post("/api/me/uploads", data={
-            "file": (io.BytesIO(b"cert content"), "cert.pdf"),
+            "file": (io.BytesIO(b"%PDF-1.4\ncert content"), "cert.pdf"),
             "kind": "certificate",
         }, content_type="multipart/form-data")
         self.assertEqual(upload_resp2.status_code, 201)

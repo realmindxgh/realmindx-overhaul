@@ -20,7 +20,7 @@ from .models import (
     User,
 )
 from .order_status import normalize_order_status
-from .security import DEFAULT_TEMPORARY_PASSWORD
+from .security import generate_temporary_password
 from .sms_service import normalise_phone, send_sms
 
 
@@ -130,9 +130,9 @@ def split_name(name):
 
 def create_portal_user(kind, name, phone, password=None, role_name=None, must_change_password=True):
     phone = normalize_delivery_phone(phone)
-    password = password or DEFAULT_TEMPORARY_PASSWORD
-    if len(password or "") < 8:
-        raise DeliveryError("Password must be at least 8 characters.", 400, "weak_password")
+    password = password or generate_temporary_password()
+    if len(password or "") < 12:
+        raise DeliveryError("Password must be at least 12 characters.", 400, "weak_password")
     email = synthetic_delivery_email(kind, phone)
     if User.query.filter_by(email=email).first():
         raise DeliveryError("An account already exists for this phone number.", 409, "duplicate_phone")
@@ -150,6 +150,7 @@ def create_portal_user(kind, name, phone, password=None, role_name=None, must_ch
         must_change_password=must_change_password,
     )
     user.set_password(password)
+    user._temporary_password = password
     db.session.add(user)
     db.session.flush()
     return user, phone
@@ -198,7 +199,7 @@ def create_company_user(company, payload, actor=None):
         "company",
         payload.get("name") or "Company Manager",
         phone,
-        payload.get("password") or DEFAULT_TEMPORARY_PASSWORD,
+        payload.get("password"),
         "delivery_company_user",
         must_change_password=True,
     )
@@ -213,6 +214,7 @@ def create_company_user(company, payload, actor=None):
     )
     db.session.add(company_user)
     db.session.flush()
+    company_user._temporary_password = user._temporary_password
     return company_user
 
 
@@ -228,7 +230,7 @@ def create_rider(company, payload, actor=None):
         "rider",
         payload.get("name") or "Delivery Rider",
         phone,
-        payload.get("password") or DEFAULT_TEMPORARY_PASSWORD,
+        payload.get("password"),
         "delivery_rider",
         must_change_password=True,
     )
@@ -242,20 +244,27 @@ def create_rider(company, payload, actor=None):
     )
     db.session.add(rider)
     db.session.flush()
+    rider._temporary_password = user._temporary_password
     return rider
 
 
 def reset_portal_password(user, password=None):
-    password = password or DEFAULT_TEMPORARY_PASSWORD
-    if len(password or "") < 8:
-        raise DeliveryError("Password must be at least 8 characters.", 400, "weak_password")
+    password = password or generate_temporary_password()
+    if len(password or "") < 12:
+        raise DeliveryError("Password must be at least 12 characters.", 400, "weak_password")
     user.set_password(password)
     user.must_change_password = True
     user.failed_login_count = 0
     user.locked_until = None
+    user._temporary_password = password
+    return password
 
 
-def send_portal_access_notification(profile, account_kind, temporary_password=DEFAULT_TEMPORARY_PASSWORD):
+def send_portal_access_notification(profile, account_kind, temporary_password=None):
+    temporary_password = temporary_password or getattr(profile, "_temporary_password", None)
+    temporary_password = temporary_password or getattr(getattr(profile, "user", None), "_temporary_password", None)
+    if not temporary_password:
+        raise DeliveryError("A temporary password is required for the access notification.", 500, "temporary_password_missing")
     company = getattr(profile, "company", None)
     phone = getattr(profile, "phone", None)
     name = getattr(profile, "name", None) or "Delivery portal user"

@@ -28,7 +28,6 @@ from ..email_service import OutboundEmail, app_email_shell, send_email
 from ..models import DeliveryCompanyUser, DeliveryRider, DeliverySettlementBatch, OrderDelivery
 from ..platform_terms import accept_current_terms, has_accepted_current_terms, terms_payload
 from ..settlement_service import SettlementError, batch_json, line_json, log_settlement_event, raise_dispute
-from ..security import DEFAULT_TEMPORARY_PASSWORD
 from ..serializers import delivery_company_user_json, delivery_json, delivery_rider_json, user_json
 from ..sms_service import normalise_phone
 
@@ -79,10 +78,6 @@ def _rider_profile(require_terms=True):
 
 
 def _client_ip():
-    for header in ("X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"):
-        value = request.headers.get(header)
-        if value:
-            return value.split(",")[0].strip()
     return request.remote_addr or None
 
 
@@ -286,11 +281,12 @@ def company_create_rider():
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     audit("delivery_company_create_rider", "delivery_rider", rider.id, {"company_id": rider.company_id})
-    notification = send_portal_access_notification(rider, "rider")
+    temporary_password = getattr(rider, "_temporary_password", None)
+    notification = send_portal_access_notification(rider, "rider", temporary_password)
     db.session.commit()
     return jsonify(
         rider=delivery_rider_json(rider),
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        temporary_password=temporary_password,
         notification=notification,
     ), 201
 
@@ -365,15 +361,15 @@ def company_reset_rider_password(rider_id):
     if rider.company_id != profile.company_id:
         return jsonify(error="Rider not found for this company."), 404
     try:
-        reset_portal_password(rider.user)
+        temporary_password = reset_portal_password(rider.user)
     except DeliveryError as exc:
         return _delivery_error_response(exc)
     audit("delivery_company_reset_rider_password", "delivery_rider", rider.id, {"company_id": rider.company_id})
-    notification = send_portal_access_notification(rider, "rider")
+    notification = send_portal_access_notification(rider, "rider", temporary_password)
     db.session.commit()
     return jsonify(
         message="Rider password reset. They must change it on next login.",
-        temporary_password=DEFAULT_TEMPORARY_PASSWORD,
+        temporary_password=temporary_password,
         notification=notification,
     )
 

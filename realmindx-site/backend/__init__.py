@@ -1,13 +1,14 @@
 from flask import Flask, jsonify, redirect, request, send_from_directory
 from flask_wtf.csrf import CSRFError
 from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .api import register_api_blueprints
 from .api.public import host_robots_response, host_sitemap_response, is_bookshop_host
 from .cli import register_cli
 from .config import Config
 from .extensions import cors, csrf, db, limiter, login_manager, migrate
-from .models import User
+from .models import UploadedFile, User
 from .seo_pages import (
     bookshop_public_page,
     job_public_page,
@@ -22,6 +23,31 @@ from .seo_pages import (
 def create_app(config_object=Config):
     app = Flask(__name__, instance_relative_config=False)
     app.config.from_object(config_object)
+
+    # Nginx is the only public-facing hop in the supported deployment. Trusting
+    # exactly one proxy makes request.remote_addr and request.scheme accurate
+    # without accepting arbitrary forwarded values from clients.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    if app.testing:
+        app.config["WTF_CSRF_ENABLED"] = False
+        # Tests must not inherit a developer machine's live CAPTCHA secret and
+        # make external verification requests with synthetic tokens.
+        app.config["TURNSTILE_SECRET_KEY"] = ""
+
+    if str(app.config.get("ENV") or "").lower() == "production":
+        secret_key = str(app.config.get("SECRET_KEY") or "")
+        insecure_keys = {"dev-only-change-me", "change-me", "secret", "development"}
+        if len(secret_key) < 32 or secret_key.lower() in insecure_keys:
+            raise RuntimeError("Production requires a strong, unique SECRET_KEY of at least 32 characters.")
+        if not app.config.get("SESSION_COOKIE_SECURE"):
+            raise RuntimeError("Production requires SESSION_COOKIE_SECURE=true.")
+        turnstile_secret = str(app.config.get("TURNSTILE_SECRET_KEY") or "").strip()
+        if not turnstile_secret or turnstile_secret.lower().startswith(("replace", "change", "example")):
+            raise RuntimeError("Production requires TURNSTILE_SECRET_KEY.")
+        origins = app.config.get("CORS_ORIGINS") or []
+        if any("*" in str(origin) or not str(origin).lower().startswith("https://") for origin in origins):
+            raise RuntimeError("Production CORS_ORIGINS must contain explicit HTTPS origins only.")
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -40,9 +66,45 @@ def create_app(config_object=Config):
     from .backup import register_backup_commands
     register_backup_commands(app)
 
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            'camera=(), microphone=(), geolocation=(), payment=(self "https://checkout.paystack.com")',
+        )
+        return response
+
     @login_manager.user_loader
     def load_user(user_id):
         return db.session.get(User, int(user_id))
+
+    @app.before_request
+    def enforce_temporary_password_rotation():
+        from flask_login import current_user
+
+        if not request.path.startswith("/api/"):
+            return None
+        if not current_user.is_authenticated or not getattr(current_user, "must_change_password", False):
+            return None
+        allowed_paths = {
+            "/api/auth/csrf-token",
+            "/api/auth/change-password",
+            "/api/admin/change-password",
+            "/api/auth/logout",
+            "/api/auth/me",
+            "/api/auth/me/status",
+            "/api/delivery/company/me",
+            "/api/delivery/rider/me",
+        }
+        if request.path in allowed_paths:
+            return None
+        return jsonify(
+            error="Change your temporary password before continuing.",
+            code="password_change_required",
+        ), 428
 
     # ---------- Legacy URL redirects ----------
     # Old site used /user/signup and /user/login. Google may still index those.
@@ -241,16 +303,37 @@ def create_app(config_object=Config):
     @app.get("/uploads/<path:filepath>")
     def serve_upload(filepath):
         """Serve uploaded files. In production nginx handles this instead."""
-        import os
         upload_folder = app.config.get("UPLOAD_FOLDER", "")
+        normalized_parts = filepath.replace("\\", "/").split("/")
+        if any(part in {"", ".", ".."} for part in normalized_parts):
+            return jsonify(error="File not found"), 404
         # Seeded design assets are used directly by public pages in local/dev,
-        # while user documents stay protected unless the requester is signed in.
+        # while user documents require ownership or an authorised internal role.
         public_prefixes = ("public/", "Redesign/")
         if not filepath.startswith(public_prefixes):
             from flask_login import current_user
             if not current_user.is_authenticated:
                 return jsonify(error="Unauthorised"), 401
+            parts = normalized_parts
+            if len(parts) != 3 or parts[0] != "protected":
+                return jsonify(error="File not found"), 404
+            uploaded = UploadedFile.query.filter_by(
+                visibility="protected",
+                category=parts[1],
+                stored_filename=parts[2],
+            ).first()
+            if not uploaded:
+                return jsonify(error="File not found"), 404
+            role_name = current_user.role.name if current_user.role else ""
+            allowed = uploaded.owner_id == current_user.id or role_name == "admin"
+            if role_name == "staff" and uploaded.category == "documents":
+                allowed = current_user.has_permission("teachers.view")
+            if not allowed:
+                return jsonify(error="Forbidden"), 403
         response = send_from_directory(upload_folder, filepath)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        if filepath.startswith("protected/"):
+            response.headers["Cache-Control"] = "private, no-store"
         if filepath.startswith("public/images/") and filepath.lower().endswith((
             ".avif",
             ".gif",

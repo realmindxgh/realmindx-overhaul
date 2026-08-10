@@ -23,7 +23,7 @@ def money_label(value):
 
 
 def new_invoice_id():
-    return f"RMX-INV-{uuid4().hex[:10].upper()}"
+    return f"RMX-INV-{uuid4().hex[:24].upper()}"
 
 
 def assign_invoice_id(order):
@@ -581,7 +581,7 @@ def build_receipt_pdf(order):
         "issued_label": "Issued",
         "issued_at": _date_time_label(order.updated_at or order.created_at),
         "verify_label": "Verify this receipt",
-        "verify_lookup_id": order.order_reference,
+        "verify_lookup_id": order.invoice_id,
         "cards": [
             ("Customer", [order.customer_name or "Customer", order.email or "", order.phone or ""]),
             ("Order", [_status_label(order.status), f"Placed: {_date_time_label(order.created_at)}"]),
@@ -589,7 +589,7 @@ def build_receipt_pdf(order):
         ],
         "items": _order_items(order),
         "totals": _order_totals(order),
-        "footer": "This receipt confirms the order record shown above. Enter the receipt/order reference on the public Receipt/Invoice Verification page to verify it.",
+        "footer": "This receipt confirms the order record shown above. Enter the invoice ID on the public Receipt/Invoice Verification page to verify it.",
     })
 
 

@@ -6,7 +6,7 @@ from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 
 from ..audit import audit
-from ..extensions import db
+from ..extensions import csrf, db
 from ..models import ContactChangeToken, User, WhatsAppWebhookEvent
 from ..sms_service import normalise_phone
 from ..whatsapp_service import WHATSAPP_VERIFICATION_PHRASE, send_whatsapp_text
@@ -445,6 +445,7 @@ def verify_whatsapp_webhook():
 
 
 @whatsapp_bp.post("/webhooks/whatsapp")
+@csrf.exempt
 def receive_whatsapp_webhook():
     raw_body = request.get_data()
     if not _verify_signature(raw_body):

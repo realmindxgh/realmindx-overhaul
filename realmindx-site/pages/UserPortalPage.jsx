@@ -1325,7 +1325,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
                 {user.cvFileId && <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setViewerFile({ id: user.cvFileId, name: user.cvFilename || 'CV' })}>View</button>}
                 <label className="btn btn-sm btn-outline-navy">
                   {uploadingKind === 'cv' ? 'Uploading...' : 'Replace'}
-                  <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
+                  <input type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
                 </label>
               </div>
             </div>
@@ -1338,10 +1338,10 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
             <div className="document-upload-zone">
               <div style={{ fontSize: '2rem', marginBottom: 8, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="file" size={34} stroke={1.7} /></div>
               <p style={{ fontWeight: 600, color: 'var(--navy)', fontSize: '0.88rem' }}>Upload your CV</p>
-              <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>PDF, DOC, or DOCX up to 10MB</p>
+              <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>PDF or DOCX up to 10MB</p>
               <label className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>
                 {uploadingKind === 'cv' ? 'Uploading...' : 'Choose File'}
-              <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
+              <input type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
               </label>
             </div>
           </>
@@ -1369,7 +1369,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
             ))}
             <label className="btn btn-outline-navy btn-sm" style={{ marginTop: 12 }}>
               {uploadingKind === 'certificate' ? 'Uploading...' : 'Replace Certificate'}
-              <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
+              <input type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
             </label>
           </div>
         ) : (
@@ -1380,10 +1380,10 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
             <div className="document-upload-zone">
               <div style={{ fontSize: '2rem', marginBottom: 8, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="award" size={34} stroke={1.7} /></div>
               <p style={{ fontWeight: 600, color: 'var(--navy)', fontSize: '0.88rem' }}>Upload Certificates</p>
-              <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>PDF or image files - Multiple allowed</p>
+              <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>PDF or DOCX up to 10MB</p>
               <label className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>
                 {uploadingKind === 'certificate' ? 'Uploading...' : 'Choose Files'}
-                <input type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
+                <input type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
               </label>
             </div>
           </>
@@ -1399,7 +1399,7 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
           <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>Reference letters, additional qualifications, etc.</p>
           <label className="btn btn-outline-navy btn-sm" style={{ marginTop: 12 }}>
             {uploadingKind === 'document' ? 'Uploading...' : 'Choose Files'}
-            <input type="file" hidden accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" onChange={event => onUploadDocument?.('document', event.target.files?.[0])} />
+            <input type="file" hidden accept=".pdf,.docx" onChange={event => onUploadDocument?.('document', event.target.files?.[0])} />
           </label>
           {uploadError && <p className="form-error" style={{ marginTop: 10 }}>{uploadError}</p>}
         </div>
@@ -2243,9 +2243,7 @@ const UserPortalPage = () => {
     setTermsAccepting(true);
     setTermsError('');
     try {
-      const resp = await fetch('/api/auth/accept-terms', { method: 'POST', credentials: 'include' });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'Could not accept terms.');
+      const data = await api.acceptTerms();
       setApiProfile(prev => ({ ...(prev || {}), terms_accepted_at: data.user?.terms_accepted_at, terms_version: data.user?.terms_version }));
       setTermsModalOpen(false);
       if (isNewTeacher && user) {
@@ -2267,11 +2265,7 @@ const UserPortalPage = () => {
     setDeleteConfirming(true);
     setDeleteError('');
     try {
-      const resp = await fetch('/api/auth/decline-terms', { method: 'POST', credentials: 'include' });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data.error || 'Could not delete account.');
-      }
+      await api.declineTerms();
       setDeleteConfirmOpen(false);
       setTermsModalOpen(false);
       clearDemoSession();

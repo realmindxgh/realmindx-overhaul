@@ -16,13 +16,9 @@ from .models import AuditLog
 
 
 def _get_ip():
-    """Return the best available client IP, respecting common proxy headers."""
+    """Return the proxy-adjusted client IP for the current request."""
     if not has_request_context():
         return ""
-    for header in ("X-Forwarded-For", "X-Real-IP", "CF-Connecting-IP"):
-        value = request.headers.get(header)
-        if value:
-            return value.split(",")[0].strip()
     return request.remote_addr or ""
 
 

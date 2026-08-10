@@ -1129,7 +1129,7 @@ const TrackPage = ({ navigate }) => {
       setOrders([]);
     }
     if (!trimmed) {
-      setError('Enter your order reference or checkout email.');
+      setError('Enter your order reference.');
       inputRef.current?.focus();
       return false;
     }
@@ -1186,10 +1186,10 @@ const TrackPage = ({ navigate }) => {
         <div className="bs-text-center">
           <span className="bs-eyebrow" style={{ color:'var(--bs-gold-dark)' }}>Order Status</span>
           <h1 className="bs-h2" style={{ color:'var(--bs-navy)', fontSize:34, marginTop:12 }}>Track your order</h1>
-          <p className="bs-muted" style={{ marginTop:10 }}>Enter your Order ID or the email used at checkout.</p>
+          <p className="bs-muted" style={{ marginTop:10 }}>Enter the Order ID from your confirmation email or receipt.</p>
         </div>
         <form className="bs-track-input-row" onSubmit={submit}>
-          <input ref={inputRef} placeholder="e.g. RMX-204815 or you@email.com" value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
+          <input ref={inputRef} placeholder="e.g. RMX-8D40F71A6C2B4E119A7F" value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
           <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading}>
             {loading ? 'Checking...' : 'Track'}
           </button>
@@ -1200,7 +1200,7 @@ const TrackPage = ({ navigate }) => {
           <div className="bs-empty-state" style={{ marginTop:28, padding:'34px 22px' }}>
             <div className="bs-empty-icon"><Icon name="search" size={30} /></div>
             <h2 className="bs-h3">No matching order found.</h2>
-            <p>Check the order reference or use the email address from checkout.</p>
+            <p>Check the order reference in your confirmation email or receipt.</p>
           </div>
         )}
 

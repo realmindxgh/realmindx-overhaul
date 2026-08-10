@@ -11,6 +11,8 @@ ALIGNMENT_RE = re.compile(r"^text-align:\s*(left|center|right|justify);?$", re.I
 
 def _safe_href(value):
     value = (value or "").strip()
+    if value.startswith("//"):
+        return ""
     if value.startswith(("/", "#")):
         return value
     return value if urlparse(value).scheme.lower() in {"http", "https", "mailto", "tel"} else ""

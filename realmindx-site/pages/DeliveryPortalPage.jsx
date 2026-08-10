@@ -443,7 +443,7 @@ const RiderForm = ({ onCreated, onError, onNotice }) => {
     setBusy(true);
     try {
       const result = await api.deliveryCompanyCreateRider(form);
-      const temporaryPassword = result?.temporary_password || '12345678';
+      const temporaryPassword = result?.temporary_password || '';
       const copied = await copyTextToClipboard(temporaryPassword);
       setForm({ name: '', phone: '' });
       onNotice(`Rider created. Temporary password ${temporaryPassword}${copied ? ' was copied to the clipboard' : ' is ready to share'}.`);
@@ -483,7 +483,7 @@ const RiderManagementRow = ({ rider, onChanged, onEdit, onSelect }) => {
     setBusy(true);
     try {
       const result = await api.deliveryCompanyResetRiderPassword(rider.id);
-      const temporaryPassword = result?.temporary_password || '12345678';
+      const temporaryPassword = result?.temporary_password || '';
       const copied = await copyTextToClipboard(temporaryPassword);
       toast.success(`Password reset to ${temporaryPassword}${copied ? ' and copied to the clipboard' : ''}.`);
       await onChanged();

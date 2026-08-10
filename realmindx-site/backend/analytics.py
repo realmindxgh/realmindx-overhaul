@@ -165,7 +165,7 @@ def _clean_host(value):
 
 
 def _request_host():
-    return _clean_host(request.headers.get("X-Forwarded-Host") or request.host)
+    return _clean_host(request.host)
 
 
 def _normalize_path(value):
@@ -238,14 +238,7 @@ def _source_from_referrer(referrer, explicit_source=None, explicit_medium=None):
 
 
 def _remote_ip():
-    forwarded = (
-        request.headers.get("X-Real-IP")
-        or request.remote_addr
-        or request.headers.get("CF-Connecting-IP")
-        or request.headers.get("X-Forwarded-For")
-        or ""
-    )
-    return str(forwarded).split(",", 1)[0].strip()
+    return str(request.remote_addr or "").strip()
 
 
 def _anonymize_ip(raw_ip):
