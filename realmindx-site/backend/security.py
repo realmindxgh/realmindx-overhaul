@@ -8,6 +8,8 @@ from flask_login import current_user
 from itsdangerous import URLSafeTimedSerializer
 
 
+DEFAULT_TEMPORARY_PASSWORD = "12345678"
+
 
 def generate_temporary_password():
     """Return a unique, high-entropy password suitable for one-time delivery."""
