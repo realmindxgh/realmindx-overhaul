@@ -365,7 +365,7 @@ BOOKSHOP_PROFILE_OVERRIDES = {
 
 BOOKSHOP_LANDING_PROFILES = {
     "home": {
-        "title": "RealMindX Bookshop | Textbooks, Stationery and Learning Materials in Ghana",
+        "title": "Textbooks & Stationery in Ghana | RealMindX Bookshop",
         "description": "Shop textbooks, workbooks, stationery, revision books and classroom materials from RealMindX Bookshop. Built for Ghanaian learners, parents, teachers and schools.",
         "intro": "RealMindX Bookshop is a dedicated educational bookshop for textbooks, stationery, revision books and classroom materials in Ghana.",
     },
