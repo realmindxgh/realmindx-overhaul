@@ -11,7 +11,7 @@ from .models import CartInvoice, Order
 from .order_status import normalize_order_status
 
 MONEY_QUANT = Decimal("0.01")
-BULK_DISCOUNT_NOTICE = "Buy 10+ copies of the same text book and enjoy 10% off."
+BULK_DISCOUNT_NOTICE = "Buy 10+ copies of the same textbook, workbook or writing book and enjoy 10% off."
 
 
 def money(value):
