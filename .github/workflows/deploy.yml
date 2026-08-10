@@ -10,11 +10,16 @@ on:
 permissions:
   contents: read
 
+# A slow release must finish or roll back before another push can deploy.
+concurrency:
+  group: realmindx-production
+  cancel-in-progress: false
+
 jobs:
   security:
-    name: Dependency security checks
+    name: Release safety checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -35,14 +40,22 @@ jobs:
           python-version: "3.12"
       - name: Audit Python dependencies
         run: |
-          python -m pip install --disable-pip-version-check pip-audit
+          python -m pip install --disable-pip-version-check pip-audit pytest
           python -m pip_audit -r realmindx-site/requirements.txt
+          python -m pip install --disable-pip-version-check -r realmindx-site/requirements.txt
+          python -m pip check
+      - name: Run backend regression suite
+        working-directory: realmindx-site
+        env:
+          DATABASE_URL: sqlite://
+          FLASK_ENV: testing
+        run: python -m pytest -q
 
   deploy:
     name: Build & Deploy
     needs: security
     runs-on: self-hosted
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       # ── 1. Checkout ───────────────────────────────────────────────────
@@ -85,12 +98,12 @@ jobs:
           npm run build
 
       # ── 4. Copy built frontend into place (we're already on the VPS) ──
-      - name: Deploy frontend
-        run: rsync -avr --delete dist/ /var/www/realmindx/dist/
-
       # ── 5. Update backend code, migrate DB, restart services ──────────
-      - name: Deploy backend & restart
+      - name: Deploy verified release
         env:
+          DEPLOY_COMMIT: ${{ github.sha }}
+          DEPLOY_RUN_ID: ${{ github.run_id }}
+          DEPLOY_RUN_ATTEMPT: ${{ github.run_attempt }}
           WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
           WHATSAPP_APP_ID: ${{ secrets.WHATSAPP_APP_ID }}
           WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET }}
@@ -104,15 +117,119 @@ jobs:
           GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
           BING_SITE_VERIFICATION: ${{ vars.BING_SITE_VERIFICATION }}
         run: |
-          set -e
-          cd /var/www/realmindx
+          set -Eeuo pipefail
+          LIVE_ROOT="/var/www/realmindx"
+          CURRENT_VENV="$LIVE_ROOT/realmindx-site/.venv"
+          RELEASE_VENV_ROOT="$LIVE_ROOT/.release-venvs"
+          RELEASE_VENV="$RELEASE_VENV_ROOT/$DEPLOY_COMMIT"
+          FRONTEND_LIVE="$LIVE_ROOT/dist"
+          FRONTEND_RELEASE="$LIVE_ROOT/.dist-release-$DEPLOY_RUN_ID-$DEPLOY_RUN_ATTEMPT"
+          FRONTEND_BACKUP="$LIVE_ROOT/.dist-rollback-$DEPLOY_RUN_ID-$DEPLOY_RUN_ATTEMPT"
+          ENV_FILE="$LIVE_ROOT/realmindx-site/.env"
+          ENV_BACKUP="$LIVE_ROOT/realmindx-site/.env.deploy-backup-$DEPLOY_RUN_ID-$DEPLOY_RUN_ATTEMPT"
+          NGINX_SITE="/etc/nginx/sites-available/realmindxgh.com"
+          NGINX_BACKUP="$NGINX_SITE.realmindx-backup"
+          BOOKSHOP_NGINX_SITE="/etc/nginx/sites-available/bookshop.realmindxgh.com"
+          BOOKSHOP_NGINX_BACKUP="$BOOKSHOP_NGINX_SITE.realmindx-backup"
+          DELIVERY_NGINX_SITE="/etc/nginx/sites-available/delivery.realmindxgh.com"
+          DELIVERY_NGINX_ENABLED="/etc/nginx/sites-enabled/delivery.realmindxgh.com"
+          DELIVERY_NGINX_BACKUP="$DELIVERY_NGINX_SITE.realmindx-backup"
+          PREVIOUS_COMMIT=""
+          PREVIOUS_VENV_TARGET=""
+          BACKEND_SWITCHED=0
+          CODE_CHECKED_OUT=0
+          VENV_MOVED=0
+          FRONTEND_SWITCHED=0
+          NGINX_CHANGED=0
+          BOOKSHOP_NGINX_CHANGED=0
+          DELIVERY_NGINX_CHANGED=0
+
+          case "$FRONTEND_RELEASE" in "$LIVE_ROOT"/.dist-release-*) ;; *) exit 1 ;; esac
+          case "$FRONTEND_BACKUP" in "$LIVE_ROOT"/.dist-rollback-*) ;; *) exit 1 ;; esac
+          case "$RELEASE_VENV" in "$RELEASE_VENV_ROOT"/*) ;; *) exit 1 ;; esac
+
+          wait_for_api() {
+            local path="$1"
+            local attempts="${2:-30}"
+            local count=1
+            while [ "$count" -le "$attempts" ]; do
+              if curl -fsS --max-time 3 "http://127.0.0.1:5002$path" >/dev/null; then
+                return 0
+              fi
+              sleep 2
+              count=$((count + 1))
+            done
+            return 1
+          }
+
+          rollback_release() {
+            echo "Deployment validation failed; restoring the previous release."
+            if [ "$FRONTEND_SWITCHED" -eq 1 ]; then
+              rm -rf -- "$FRONTEND_LIVE"
+              if [ -d "$FRONTEND_BACKUP" ]; then mv "$FRONTEND_BACKUP" "$FRONTEND_LIVE"; fi
+            fi
+            if [ "$NGINX_CHANGED" -eq 1 ] && [ -f "$NGINX_BACKUP" ]; then mv "$NGINX_BACKUP" "$NGINX_SITE"; fi
+            if [ "$BOOKSHOP_NGINX_CHANGED" -eq 1 ] && [ -f "$BOOKSHOP_NGINX_BACKUP" ]; then mv "$BOOKSHOP_NGINX_BACKUP" "$BOOKSHOP_NGINX_SITE"; fi
+            if [ "$DELIVERY_NGINX_CHANGED" -eq 1 ] && [ -f "$DELIVERY_NGINX_BACKUP" ]; then
+              mv "$DELIVERY_NGINX_BACKUP" "$DELIVERY_NGINX_SITE"
+              ln -sfn "$DELIVERY_NGINX_SITE" "$DELIVERY_NGINX_ENABLED"
+            elif [ "$DELIVERY_NGINX_CHANGED" -eq 1 ]; then
+              rm -f "$DELIVERY_NGINX_SITE" "$DELIVERY_NGINX_ENABLED"
+            fi
+            nginx -t && systemctl reload nginx || true
+            if [ "$CODE_CHECKED_OUT" -eq 1 ]; then
+              cd "$LIVE_ROOT"
+              git reset --hard "$PREVIOUS_COMMIT"
+            fi
+            if [ -f "$ENV_BACKUP" ]; then
+              mv "$ENV_BACKUP" "$ENV_FILE"
+            fi
+            if [ "$BACKEND_SWITCHED" -eq 1 ] || [ "$VENV_MOVED" -eq 1 ]; then
+              rm -f "$CURRENT_VENV.next"
+              ln -s "$PREVIOUS_VENV_TARGET" "$CURRENT_VENV.next"
+              mv -Tf "$CURRENT_VENV.next" "$CURRENT_VENV"
+            fi
+            if [ "$CODE_CHECKED_OUT" -eq 1 ]; then
+              systemctl restart realmindx-api
+              wait_for_api "/health" 30 || journalctl -u realmindx-api -n 80 --no-pager
+            fi
+          }
+
+          on_deploy_error() {
+            local exit_code=$?
+            trap - ERR
+            rollback_release
+            rm -rf -- "$FRONTEND_RELEASE"
+            exit "$exit_code"
+          }
+          trap on_deploy_error ERR
+
+          echo "Staging the production frontend"
+          rm -rf -- "$FRONTEND_RELEASE" "$FRONTEND_BACKUP"
+          mkdir -p "$FRONTEND_RELEASE"
+          rsync -a --delete "$GITHUB_WORKSPACE/dist/" "$FRONTEND_RELEASE/"
+          test -s "$FRONTEND_RELEASE/index.html"
+
+          echo "Preparing isolated Python dependencies"
+          mkdir -p "$RELEASE_VENV_ROOT"
+          if [ ! -x "$RELEASE_VENV/bin/python" ]; then
+            python3 -m venv "$RELEASE_VENV"
+          fi
+          "$RELEASE_VENV/bin/python" -m pip install -r "$GITHUB_WORKSPACE/realmindx-site/requirements.txt" -q
+          "$RELEASE_VENV/bin/python" -m pip check
+          "$RELEASE_VENV/bin/python" -m compileall -q "$GITHUB_WORKSPACE/realmindx-site/backend"
+
+          cd "$LIVE_ROOT"
+          PREVIOUS_COMMIT="$(git rev-parse HEAD)"
 
           echo "── Pulling latest backend code ──"
           git fetch origin main
-          git reset --hard origin/main
+          git cat-file -e "$DEPLOY_COMMIT^{commit}"
+          git reset --hard "$DEPLOY_COMMIT"
+          CODE_CHECKED_OUT=1
 
           echo "── Updating Python dependencies ──"
-          realmindx-site/.venv/bin/pip install -r realmindx-site/requirements.txt -q
+          "$RELEASE_VENV/bin/python" -m pip check
 
           echo "── Updating the local GeoIP city database ──"
           GEOIP_MONTH="$(date -u +%Y-%m)"
@@ -136,13 +253,14 @@ jobs:
             ln -sfn "$(basename "$GEOIP_FILE")" "$GEOIP_DIR/dbip-city-lite.mmdb"
           elif [ ! -s "$GEOIP_DIR/dbip-city-lite.mmdb" ]; then
             echo "No usable GeoIP database is available."
-            exit 1
+            false
           fi
           ACTIVE_GEOIP_FILE="$(basename "$(readlink -f "$GEOIP_DIR/dbip-city-lite.mmdb")")"
           find "$GEOIP_DIR" -maxdepth 1 -type f -name 'dbip-city-lite-*.mmdb' ! -name "$ACTIVE_GEOIP_FILE" -mtime +70 -delete
 
           echo "Applying WhatsApp environment settings"
-          ENV_FILE="/var/www/realmindx/realmindx-site/.env"
+          test -f "$ENV_FILE"
+          cp "$ENV_FILE" "$ENV_BACKUP"
           upsert_env_var() {
             local key="$1"
             local value="$2"
@@ -192,88 +310,120 @@ jobs:
 
           echo "── Running database migrations ──"
           cd realmindx-site
-          .venv/bin/python -m flask --app backend:create_app db upgrade heads
-          .venv/bin/python -m flask --app backend:create_app seed-permissions
-          .venv/bin/python -m flask --app backend:create_app backfill-contacts --apply
-          .venv/bin/python scripts/ensure_whatsapp_subscription.py
+          "$RELEASE_VENV/bin/python" -m compileall -q backend
+          "$RELEASE_VENV/bin/python" -c "from backend import create_app; app = create_app(); response = app.test_client().get('/health'); assert response.status_code == 200"
+          "$RELEASE_VENV/bin/python" -m flask --app backend:create_app db upgrade heads
+          "$RELEASE_VENV/bin/python" -m flask --app backend:create_app seed-permissions
+          "$RELEASE_VENV/bin/python" -m flask --app backend:create_app backfill-contacts --apply
+          "$RELEASE_VENV/bin/python" scripts/ensure_whatsapp_subscription.py
 
           echo "── Backfilling optimized product image variants ──"
-          .venv/bin/python -m flask --app backend:create_app backfill-product-image-variants --include-drafts
+          "$RELEASE_VENV/bin/python" -m flask --app backend:create_app backfill-product-image-variants --include-drafts
+          "$RELEASE_VENV/bin/python" -c "from backend import create_app; app = create_app(); response = app.test_client().get('/health/ready'); assert response.status_code == 200, response.get_json()"
           cd ..
+
+          echo "Switching to the validated Python environment"
+          if [ -L "$CURRENT_VENV" ]; then
+            PREVIOUS_VENV_TARGET="$(readlink -f "$CURRENT_VENV")"
+          elif [ -d "$CURRENT_VENV" ]; then
+            PREVIOUS_VENV_TARGET="$RELEASE_VENV_ROOT/legacy-${PREVIOUS_COMMIT:0:12}-$DEPLOY_RUN_ID-$DEPLOY_RUN_ATTEMPT"
+            mv "$CURRENT_VENV" "$PREVIOUS_VENV_TARGET"
+            VENV_MOVED=1
+          else
+            echo "The current production virtual environment is missing."
+            false
+          fi
+          test -x "$PREVIOUS_VENV_TARGET/bin/python"
+          rm -f "$CURRENT_VENV.next"
+          ln -s "$RELEASE_VENV" "$CURRENT_VENV.next"
+          mv -Tf "$CURRENT_VENV.next" "$CURRENT_VENV"
+          BACKEND_SWITCHED=1
+          VENV_MOVED=0
 
           echo "── Restarting Flask API ──"
           systemctl restart realmindx-api
+          if ! wait_for_api "/health/ready" 30; then
+            journalctl -u realmindx-api -n 80 --no-pager
+            false
+          fi
 
           echo "── Updating managed nginx routes ──"
           NGINX_SITE="/etc/nginx/sites-available/realmindxgh.com"
           if [ ! -f "$NGINX_SITE" ]; then
             echo "Could not locate $NGINX_SITE."
-            exit 1
+            false
           fi
           NGINX_BACKUP="$NGINX_SITE.realmindx-backup"
           cp "$NGINX_SITE" "$NGINX_BACKUP"
+          NGINX_CHANGED=1
           if ! python3 deployment/install_nginx_seo_routes.py "$NGINX_SITE"; then
             mv "$NGINX_BACKUP" "$NGINX_SITE"
             echo "Managed nginx route installer failed; restored the previous configuration."
-            exit 1
+            false
           fi
           if ! nginx -t; then
             mv "$NGINX_BACKUP" "$NGINX_SITE"
             nginx -t
             echo "Managed nginx route update failed; restored the previous configuration."
-            exit 1
+            false
           fi
-          rm -f "$NGINX_BACKUP"
 
           BOOKSHOP_NGINX_SITE="/etc/nginx/sites-available/bookshop.realmindxgh.com"
           if [ -f "$BOOKSHOP_NGINX_SITE" ]; then
             BOOKSHOP_NGINX_BACKUP="$BOOKSHOP_NGINX_SITE.realmindx-backup"
             cp "$BOOKSHOP_NGINX_SITE" "$BOOKSHOP_NGINX_BACKUP"
+            BOOKSHOP_NGINX_CHANGED=1
             if ! python3 deployment/install_nginx_seo_routes.py "$BOOKSHOP_NGINX_SITE"; then
               mv "$BOOKSHOP_NGINX_BACKUP" "$BOOKSHOP_NGINX_SITE"
               echo "Managed bookshop nginx route installer failed; restored the previous configuration."
-              exit 1
+              false
             fi
             if ! nginx -t; then
               mv "$BOOKSHOP_NGINX_BACKUP" "$BOOKSHOP_NGINX_SITE"
               nginx -t
               echo "Managed bookshop nginx route update failed; restored the previous configuration."
-              exit 1
+              false
             fi
-            rm -f "$BOOKSHOP_NGINX_BACKUP"
           else
             echo "Bookshop nginx site file not found at $BOOKSHOP_NGINX_SITE; skipping bookshop SEO route installation."
           fi
 
           echo "Installing delivery portal nginx site"
-          DELIVERY_NGINX_SITE="/etc/nginx/sites-available/delivery.realmindxgh.com"
-          DELIVERY_NGINX_ENABLED="/etc/nginx/sites-enabled/delivery.realmindxgh.com"
-          DELIVERY_NGINX_BACKUP=""
           if [ -f "$DELIVERY_NGINX_SITE" ]; then
-            DELIVERY_NGINX_BACKUP="$DELIVERY_NGINX_SITE.realmindx-backup"
             cp "$DELIVERY_NGINX_SITE" "$DELIVERY_NGINX_BACKUP"
           fi
+          DELIVERY_NGINX_CHANGED=1
           cp deployment/delivery.realmindxgh.com.conf "$DELIVERY_NGINX_SITE"
           ln -sfn "$DELIVERY_NGINX_SITE" "$DELIVERY_NGINX_ENABLED"
           if ! nginx -t; then
-            if [ -n "$DELIVERY_NGINX_BACKUP" ]; then
+            if [ -f "$DELIVERY_NGINX_BACKUP" ]; then
               mv "$DELIVERY_NGINX_BACKUP" "$DELIVERY_NGINX_SITE"
             else
               rm -f "$DELIVERY_NGINX_SITE" "$DELIVERY_NGINX_ENABLED"
             fi
             nginx -t
             echo "Delivery nginx site update failed; restored the previous configuration."
-            exit 1
-          fi
-          if [ -n "$DELIVERY_NGINX_BACKUP" ]; then
-            rm -f "$DELIVERY_NGINX_BACKUP"
+            false
           fi
 
           echo "── Reloading nginx ──"
           systemctl reload nginx
 
+          echo "Publishing the frontend atomically"
+          if [ -d "$FRONTEND_LIVE" ]; then
+            mv "$FRONTEND_LIVE" "$FRONTEND_BACKUP"
+          fi
+          mv "$FRONTEND_RELEASE" "$FRONTEND_LIVE"
+          FRONTEND_SWITCHED=1
+          wait_for_api "/health/ready" 5
+
           echo "Running post-deploy SEO and AI-search smoke checks"
           python3 scripts/seo_smoke_check.py --sample-size 12
+
+          rm -rf -- "$FRONTEND_BACKUP"
+          rm -f "$NGINX_BACKUP" "$BOOKSHOP_NGINX_BACKUP" "$DELIVERY_NGINX_BACKUP"
+          rm -f "$ENV_BACKUP"
+          trap - ERR
 
           echo "✓ Deployment complete"
 
