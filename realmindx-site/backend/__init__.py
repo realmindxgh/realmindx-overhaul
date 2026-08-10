@@ -1,5 +1,6 @@
-from flask import Flask, jsonify, redirect, request, send_from_directory
+from flask import Flask, current_app, jsonify, redirect, request, send_from_directory
 from flask_wtf.csrf import CSRFError
+from urllib.parse import urlparse
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -28,6 +29,49 @@ def create_app(config_object=Config):
     # exactly one proxy makes request.remote_addr and request.scheme accurate
     # without accepting arbitrary forwarded values from clients.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    @app.before_request
+    def enforce_csrf_source_origin():
+        """Replace CSRFProtect's strict referrer-vs-host check with an origin
+        allow-list.
+
+        CSRFProtect with WTF_CSRF_CHECK_DEFAULT requires a valid session token
+        on every state-changing request, but its SSL_STRICT check also demands
+        request.referrer to share request.host. That rejects legitimate
+        same-site subdomain frontends (bookshop.realmindxgh.com and
+        delivery.realmindxgh.com POSTing to the realmindxgh.com API) and any
+        client that omits a Referer. This hook enforces the same defence using
+        WTF_CSRF_TRUSTED_ORIGINS + CORS_ORIGINS instead, so known frontends
+        keep working while foreign origins are still blocked.
+        """
+        methods = current_app.config.get("WTF_CSRF_METHODS", {"POST", "PUT", "PATCH", "DELETE"})
+        if request.method not in methods or not request.path.startswith("/api/"):
+            return None
+
+        view = current_app.view_functions.get(request.endpoint) if request.endpoint else None
+        if view is not None and csrf._is_exempt():
+            return None
+
+        source = (request.headers.get("Origin") or "").strip()
+        if not source:
+            referer = (request.headers.get("Referer") or "").strip()
+            if referer:
+                parsed = urlparse(referer)
+                source = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+        if not source:
+            # No browser origin information available; the session CSRF token
+            # check that CSRFProtect still performs remains the gate.
+            return None
+
+        trusted = {str(origin).rstrip("/") for origin in current_app.config.get("WTF_CSRF_TRUSTED_ORIGINS") or []}
+        trusted.update(str(origin).rstrip("/") for origin in current_app.config.get("CORS_ORIGINS") or [])
+        trusted.add(f"https://{request.host}".rstrip("/"))
+        trusted.add(f"http://{request.host}".rstrip("/"))
+
+        if source.rstrip("/") in trusted:
+            return None
+        current_app.logger.warning("CSRF origin rejected source=%r host=%r trusted=%r", source, request.host, sorted(trusted))
+        return jsonify(error="Security token expired. Please try again."), 400
 
     if app.testing:
         app.config["WTF_CSRF_ENABLED"] = False

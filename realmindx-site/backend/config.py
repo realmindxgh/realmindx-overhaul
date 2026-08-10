@@ -56,6 +56,12 @@ class Config:
 
     WTF_CSRF_TIME_LIMIT = int(os.getenv("WTF_CSRF_TIME_LIMIT", "3600"))
     WTF_CSRF_CHECK_DEFAULT = True
+    # The built-in SSL_STRICT check requires request.referrer to share the
+    # request.host, which rejects legitimate same-site subdomain frontends
+    # (bookshop.realmindxgh.com, delivery.realmindxgh.com) calling the API on
+    # realmindxgh.com. Origin/referrer allow-listing is enforced instead by the
+    # enforce_csrf_source_origin before-request hook in create_app.
+    WTF_CSRF_SSL_STRICT = False
     WTF_CSRF_TRUSTED_ORIGINS = [
         "https://realmindxgh.com",
         "https://www.realmindxgh.com",

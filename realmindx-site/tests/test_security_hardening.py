@@ -252,6 +252,73 @@ class SecurityHardeningTests(unittest.TestCase):
             db.drop_all()
 
 
+    def _csrf_client(self):
+        csrf_app = create_app(CsrfTestConfig)
+        ctx = csrf_app.app_context()
+        ctx.push()
+        db.create_all()
+        return ctx, csrf_app.test_client()
+
+    def _close_csrf_client(self, ctx):
+        db.session.remove()
+        db.drop_all()
+        ctx.pop()
+
+    def test_csrf_allows_trusted_subdomain_origin(self):
+        ctx, client = self._csrf_client()
+        try:
+            token = client.get("/api/auth/csrf-token").get_json()["csrf_token"]
+            response = client.post(
+                "/api/auth/login",
+                headers={"X-CSRFToken": token, "Origin": "http://bookshop.localhost"},
+                json={"email": "nobody@example.com", "password": "WrongPassword123!"},
+            )
+            self.assertEqual(response.status_code, 401)
+        finally:
+            self._close_csrf_client(ctx)
+
+    def test_csrf_allows_trusted_subdomain_referer(self):
+        ctx, client = self._csrf_client()
+        try:
+            token = client.get("/api/auth/csrf-token").get_json()["csrf_token"]
+            response = client.post(
+                "/api/auth/login",
+                headers={"X-CSRFToken": token, "Referer": "http://bookshop.localhost/login"},
+                json={"email": "nobody@example.com", "password": "WrongPassword123!"},
+            )
+            self.assertEqual(response.status_code, 401)
+        finally:
+            self._close_csrf_client(ctx)
+
+    def test_csrf_rejects_foreign_origin_with_valid_token(self):
+        ctx, client = self._csrf_client()
+        try:
+            token = client.get("/api/auth/csrf-token").get_json()["csrf_token"]
+            response = client.post(
+                "/api/auth/login",
+                headers={"X-CSRFToken": token, "Origin": "https://evil.example.com"},
+                json={"email": "nobody@example.com", "password": "WrongPassword123!"},
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("Security token", response.get_json()["error"])
+        finally:
+            self._close_csrf_client(ctx)
+
+    def test_csrf_rejects_cross_site_referer_with_valid_token(self):
+        ctx, client = self._csrf_client()
+        try:
+            token = client.get("/api/auth/csrf-token").get_json()["csrf_token"]
+            response = client.post(
+                "/api/auth/login",
+                headers={"X-CSRFToken": token, "Referer": "https://evil.example.com/login"},
+                json={"email": "nobody@example.com", "password": "WrongPassword123!"},
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("Security token", response.get_json()["error"])
+        finally:
+            self._close_csrf_client(ctx)
+
+
 class ProductionConfigValidationTests(unittest.TestCase):
     def test_delivery_nginx_site_inherits_global_server_token_policy(self):
         project_root = SITE_ROOT.parent
