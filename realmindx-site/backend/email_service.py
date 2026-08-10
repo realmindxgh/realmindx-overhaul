@@ -19,6 +19,10 @@ from .communications import (
 )
 
 
+ADMIN_ALERT_EMAIL = "info@realmindxgh.com"
+_SUCCESSFUL_EMAIL_STATUSES = frozenset({"queued", "accepted", "sent", "delivered", "mocked"})
+
+
 @dataclass
 class EmailAttachment:
     filename: str
@@ -873,3 +877,40 @@ def send_email(
         masked_destination=masked_dst,
         template_name=template_name,
     )
+
+
+def send_admin_alert(
+    *,
+    subject: str,
+    html: str,
+    template_name: str,
+    text: str = "",
+    from_email: str | None = None,
+    reply_to: str | None = None,
+):
+    """Best-effort operational alert to the canonical RealMindX admin inbox."""
+    try:
+        result = send_email(
+            OutboundEmail(
+                to=ADMIN_ALERT_EMAIL,
+                subject=subject,
+                html=html,
+                text=text,
+                from_email=from_email,
+                reply_to=reply_to,
+            ),
+            purpose="admin_alert",
+            recipient_user_id=None,
+            template_name=template_name,
+        )
+    except Exception:
+        current_app.logger.exception("Admin alert %s could not be sent.", template_name)
+        return None
+
+    if result.status not in _SUCCESSFUL_EMAIL_STATUSES:
+        current_app.logger.warning(
+            "Admin alert %s was not accepted for delivery (status=%s).",
+            template_name,
+            result.status,
+        )
+    return result

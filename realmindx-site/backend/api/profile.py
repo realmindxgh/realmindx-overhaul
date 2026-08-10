@@ -12,7 +12,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from ..audit import audit
 from ..contacts import upsert_contact_safely
 from ..checkout_details import checkout_detail_json, list_checkout_details, upsert_checkout_detail
-from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_email
+from ..email_service import OutboundEmail, absolute_app_url, app_email_shell, send_admin_alert, send_email
 from ..extensions import db, limiter
 from ..location_data import canonical_delivery_locations, joined_location_ids, joined_location_names
 from ..models import CheckoutDetail, ContactChangeToken, JobAlertPreference, TeacherPlacement, UploadedFile, User, UserProfile
@@ -904,6 +904,34 @@ def _send_submission_email(user, profile):
         )
 
 
+def _send_submission_admin_alert(user, profile):
+    admin_url = absolute_app_url("/admin/dashboard")
+    submitted_at = profile.submitted_at.strftime("%B %d, %Y at %H:%M UTC") if profile.submitted_at else "N/A"
+    send_admin_alert(
+        subject=f"Teacher application submitted: {user.application_id or user.email}",
+        html=app_email_shell(
+            "Teacher application ready for review",
+            (
+                f"<p><strong>Teacher:</strong> {escape(user.full_name or user.first_name or 'Teacher')}</p>"
+                f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
+                f"<p><strong>Email:</strong> {escape(user.email)}</p>"
+                f"<p><strong>Submitted:</strong> {escape(submitted_at)}</p>"
+                "<p>The completed profile and documents are now waiting in the teacher review queue.</p>"
+            ),
+            cta_label="Open Teacher Review Queue",
+            cta_url=admin_url,
+            eyebrow="RealMindX Internal: Teacher Review",
+            preheader="A teacher application is ready for admin review.",
+        ),
+        text=(
+            f"Teacher application ready for review: {user.full_name or user.email}; "
+            f"application ID {user.application_id or 'N/A'}. Open {admin_url}"
+        ),
+        reply_to=user.email,
+        template_name="teacher_profile_submitted_admin_alert",
+    )
+
+
 @profile_bp.post("/me/profile/submit")
 @login_required
 def submit_profile():
@@ -962,6 +990,7 @@ def submit_profile():
     db.session.commit()
 
     _send_submission_email(current_user, profile)
+    _send_submission_admin_alert(current_user, profile)
 
     return jsonify(
         profile_status="submitted",

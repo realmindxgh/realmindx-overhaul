@@ -1,8 +1,10 @@
-from flask import Blueprint, jsonify, request
+from html import escape
+
+from flask import Blueprint, current_app, jsonify, request
 from flask_login import current_user, login_required
 
 from ..audit import audit
-from ..email_service import OutboundEmail, app_email_shell, send_email
+from ..email_service import OutboundEmail, app_email_shell, send_admin_alert, send_email
 from ..extensions import db, limiter
 from ..location_data import canonical_delivery_locations, joined_location_ids, joined_location_names
 from ..models import Job, JobAlertPreference, JobApplication
@@ -63,6 +65,31 @@ def apply_for_job(job_id):
         "applicant_email": current_user.email,
     })
     db.session.commit()
+
+    admin_url = f"{current_app.config['BASE_URL'].rstrip('/')}/admin/dashboard"
+    send_admin_alert(
+        subject=f"New job application: {job.title} — {current_user.full_name or current_user.email}",
+        html=app_email_shell(
+            "New job application",
+            (
+                f"<p><strong>Applicant:</strong> {escape(current_user.full_name or current_user.email)}</p>"
+                f"<p><strong>Email:</strong> {escape(current_user.email)}</p>"
+                f"<p><strong>Position:</strong> {escape(job.title)}</p>"
+                f"<p><strong>Organisation:</strong> {escape(job.organisation or 'Not specified')}</p>"
+                "<p>The application is ready for review in the admin dashboard.</p>"
+            ),
+            cta_label="Review Job Applications",
+            cta_url=admin_url,
+            eyebrow="RealMindX Internal: Job Application",
+            preheader=f"{current_user.full_name or current_user.email} applied for {job.title}.",
+        ),
+        text=(
+            f"New job application from {current_user.full_name or current_user.email} "
+            f"for {job.title}. Review it at {admin_url}"
+        ),
+        reply_to=current_user.email,
+        template_name="job_application_admin_alert",
+    )
 
     send_email(
         OutboundEmail(

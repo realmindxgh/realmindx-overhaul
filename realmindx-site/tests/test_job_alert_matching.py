@@ -123,6 +123,27 @@ class JobAlertMatchingTests(unittest.TestCase):
         self.assertEqual(dispatch_job_alerts(self.job), 0)
         self.assertEqual(send_email_mock.call_count, 1)
 
+    @patch("backend.api.jobs.send_admin_alert", return_value=Mock(status="accepted"))
+    @patch("backend.api.jobs.send_email", return_value=Mock(status="accepted"))
+    def test_job_application_notifies_teacher_and_admin(self, teacher_email_mock, admin_alert_mock):
+        teacher, _ = self.add_teacher("applicant@example.com")
+        client = self.app.test_client()
+        login = client.post(
+            "/api/auth/login",
+            json={"email": teacher.email, "password": "TeacherPassword1"},
+        )
+        self.assertEqual(login.status_code, 200)
+
+        response = client.post(f"/api/jobs/{self.job.id}/apply", json={"cover_note": "Interested"})
+
+        self.assertEqual(response.status_code, 201)
+        teacher_email_mock.assert_called_once()
+        admin_alert_mock.assert_called_once()
+        self.assertEqual(
+            admin_alert_mock.call_args.kwargs["template_name"],
+            "job_application_admin_alert",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

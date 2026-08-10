@@ -9,7 +9,7 @@ from flask import current_app
 from sqlalchemy import or_
 
 from .audit import audit
-from .email_service import OutboundEmail, bookshop_email_shell, send_email
+from .email_service import OutboundEmail, bookshop_email_shell, send_admin_alert, send_email
 from .extensions import db
 from .models import BookRequest, Product
 from .sms_service import normalise_phone, send_sms
@@ -122,6 +122,45 @@ def send_acknowledgement(row):
     audit("book_request_acknowledgement", "book_request", row.id, {"email": email_status, "sms": sms_status}, actor_email=row.email)
 
 
+def send_new_request_admin_alert(row):
+    admin_url = f"{current_app.config['BASE_URL'].rstrip('/')}/admin/dashboard"
+    details = [
+        f"<p><strong>Reference:</strong> {escape(row.reference)}</p>",
+        f"<p><strong>Requested book:</strong> {escape(row.requested_title)}</p>",
+        f"<p><strong>Customer:</strong> {escape(row.customer_name)}</p>",
+    ]
+    if row.email:
+        details.append(f"<p><strong>Email:</strong> {escape(row.email)}</p>")
+    if row.phone:
+        details.append(f"<p><strong>Phone:</strong> {escape(row.phone)}</p>")
+    if row.author:
+        details.append(f"<p><strong>Author:</strong> {escape(row.author)}</p>")
+    if row.publisher:
+        details.append(f"<p><strong>Publisher:</strong> {escape(row.publisher)}</p>")
+    if row.level:
+        details.append(f"<p><strong>Level:</strong> {escape(row.level)}</p>")
+    if row.notes:
+        details.append(f"<p><strong>Notes:</strong> {escape(row.notes)}</p>")
+
+    return send_admin_alert(
+        subject=f"New book request {row.reference}: {row.requested_title}",
+        html=bookshop_email_shell(
+            "New book request",
+            "".join(details),
+            cta_label="Review Book Requests",
+            cta_url=admin_url,
+            preheader=f"{row.customer_name} requested {row.requested_title}.",
+        ),
+        text=(
+            f"New book request {row.reference}: {row.requested_title}. "
+            f"Customer: {row.customer_name}. Review it at {admin_url}"
+        ),
+        from_email=current_app.config.get("BOOKSHOP_FROM_EMAIL"),
+        reply_to=row.email,
+        template_name="book_request_admin_alert",
+    )
+
+
 def create_request(payload):
     title = _clean(payload.get("requested_title") or payload.get("search_query"), 220)
     normalized_title = normalize_title(title)
@@ -174,6 +213,7 @@ def create_request(payload):
     db.session.flush()
     audit("book_request_created", "book_request", row.id, {"reference": row.reference, "requested_title": row.requested_title}, actor_email=email)
     send_acknowledgement(row)
+    send_new_request_admin_alert(row)
     return row, False
 
 

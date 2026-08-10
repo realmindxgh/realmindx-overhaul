@@ -71,9 +71,10 @@ class BookRequestTests(unittest.TestCase):
         payload.update(overrides)
         return payload
 
+    @patch("backend.book_requests.send_new_request_admin_alert", return_value=Mock(status="accepted"))
     @patch("backend.book_requests.send_sms", return_value=Mock(status="accepted"))
     @patch("backend.book_requests.send_email", return_value=Mock(status="accepted"))
-    def test_submission_acknowledgement_deduplication_and_audit(self, _email, _sms):
+    def test_submission_acknowledgement_deduplication_and_audit(self, _email, _sms, admin_alert):
         created = self.client.post("/api/bookshop/book-requests", json=self._payload())
         self.assertEqual(created.status_code, 201)
         body = created.get_json()
@@ -83,12 +84,14 @@ class BookRequestTests(unittest.TestCase):
         self.assertEqual(BookRequest.query.one().phone, "+233241234567")
         self.assertEqual(_email.call_count, 1)
         self.assertEqual(_sms.call_count, 0, "Acknowledgement must prefer email when email is supplied")
+        admin_alert.assert_called_once()
 
         duplicate = self.client.post("/api/bookshop/book-requests", json=self._payload(email="AMA@example.com", phone="+233241234567"))
         self.assertEqual(duplicate.status_code, 200)
         self.assertTrue(duplicate.get_json()["duplicate"])
         self.assertEqual(BookRequest.query.count(), 1)
         self.assertEqual(_email.call_count, 1, "Duplicate requests must not resend acknowledgements")
+        self.assertEqual(admin_alert.call_count, 1, "Duplicate requests must not resend admin alerts")
         actions = [row.action for row in AuditLog.query.order_by(AuditLog.id).all()]
         self.assertIn("book_request_created", actions)
         self.assertIn("book_request_acknowledgement", actions)

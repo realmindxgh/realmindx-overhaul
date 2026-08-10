@@ -219,12 +219,14 @@ class ProfileSubmissionTests(unittest.TestCase):
 
     # -- email sending --
 
+    @patch("backend.api.profile._send_submission_admin_alert")
     @patch("backend.api.profile._send_submission_email")
-    def test_email_sent_on_submit(self, mock_email):
+    def test_email_sent_on_submit(self, mock_email, mock_admin_alert):
         _make_complete_profile(self.teacher, db.session)
         resp = self.client.post("/api/me/profile/submit")
         self.assertEqual(resp.status_code, 200)
         mock_email.assert_called_once()
+        mock_admin_alert.assert_called_once()
 
     # -- get_or_create_profile creates profile if missing --
 

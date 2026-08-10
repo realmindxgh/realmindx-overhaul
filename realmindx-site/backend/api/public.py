@@ -26,7 +26,7 @@ from ..contacts import (
     upsert_contact,
     upsert_newsletter_subscription,
 )
-from ..email_service import OutboundEmail, app_email_shell, bookshop_email_shell, send_email
+from ..email_service import ADMIN_ALERT_EMAIL, OutboundEmail, app_email_shell, bookshop_email_shell, send_admin_alert, send_email
 from ..extensions import csrf, db, limiter
 from ..models import ContactMessage, Flyer, GalleryItem, Job, News, NewsletterSubscriber, Product, ProductCategory, Resource, SiteSetting, UploadedFile
 from ..og_images import book_og_version, render_book_og
@@ -504,20 +504,15 @@ def contact():
     notification_subject = f"[{ticket_reference}] New RealMindX enquiry: {subject}"
 
     # Notify the primary inbox
-    send_email(
-        OutboundEmail(
-            to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
-            subject=notification_subject,
-            html=notification_html,
-            reply_to=email,
-        ),
-        purpose="admin_alert",
-        recipient_user_id=None,
+    send_admin_alert(
+        subject=notification_subject,
+        html=notification_html,
+        reply_to=email,
         template_name="contact_message_admin_alert",
     )
     # Also CC the Gmail inbox so nothing is missed
     admin_gmail = current_app.config.get("ADMIN_CC_EMAIL", "")
-    if admin_gmail and admin_gmail.lower() != current_app.config["DEFAULT_REPLY_TO_EMAIL"].lower():
+    if admin_gmail and admin_gmail.lower() != ADMIN_ALERT_EMAIL.lower():
         send_email(
             OutboundEmail(
                 to=admin_gmail,

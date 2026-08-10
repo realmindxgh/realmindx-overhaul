@@ -35,6 +35,7 @@ from ..email_service import (
     OutboundEmail,
     bookshop_email_shell,
     bookshop_order_summary_table,
+    send_admin_alert,
     send_email,
 )
 from ..delivery_locations import delivery_zone_matches
@@ -1409,25 +1410,20 @@ def _send_order_placed_notifications(order):
     )
 
     staff_subject_prefix = "Paid bookshop order" if paid_online else "New bookshop order"
-    send_email(
-        OutboundEmail(
-            to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
-            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-            subject=f"{staff_subject_prefix} {order.order_reference} from {order.customer_name}",
-            html=bookshop_email_shell(
-                f"New order from {escape(order.customer_name)}",
-                f"""
-                <p>A new order has been placed via the RealMindX Bookshop.</p>
-                {staff_order_meta_html}
-                {order_summary_html}
-                """,
-                cta_label="View in Admin Dashboard",
-                cta_url=f"{current_app.config['BASE_URL']}/admin/dashboard",
-                eyebrow="RealMindX Internal: New Order Alert",
-            ),
+    send_admin_alert(
+        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+        subject=f"{staff_subject_prefix} {order.order_reference} from {order.customer_name}",
+        html=bookshop_email_shell(
+            f"New order from {escape(order.customer_name)}",
+            f"""
+            <p>A new order has been placed via the RealMindX Bookshop.</p>
+            {staff_order_meta_html}
+            {order_summary_html}
+            """,
+            cta_label="View in Admin Dashboard",
+            cta_url=f"{current_app.config['BASE_URL']}/admin/dashboard",
+            eyebrow="RealMindX Internal: New Order Alert",
         ),
-        purpose="admin_alert",
-        recipient_user_id=None,
         template_name="bookshop_order_admin_alert",
     )
 
@@ -1838,19 +1834,15 @@ def bulk_order():
         source="enquiry",
         metadata={"interaction": "bulk_order", "channel": "bookshop"},
     )
-    send_email(
-        OutboundEmail(
-            to=current_app.config["DEFAULT_REPLY_TO_EMAIL"],
-            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
-            subject="New RealMindX bulk order enquiry",
-            html=bookshop_email_shell(
-                "Bulk order enquiry",
-                f"<p><strong>{escape(name)}</strong> ({escape(email)}) requested:</p>"
-                f"<p>{escape(details).replace(chr(10), '<br>')}</p>",
-            ),
+    send_admin_alert(
+        from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+        subject="New RealMindX bulk order enquiry",
+        html=bookshop_email_shell(
+            "Bulk order enquiry",
+            f"<p><strong>{escape(name)}</strong> ({escape(email)}) requested:</p>"
+            f"<p>{escape(details).replace(chr(10), '<br>')}</p>",
         ),
-        purpose="admin_alert",
-        recipient_user_id=None,
+        reply_to=email,
         template_name="bookshop_bulk_order_enquiry",
     )
     audit("bulk_order_enquiry", "bulk_order", None, {"name": name, "email": email}, actor_email=email)
