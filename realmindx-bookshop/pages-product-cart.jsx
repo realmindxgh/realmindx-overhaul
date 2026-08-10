@@ -796,12 +796,12 @@ const CartPage = ({ navigate }) => {
             <h3 className="bs-h3">Order Summary</h3>
             <div className="bs-summary-row"><span>Selected items</span><span>{selectedCount}</span></div>
             <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(selectedSubtotal)}</span></div>
-            {selectedBulkSaving > 0 && selectedBulkDiscounts.map(d => (
-              <div key={d.id} className="bs-summary-row bs-discount" style={{ fontSize:13 }}>
-                <span style={{ maxWidth:220, lineHeight:1.4 }}>Bulk Purchase Discount ({d.pct}%)</span>
-                <span style={{ color:'var(--bs-success)', fontWeight:700 }}>-{cedis(d.saving)}</span>
+            {selectedBulkSaving > 0 && (
+              <div className="bs-summary-row bs-discount" style={{ fontSize:13 }}>
+                <span style={{ maxWidth:220, lineHeight:1.4 }}>Bulk Purchase Discount{selectedBulkDiscounts[0]?.pct ? ` (${selectedBulkDiscounts[0].pct}%)` : ''}</span>
+                <span style={{ color:'var(--bs-success)', fontWeight:700 }}>-{cedis(selectedBulkSaving)}</span>
               </div>
-            ))}
+            )}
             <div className="bs-summary-row"><span>Delivery</span><span className="bs-delivery-tbd">Calculated at checkout</span></div>
             <div className="bs-summary-row bs-total"><span>Subtotal</span><span>{cedis(cartTotal)}</span></div>
           </div>
