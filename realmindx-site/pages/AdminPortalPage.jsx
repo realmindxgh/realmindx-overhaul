@@ -11,7 +11,7 @@ import { dashboardPathForRole, loginPathForRole } from '../../src/lib/sessionRou
 import AnalyticsView from '../../src/admin/AnalyticsView.jsx';
 import logoWhite from '../assets/logo-white.png';
 import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
-import { TEACHING_CURRICULA } from '../../src/lib/teachingOptions.js';
+import { TEACHING_CURRICULA, TEACHING_SUBJECTS } from '../../src/lib/teachingOptions.js';
 import { PRODUCT_CURRICULUM_OPTIONS, PRODUCT_LEVEL_OPTIONS, PRODUCT_SUBJECT_OPTIONS } from '../../src/lib/bookshopTaxonomy.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 import { copyTextToClipboard } from '../../src/lib/clipboard.js';
@@ -5414,6 +5414,110 @@ const TeacherAccountManageModal = ({ detail, onClose, canManageAccount, canManag
   );
 };
 
+const splitTeacherTaxonomy = value => String(value || '')
+  .split(',')
+  .map(item => item.trim())
+  .filter(Boolean);
+
+const teacherTaxonomyKey = value => String(value || '').trim().toLocaleLowerCase();
+
+const matchesTeacherTaxonomy = (value, selected) => {
+  if (!selected.length) return true;
+  const available = new Set(splitTeacherTaxonomy(value).map(teacherTaxonomyKey));
+  return selected.some(item => available.has(teacherTaxonomyKey(item)));
+};
+
+const teacherTaxonomyOptions = (canonical, teachers, field) => {
+  const labels = new Map();
+  [...canonical, ...(teachers || []).flatMap(teacher => splitTeacherTaxonomy(teacher[field]))].forEach(label => {
+    const key = teacherTaxonomyKey(label);
+    if (key && !labels.has(key)) labels.set(key, label);
+  });
+  return Array.from(labels.values()).sort((left, right) => left.localeCompare(right));
+};
+
+const TeacherTaxonomyFilter = ({ label, options, selected, onChange }) => {
+  const [query, setQuery] = React.useState('');
+  const detailsRef = React.useRef(null);
+  const visibleOptions = options.filter(option => teacherTaxonomyKey(option).includes(teacherTaxonomyKey(query)));
+  const toggle = option => onChange(
+    selected.some(item => teacherTaxonomyKey(item) === teacherTaxonomyKey(option))
+      ? selected.filter(item => teacherTaxonomyKey(item) !== teacherTaxonomyKey(option))
+      : [...selected, option],
+  );
+
+  React.useEffect(() => {
+    const closeOnOutsideClick = event => {
+      if (detailsRef.current?.open && !detailsRef.current.contains(event.target)) {
+        detailsRef.current.removeAttribute('open');
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, []);
+
+  return (
+    <details className="teacher-taxonomy-filter" ref={detailsRef} onKeyDown={event => {
+      if (event.key === 'Escape') {
+        detailsRef.current?.removeAttribute('open');
+        detailsRef.current?.querySelector('summary')?.focus();
+      }
+    }}>
+      <summary>
+        <span>{label}:</span>
+        <strong>{selected.length ? `${selected.length} selected` : 'All'}</strong>
+        <Icon name="chevD" size={13} />
+      </summary>
+      <div className="teacher-taxonomy-menu">
+        <div className="teacher-taxonomy-menu-head">
+          <strong>Filter by {label.toLowerCase()}</strong>
+          {selected.length ? <button type="button" onClick={() => onChange([])}>Clear</button> : null}
+        </div>
+        <label className="teacher-taxonomy-search">
+          <Icon name="search" size={14} />
+          <input value={query} onChange={event => setQuery(event.target.value)} placeholder={`Search ${label.toLowerCase()}...`} />
+        </label>
+        <div className="teacher-taxonomy-options">
+          {visibleOptions.length ? visibleOptions.map(option => {
+            const checked = selected.some(item => teacherTaxonomyKey(item) === teacherTaxonomyKey(option));
+            return (
+              <label key={option}>
+                <input type="checkbox" checked={checked} onChange={() => toggle(option)} />
+                <span>{option}</span>
+              </label>
+            );
+          }) : <p>No matching options.</p>}
+        </div>
+      </div>
+    </details>
+  );
+};
+
+const TeacherFilterChips = ({ subjects, curricula, location, onSubjectsChange, onCurriculaChange, onLocationChange, resultCount, noun = 'teacher' }) => {
+  if (!subjects.length && !curricula.length && !location) return null;
+  return (
+    <div className="teacher-active-filter-row">
+      <span>{resultCount} matching {noun}{resultCount === 1 ? '' : 's'}</span>
+      {subjects.map(subject => (
+        <button type="button" key={`subject-${subject}`} onClick={() => onSubjectsChange(subjects.filter(item => item !== subject))}>
+          Subject: {subject} <span aria-hidden="true">×</span>
+        </button>
+      ))}
+      {curricula.map(curriculum => (
+        <button type="button" key={`curriculum-${curriculum}`} onClick={() => onCurriculaChange(curricula.filter(item => item !== curriculum))}>
+          Curriculum: {curriculum} <span aria-hidden="true">×</span>
+        </button>
+      ))}
+      {location ? (
+        <button type="button" onClick={() => onLocationChange('')}>
+          Location: {location} <span aria-hidden="true">{'\u00d7'}</span>
+        </button>
+      ) : null}
+      <button className="is-clear" type="button" onClick={() => { onSubjectsChange([]); onCurriculaChange([]); onLocationChange(''); }}>Clear all</button>
+    </div>
+  );
+};
+
 const TeachersView = ({ session }) => {
   const [teachers, setTeachers] = React.useState(null);
   const [teacherSummary, setTeacherSummary] = React.useState(null);
@@ -5421,6 +5525,9 @@ const TeachersView = ({ session }) => {
   const [statusFilter, setStatusFilter] = React.useState('active');
   const [profileFilter, setProfileFilter] = React.useState('');
   const [registeredFilter, setRegisteredFilter] = React.useState('all');
+  const [subjectFilters, setSubjectFilters] = React.useState([]);
+  const [curriculumFilters, setCurriculumFilters] = React.useState([]);
+  const [locationFilter, setLocationFilter] = React.useState('');
   const [teacherPage, setTeacherPage] = React.useState(1);
   const [teacherPageSize, setTeacherPageSize] = React.useState(10);
   const [selectedTeacherIds, setSelectedTeacherIds] = React.useState(() => new Set());
@@ -5479,12 +5586,23 @@ const TeachersView = ({ session }) => {
     .filter(t => t.role === 'user' || !t.role)
     .filter(t => statusFilter === 'active' ? t.is_active !== false : statusFilter === 'disabled' ? t.is_active === false : true)
     .filter(t => profileFilter === 'complete' ? (t.profile_completion ?? 0) >= 100 : profileFilter === 'incomplete' ? (t.profile_completion ?? 0) < 100 || !t.phone_verified : true)
+    .filter(t => matchesTeacherTaxonomy(t.teaching_subject, subjectFilters))
+    .filter(t => matchesTeacherTaxonomy(t.curriculum_experience, curriculumFilters))
+    .filter(t => !locationFilter.trim() || `${t.location || ''} ${t.preferred_locations || ''}`.toLocaleLowerCase().includes(locationFilter.trim().toLocaleLowerCase()))
     .filter(t => {
       if (registeredFilter === 'all' || !t.created_at) return true;
       const days = Number(registeredFilter);
       return Date.now() - new Date(t.created_at).getTime() <= days * 86400000;
     });
   const rankedTeachers = rankByFuzzyMatch(filtered, search, t => `${t.first_name} ${t.last_name} ${t.email} ${t.phone || ''}`);
+  const subjectOptions = React.useMemo(
+    () => teacherTaxonomyOptions(TEACHING_SUBJECTS, teachers, 'teaching_subject'),
+    [teachers],
+  );
+  const curriculumOptions = React.useMemo(
+    () => teacherTaxonomyOptions(TEACHING_CURRICULA, teachers, 'curriculum_experience'),
+    [teachers],
+  );
   const teacherPageCount = Math.max(1, Math.ceil(rankedTeachers.length / teacherPageSize));
   const visibleTeachers = rankedTeachers.slice((teacherPage - 1) * teacherPageSize, teacherPage * teacherPageSize);
   const allVisibleTeachersSelected = visibleTeachers.length > 0 && visibleTeachers.every(t => selectedTeacherIds.has(t.id));
@@ -5492,7 +5610,7 @@ const TeachersView = ({ session }) => {
     .filter(t => (t.role === 'user' || !t.role) && t.is_active !== false && ((t.profile_completion ?? 0) < 100 || !t.phone_verified))
     .length;
 
-  React.useEffect(() => { setTeacherPage(1); }, [search, statusFilter, profileFilter, registeredFilter, teacherPageSize]);
+  React.useEffect(() => { setTeacherPage(1); }, [search, statusFilter, profileFilter, registeredFilter, subjectFilters, curriculumFilters, locationFilter, teacherPageSize]);
   React.useEffect(() => { setTeacherPage(page => Math.min(page, teacherPageCount)); }, [teacherPageCount]);
 
   const toggleTeacherSelection = id => setSelectedTeacherIds(current => {
@@ -5695,10 +5813,14 @@ const TeachersView = ({ session }) => {
           <label>Status: <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">All</option><option value="active">Active</option><option value="disabled">Disabled</option></select><button type="button" aria-label="Clear status filter" onClick={() => setStatusFilter('')}>×</button></label>
           <label>Profile: <select value={profileFilter} onChange={event => setProfileFilter(event.target.value)}><option value="">All</option><option value="complete">Complete</option><option value="incomplete">Incomplete</option></select><button type="button" aria-label="Clear profile filter" onClick={() => setProfileFilter('')}>×</button></label>
           <label className="teacher-date-filter"><Icon name="calendar" size={15} /> Registered: <select value={registeredFilter} onChange={event => setRegisteredFilter(event.target.value)}><option value="all">All Time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="365">Last year</option></select></label>
-          <button className="teacher-add-filter" type="button" onClick={() => setProfileFilter(profileFilter ? '' : 'incomplete')}>＋ Add Filter</button>
+          <TeacherTaxonomyFilter label="Subject" options={subjectOptions} selected={subjectFilters} onChange={setSubjectFilters} />
+          <TeacherTaxonomyFilter label="Curriculum" options={curriculumOptions} selected={curriculumFilters} onChange={setCurriculumFilters} />
+          <label className="teacher-location-filter"><Icon name="search" size={15} /><input value={locationFilter} onChange={event => setLocationFilter(event.target.value)} placeholder="Current or preferred location..." aria-label="Search teachers by current or preferred location" />{locationFilter ? <button type="button" aria-label="Clear location filter" onClick={() => setLocationFilter('')}>{'\u00d7'}</button> : null}</label>
           <label className="teacher-search-field"><Icon name="search" size={17} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search by name, email or phone..." /></label>
-          <button className="teacher-filter-icon" type="button" aria-label="Clear all filters" onClick={() => { setStatusFilter('active'); setProfileFilter(''); setRegisteredFilter('all'); setSearch(''); }}><Icon name="filter" size={17} /></button>
+          <button className="teacher-filter-icon" type="button" aria-label="Clear all filters" onClick={() => { setStatusFilter('active'); setProfileFilter(''); setRegisteredFilter('all'); setSubjectFilters([]); setCurriculumFilters([]); setLocationFilter(''); setSearch(''); }}><Icon name="filter" size={17} /></button>
         </div>
+
+        <TeacherFilterChips subjects={subjectFilters} curricula={curriculumFilters} location={locationFilter.trim()} onSubjectsChange={setSubjectFilters} onCurriculaChange={setCurriculumFilters} onLocationChange={setLocationFilter} resultCount={rankedTeachers.length} />
 
         {selectedTeachers.length > 0 && <div className="teacher-bulk-bar"><strong><button type="button" onClick={() => setSelectedTeacherIds(new Set())}>×</button>{selectedTeachers.length} teacher{selectedTeachers.length === 1 ? '' : 's'} selected</strong><div>{canEditTeachers && <><button type="button" onClick={sendSelectedProfileReminders}><Icon name="send" size={15} /> Send Reminder</button><button type="button" onClick={disableSelectedTeachers}><Icon name="ban" size={15} /> Disable</button></>}<button type="button" onClick={exportSelectedTeachers}><Icon name="download" size={15} /> Export Selected</button>{canDeleteTeachers && <button className="danger" type="button" onClick={() => setBulkDeleteConfirm(true)}><Icon name="trash" size={15} /> Delete</button>}</div></div>}
 
@@ -6460,7 +6582,7 @@ const ForcedPasswordChangeModal = ({ session, loginPath, onPasswordChanged }) =>
 };
 
 const STATUS_LABELS = {
-  submitted: 'Submitted',
+  submitted: 'Pending',
   under_review: 'Under review',
   revision_required: 'Revision required',
   verified: 'Visually verified',
@@ -6482,6 +6604,10 @@ const TeacherReviewView = ({ session }) => {
   const [statusFilter, setStatusFilter] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
+  const [subjectFilters, setSubjectFilters] = React.useState([]);
+  const [curriculumFilters, setCurriculumFilters] = React.useState([]);
+  const [locationFilter, setLocationFilter] = React.useState('');
+  const [debouncedLocationFilter, setDebouncedLocationFilter] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [detail, setDetail] = React.useState(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
@@ -6540,13 +6666,16 @@ const TeacherReviewView = ({ session }) => {
     setReopenSaving(false);
   }, []);
 
-  const fetchQueue = React.useCallback(async (p = page, s = statusFilter, q = debouncedSearch) => {
+  const fetchQueue = React.useCallback(async (p = page, s = statusFilter, q = debouncedSearch, location = debouncedLocationFilter) => {
     const seq = ++queueReqRef.current;
     setLoading(true);
     try {
       const params = { page: p, per_page: perPage };
       if (s) params.status = s;
       if (q) params.search = q;
+      if (location) params.location = location;
+      if (subjectFilters.length) params.subject = subjectFilters;
+      if (curriculumFilters.length) params.curriculum = curriculumFilters;
       const data = await api.fetchTeacherReviewQueue(params);
       if (seq !== queueReqRef.current) return;
       setQueue(data.items || []);
@@ -6560,7 +6689,7 @@ const TeacherReviewView = ({ session }) => {
     } finally {
       if (seq === queueReqRef.current) setLoading(false);
     }
-  }, [page, perPage, statusFilter, debouncedSearch]);
+  }, [page, perPage, statusFilter, debouncedSearch, debouncedLocationFilter, subjectFilters, curriculumFilters]);
 
   React.useEffect(() => { fetchQueue(); }, [fetchQueue]);
 
@@ -6570,10 +6699,24 @@ const TeacherReviewView = ({ session }) => {
   }, [search]);
 
   React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedLocationFilter(locationFilter.trim()), 300);
+    return () => clearTimeout(t);
+  }, [locationFilter]);
+
+  React.useEffect(() => {
     if (debouncedSearch !== undefined) {
       setPage(1);
     }
-  }, [statusFilter, debouncedSearch]);
+  }, [statusFilter, debouncedSearch, debouncedLocationFilter, subjectFilters, curriculumFilters]);
+
+  const subjectOptions = React.useMemo(
+    () => teacherTaxonomyOptions(TEACHING_SUBJECTS, queue, 'teaching_subject'),
+    [queue],
+  );
+  const curriculumOptions = React.useMemo(
+    () => teacherTaxonomyOptions(TEACHING_CURRICULA, queue, 'curriculum_experience'),
+    [queue],
+  );
 
   const canView = hasSessionPermission(session, 'teachers.view');
   const canEdit = hasSessionPermission(session, 'teachers.edit');
@@ -6860,7 +7003,7 @@ const TeacherReviewView = ({ session }) => {
         </div>
       </div>
 
-      <div className="admin-table-card">
+      <div className="admin-table-card teacher-review-table-card">
         <div className="atc-header" style={{ flexWrap: 'wrap', gap: 10 }}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {STATUS_OPTIONS.map(s => (
@@ -6874,11 +7017,18 @@ const TeacherReviewView = ({ session }) => {
               </button>
             ))}
           </div>
+          <div className="teacher-review-taxonomy-filters">
+            <TeacherTaxonomyFilter label="Subject" options={subjectOptions} selected={subjectFilters} onChange={setSubjectFilters} />
+            <TeacherTaxonomyFilter label="Curriculum" options={curriculumOptions} selected={curriculumFilters} onChange={setCurriculumFilters} />
+            <label className="teacher-location-filter"><Icon name="search" size={15} /><input value={locationFilter} onChange={event => setLocationFilter(event.target.value)} placeholder="Current or preferred location..." aria-label="Search teacher reviews by current or preferred location" />{locationFilter ? <button type="button" aria-label="Clear location filter" onClick={() => setLocationFilter('')}>{'\u00d7'}</button> : null}</label>
+          </div>
           <div className="atc-search">
             <span>Search</span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, email, phone, or ID" aria-label="Search teacher reviews" />
           </div>
         </div>
+
+        <TeacherFilterChips subjects={subjectFilters} curricula={curriculumFilters} location={locationFilter.trim()} onSubjectsChange={setSubjectFilters} onCurriculaChange={setCurriculumFilters} onLocationChange={setLocationFilter} resultCount={total} noun="application" />
 
         {!isApiMode() ? (
           <EmptySection title="API mode required" body="Connect the Flask backend to access the review queue." />
@@ -6887,7 +7037,7 @@ const TeacherReviewView = ({ session }) => {
         ) : queue && queue.length === 0 ? (
           <EmptySection
             title={search ? 'No matching records' : statusFilter ? `No ${STATUS_LABELS[statusFilter]?.toLowerCase() || statusFilter} records` : 'No review records'}
-            body={search ? 'Try a different search term.' : statusFilter ? 'Profiles with this status will appear here.' : 'Submitted teacher profiles will appear here.'}
+            body={search ? 'Try a different search term.' : statusFilter ? 'Profiles with this status will appear here.' : 'Pending teacher profiles will appear here.'}
           />
         ) : queue ? (
           <>

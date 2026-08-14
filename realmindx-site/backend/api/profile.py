@@ -847,6 +847,9 @@ def preview_uploaded_file(file_id):
         return Response("<h2>Preview unavailable</h2><p>This file type cannot be displayed in the browser. Use Download to open it.</p>", status=415, mimetype="text/html")
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
+    # Document previews are embedded only by the authenticated RealMindX UI.
+    # Keep cross-origin framing blocked while permitting that same-origin iframe.
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
     return response
 
 

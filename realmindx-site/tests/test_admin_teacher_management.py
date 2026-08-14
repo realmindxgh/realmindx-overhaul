@@ -95,6 +95,25 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertEqual(data["summary"]["disabled_accounts"], 1)
         self.assertEqual(data["summary"]["excluded_internal_accounts"], 1)
 
+    def test_active_teacher_payload_includes_location_subjects_and_curricula_for_filtering(self):
+        self.active_teacher.profile.location = "East Legon, Accra"
+        self.active_teacher.profile.preferred_locations = "Tema, Oyarifa"
+        self.active_teacher.profile.teaching_subject = "Mathematics, Physics"
+        self.active_teacher.profile.curriculum_experience = "GES / NaCCA Curriculum, Cambridge International Curriculum"
+        db.session.commit()
+
+        response = self.client.get("/api/admin/users")
+
+        self.assertEqual(response.status_code, 200)
+        teacher = next(item for item in response.get_json()["items"] if item["id"] == self.active_teacher.id)
+        self.assertEqual(teacher["location"], "East Legon, Accra")
+        self.assertEqual(teacher["preferred_locations"], "Tema, Oyarifa")
+        self.assertEqual(teacher["teaching_subject"], "Mathematics, Physics")
+        self.assertEqual(
+            teacher["curriculum_experience"],
+            "GES / NaCCA Curriculum, Cambridge International Curriculum",
+        )
+
     def test_delete_teacher_account(self):
         db.session.add(JobAlertPreference(user_id=self.active_teacher.id, subject="Mathematics", location="Test"))
         db.session.commit()

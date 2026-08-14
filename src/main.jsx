@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import ModalStackManager from './lib/ModalStackManager.jsx';
 
 import '../realmindx-site/assets/styles.css';
 import '../realmindx-site/styles/pages.css';
@@ -1138,6 +1139,7 @@ const AppRoutes = () => {
   if (isBookshopSubdomain && !deliveryPortalPath) {
     return (
       <>
+        <ModalStackManager />
         <FlyerFocusModal />
         <InstallAppPrompt />
         <InstalledSurfaceLinkGuard />
@@ -1147,6 +1149,7 @@ const AppRoutes = () => {
   }
   return (
   <>
+    <ModalStackManager />
     <FlyerFocusModal />
     <InstallAppPrompt />
     <InstalledSurfaceLinkGuard />

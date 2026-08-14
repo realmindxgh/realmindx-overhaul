@@ -188,6 +188,7 @@ class TeacherReviewTests(unittest.TestCase):
         download = self.client.get(f"/api/files/{uploaded.id}/download")
         self.assertEqual(preview.status_code, 200)
         self.assertIn("inline", preview.headers.get("Content-Disposition", ""))
+        self.assertEqual(preview.headers.get("X-Frame-Options"), "SAMEORIGIN")
         self.assertIn("attachment", download.headers.get("Content-Disposition", ""))
 
     def test_unauthorised_staff_cannot_review(self):
@@ -261,6 +262,66 @@ class TeacherReviewTests(unittest.TestCase):
         ids = [item["id"] for item in data["items"]]
         self.assertIn(t2.id, ids)
         self.assertNotIn(t1.id, ids)
+
+    def test_review_queue_combines_subject_and_curriculum_filters(self):
+        mathematics, mathematics_profile = _make_submitted_teacher(db.session, "taxonomy-math")
+        mathematics_profile.teaching_subject = "Mathematics, Integrated Science"
+        mathematics_profile.curriculum_experience = "WASSCE"
+        physics, physics_profile = _make_submitted_teacher(db.session, "taxonomy-physics")
+        physics_profile.teaching_subject = "Physics"
+        physics_profile.curriculum_experience = "Cambridge International Curriculum"
+        chemistry, chemistry_profile = _make_submitted_teacher(db.session, "taxonomy-chemistry")
+        chemistry_profile.teaching_subject = "Chemistry"
+        chemistry_profile.curriculum_experience = "WASSCE"
+        db.session.commit()
+        self._login_admin()
+
+        response = self.client.get(
+            "/api/admin/teachers/review"
+            "?subject=Mathematics&subject=Physics&curriculum=Cambridge%20International%20Curriculum"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        ids = {item["id"] for item in data["items"]}
+        self.assertEqual(ids, {physics.id})
+        self.assertEqual(data["items"][0]["curriculum_experience"], "Cambridge International Curriculum")
+        self.assertNotIn(mathematics.id, ids)
+        self.assertNotIn(chemistry.id, ids)
+
+    def test_review_queue_subject_filter_matches_complete_list_tokens(self):
+        teacher, profile = _make_submitted_teacher(db.session, "taxonomy-exact")
+        profile.teaching_subject = "Integrated Science"
+        db.session.commit()
+        self._login_admin()
+
+        response = self.client.get("/api/admin/teachers/review?subject=Science")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(teacher.id, {item["id"] for item in response.get_json()["items"]})
+
+    def test_review_queue_location_filter_is_case_insensitive_and_combines_with_subject(self):
+        accra_teacher, accra_profile = _make_submitted_teacher(db.session, "location-accra")
+        accra_profile.location = "East Legon, Accra"
+        accra_profile.teaching_subject = "Mathematics"
+        preferred_accra_teacher, preferred_accra_profile = _make_submitted_teacher(db.session, "preferred-location-accra")
+        preferred_accra_profile.location = "Tamale"
+        preferred_accra_profile.preferred_locations = "Tema, Accra"
+        preferred_accra_profile.teaching_subject = "Mathematics"
+        kumasi_teacher, kumasi_profile = _make_submitted_teacher(db.session, "location-kumasi")
+        kumasi_profile.location = "Adum, Kumasi"
+        kumasi_profile.preferred_locations = "Sunyani"
+        kumasi_profile.teaching_subject = "Mathematics"
+        db.session.commit()
+        self._login_admin()
+
+        response = self.client.get("/api/admin/teachers/review?subject=Mathematics&location=accra")
+
+        self.assertEqual(response.status_code, 200)
+        ids = {item["id"] for item in response.get_json()["items"]}
+        self.assertIn(accra_teacher.id, ids)
+        self.assertIn(preferred_accra_teacher.id, ids)
+        self.assertNotIn(kumasi_teacher.id, ids)
 
     def test_review_queue_search_by_application_id(self):
         teacher, _ = _make_submitted_teacher(db.session, "srch1")

@@ -506,7 +506,11 @@ export const api = {
   fetchTeacherReviewQueue: (params = {}) => {
     const sp = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') sp.set(key, value);
+      if (Array.isArray(value)) {
+        value.filter(item => item !== undefined && item !== null && item !== '').forEach(item => sp.append(key, item));
+      } else if (value !== undefined && value !== null && value !== '') {
+        sp.set(key, value);
+      }
     });
     const suffix = sp.toString() ? `?${sp.toString()}` : '';
     return apiFetch(`/admin/teachers/review${suffix}`);

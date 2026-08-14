@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from flask_login import current_user, login_required
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, literal, or_
 from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
 
@@ -1525,6 +1525,7 @@ def users():
     # filter disabled accounts, while summary counts keep internal roles clear.
     rows = (
         User.query
+        .options(joinedload(User.profile))
         .join(User.role)
         .filter(
             Role.name == "user",
@@ -1534,7 +1535,15 @@ def users():
         .order_by(User.created_at.desc())
         .all()
     )
-    items = [user_json(user) for user in rows]
+    items = []
+    for user in rows:
+        item = user_json(user)
+        profile = user.profile
+        item["location"] = profile.location if profile else None
+        item["preferred_locations"] = profile.preferred_locations if profile else None
+        item["teaching_subject"] = profile.teaching_subject if profile else None
+        item["curriculum_experience"] = profile.curriculum_experience if profile else None
+        items.append(item)
     active_items = [item for item in items if item.get("is_active") is not False]
     incomplete_items = [
         item for item in active_items
@@ -2284,6 +2293,7 @@ def _review_queue_item(user):
         "reviewed_at": profile.reviewed_at.isoformat() if profile and profile.reviewed_at else None,
         "reviewed_by_id": profile.reviewed_by_id if profile else None,
         "teaching_subject": profile.teaching_subject if profile else None,
+        "curriculum_experience": profile.curriculum_experience if profile else None,
         "preferred_level": profile.preferred_level if profile else None,
         "location": profile.location if profile else None,
         "cv_present": cv_exists,
@@ -2390,10 +2400,20 @@ def teacher_review_queue():
     per_page = max(1, min(100, request.args.get("per_page", 50, type=int)))
     status_filter = request.args.get("status")
     search = request.args.get("search", "").strip()
+    location = request.args.get("location", "").strip()
+    subjects = [value.strip() for value in request.args.getlist("subject") if value.strip()]
+    curricula = [value.strip() for value in request.args.getlist("curriculum") if value.strip()]
 
     valid_statuses = {"submitted", "under_review", "revision_required", "verified", "rejected"}
     if status_filter and status_filter not in valid_statuses:
         return jsonify(error=f"Invalid status. Choose from: {', '.join(sorted(valid_statuses))}"), 400
+    if (
+        len(location) > 160
+        or len(subjects) > 25
+        or len(curricula) > 25
+        or any(len(value) > 160 for value in subjects + curricula)
+    ):
+        return jsonify(error="Too many or invalid teacher filter values."), 400
 
     query = (
         User.query
@@ -2420,6 +2440,33 @@ def teacher_review_queue():
                 db.func.concat(User.first_name, " ", User.last_name).ilike(search_pattern),
             )
         )
+
+    if location:
+        escaped_location = location.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        location_pattern = f"%{escaped_location}%"
+        query = query.filter(
+            or_(
+                UserProfile.location.ilike(location_pattern, escape="\\"),
+                UserProfile.preferred_locations.ilike(location_pattern, escape="\\"),
+            )
+        )
+
+    def exact_comma_list_match(column, values):
+        normalized = func.lower(
+            func.replace(func.replace(func.coalesce(column, ""), ", ", ","), " ,", ",")
+        )
+        padded = literal(",") + normalized + literal(",")
+        clauses = []
+        for value in values:
+            escaped = value.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append(padded.like(f"%,{escaped},%", escape="\\"))
+        return or_(*clauses)
+
+    # OR within each taxonomy and AND between location, subjects, and curricula.
+    if subjects:
+        query = query.filter(exact_comma_list_match(UserProfile.teaching_subject, subjects))
+    if curricula:
+        query = query.filter(exact_comma_list_match(UserProfile.curriculum_experience, curricula))
 
     total = query.count()
     rows = query.order_by(UserProfile.submitted_at.desc().nullslast(), User.created_at.desc()).paginate(
