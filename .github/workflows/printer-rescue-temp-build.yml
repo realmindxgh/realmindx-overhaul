@@ -14,6 +14,109 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Generate Printer Rescue branding assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path printerrescue-testbuild/Assets | Out-Null
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Drawing.Drawing2D
+
+          $size = 256
+          $bmp = New-Object System.Drawing.Bitmap($size, $size)
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+          $g.Clear([System.Drawing.Color]::Transparent)
+
+          function RoundedPath([float]$x,[float]$y,[float]$w,[float]$h,[float]$r) {
+            $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $d = $r * 2
+            $p.AddArc($x,$y,$d,$d,180,90)
+            $p.AddArc($x+$w-$d,$y,$d,$d,270,90)
+            $p.AddArc($x+$w-$d,$y+$h-$d,$d,$d,0,90)
+            $p.AddArc($x,$y+$h-$d,$d,$d,90,90)
+            $p.CloseFigure()
+            return $p
+          }
+
+          $bgPath = RoundedPath 9 9 238 238 34
+          $bgBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+            (New-Object System.Drawing.Point 20,20),
+            (New-Object System.Drawing.Point 230,240),
+            ([System.Drawing.Color]::FromArgb(255,17,40,79)),
+            ([System.Drawing.Color]::FromArgb(255,3,14,35))
+          )
+          $g.FillPath($bgBrush,$bgPath)
+          $edgePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,41,95,174),2)
+          $g.DrawPath($edgePen,$bgPath)
+
+          $haloDark = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,48,92,159),12)
+          $haloDark.StartCap = $haloDark.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $g.DrawArc($haloDark,34,31,188,188,143,237)
+          $haloGlow = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,27,220,255),13)
+          $haloGlow.StartCap = $haloGlow.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $g.DrawArc($haloGlow,34,31,188,188,39,42)
+
+          $outline = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,117,178,255),8)
+          $outline.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+          $outline.StartCap = $outline.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+
+          # Paper
+          $paperPath = New-Object System.Drawing.Drawing2D.GraphicsPath
+          $paperPath.AddLine(93,61,153,61)
+          $paperPath.AddLine(153,61,177,84)
+          $paperPath.AddLine(177,84,177,111)
+          $paperPath.AddLine(93,111,93,61)
+          $g.DrawPath($outline,$paperPath)
+          $foldPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,82,146,230),5)
+          $g.DrawLine($foldPen,153,62,153,84)
+          $g.DrawLine($foldPen,153,84,175,84)
+
+          # Printer body
+          $printerPath = RoundedPath 62 106 132 76 18
+          $g.DrawPath($outline,$printerPath)
+          $g.DrawLine($outline,82,180,82,199)
+          $g.DrawLine($outline,82,199,174,199)
+          $g.DrawLine($outline,174,199,174,180)
+          $cyan = [System.Drawing.Color]::FromArgb(255,18,222,255)
+          $g.FillEllipse((New-Object System.Drawing.SolidBrush($cyan)),166,124,10,10)
+          $g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,34,137,248))),166,141,9,9)
+
+          # Rescue plus badge
+          $badgeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,7,28,61))
+          $badgePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,104,174,255),6)
+          $g.FillEllipse($badgeBrush,90,154,76,76)
+          $g.DrawEllipse($badgePen,90,154,76,76)
+          $plusPen = New-Object System.Drawing.Pen($cyan,14)
+          $plusPen.StartCap = $plusPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $g.DrawLine($plusPen,128,174,128,210)
+          $g.DrawLine($plusPen,110,192,146,192)
+
+          $png = 'printerrescue-testbuild/Assets/PrinterRescue.png'
+          $ico = 'printerrescue-testbuild/Assets/PrinterRescue.ico'
+          $bmp.Save($png,[System.Drawing.Imaging.ImageFormat]::Png)
+          $hicon = $bmp.GetHicon()
+          $icon = [System.Drawing.Icon]::FromHandle($hicon)
+          $fs = [System.IO.File]::Open($ico,[System.IO.FileMode]::Create)
+          $icon.Save($fs)
+          $fs.Close()
+          $icon.Dispose()
+          $g.Dispose()
+          $bmp.Dispose()
+
+          if (!(Test-Path $png) -or !(Test-Path $ico)) { throw 'Branding assets were not produced.' }
+
+      - name: Integrate logo into application header
+        shell: pwsh
+        run: |
+          $path = 'printerrescue-testbuild/TestApp.cs'
+          $src = Get-Content $path -Raw
+          $old = 'brand.Children.Add(MakePrinterIcon("Laser", 54));'
+          $new = 'var appLogo = new System.Windows.Controls.Image { Width = 58, Height = 58, Stretch = System.Windows.Media.Stretch.Uniform, Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri("pack://application:,,,/Assets/PrinterRescue.png")) }; brand.Children.Add(appLogo);'
+          if (!$src.Contains($old)) { throw 'Could not find header logo placeholder.' }
+          $src = $src.Replace($old,$new)
+          Set-Content $path $src -Encoding UTF8
+
       - name: Publish single-file Windows executable
         shell: pwsh
         run: |
@@ -26,11 +129,14 @@ jobs:
             -p:DebugType=None `
             -p:DebugSymbols=false `
             -o publish
+
       - name: Verify executable
         shell: pwsh
         run: |
           Get-ChildItem publish
           if (!(Test-Path publish/PrinterRescue.exe)) { throw 'PrinterRescue.exe was not produced.' }
+          if ((Get-Item publish/PrinterRescue.exe).Length -lt 1000000) { throw 'PrinterRescue.exe looks unexpectedly small.' }
+
       - uses: actions/upload-artifact@v4
         with:
           name: PrinterRescue-win-x64
