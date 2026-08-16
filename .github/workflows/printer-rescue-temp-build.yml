@@ -20,7 +20,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path printerrescue-testbuild/Assets | Out-Null
           Add-Type -AssemblyName System.Drawing
-          Add-Type -AssemblyName System.Drawing.Drawing2D
 
           $size = 256
           $bmp = New-Object System.Drawing.Bitmap($size, $size)
@@ -40,28 +39,27 @@ jobs:
           }
 
           $bgPath = RoundedPath 9 9 238 238 34
-          $bgBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-            (New-Object System.Drawing.Point 20,20),
-            (New-Object System.Drawing.Point 230,240),
-            ([System.Drawing.Color]::FromArgb(255,17,40,79)),
-            ([System.Drawing.Color]::FromArgb(255,3,14,35))
-          )
+          $p1 = New-Object System.Drawing.Point(20,20)
+          $p2 = New-Object System.Drawing.Point(230,240)
+          $bgBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($p1,$p2,[System.Drawing.Color]::FromArgb(255,17,40,79),[System.Drawing.Color]::FromArgb(255,3,14,35))
           $g.FillPath($bgBrush,$bgPath)
           $edgePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,41,95,174),2)
           $g.DrawPath($edgePen,$bgPath)
 
           $haloDark = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,48,92,159),12)
-          $haloDark.StartCap = $haloDark.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $haloDark.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $haloDark.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
           $g.DrawArc($haloDark,34,31,188,188,143,237)
           $haloGlow = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,27,220,255),13)
-          $haloGlow.StartCap = $haloGlow.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $haloGlow.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $haloGlow.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
           $g.DrawArc($haloGlow,34,31,188,188,39,42)
 
           $outline = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,117,178,255),8)
           $outline.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-          $outline.StartCap = $outline.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $outline.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $outline.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
 
-          # Paper
           $paperPath = New-Object System.Drawing.Drawing2D.GraphicsPath
           $paperPath.AddLine(93,61,153,61)
           $paperPath.AddLine(153,61,177,84)
@@ -72,23 +70,24 @@ jobs:
           $g.DrawLine($foldPen,153,62,153,84)
           $g.DrawLine($foldPen,153,84,175,84)
 
-          # Printer body
           $printerPath = RoundedPath 62 106 132 76 18
           $g.DrawPath($outline,$printerPath)
           $g.DrawLine($outline,82,180,82,199)
           $g.DrawLine($outline,82,199,174,199)
           $g.DrawLine($outline,174,199,174,180)
           $cyan = [System.Drawing.Color]::FromArgb(255,18,222,255)
-          $g.FillEllipse((New-Object System.Drawing.SolidBrush($cyan)),166,124,10,10)
-          $g.FillEllipse((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,34,137,248))),166,141,9,9)
+          $cyanBrush = New-Object System.Drawing.SolidBrush($cyan)
+          $blueBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,34,137,248))
+          $g.FillEllipse($cyanBrush,166,124,10,10)
+          $g.FillEllipse($blueBrush,166,141,9,9)
 
-          # Rescue plus badge
           $badgeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,7,28,61))
           $badgePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255,104,174,255),6)
           $g.FillEllipse($badgeBrush,90,154,76,76)
           $g.DrawEllipse($badgePen,90,154,76,76)
           $plusPen = New-Object System.Drawing.Pen($cyan,14)
-          $plusPen.StartCap = $plusPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $plusPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+          $plusPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
           $g.DrawLine($plusPen,128,174,128,210)
           $g.DrawLine($plusPen,110,192,146,192)
 
