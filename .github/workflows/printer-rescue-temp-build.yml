@@ -117,6 +117,10 @@ jobs:
         shell: pwsh
         run: ./printerrescue-testbuild/patch-ui.ps1
 
+      - name: Apply UX compile fix
+        shell: pwsh
+        run: ./printerrescue-testbuild/patch-ux-fix.ps1
+
       - name: Publish single-file Windows executable
         shell: pwsh
         run: |
