@@ -93,7 +93,7 @@ async Task Scan()
             scanButton.Cursor = scanning ? System.Windows.Input.Cursors.Wait : System.Windows.Input.Cursors.Hand;
         }
         table.IsEnabled = !scanning;
-        Mouse.OverrideCursor = scanning ? System.Windows.Input.Cursors.Wait : null;
+        System.Windows.Input.Mouse.OverrideCursor = scanning ? System.Windows.Input.Cursors.Wait : null;
     }
 '@
 if (!$src.Contains($oldScan.Trim())) { throw 'Could not find Scan method.' }
