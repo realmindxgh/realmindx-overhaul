@@ -14,15 +14,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Extract Printer Rescue source
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path buildsrc -Force | Out-Null
-          tar -xf printerrescue-build-src.zip -C buildsrc
       - name: Publish single-file Windows executable
         shell: pwsh
         run: |
-          dotnet publish buildsrc/PrinterRescue-v0.1/src/PrinterRescue.App/PrinterRescue.App.csproj `
+          dotnet publish printerrescue-testbuild/PrinterRescue.Test.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
@@ -35,8 +30,7 @@ jobs:
         shell: pwsh
         run: |
           Get-ChildItem publish
-          if (!(Test-Path publish/PrinterRescue.App.exe)) { throw 'PrinterRescue.App.exe was not produced.' }
-          Rename-Item publish/PrinterRescue.App.exe PrinterRescue.exe
+          if (!(Test-Path publish/PrinterRescue.exe)) { throw 'PrinterRescue.exe was not produced.' }
       - uses: actions/upload-artifact@v4
         with:
           name: PrinterRescue-win-x64
