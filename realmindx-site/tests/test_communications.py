@@ -872,10 +872,52 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         data = response.get_json()
         self.assertEqual(data["brand"], "bookshop")
         self.assertIn("RealMindX Bookshop", data["html"])
+        self.assertNotIn("RealMindX Bookshop Updates", data["html"])
+        self.assertNotIn("Preview only", data["html"])
         self.assertIn("Formatted preview", data["html"])
         self.assertIn('width="576"', data["html"])
         self.assertIn("width:100%;max-width:100%", data["html"])
         self.assertIn('src="http://localhost/uploads/public/images/preview.jpg"', data["html"])
+
+    def test_newsletter_preview_removes_redundant_realmindx_updates_heading(self):
+        response = self.client.post("/api/admin/newsletters/preview", json={
+            "brand": "realmindx",
+            "sender": "news",
+            "subject": "Preview subject",
+            "title": "Preview title",
+            "sections": [{"body": "Preview body"}],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_json()["html"]
+        self.assertNotIn("RealMindX Updates", html)
+        self.assertIn("Preview title", html)
+
+    def test_newsletter_footer_explains_recruitment_only_to_teachers(self):
+        from backend.api.admin import _newsletter_footer_note
+        from backend.models import Contact, ContactSource, NewsletterSubscriber
+
+        teacher = Contact(email="teacher-footer@example.com")
+        teacher.sources.append(ContactSource(source="teacher"))
+        bookshop_contact = Contact(email="bookshop-footer@example.com")
+        bookshop_contact.sources.append(ContactSource(source="bookshop"))
+        subscriber = NewsletterSubscriber(
+            email=bookshop_contact.email,
+            source="site",
+            contact=bookshop_contact,
+            is_active=True,
+        )
+        db.session.add_all([teacher, bookshop_contact, subscriber])
+        db.session.flush()
+
+        teacher_note = _newsletter_footer_note(teacher, None)
+        bookshop_note = _newsletter_footer_note(bookshop_contact, subscriber)
+
+        self.assertIn("signed up for teacher recruitment with RealMindX Education", teacher_note)
+        self.assertNotIn("listed under", teacher_note)
+        self.assertNotIn("signed up for teacher recruitment", bookshop_note)
+        self.assertNotIn("listed under", bookshop_note)
+        self.assertIn("Unsubscribe from newsletters", bookshop_note)
 
     def test_newsletter_preview_can_place_section_image_after_text(self):
         from backend.models import UploadedFile

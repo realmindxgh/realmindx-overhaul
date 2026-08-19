@@ -6686,6 +6686,27 @@ def _campaign_from_email(sender):
     return current_app.config.get("NEWSLETTER_FROM_EMAIL")
 
 
+def _newsletter_footer_note(contact, subscriber):
+    notes = []
+    if any(link.source == "teacher" for link in contact.sources):
+        notes.append(
+            "You are receiving this email because you signed up for teacher recruitment "
+            "with RealMindX Education."
+        )
+    if subscriber:
+        if not subscriber.unsubscribe_token:
+            subscriber.unsubscribe_token = secrets.token_urlsafe(32)
+        base_url = current_app.config.get("SITE_BASE_URL", "https://realmindxgh.com").rstrip("/")
+        unsubscribe_url = escape(
+            f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}",
+            quote=True,
+        )
+        notes.append(
+            f'<a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe from newsletters</a>.'
+        )
+    return " ".join(notes) or None
+
+
 def _newsletter_campaign_json(row, *, include_content=False):
     payload = {
         "id": row.id,
@@ -6782,23 +6803,11 @@ def _send_saved_newsletter_recipient(campaign, recipient):
     brand = (campaign.brand or content.get("brand") or "realmindx").strip().lower()
     sender = (campaign.sender or content.get("sender") or "news").strip().lower()
     shell = bookshop_email_shell if brand == "bookshop" else app_email_shell
-    eyebrow = {
-        "sales": "RealMindX Sales",
-        "bookshop": "RealMindX Bookshop Updates",
-        "news": "RealMindX Updates",
-    }.get(sender, "RealMindX Updates")
     hero_image_url = None
     if content.get("image_file_id"):
         image_file = db.session.get(UploadedFile, content["image_file_id"])
         hero_image_url = _upload_public_url(image_file) if image_file else None
-    source_labels = [link.source for link in contact.sources] or ["RealMindX contacts"]
-    footer_note = f'You are receiving this RealMindX email because your address is listed under {escape(", ".join(source_labels))}.'
-    if subscriber:
-        if not subscriber.unsubscribe_token:
-            subscriber.unsubscribe_token = secrets.token_urlsafe(32)
-        base_url = current_app.config.get("SITE_BASE_URL", "https://realmindxgh.com").rstrip("/")
-        unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
-        footer_note += f' <a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe from newsletters</a>.'
+    footer_note = _newsletter_footer_note(contact, subscriber)
 
     return send_email(
         OutboundEmail(
@@ -6810,7 +6819,7 @@ def _send_saved_newsletter_recipient(campaign, recipient):
                 body_html,
                 content.get("cta_label") or None,
                 content.get("cta_url") or None,
-                eyebrow=eyebrow,
+                eyebrow="",
                 preheader=content.get("preheader") or campaign.title,
                 hero_image_url=hero_image_url,
                 footer_note=footer_note,
@@ -6957,20 +6966,15 @@ def preview_newsletter_campaign():
     is_bookshop = brand == "bookshop"
     shell = bookshop_email_shell if is_bookshop else app_email_shell
     sender = (payload.get("sender") or ("bookshop" if is_bookshop else "news")).strip().lower()
-    eyebrow = {
-        "sales": "RealMindX Sales",
-        "bookshop": "RealMindX Bookshop Updates",
-        "news": "RealMindX Updates",
-    }.get(sender, "RealMindX Updates")
     html = shell(
         title,
         body_html,
         payload.get("cta_label") or None,
         payload.get("cta_url") or None,
-        eyebrow=eyebrow,
+        eyebrow="",
         preheader=payload.get("preheader") or payload.get("summary") or title,
         hero_image_url=image_url,
-        footer_note="Preview only. Recipient-specific contact and unsubscribe information will appear in the sent email.",
+        footer_note=None,
     )
     return jsonify(html=html, subject=subject, brand=brand, sender=sender)
 
@@ -6998,13 +7002,7 @@ def send_newsletter_campaign():
     is_bookshop = brand == "bookshop"
     shell = bookshop_email_shell if is_bookshop else app_email_shell
     sender = (payload.get("sender") or payload.get("purpose") or ("bookshop" if is_bookshop else "news")).strip().lower()
-    eyebrow = {
-        "sales": "RealMindX Sales",
-        "bookshop": "RealMindX Bookshop Updates",
-        "news": "RealMindX Updates",
-    }.get(sender, "RealMindX Updates")
     from_email = _campaign_from_email(sender)
-    base_url = current_app.config.get("SITE_BASE_URL", "https://realmindxgh.com").rstrip("/")
     contact_ids = payload.get("contact_ids") or []
     recipient_ids = payload.get("recipient_ids") or []  # legacy subscriber IDs
     recipient_emails = payload.get("recipient_emails") or payload.get("recipients") or []
@@ -7037,13 +7035,7 @@ def send_newsletter_campaign():
         if subscriber and (subscriber.communication_status == UNSUBSCRIBED or not subscriber.is_active):
             continue
         seen.add(contact.email)
-        if subscriber and not subscriber.unsubscribe_token:
-            subscriber.unsubscribe_token = secrets.token_urlsafe(32)
-        source_labels = [link.source for link in contact.sources] or ["RealMindX contacts"]
-        footer_note = f'You are receiving this RealMindX email because your address is listed under {escape(", ".join(source_labels))}.'
-        if subscriber:
-            unsubscribe_url = f"{base_url}/unsubscribe?token={subscriber.unsubscribe_token}"
-            footer_note += f' <a href="{unsubscribe_url}" style="color:#aaa;">Unsubscribe from newsletters</a>.'
+        footer_note = _newsletter_footer_note(contact, subscriber)
         attempted_at = datetime.now(timezone.utc)
         result = send_email(
             OutboundEmail(
@@ -7055,7 +7047,7 @@ def send_newsletter_campaign():
                     body_html,
                     payload.get("cta_label") or None,
                     payload.get("cta_url") or None,
-                    eyebrow=eyebrow,
+                    eyebrow="",
                     preheader=payload.get("preheader") or payload.get("summary") or title,
                     hero_image_url=image_url,
                     footer_note=footer_note,

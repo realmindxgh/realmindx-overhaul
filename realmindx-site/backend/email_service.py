@@ -261,7 +261,14 @@ def app_email_shell(
         if footer_note else ""
     )
 
-    safe_eyebrow = escape(eyebrow)
+    safe_eyebrow = escape(eyebrow or "")
+    eyebrow_html = (
+        f"""<p style="margin:0 0 6px;color:#ffcc01;font-family:Arial,Helvetica,sans-serif;
+                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;text-align:center;">
+                {safe_eyebrow}
+              </p>"""
+        if safe_eyebrow else ""
+    )
     safe_title = escape(title)
 
     return f"""<!doctype html>
@@ -306,10 +313,7 @@ def app_email_shell(
               <img src="{logo_url}" alt="RealMindX Education" height="44"
                    style="display:block;height:44px;max-width:240px;width:auto;margin:0 auto 18px;
                           border:0;outline:none;text-decoration:none;" />
-              <p style="margin:0 0 6px;color:#ffcc01;font-family:Arial,Helvetica,sans-serif;
-                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;text-align:center;">
-                {safe_eyebrow}
-              </p>
+              {eyebrow_html}
               <h1 style="margin:0;color:#ffffff;font-family:Arial,Helvetica,sans-serif;
                           font-size:26px;line-height:1.2;font-weight:900;text-align:center;">
                 {safe_title}
@@ -460,7 +464,14 @@ def bookshop_email_shell(
         if footer_note else ""
     )
 
-    safe_eyebrow = escape(eyebrow)
+    safe_eyebrow = escape(eyebrow or "")
+    eyebrow_html = (
+        f"""<p style="margin:0 0 6px;color:#143670;font-family:Arial,Helvetica,sans-serif;
+                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;text-align:center;">
+                {safe_eyebrow}
+              </p>"""
+        if safe_eyebrow else ""
+    )
     safe_title = escape(title)
 
     return f"""<!doctype html>
@@ -506,10 +517,7 @@ def bookshop_email_shell(
               <img src="{logo_url}" alt="RealMindX Bookshop" width="320"
                    style="display:block;width:100%;max-width:320px;height:auto;margin:0 auto 18px;
                           border:0;outline:none;text-decoration:none;" />
-              <p style="margin:0 0 6px;color:#143670;font-family:Arial,Helvetica,sans-serif;
-                         font-size:11px;font-weight:800;letter-spacing:2.5px;text-transform:uppercase;text-align:center;">
-                {safe_eyebrow}
-              </p>
+              {eyebrow_html}
               <h1 style="margin:0;color:#143670;font-family:Arial,Helvetica,sans-serif;
                           font-size:24px;line-height:1.25;font-weight:900;text-align:center;">
                 {safe_title}
