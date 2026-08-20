@@ -41,7 +41,9 @@ jobs:
           if ($parts.Count -ne 7) { throw "Expected 7 source parts, found $($parts.Count)." }
           $base64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
           [IO.File]::WriteAllBytes('pdf-rescue-source.zip', [Convert]::FromBase64String($base64))
-          Expand-Archive 'pdf-rescue-source.zip' -DestinationPath 'pdf-rescue' -Force
+          New-Item -ItemType Directory -Force -Path 'pdf-rescue' | Out-Null
+          tar -xf 'pdf-rescue-source.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw "Source extraction failed with exit code $LASTEXITCODE." }
           if (-not (Test-Path 'pdf-rescue/PdfRescue.sln')) { throw 'Source reconstruction failed.' }
           Get-Item 'pdf-rescue/PdfRescue.sln' | Format-List FullName,Length
 
@@ -119,7 +121,6 @@ jobs:
           commit=${{ github.sha }}
           state=${{ job.status }}
           "@ | Set-Content 'pdf-rescue-ci/build-status.txt'
-          git pull --rebase
           git add 'pdf-rescue-ci/build-status.txt'
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
