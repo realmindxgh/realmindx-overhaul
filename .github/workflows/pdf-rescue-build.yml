@@ -5,6 +5,7 @@ on:
     branches: [pdf-rescue-release]
     paths:
       - 'pdf-rescue-ci/source-b64/**'
+      - 'pdf-rescue-ci/launch-hotfix-overlay.b64'
       - '.github/workflows/pdf-rescue-build.yml'
   workflow_dispatch:
 
@@ -44,6 +45,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path 'pdf-rescue' | Out-Null
           tar -xf 'pdf-rescue-source.zip' -C 'pdf-rescue'
           if ($LASTEXITCODE -ne 0) { throw "Source extraction failed with exit code $LASTEXITCODE." }
+
+          if (Test-Path 'pdf-rescue-ci/launch-hotfix-overlay.b64') {
+            $overlay64 = Get-Content 'pdf-rescue-ci/launch-hotfix-overlay.b64' -Raw
+            [IO.File]::WriteAllBytes('pdf-rescue-launch-hotfix.zip', [Convert]::FromBase64String($overlay64))
+            tar -xf 'pdf-rescue-launch-hotfix.zip' -C 'pdf-rescue'
+            if ($LASTEXITCODE -ne 0) { throw "Launch hotfix extraction failed with exit code $LASTEXITCODE." }
+          }
+
           if (-not (Test-Path 'pdf-rescue/PdfRescue.sln')) { throw 'Source reconstruction failed.' }
           Get-Item 'pdf-rescue/PdfRescue.sln' | Format-List FullName,Length
 
@@ -97,6 +106,18 @@ jobs:
           Copy-Item "$($candidate.Directory.FullName)\*" 'dist/app/engines/qpdf' -Recurse -Force
           & 'dist/app/engines/qpdf/qpdf.exe' --version
           if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf verification failed.' }
+
+      - name: Prepare Microsoft Visual C++ runtime
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'dist/prereqs' | Out-Null
+          $redist = 'dist/prereqs/vc_redist.x64.exe'
+          Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $redist
+          $signature = Get-AuthenticodeSignature $redist
+          Write-Host "VC++ redistributable signature: $($signature.Status) / $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne 'Valid') { throw 'The downloaded Microsoft Visual C++ redistributable did not have a valid digital signature.' }
+          if ($signature.SignerCertificate.Subject -notmatch 'Microsoft') { throw 'The Visual C++ redistributable signer was not Microsoft.' }
 
       - name: Install Inno Setup
         shell: pwsh
