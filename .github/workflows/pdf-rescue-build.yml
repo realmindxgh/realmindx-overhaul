@@ -5,6 +5,7 @@ on:
     branches: [pdf-rescue-release]
     paths:
       - 'pdf-rescue-ci/source-b64/**'
+      - 'pdf-rescue-ci/framework-runtime-overlay.b64'
       - '.github/workflows/pdf-rescue-build.yml'
   workflow_dispatch:
 
@@ -44,6 +45,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path 'pdf-rescue' | Out-Null
           tar -xf 'pdf-rescue-source.zip' -C 'pdf-rescue'
           if ($LASTEXITCODE -ne 0) { throw "Source extraction failed with exit code $LASTEXITCODE." }
+
+          $overlay64 = Get-Content 'pdf-rescue-ci/framework-runtime-overlay.b64' -Raw
+          [IO.File]::WriteAllBytes('pdf-rescue-framework-runtime-overlay.zip', [Convert]::FromBase64String($overlay64))
+          tar -xf 'pdf-rescue-framework-runtime-overlay.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw "Framework runtime overlay extraction failed with exit code $LASTEXITCODE." }
+
           if (-not (Test-Path 'pdf-rescue/PdfRescue.sln')) { throw 'Source reconstruction failed.' }
 
       - name: Set up .NET 10
