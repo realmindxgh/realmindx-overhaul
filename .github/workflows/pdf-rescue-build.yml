@@ -4,12 +4,12 @@ on:
   push:
     branches: [pdf-rescue-release]
     paths:
-      - 'pdf-rescue-ci/**'
+      - 'pdf-rescue-ci/source-b64/**'
       - '.github/workflows/pdf-rescue-build.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows:
@@ -18,6 +18,21 @@ jobs:
     steps:
       - name: Checkout release branch
         uses: actions/checkout@v4
+
+      - name: Publish CI run handle
+        shell: pwsh
+        run: |
+          @"
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          commit=${{ github.sha }}
+          state=running
+          "@ | Set-Content 'pdf-rescue-ci/build-status.txt'
+          git config user.name 'pdf-rescue-ci'
+          git config user.email 'pdf-rescue-ci@users.noreply.github.com'
+          git add 'pdf-rescue-ci/build-status.txt'
+          git commit -m "PDF Rescue CI run ${{ github.run_id }} [skip ci]"
+          git push
 
       - name: Reconstruct PDF Rescue source
         shell: pwsh
@@ -93,3 +108,21 @@ jobs:
           path: pdf-rescue/dist/installer/PDF Rescue Setup.exe
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish final CI status
+        if: always()
+        shell: pwsh
+        run: |
+          @"
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          commit=${{ github.sha }}
+          state=${{ job.status }}
+          "@ | Set-Content 'pdf-rescue-ci/build-status.txt'
+          git pull --rebase
+          git add 'pdf-rescue-ci/build-status.txt'
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "PDF Rescue CI ${{ job.status }} ${{ github.run_id }} [skip ci]"
+            git push
+          }
