@@ -1,0 +1,204 @@
+name: Build and Launch-Test PDF Rescue WPF
+
+on:
+  push:
+    branches: [pdf-rescue-release]
+    paths:
+      - 'pdf-rescue-ci/source-b64/**'
+      - 'pdf-rescue-ci/framework-runtime-overlay.b64'
+      - 'pdf-rescue-ci/wpf-shell-overlay.b64'
+      - '.github/workflows/pdf-rescue-wpf-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+
+      - name: Publish CI handle
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @"
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          commit=${{ github.sha }}
+          state=running-wpf
+          "@ | Set-Content 'pdf-rescue-ci/wpf-build-status.txt'
+          git config user.name 'pdf-rescue-ci'
+          git config user.email 'pdf-rescue-ci@users.noreply.github.com'
+          git add 'pdf-rescue-ci/wpf-build-status.txt'
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "PDF Rescue WPF CI run ${{ github.run_id }} [skip ci]"
+            git pull --rebase --autostash
+            git push
+          }
+
+      - name: Reconstruct source and WPF shell
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'pdf-rescue-ci/source-b64/part-*' | Sort-Object Name
+          if ($parts.Count -ne 7) { throw "Expected 7 source parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('pdf-rescue-source.zip', [Convert]::FromBase64String($base64))
+          New-Item -ItemType Directory -Force -Path 'pdf-rescue' | Out-Null
+          tar -xf 'pdf-rescue-source.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw "Source extraction failed with exit code $LASTEXITCODE." }
+
+          if (Test-Path 'pdf-rescue-ci/framework-runtime-overlay.b64') {
+            $framework64 = Get-Content 'pdf-rescue-ci/framework-runtime-overlay.b64' -Raw
+            [IO.File]::WriteAllBytes('framework.zip', [Convert]::FromBase64String($framework64))
+            tar -xf 'framework.zip' -C 'pdf-rescue'
+            if ($LASTEXITCODE -ne 0) { throw 'Framework overlay extraction failed.' }
+          }
+
+          $wpf64 = Get-Content 'pdf-rescue-ci/wpf-shell-overlay.b64' -Raw
+          [IO.File]::WriteAllBytes('wpf.zip', [Convert]::FromBase64String($wpf64))
+          tar -xf 'wpf.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw 'WPF overlay extraction failed.' }
+          if (-not (Test-Path 'pdf-rescue/PdfRescue.sln')) { throw 'Source reconstruction failed.' }
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Restore
+        working-directory: pdf-rescue
+        run: dotnet restore PdfRescue.sln
+
+      - name: Run core smoke tests
+        working-directory: pdf-rescue
+        run: dotnet run --project tests/PdfRescue.SmokeTests/PdfRescue.SmokeTests.csproj -c Release
+
+      - name: Publish self-contained WPF app
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          dotnet publish src/PdfRescue.App/PdfRescue.App.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false `
+            -o dist/app
+          if (-not (Test-Path 'dist/app/PdfRescue.App.exe')) { throw 'Published executable was not produced.' }
+          Get-Item 'dist/app/PdfRescue.App.exe' | Format-List Name,Length,FullName
+
+      - name: Bundle qpdf
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          choco install qpdf -y --no-progress --limit-output
+          $roots = @(Get-ChildItem "$env:ChocolateyInstall\lib" -Directory -Filter 'qpdf*' -ErrorAction SilentlyContinue)
+          $candidate = $null
+          if ($roots.Count -gt 0) {
+            $candidate = Get-ChildItem $roots.FullName -Recurse -File -Filter qpdf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $candidate) { throw 'Could not locate qpdf.' }
+          New-Item -ItemType Directory -Force -Path 'dist/app/engines/qpdf' | Out-Null
+          Copy-Item "$($candidate.Directory.FullName)\*" 'dist/app/engines/qpdf' -Recurse -Force
+          & 'dist/app/engines/qpdf/qpdf.exe' --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf verification failed.' }
+
+      - name: Prepare VC++ runtime
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'dist/prereqs' | Out-Null
+          $vc = 'dist/prereqs/vc_redist.x64.exe'
+          Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $vc
+          $sig = Get-AuthenticodeSignature $vc
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') {
+            throw 'VC++ runtime signature validation failed.'
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress --limit-output
+
+      - name: Build installer
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source }
+          & $iscc '/DSourceDir=..\dist\app' 'installer\PdfRescue.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path 'dist/installer/PDF Rescue Setup.exe')) { throw 'Installer was not produced.' }
+
+      - name: Install and prove main window launches
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'PDF Rescue WPF Test'
+          $setup = (Resolve-Path 'dist/installer/PDF Rescue Setup.exe').Path
+          $logDir = Join-Path $env:LOCALAPPDATA 'PDF Rescue\Logs'
+          $ready = Join-Path $logDir 'window-ready.flag'
+          $startupLog = Join-Path $logDir 'startup.log'
+          Remove-Item $ready -Force -ErrorAction SilentlyContinue
+          Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
+
+          $setupProcess = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installDir" -Wait -PassThru
+          if ($setupProcess.ExitCode -ne 0) { throw "Installer returned $($setupProcess.ExitCode)." }
+
+          $exe = Join-Path $installDir 'PdfRescue.App.exe'
+          if (-not (Test-Path $exe)) { throw "Installed executable missing: $exe" }
+          $process = Start-Process $exe -PassThru
+          $readySeen = $false
+          for ($i = 0; $i -lt 40; $i++) {
+            Start-Sleep -Milliseconds 500
+            $process.Refresh()
+            if ($process.HasExited) {
+              Write-Host "App exited with code $($process.ExitCode)."
+              break
+            }
+            if (Test-Path $ready) {
+              $readySeen = $true
+              break
+            }
+          }
+          if (-not $readySeen) {
+            if (Test-Path $startupLog) {
+              Write-Host '--- startup.log ---'
+              Get-Content $startupLog
+              Write-Host '--- end startup.log ---'
+            }
+            try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
+            throw 'Installed PDF Rescue never reached the loaded main-window gate.'
+          }
+          Write-Host 'PASS: installed PDF Rescue reached the loaded main-window gate.'
+          try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
+
+      - name: Upload launch-proven installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-Rescue-WPF-Launch-Proven-Installer
+          path: pdf-rescue/dist/installer/PDF Rescue Setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish final WPF CI status
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @"
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          commit=${{ github.sha }}
+          state=${{ job.status }}
+          "@ | Set-Content 'pdf-rescue-ci/wpf-build-status.txt'
+          git config user.name 'pdf-rescue-ci'
+          git config user.email 'pdf-rescue-ci@users.noreply.github.com'
+          git add 'pdf-rescue-ci/wpf-build-status.txt'
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "PDF Rescue WPF CI ${{ job.status }} ${{ github.run_id }} [skip ci]"
+            git pull --rebase --autostash
+            git push
+          }
