@@ -76,11 +76,21 @@ jobs:
         working-directory: pdf-rescue
         shell: pwsh
         run: |
-          choco install qpdf -y --no-progress
-          $candidate = Get-ChildItem 'C:\Program Files','C:\Program Files (x86)','C:\ProgramData\chocolatey\lib' `
-            -Recurse -Filter qpdf.exe -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notmatch '\\chocolatey\\bin\\' } |
-            Select-Object -First 1
+          choco install qpdf -y --no-progress --limit-output
+          $roots = @(Get-ChildItem "$env:ChocolateyInstall\lib" -Directory -Filter 'qpdf*' -ErrorAction SilentlyContinue)
+          $candidate = $null
+          if ($roots.Count -gt 0) {
+            $candidate = Get-ChildItem $roots.FullName -Recurse -File -Filter qpdf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $candidate) {
+            $programRoots = @(
+              Get-ChildItem 'C:\Program Files' -Directory -Filter 'qpdf*' -ErrorAction SilentlyContinue
+              Get-ChildItem 'C:\Program Files (x86)' -Directory -Filter 'qpdf*' -ErrorAction SilentlyContinue
+            )
+            if ($programRoots.Count -gt 0) {
+              $candidate = Get-ChildItem $programRoots.FullName -Recurse -File -Filter qpdf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+          }
           if (-not $candidate) { throw 'Could not locate the installed qpdf binary.' }
           Write-Host "Bundling qpdf from $($candidate.Directory.FullName)"
           New-Item -ItemType Directory -Force -Path 'dist/app/engines/qpdf' | Out-Null
@@ -90,7 +100,7 @@ jobs:
 
       - name: Install Inno Setup
         shell: pwsh
-        run: choco install innosetup -y --no-progress
+        run: choco install innosetup -y --no-progress --limit-output
 
       - name: Build installer
         working-directory: pdf-rescue
@@ -125,5 +135,6 @@ jobs:
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
             git commit -m "PDF Rescue CI ${{ job.status }} ${{ github.run_id }} [skip ci]"
+            git pull --rebase --autostash
             git push
           }
