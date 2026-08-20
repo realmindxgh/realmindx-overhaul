@@ -6,6 +6,7 @@ on:
     paths:
       - 'pdf-rescue-ci/source-b64/**'
       - 'pdf-rescue-ci/framework-runtime-overlay.b64'
+      - 'pdf-rescue-ci/wpf-shell-overlay.b64'
       - '.github/workflows/pdf-rescue-build.yml'
   workflow_dispatch:
 
@@ -46,10 +47,17 @@ jobs:
           tar -xf 'pdf-rescue-source.zip' -C 'pdf-rescue'
           if ($LASTEXITCODE -ne 0) { throw "Source extraction failed with exit code $LASTEXITCODE." }
 
-          $overlay64 = Get-Content 'pdf-rescue-ci/framework-runtime-overlay.b64' -Raw
-          [IO.File]::WriteAllBytes('pdf-rescue-framework-runtime-overlay.zip', [Convert]::FromBase64String($overlay64))
-          tar -xf 'pdf-rescue-framework-runtime-overlay.zip' -C 'pdf-rescue'
-          if ($LASTEXITCODE -ne 0) { throw "Framework runtime overlay extraction failed with exit code $LASTEXITCODE." }
+          if (Test-Path 'pdf-rescue-ci/framework-runtime-overlay.b64') {
+            $overlay64 = Get-Content 'pdf-rescue-ci/framework-runtime-overlay.b64' -Raw
+            [IO.File]::WriteAllBytes('pdf-rescue-framework-runtime-overlay.zip', [Convert]::FromBase64String($overlay64))
+            tar -xf 'pdf-rescue-framework-runtime-overlay.zip' -C 'pdf-rescue'
+            if ($LASTEXITCODE -ne 0) { throw "Framework runtime overlay extraction failed with exit code $LASTEXITCODE." }
+          }
+
+          $wpf64 = Get-Content 'pdf-rescue-ci/wpf-shell-overlay.b64' -Raw
+          [IO.File]::WriteAllBytes('pdf-rescue-wpf-shell-overlay.zip', [Convert]::FromBase64String($wpf64))
+          tar -xf 'pdf-rescue-wpf-shell-overlay.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw "WPF shell overlay extraction failed with exit code $LASTEXITCODE." }
 
           if (-not (Test-Path 'pdf-rescue/PdfRescue.sln')) { throw 'Source reconstruction failed.' }
 
@@ -66,13 +74,12 @@ jobs:
         working-directory: pdf-rescue
         run: dotnet run --project tests/PdfRescue.SmokeTests/PdfRescue.SmokeTests.csproj -c Release
 
-      - name: Publish framework-dependent Windows App SDK build
+      - name: Publish self-contained WPF app
         working-directory: pdf-rescue
         shell: pwsh
         run: |
           dotnet publish src/PdfRescue.App/PdfRescue.App.csproj `
             -c Release -r win-x64 --self-contained true `
-            -p:WindowsAppSDKSelfContained=false `
             -p:PublishSingleFile=false `
             -o dist/app
           if (-not (Test-Path 'dist/app/PdfRescue.App.exe')) { throw 'Published executable was not produced.' }
@@ -94,25 +101,16 @@ jobs:
           & 'dist/app/engines/qpdf/qpdf.exe' --version
           if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf verification failed.' }
 
-      - name: Prepare Microsoft runtimes
+      - name: Prepare Microsoft Visual C++ runtime
         working-directory: pdf-rescue
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path 'dist/prereqs' | Out-Null
-
           $vc = 'dist/prereqs/vc_redist.x64.exe'
           Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $vc
           $vcSig = Get-AuthenticodeSignature $vc
           if ($vcSig.Status -ne 'Valid' -or $vcSig.SignerCertificate.Subject -notmatch 'Microsoft') {
             throw 'Microsoft Visual C++ redistributable signature validation failed.'
-          }
-
-          $wasdk = 'dist/prereqs/WindowsAppRuntimeInstall-x64.exe'
-          Invoke-WebRequest 'https://aka.ms/windowsappsdk/2.4/latest/windowsappruntimeinstall-x64.exe' -OutFile $wasdk
-          $wasdkSig = Get-AuthenticodeSignature $wasdk
-          Write-Host "Windows App Runtime signature: $($wasdkSig.Status) / $($wasdkSig.SignerCertificate.Subject)"
-          if ($wasdkSig.Status -ne 'Valid' -or $wasdkSig.SignerCertificate.Subject -notmatch 'Microsoft') {
-            throw 'Windows App Runtime installer signature validation failed.'
           }
 
       - name: Install Inno Setup
@@ -129,6 +127,52 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
           if (-not (Test-Path 'dist/installer/PDF Rescue Setup.exe')) { throw 'Installer was not produced.' }
           Get-Item 'dist/installer/PDF Rescue Setup.exe' | Format-List Name,Length,FullName
+
+      - name: Install and launch-test release candidate
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'PDF Rescue CI Install'
+          $setup = (Resolve-Path 'dist/installer/PDF Rescue Setup.exe').Path
+          $logDir = Join-Path $env:LOCALAPPDATA 'PDF Rescue\Logs'
+          $ready = Join-Path $logDir 'window-ready.flag'
+          $startupLog = Join-Path $logDir 'startup.log'
+          Remove-Item $ready -Force -ErrorAction SilentlyContinue
+          Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
+
+          $installer = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installDir" -Wait -PassThru
+          if ($installer.ExitCode -ne 0) { throw "Installer smoke test failed with exit code $($installer.ExitCode)." }
+
+          $exe = Join-Path $installDir 'PdfRescue.App.exe'
+          if (-not (Test-Path $exe)) { throw "Installed executable was not found at $exe" }
+          $process = Start-Process $exe -PassThru
+
+          $launched = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Milliseconds 500
+            $process.Refresh()
+            if ($process.HasExited) {
+              Write-Host "PDF Rescue exited during launch test with code $($process.ExitCode)."
+              break
+            }
+            if (Test-Path $ready) {
+              $launched = $true
+              break
+            }
+          }
+
+          if (-not $launched) {
+            if (Test-Path $startupLog) {
+              Write-Host '--- PDF Rescue startup.log ---'
+              Get-Content $startupLog
+              Write-Host '--- end startup.log ---'
+            }
+            try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
+            throw 'Installed PDF Rescue did not reach the main-window ready gate.'
+          }
+
+          Write-Host 'Installed PDF Rescue reached its main-window ready gate successfully.'
+          try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
