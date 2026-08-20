@@ -1,0 +1,4 @@
+run_id=32428876134
+run_attempt=1
+commit=c339dec0c8a10d33427c5b905d2b7ecf869cb307
+state=running-wpf
