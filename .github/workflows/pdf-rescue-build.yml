@@ -1,0 +1,95 @@
+name: Build PDF Rescue Windows Installer
+
+on:
+  push:
+    branches: [pdf-rescue-release]
+    paths:
+      - 'pdf-rescue-ci/**'
+      - '.github/workflows/pdf-rescue-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct PDF Rescue source
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'pdf-rescue-ci/source-b64/part-*' | Sort-Object Name
+          if ($parts.Count -ne 7) { throw "Expected 7 source parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('pdf-rescue-source.zip', [Convert]::FromBase64String($base64))
+          Expand-Archive 'pdf-rescue-source.zip' -DestinationPath 'pdf-rescue' -Force
+          if (-not (Test-Path 'pdf-rescue/PdfRescue.sln')) { throw 'Source reconstruction failed.' }
+          Get-Item 'pdf-rescue/PdfRescue.sln' | Format-List FullName,Length
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Restore
+        working-directory: pdf-rescue
+        run: dotnet restore PdfRescue.sln
+
+      - name: Run smoke tests
+        working-directory: pdf-rescue
+        run: dotnet run --project tests/PdfRescue.SmokeTests/PdfRescue.SmokeTests.csproj -c Release
+
+      - name: Publish self-contained Windows app
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          dotnet publish src/PdfRescue.App/PdfRescue.App.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:WindowsAppSDKSelfContained=true `
+            -p:PublishSingleFile=false `
+            -o dist/app
+          if (-not (Test-Path 'dist/app/PdfRescue.App.exe')) { throw 'Published executable was not produced.' }
+          Get-Item 'dist/app/PdfRescue.App.exe' | Format-List Name,Length,FullName
+
+      - name: Install and bundle qpdf
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          choco install qpdf -y --no-progress
+          $candidate = Get-ChildItem 'C:\Program Files','C:\Program Files (x86)','C:\ProgramData\chocolatey\lib' `
+            -Recurse -Filter qpdf.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '\\chocolatey\\bin\\' } |
+            Select-Object -First 1
+          if (-not $candidate) { throw 'Could not locate the installed qpdf binary.' }
+          Write-Host "Bundling qpdf from $($candidate.Directory.FullName)"
+          New-Item -ItemType Directory -Force -Path 'dist/app/engines/qpdf' | Out-Null
+          Copy-Item "$($candidate.Directory.FullName)\*" 'dist/app/engines/qpdf' -Recurse -Force
+          & 'dist/app/engines/qpdf/qpdf.exe' --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf verification failed.' }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source }
+          & $iscc '/DSourceDir=..\dist\app' 'installer\PdfRescue.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path 'dist/installer/PDF Rescue Setup.exe')) { throw 'Installer was not produced.' }
+          Get-Item 'dist/installer/PDF Rescue Setup.exe' | Format-List Name,Length,FullName
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-Rescue-Windows-Installer
+          path: pdf-rescue/dist/installer/PDF Rescue Setup.exe
+          if-no-files-found: error
+          retention-days: 30
