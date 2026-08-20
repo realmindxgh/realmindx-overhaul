@@ -5,7 +5,6 @@ on:
     branches: [pdf-rescue-release]
     paths:
       - 'pdf-rescue-ci/source-b64/**'
-      - 'pdf-rescue-ci/launch-hotfix-overlay.b64'
       - '.github/workflows/pdf-rescue-build.yml'
   workflow_dispatch:
 
@@ -45,16 +44,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path 'pdf-rescue' | Out-Null
           tar -xf 'pdf-rescue-source.zip' -C 'pdf-rescue'
           if ($LASTEXITCODE -ne 0) { throw "Source extraction failed with exit code $LASTEXITCODE." }
-
-          if (Test-Path 'pdf-rescue-ci/launch-hotfix-overlay.b64') {
-            $overlay64 = Get-Content 'pdf-rescue-ci/launch-hotfix-overlay.b64' -Raw
-            [IO.File]::WriteAllBytes('pdf-rescue-launch-hotfix.zip', [Convert]::FromBase64String($overlay64))
-            tar -xf 'pdf-rescue-launch-hotfix.zip' -C 'pdf-rescue'
-            if ($LASTEXITCODE -ne 0) { throw "Launch hotfix extraction failed with exit code $LASTEXITCODE." }
-          }
-
           if (-not (Test-Path 'pdf-rescue/PdfRescue.sln')) { throw 'Source reconstruction failed.' }
-          Get-Item 'pdf-rescue/PdfRescue.sln' | Format-List FullName,Length
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
@@ -69,13 +59,13 @@ jobs:
         working-directory: pdf-rescue
         run: dotnet run --project tests/PdfRescue.SmokeTests/PdfRescue.SmokeTests.csproj -c Release
 
-      - name: Publish self-contained Windows app
+      - name: Publish framework-dependent Windows App SDK build
         working-directory: pdf-rescue
         shell: pwsh
         run: |
           dotnet publish src/PdfRescue.App/PdfRescue.App.csproj `
             -c Release -r win-x64 --self-contained true `
-            -p:WindowsAppSDKSelfContained=true `
+            -p:WindowsAppSDKSelfContained=false `
             -p:PublishSingleFile=false `
             -o dist/app
           if (-not (Test-Path 'dist/app/PdfRescue.App.exe')) { throw 'Published executable was not produced.' }
@@ -91,33 +81,32 @@ jobs:
           if ($roots.Count -gt 0) {
             $candidate = Get-ChildItem $roots.FullName -Recurse -File -Filter qpdf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           }
-          if (-not $candidate) {
-            $programRoots = @(
-              Get-ChildItem 'C:\Program Files' -Directory -Filter 'qpdf*' -ErrorAction SilentlyContinue
-              Get-ChildItem 'C:\Program Files (x86)' -Directory -Filter 'qpdf*' -ErrorAction SilentlyContinue
-            )
-            if ($programRoots.Count -gt 0) {
-              $candidate = Get-ChildItem $programRoots.FullName -Recurse -File -Filter qpdf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-            }
-          }
           if (-not $candidate) { throw 'Could not locate the installed qpdf binary.' }
-          Write-Host "Bundling qpdf from $($candidate.Directory.FullName)"
           New-Item -ItemType Directory -Force -Path 'dist/app/engines/qpdf' | Out-Null
           Copy-Item "$($candidate.Directory.FullName)\*" 'dist/app/engines/qpdf' -Recurse -Force
           & 'dist/app/engines/qpdf/qpdf.exe' --version
           if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf verification failed.' }
 
-      - name: Prepare Microsoft Visual C++ runtime
+      - name: Prepare Microsoft runtimes
         working-directory: pdf-rescue
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path 'dist/prereqs' | Out-Null
-          $redist = 'dist/prereqs/vc_redist.x64.exe'
-          Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $redist
-          $signature = Get-AuthenticodeSignature $redist
-          Write-Host "VC++ redistributable signature: $($signature.Status) / $($signature.SignerCertificate.Subject)"
-          if ($signature.Status -ne 'Valid') { throw 'The downloaded Microsoft Visual C++ redistributable did not have a valid digital signature.' }
-          if ($signature.SignerCertificate.Subject -notmatch 'Microsoft') { throw 'The Visual C++ redistributable signer was not Microsoft.' }
+
+          $vc = 'dist/prereqs/vc_redist.x64.exe'
+          Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $vc
+          $vcSig = Get-AuthenticodeSignature $vc
+          if ($vcSig.Status -ne 'Valid' -or $vcSig.SignerCertificate.Subject -notmatch 'Microsoft') {
+            throw 'Microsoft Visual C++ redistributable signature validation failed.'
+          }
+
+          $wasdk = 'dist/prereqs/WindowsAppRuntimeInstall-x64.exe'
+          Invoke-WebRequest 'https://aka.ms/windowsappsdk/2.4/latest/windowsappruntimeinstall-x64.exe' -OutFile $wasdk
+          $wasdkSig = Get-AuthenticodeSignature $wasdk
+          Write-Host "Windows App Runtime signature: $($wasdkSig.Status) / $($wasdkSig.SignerCertificate.Subject)"
+          if ($wasdkSig.Status -ne 'Valid' -or $wasdkSig.SignerCertificate.Subject -notmatch 'Microsoft') {
+            throw 'Windows App Runtime installer signature validation failed.'
+          }
 
       - name: Install Inno Setup
         shell: pwsh
