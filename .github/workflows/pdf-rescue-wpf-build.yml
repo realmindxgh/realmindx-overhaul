@@ -8,6 +8,7 @@ on:
       - 'pdf-rescue-ci/framework-runtime-overlay.b64'
       - 'pdf-rescue-ci/wpf-shell-overlay.b64'
       - 'pdf-rescue-ci/wpf-overlay-b64/**'
+      - 'pdf-rescue-ci/core-v04/**'
       - '.github/workflows/pdf-rescue-wpf-build.yml'
   workflow_dispatch:
 
@@ -42,7 +43,7 @@ jobs:
             git push
           }
 
-      - name: Reconstruct source and WPF shell
+      - name: Reconstruct synchronized source and WPF shell
         shell: pwsh
         run: |
           $parts = Get-ChildItem 'pdf-rescue-ci/source-b64/part-*' | Sort-Object Name
@@ -70,7 +71,18 @@ jobs:
           [IO.File]::WriteAllBytes('wpf.zip', [Convert]::FromBase64String($wpf64))
           tar -xf 'wpf.zip' -C 'pdf-rescue'
           if ($LASTEXITCODE -ne 0) { throw 'WPF overlay extraction failed.' }
+
+          # Keep the shell and PDF engine on the same API revision. These files are
+          # text overlays so their contents are reviewable and cannot silently drift
+          # behind the WPF feature layer.
+          if (Test-Path 'pdf-rescue-ci/core-v04') {
+            Copy-Item 'pdf-rescue-ci/core-v04/PdfCompressionProfile.cs' 'pdf-rescue/src/PdfRescue.Core/Models/PdfCompressionProfile.cs' -Force
+            Copy-Item 'pdf-rescue-ci/core-v04/IPdfOperations.cs' 'pdf-rescue/src/PdfRescue.Core/Services/IPdfOperations.cs' -Force
+            Copy-Item 'pdf-rescue-ci/core-v04/QpdfOperations.cs' 'pdf-rescue/src/PdfRescue.Infrastructure/Qpdf/QpdfOperations.cs' -Force
+          }
+
           if (-not (Test-Path 'pdf-rescue/PdfRescue.sln')) { throw 'Source reconstruction failed.' }
+          if (-not (Test-Path 'pdf-rescue/src/PdfRescue.Core/Models/PdfCompressionProfile.cs')) { throw 'Synchronized core overlay was not applied.' }
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
