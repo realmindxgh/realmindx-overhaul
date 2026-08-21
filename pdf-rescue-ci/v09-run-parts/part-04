@@ -1,0 +1,44 @@
+t/prereqs' | Out-Null
+    $vc = 'dist/prereqs/vc_redist.x64.exe'
+    Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $vc
+    $sig = Get-AuthenticodeSignature $vc
+    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') { throw 'VC++ runtime signature validation failed.' }
+
+    choco install innosetup -y --no-progress --limit-output
+    Assert-Exit 'Inno Setup installation failed.'
+    $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+    if (-not (Test-Path $iscc)) { $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source }
+    & $iscc '/DSourceDir=..\dist\app' 'installer\PdfRescue.iss'
+    Assert-Exit 'Installer build failed.'
+    $setup = (Resolve-Path 'dist/installer/PDF Rescue Setup.exe').Path
+
+    Write-Host '=== Install exact Setup.exe and prove installed main window ==='
+    $installDir = Join-Path $env:RUNNER_TEMP 'PdfRescueV09Test'
+    $logDir = Join-Path $env:LOCALAPPDATA 'PDF Rescue\Logs'
+    $ready = Join-Path $logDir 'window-ready.flag'
+    $startupLog = Join-Path $logDir 'startup.log'
+    Remove-Item $ready,$startupLog -Force -ErrorAction SilentlyContinue
+    Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+    $setupProcess = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',("/DIR=$installDir") -Wait -PassThru
+    if ($setupProcess.ExitCode -ne 0) { throw "Installer returned $($setupProcess.ExitCode)." }
+    $installedExe = Join-Path $installDir 'PdfRescue.App.exe'
+    if (-not (Test-Path $installedExe)) { throw "Installed executable missing: $installedExe" }
+    $process = Start-Process $installedExe -PassThru
+    $readySeen = $false
+    for ($i = 0; $i -lt 40; $i++) {
+        Start-Sleep -Milliseconds 500
+        $process.Refresh()
+        if ($process.HasExited) { break }
+        if (Test-Path $ready) { $readySeen = $true; break }
+    }
+    if (-not $readySeen) {
+        if (Test-Path $startupLog) { Get-Content $startupLog }
+        try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
+        throw 'Installed PDF Rescue 0.9 never reached the loaded main-window gate.'
+    }
+    Write-Host 'PASS: installed PDF Rescue 0.9 reached the loaded main-window gate.'
+    try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
+}
+finally {
+    Pop-Location
+}
