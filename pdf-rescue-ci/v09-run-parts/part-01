@@ -1,0 +1,51 @@
+', [Convert]::FromBase64String($v0764))
+$v07Expected = '849899da95b8fcefb5f26cdfd12692ecd26374cd11044018d9606aed0becbffc'
+$v07Actual = (Get-FileHash 'v07-overlay.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($v07Actual -ne $v07Expected) { throw "0.7 overlay SHA mismatch: $v07Actual" }
+tar -xf 'v07-overlay.zip' -C 'pdf-rescue'
+Assert-Exit '0.7 overlay extraction failed.'
+
+& 'pdf-rescue-ci/v08-overlay/apply-v08-full.ps1' -ProjectRoot (Resolve-Path 'pdf-rescue').Path
+Assert-Exit '0.8 sealed baseline application failed.'
+
+Write-Host '=== Apply sealed PDF Rescue 0.9 overlay ==='
+$v09Parts = @(Get-ChildItem 'pdf-rescue-ci/v09-overlay-b64/part-*' | Sort-Object Name)
+if ($v09Parts.Count -ne 7) { throw "Expected 7 version 0.9 parts, found $($v09Parts.Count)." }
+$v0964 = ($v09Parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+[IO.File]::WriteAllBytes('v09-overlay.zip', [Convert]::FromBase64String($v0964))
+$v09Expected = 'ff21b67a63c40bc3b2489138fa41213593e864e3427e73f009aff89e1bc22b4a'
+$v09Actual = (Get-FileHash 'v09-overlay.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($v09Actual -ne $v09Expected) { throw "0.9 overlay SHA mismatch: $v09Actual" }
+Expand-Archive -Path 'v09-overlay.zip' -DestinationPath 'pdf-rescue' -Force
+if (-not (Select-String -Path 'pdf-rescue/src/PdfRescue.App/PdfRescue.App.csproj' -Pattern '<Version>0.9.0</Version>' -Quiet)) {
+    throw '0.9 project version was not applied.'
+}
+Write-Host "PASS: verified PDF Rescue 0.9 overlay applied ($v09Actual)."
+
+Push-Location 'pdf-rescue'
+try {
+    Write-Host '=== Restore and core tests ==='
+    dotnet restore PdfRescue.sln
+    Assert-Exit 'Restore failed.'
+    dotnet run --project tests/PdfRescue.SmokeTests/PdfRescue.SmokeTests.csproj -c Release
+    Assert-Exit 'Core smoke tests failed.'
+
+    Write-Host '=== Publish self-contained WPF application ==='
+    dotnet publish src/PdfRescue.App/PdfRescue.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o dist/app
+    Assert-Exit 'WPF publish failed.'
+    if (-not (Test-Path 'dist/app/PdfRescue.App.exe')) { throw 'Published WPF executable is missing.' }
+
+    Write-Host '=== Bundle qpdf with retry ==='
+    $candidate = $null
+    for ($attempt = 1; $attempt -le 3 -and -not $candidate; $attempt++) {
+        Write-Host "qpdf install attempt $attempt of 3"
+        choco install qpdf -y --no-progress --limit-output
+        $roots = @(Get-ChildItem "$env:ChocolateyInstall\lib" -Directory -Filter 'qpdf*' -ErrorAction SilentlyContinue)
+        if ($roots.Count -gt 0) {
+            $candidate = Get-ChildItem $roots.FullName -Recurse -File -Filter qpdf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        }
+        if (-not $candidate) { Start-Sleep -Seconds 8 }
+    }
+    if (-not $candidate) { throw 'Could not obtain qpdf after three attempts.' }
+    New-Item -ItemType Directory -Force -Path 'dist/app/engines/qpdf' | Out-Null
+    Copy-Item "$($candidate.Directory.FullName)\*" 'dist/app/engine
