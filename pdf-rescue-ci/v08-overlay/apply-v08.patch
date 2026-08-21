@@ -6,6 +6,6 @@ new file mode 100644
 +<Project>
 +  <Target Name="PdfRescueApplyV08SealedOverlay" BeforeTargets="PrepareForBuild" Condition="'$(MSBuildProjectName)' == 'PdfRescue.App'">
 +    <Message Importance="high" Text="Applying verified PDF Rescue 0.8 sealed overlay before WPF build." />
-+    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\pdf-rescue-ci\v08-overlay\apply-v08-full.ps1&quot; -ProjectRoot &quot;$(MSBuildThisFileDirectory)&quot;" />
++    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\pdf-rescue-ci\v08-overlay\apply-v08-full.ps1&quot; -ProjectRoot &quot;$(MSBuildProjectDirectory)\..\..&quot;" />
 +  </Target>
 +</Project>
