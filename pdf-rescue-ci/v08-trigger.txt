@@ -1,0 +1,2 @@
+trigger=2026-08-21T15:05:00Z
+purpose=compile and prove PDF Rescue 0.8 markup redaction build
