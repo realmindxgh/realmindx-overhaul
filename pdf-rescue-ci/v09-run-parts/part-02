@@ -1,0 +1,51 @@
+s/qpdf' -Recurse -Force
+    & 'dist/app/engines/qpdf/qpdf.exe' --version
+    Assert-Exit 'Bundled qpdf verification failed.'
+
+    Write-Host '=== Regress PDF operations ==='
+    $sample = (Resolve-Path 'tests/TestFiles/sample-two-page.pdf').Path
+    $reg = Join-Path (Get-Location) 'dist/regression-v09'
+    New-Item -ItemType Directory -Force -Path $reg | Out-Null
+    $cli = 'src/PdfRescue.Cli/PdfRescue.Cli.csproj'
+    dotnet run --project $cli -c Release -- doctor $sample
+    Assert-Exit 'Doctor regression failed.'
+    $merged = Join-Path $reg 'merged.pdf'
+    dotnet run --project $cli -c Release -- merge $sample $sample $merged
+    Assert-Exit 'Merge regression failed.'
+    if (-not (Test-Path $merged)) { throw 'Merged PDF is missing.' }
+    $compressed = Join-Path $reg 'compressed.pdf'
+    dotnet run --project $cli -c Release -- compress balanced $merged $compressed
+    Assert-Exit 'Compression regression failed.'
+    if (-not (Test-Path $compressed)) { throw 'Compressed PDF is missing.' }
+
+    $exe = (Resolve-Path 'dist/app/PdfRescue.App.exe').Path
+
+    Write-Host '=== Regress conversion and OCR ==='
+    $conv = Join-Path (Get-Location) 'dist/conversion-selftest-v09'
+    Remove-Item $conv -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $conv | Out-Null
+    $p = Start-Process $exe -ArgumentList '--selftest-conversions', ('"' + $sample + '"'), ('"' + $conv + '"') -Wait -PassThru
+    if ($p.ExitCode -ne 0) {
+        if (Test-Path (Join-Path $conv 'conversion-selftest-error.txt')) { Get-Content (Join-Path $conv 'conversion-selftest-error.txt') }
+        throw "Conversion self-test exited with $($p.ExitCode)."
+    }
+    foreach ($name in @('exported-page.png','image-created.pdf','conversion-selftest-pass.flag')) {
+        if (-not (Test-Path (Join-Path $conv $name))) { throw "Missing conversion output: $name" }
+    }
+    & 'dist/app/engines/qpdf/qpdf.exe' (Join-Path $conv 'image-created.pdf') --check
+    if ($LASTEXITCODE -notin 0,3) { throw 'Image-created PDF failed qpdf validation.' }
+    $global:LASTEXITCODE = 0
+
+    Write-Host '=== Regress finishing tools ==='
+    $fin = Join-Path (Get-Location) 'dist/finishing-selftest-v09'
+    Remove-Item $fin -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $fin | Out-Null
+    $p = Start-Process $exe -ArgumentList '--selftest-finishing', ('"' + $sample + '"'), ('"' + $fin + '"') -Wait -PassThru
+    if ($p.ExitCode -ne 0) {
+        if (Test-Path (Join-Path $fin 'finishing-selftest-error.txt')) { Get-Content (Join-Path $fin 'finishing-selftest-error.txt') }
+        throw "Finishing self-test exited with $($p.ExitCode)."
+    }
+    if (-not (Test-Path (Join-Path $fin 'finishing-selftest-pass.flag'))) { throw 'Finishing pass flag missing.' }
+    foreach ($name in @('watermarked.pdf','numbered.pdf','header-footer.pdf','metadata.pdf','stamped.pdf')) {
+        $pdf = Join-Path $fin $name
+        if (-not (Test-Path $pdf)) { throw 
