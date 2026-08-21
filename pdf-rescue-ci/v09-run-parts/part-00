@@ -1,0 +1,51 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+function Assert-Exit([string]$Message) {
+    if ($LASTEXITCODE -ne 0) { throw "$Message (exit $LASTEXITCODE)" }
+}
+
+Write-Host '=== PDF Rescue 0.9: reconstruct proven baseline ==='
+$parts = @(Get-ChildItem 'pdf-rescue-ci/source-b64/part-*' | Sort-Object Name)
+if ($parts.Count -ne 7) { throw "Expected 7 source parts, found $($parts.Count)." }
+$base64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+[IO.File]::WriteAllBytes('pdf-rescue-source.zip', [Convert]::FromBase64String($base64))
+Remove-Item 'pdf-rescue' -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path 'pdf-rescue' | Out-Null
+tar -xf 'pdf-rescue-source.zip' -C 'pdf-rescue'
+Assert-Exit 'Base source extraction failed.'
+
+if (Test-Path 'pdf-rescue-ci/framework-runtime-overlay.b64') {
+    $framework64 = Get-Content 'pdf-rescue-ci/framework-runtime-overlay.b64' -Raw
+    [IO.File]::WriteAllBytes('framework.zip', [Convert]::FromBase64String($framework64))
+    tar -xf 'framework.zip' -C 'pdf-rescue'
+    Assert-Exit 'Framework overlay extraction failed.'
+}
+
+$wpfParts = @(Get-ChildItem 'pdf-rescue-ci/wpf-overlay-b64/part-*' | Sort-Object Name)
+if ($wpfParts.Count -ne 7) { throw "Expected 7 WPF overlay parts, found $($wpfParts.Count)." }
+$wpf64 = ($wpfParts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+[IO.File]::WriteAllBytes('wpf.zip', [Convert]::FromBase64String($wpf64))
+tar -xf 'wpf.zip' -C 'pdf-rescue'
+Assert-Exit 'WPF overlay extraction failed.'
+
+Copy-Item 'pdf-rescue-ci/core-v04/PdfCompressionProfile.cs' 'pdf-rescue/src/PdfRescue.Core/Models/PdfCompressionProfile.cs' -Force
+Copy-Item 'pdf-rescue-ci/core-v04/IPdfOperations.cs' 'pdf-rescue/src/PdfRescue.Core/Services/IPdfOperations.cs' -Force
+Copy-Item 'pdf-rescue-ci/core-v04/QpdfOperations.cs' 'pdf-rescue/src/PdfRescue.Infrastructure/Qpdf/QpdfOperations.cs' -Force
+& 'pdf-rescue-ci/v05-overlay/apply-v05.ps1'
+Assert-Exit '0.5 Doctor patch failed.'
+
+$v06Parts = @(Get-ChildItem 'pdf-rescue-ci/v06-overlay-b64/part-*' | Sort-Object Name)
+if ($v06Parts.Count -ne 6) { throw "Expected 6 version 0.6 parts, found $($v06Parts.Count)." }
+$v0664 = ($v06Parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+[IO.File]::WriteAllBytes('v06-overlay.zip', [Convert]::FromBase64String($v0664))
+$v06Expected = '9de0a4a05733c7e85268a44bcbe32b531ebe27defcbfca241a37964f8bfc06ed'
+$v06Actual = (Get-FileHash 'v06-overlay.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($v06Actual -ne $v06Expected) { throw "0.6 overlay SHA mismatch: $v06Actual" }
+tar -xf 'v06-overlay.zip' -C 'pdf-rescue'
+Assert-Exit '0.6 overlay extraction failed.'
+
+$v07Parts = @(Get-ChildItem 'pdf-rescue-ci/v07-overlay-b64/part-*' | Sort-Object Name)
+if ($v07Parts.Count -ne 7) { throw "Expected 7 version 0.7 parts, found $($v07Parts.Count)." }
+$v0764 = ($v07Parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+[IO.File]::WriteAllBytes('v07-overlay.zip
