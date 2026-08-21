@@ -105,6 +105,59 @@ jobs:
           & 'dist/app/engines/qpdf/qpdf.exe' --version
           if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf verification failed.' }
 
+      - name: Run real PDF operation integration tests
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $sample = (Resolve-Path 'tests/TestFiles/sample-two-page.pdf').Path
+          $out = Join-Path (Get-Location) 'dist/integration'
+          Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $cli = 'src/PdfRescue.Cli/PdfRescue.Cli.csproj'
+
+          dotnet run --project $cli -c Release -- doctor $sample
+          if ($LASTEXITCODE -ne 0) { throw 'Doctor integration test failed.' }
+
+          $merged = Join-Path $out 'merged.pdf'
+          dotnet run --project $cli -c Release -- merge $sample $sample $merged
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $merged)) { throw 'Merge integration test failed.' }
+          $doctorOutput = dotnet run --project $cli -c Release -- doctor $merged 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $doctorOutput -notmatch 'Pages:\s+4') {
+            Write-Host $doctorOutput
+            throw 'Merged PDF did not contain four pages.'
+          }
+
+          $compressed = Join-Path $out 'compressed.pdf'
+          dotnet run --project $cli -c Release -- compress balanced $merged $compressed
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $compressed)) { throw 'Compression integration test failed.' }
+
+          $repaired = Join-Path $out 'repaired.pdf'
+          dotnet run --project $cli -c Release -- repair $compressed $repaired
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $repaired)) { throw 'Repair integration test failed.' }
+
+          $web = Join-Path $out 'web.pdf'
+          dotnet run --project $cli -c Release -- linearize $repaired $web
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $web)) { throw 'Linearization integration test failed.' }
+
+          $protected = Join-Path $out 'protected.pdf'
+          dotnet run --project $cli -c Release -- protect $sample 'OpenPass123!' 'OwnerPass123!' $protected
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $protected)) { throw 'Protection integration test failed.' }
+
+          $unlocked = Join-Path $out 'unlocked.pdf'
+          dotnet run --project $cli -c Release -- decrypt $protected 'OpenPass123!' $unlocked
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $unlocked)) { throw 'Decryption integration test failed.' }
+
+          $splitBase = Join-Path $out 'split.pdf'
+          dotnet run --project $cli -c Release -- split $merged 2 $splitBase
+          if ($LASTEXITCODE -ne 0) { throw 'Split integration test failed.' }
+          $splitFiles = @(Get-ChildItem $out -Filter 'split*.pdf')
+          if ($splitFiles.Count -ne 2) {
+            Get-ChildItem $out | Format-Table Name,Length
+            throw "Expected 2 split PDFs, found $($splitFiles.Count)."
+          }
+
+          Write-Host 'PASS: real qpdf merge, split, compression, repair, linearize, protect and decrypt operations.'
+
       - name: Prepare VC++ runtime
         working-directory: pdf-rescue
         shell: pwsh
