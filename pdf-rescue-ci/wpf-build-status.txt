@@ -1,4 +1,4 @@
 run_id=32457789378
 run_attempt=1
 commit=1fb88aea888b93bdd23ff9c138765f07914fa0c8
-state=running-wpf
+state=success
