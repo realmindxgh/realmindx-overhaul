@@ -1,4 +1,4 @@
 run_id=32494541757
 run_attempt=1
 commit=37312db3609b4317a0234af458086a6a4ca8c26c
-state=running
+state=failure
