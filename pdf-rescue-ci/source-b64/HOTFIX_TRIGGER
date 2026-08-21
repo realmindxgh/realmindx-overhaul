@@ -2,4 +2,4 @@ wpf-shell-build=0.4.0
 launch-gate=true
 real-qpdf-integration-tests=true
 workspace-tools=true
-overlay-transport=chunked-v1
+overlay-transport=verified-git-blob-v2
