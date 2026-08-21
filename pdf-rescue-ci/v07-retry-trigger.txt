@@ -1,0 +1,2 @@
+trigger=2026-08-21T14:59:00Z
+purpose=run deterministic 0.7 finishing release gate
