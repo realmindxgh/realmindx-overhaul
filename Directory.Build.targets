@@ -1,0 +1,9 @@
+<Project>
+  <Target Name="PdfRescueApplyV06OcrHotfix"
+          BeforeTargets="CoreCompile"
+          Condition="'$(MSBuildProjectName)' == 'PdfRescue.App' and Exists('$(MSBuildThisFileDirectory)pdf-rescue-ci\v06-hotfix\LocalOcrService.cs')">
+    <Message Importance="high" Text="Applying PDF Rescue 0.6 OCR namespace hotfix before compilation." />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)pdf-rescue-ci\v06-hotfix\LocalOcrService.cs"
+          DestinationFiles="$(MSBuildProjectDirectory)\Services\LocalOcrService.cs" />
+  </Target>
+</Project>
