@@ -1,0 +1,2 @@
+trigger=2026-08-21T19:13:00Z
+purpose=compile test install and launch PDF Rescue 0.9 forms signatures batch
