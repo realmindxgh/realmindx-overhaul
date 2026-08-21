@@ -1,3 +1,4 @@
-wpf-shell-build=0.3.1
+wpf-shell-build=0.4.0
 launch-gate=true
-system-io-fix=true
+real-qpdf-integration-tests=true
+workspace-tools=true
