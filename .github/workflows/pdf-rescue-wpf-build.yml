@@ -135,19 +135,24 @@ jobs:
         working-directory: pdf-rescue
         shell: pwsh
         run: |
-          $installDir = Join-Path $env:RUNNER_TEMP 'PDF Rescue WPF Test'
+          $installDir = Join-Path $env:RUNNER_TEMP 'PdfRescueWpfTest'
           $setup = (Resolve-Path 'dist/installer/PDF Rescue Setup.exe').Path
           $logDir = Join-Path $env:LOCALAPPDATA 'PDF Rescue\Logs'
           $ready = Join-Path $logDir 'window-ready.flag'
           $startupLog = Join-Path $logDir 'startup.log'
           Remove-Item $ready -Force -ErrorAction SilentlyContinue
           Remove-Item $startupLog -Force -ErrorAction SilentlyContinue
+          Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
 
           $setupProcess = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installDir" -Wait -PassThru
           if ($setupProcess.ExitCode -ne 0) { throw "Installer returned $($setupProcess.ExitCode)." }
 
           $exe = Join-Path $installDir 'PdfRescue.App.exe'
-          if (-not (Test-Path $exe)) { throw "Installed executable missing: $exe" }
+          if (-not (Test-Path $exe)) {
+            Write-Host "Expected install directory contents:"
+            if (Test-Path $installDir) { Get-ChildItem $installDir -Recurse | Select-Object -First 50 FullName }
+            throw "Installed executable missing: $exe"
+          }
           $process = Start-Process $exe -PassThru
           $readySeen = $false
           for ($i = 0; $i -lt 40; $i++) {
