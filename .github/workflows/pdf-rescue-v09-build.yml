@@ -1,0 +1,48 @@
+name: Build PDF Rescue 0.9 Forms Signatures Batch
+
+on:
+  push:
+    branches: [pdf-rescue-release]
+    paths:
+      - 'pdf-rescue-ci/v09-trigger.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Reassemble and verify 0.9 release runner
+        shell: pwsh
+        run: |
+          $parts = @(Get-ChildItem 'pdf-rescue-ci/v09-run-parts/part-*' | Sort-Object Name)
+          if ($parts.Count -ne 5) { throw "Expected 5 release-runner parts, found $($parts.Count)." }
+          $content = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          Set-Content -Path 'pdf-rescue-ci/v09-run.ps1' -Value $content -NoNewline
+          $expected = 'c7ced11cca331a347cfaaa98c57a94868136afc5b9ed37d6b90c2c9cf6699559'
+          $actual = (Get-FileHash 'pdf-rescue-ci/v09-run.ps1' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "0.9 runner SHA mismatch: $actual" }
+          Write-Host "PASS: verified 0.9 runner ($actual)."
+
+      - name: Build test install and launch PDF Rescue 0.9
+        shell: pwsh
+        run: ./pdf-rescue-ci/v09-run.ps1
+
+      - name: Upload internal launch-proven 0.9 installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-Rescue-0.9-Internal-Launch-Proven
+          path: pdf-rescue/dist/installer/PDF Rescue Setup.exe
+          if-no-files-found: error
+          retention-days: 30
