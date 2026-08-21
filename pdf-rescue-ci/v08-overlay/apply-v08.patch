@@ -2,11 +2,10 @@ diff --git a/Directory.Build.targets b/Directory.Build.targets
 new file mode 100644
 --- /dev/null
 +++ b/Directory.Build.targets
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,6 @@
 +<Project>
 +  <Target Name="PdfRescueApplyV08SealedOverlay" BeforeTargets="PrepareForBuild" Condition="'$(MSBuildProjectName)' == 'PdfRescue.App'">
 +    <Message Importance="high" Text="Applying verified PDF Rescue 0.8 sealed overlay before WPF build." />
 +    <Exec Command="pwsh -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\pdf-rescue-ci\v08-overlay\apply-v08-full.ps1&quot; -ProjectRoot &quot;$(MSBuildThisFileDirectory)&quot;" />
 +  </Target>
 +</Project>
-+
