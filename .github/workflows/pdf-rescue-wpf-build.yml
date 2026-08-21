@@ -7,6 +7,7 @@ on:
       - 'pdf-rescue-ci/source-b64/**'
       - 'pdf-rescue-ci/framework-runtime-overlay.b64'
       - 'pdf-rescue-ci/wpf-shell-overlay.b64'
+      - 'pdf-rescue-ci/wpf-overlay-b64/**'
       - '.github/workflows/pdf-rescue-wpf-build.yml'
   workflow_dispatch:
 
@@ -59,7 +60,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Framework overlay extraction failed.' }
           }
 
-          $wpf64 = Get-Content 'pdf-rescue-ci/wpf-shell-overlay.b64' -Raw
+          if (Test-Path 'pdf-rescue-ci/wpf-overlay-b64') {
+            $wpfParts = Get-ChildItem 'pdf-rescue-ci/wpf-overlay-b64/part-*' | Sort-Object Name
+            if ($wpfParts.Count -ne 7) { throw "Expected 7 WPF overlay parts, found $($wpfParts.Count)." }
+            $wpf64 = ($wpfParts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          } else {
+            $wpf64 = Get-Content 'pdf-rescue-ci/wpf-shell-overlay.b64' -Raw
+          }
           [IO.File]::WriteAllBytes('wpf.zip', [Convert]::FromBase64String($wpf64))
           tar -xf 'wpf.zip' -C 'pdf-rescue'
           if ($LASTEXITCODE -ne 0) { throw 'WPF overlay extraction failed.' }
@@ -202,7 +209,7 @@ jobs:
 
           $exe = Join-Path $installDir 'PdfRescue.App.exe'
           if (-not (Test-Path $exe)) {
-            Write-Host "Expected install directory contents:"
+            Write-Host 'Expected install directory contents:'
             if (Test-Path $installDir) { Get-ChildItem $installDir -Recurse | Select-Object -First 50 FullName }
             throw "Installed executable missing: $exe"
           }
