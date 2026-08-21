@@ -1,4 +1,4 @@
-run_id=32428897417
+run_id=32456645544
 run_attempt=1
-commit=afb379a3e025ebea5ab10db76b0d13ca668d914b
-state=failure
+commit=a68dd7275d62b89a8957b677d1d79c47f1a8d424
+state=running-wpf
