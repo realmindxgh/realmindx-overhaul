@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows:
@@ -17,6 +17,26 @@ jobs:
     steps:
       - name: Checkout release branch
         uses: actions/checkout@v4
+
+      - name: Publish 0.9 CI handle
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @"
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          commit=${{ github.sha }}
+          state=running
+          "@ | Set-Content 'pdf-rescue-ci/v09-build-status.txt'
+          git config user.name 'pdf-rescue-ci'
+          git config user.email 'pdf-rescue-ci@users.noreply.github.com'
+          git add 'pdf-rescue-ci/v09-build-status.txt'
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "PDF Rescue 0.9 CI run ${{ github.run_id }} [skip ci]"
+            git pull --rebase --autostash
+            git push
+          }
 
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
@@ -46,3 +66,24 @@ jobs:
           path: pdf-rescue/dist/installer/PDF Rescue Setup.exe
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish final 0.9 CI status
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @"
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          commit=${{ github.sha }}
+          state=${{ job.status }}
+          "@ | Set-Content 'pdf-rescue-ci/v09-build-status.txt'
+          git config user.name 'pdf-rescue-ci'
+          git config user.email 'pdf-rescue-ci@users.noreply.github.com'
+          git add 'pdf-rescue-ci/v09-build-status.txt'
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "PDF Rescue 0.9 CI ${{ job.status }} ${{ github.run_id }} [skip ci]"
+            git pull --rebase --autostash
+            git push
+          }
