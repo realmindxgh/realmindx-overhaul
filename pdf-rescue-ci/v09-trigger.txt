@@ -1,2 +1,2 @@
-trigger=2026-08-21T19:19:00Z
-purpose=compile test install and launch PDF Rescue 0.9 after deterministic runner normalization
+trigger=2026-08-21T19:22:00Z
+purpose=compile test install and launch PDF Rescue 0.9 after batch compression API hotfix
