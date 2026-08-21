@@ -1,0 +1,249 @@
+name: PDF Rescue 0.7 Finishing Release Gate
+
+on:
+  push:
+    branches: [pdf-rescue-release]
+    paths:
+      - 'pdf-rescue-ci/v07-retry-trigger.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct 0.7 source
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem 'pdf-rescue-ci/source-b64/part-*' | Sort-Object Name
+          if ($parts.Count -ne 7) { throw "Expected 7 source parts, found $($parts.Count)." }
+          $base64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('pdf-rescue-source.zip', [Convert]::FromBase64String($base64))
+          New-Item -ItemType Directory -Force -Path 'pdf-rescue' | Out-Null
+          tar -xf 'pdf-rescue-source.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw 'Base source extraction failed.' }
+
+          if (Test-Path 'pdf-rescue-ci/framework-runtime-overlay.b64') {
+            $framework64 = Get-Content 'pdf-rescue-ci/framework-runtime-overlay.b64' -Raw
+            [IO.File]::WriteAllBytes('framework.zip', [Convert]::FromBase64String($framework64))
+            tar -xf 'framework.zip' -C 'pdf-rescue'
+            if ($LASTEXITCODE -ne 0) { throw 'Framework overlay extraction failed.' }
+          }
+
+          $wpfParts = Get-ChildItem 'pdf-rescue-ci/wpf-overlay-b64/part-*' | Sort-Object Name
+          if ($wpfParts.Count -ne 7) { throw "Expected 7 WPF overlay parts, found $($wpfParts.Count)." }
+          $wpf64 = ($wpfParts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('wpf.zip', [Convert]::FromBase64String($wpf64))
+          tar -xf 'wpf.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw 'WPF overlay extraction failed.' }
+
+          Copy-Item 'pdf-rescue-ci/core-v04/PdfCompressionProfile.cs' 'pdf-rescue/src/PdfRescue.Core/Models/PdfCompressionProfile.cs' -Force
+          Copy-Item 'pdf-rescue-ci/core-v04/IPdfOperations.cs' 'pdf-rescue/src/PdfRescue.Core/Services/IPdfOperations.cs' -Force
+          Copy-Item 'pdf-rescue-ci/core-v04/QpdfOperations.cs' 'pdf-rescue/src/PdfRescue.Infrastructure/Qpdf/QpdfOperations.cs' -Force
+          & 'pdf-rescue-ci/v05-overlay/apply-v05.ps1'
+          if ($LASTEXITCODE -ne 0) { throw '0.5 Doctor patch failed.' }
+
+          $v06Parts = Get-ChildItem 'pdf-rescue-ci/v06-overlay-b64/part-*' | Sort-Object Name
+          if ($v06Parts.Count -ne 6) { throw "Expected 6 version 0.6 overlay parts, found $($v06Parts.Count)." }
+          $v0664 = ($v06Parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('v06-overlay.zip', [Convert]::FromBase64String($v0664))
+          $v06Expected = '9de0a4a05733c7e85268a44bcbe32b531ebe27defcbfca241a37964f8bfc06ed'
+          $v06Actual = (Get-FileHash 'v06-overlay.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($v06Actual -ne $v06Expected) { throw "0.6 overlay SHA mismatch: $v06Actual" }
+          tar -xf 'v06-overlay.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw '0.6 overlay extraction failed.' }
+
+          $v07Parts = Get-ChildItem 'pdf-rescue-ci/v07-overlay-b64/part-*' | Sort-Object Name
+          if ($v07Parts.Count -ne 7) { throw "Expected 7 version 0.7 overlay parts, found $($v07Parts.Count)." }
+          $v0764 = ($v07Parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('v07-overlay.zip', [Convert]::FromBase64String($v0764))
+          $v07Expected = '849899da95b8fcefb5f26cdfd12692ecd26374cd11044018d9606aed0becbffc'
+          $v07Actual = (Get-FileHash 'v07-overlay.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($v07Actual -ne $v07Expected) { throw "0.7 overlay SHA mismatch: $v07Actual" }
+          tar -xf 'v07-overlay.zip' -C 'pdf-rescue'
+          if ($LASTEXITCODE -ne 0) { throw '0.7 overlay extraction failed.' }
+
+          if (-not (Test-Path 'pdf-rescue/src/PdfRescue.App/Services/PdfFinishingService.cs')) { throw 'Finishing service missing.' }
+          if (-not (Test-Path 'pdf-rescue/src/PdfRescue.App/Services/FinishingSelfTest.cs')) { throw 'Finishing self-test missing.' }
+          $global:LASTEXITCODE = 0
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Restore
+        working-directory: pdf-rescue
+        run: dotnet restore PdfRescue.sln
+
+      - name: Run core smoke tests
+        working-directory: pdf-rescue
+        run: dotnet run --project tests/PdfRescue.SmokeTests/PdfRescue.SmokeTests.csproj -c Release
+
+      - name: Publish self-contained WPF app
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          dotnet publish src/PdfRescue.App/PdfRescue.App.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false -o dist/app
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'dist/app/PdfRescue.App.exe')) { throw 'WPF publish failed.' }
+
+      - name: Bundle qpdf with retry
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $candidate = $null
+          for ($attempt = 1; $attempt -le 3 -and -not $candidate; $attempt++) {
+            Write-Host "qpdf install attempt $attempt of 3"
+            choco install qpdf -y --no-progress --limit-output
+            $roots = @(Get-ChildItem "$env:ChocolateyInstall\lib" -Directory -Filter 'qpdf*' -ErrorAction SilentlyContinue)
+            if ($roots.Count -gt 0) {
+              $candidate = Get-ChildItem $roots.FullName -Recurse -File -Filter qpdf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+            if (-not $candidate) { Start-Sleep -Seconds 8 }
+          }
+          if (-not $candidate) { throw 'Could not obtain qpdf after three attempts.' }
+          New-Item -ItemType Directory -Force -Path 'dist/app/engines/qpdf' | Out-Null
+          Copy-Item "$($candidate.Directory.FullName)\*" 'dist/app/engines/qpdf' -Recurse -Force
+          & 'dist/app/engines/qpdf/qpdf.exe' --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled qpdf verification failed.' }
+
+      - name: Run PDF operation regressions
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $sample = (Resolve-Path 'tests/TestFiles/sample-two-page.pdf').Path
+          $out = Join-Path (Get-Location) 'dist/regression-v07-retry'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $cli = 'src/PdfRescue.Cli/PdfRescue.Cli.csproj'
+          dotnet run --project $cli -c Release -- doctor $sample
+          if ($LASTEXITCODE -ne 0) { throw 'Doctor regression failed.' }
+          $merged = Join-Path $out 'merged.pdf'
+          dotnet run --project $cli -c Release -- merge $sample $sample $merged
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $merged)) { throw 'Merge regression failed.' }
+          $compressed = Join-Path $out 'compressed.pdf'
+          dotnet run --project $cli -c Release -- compress balanced $merged $compressed
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $compressed)) { throw 'Compression regression failed.' }
+
+      - name: Run conversion and OCR self-test
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $sample = (Resolve-Path 'tests/TestFiles/sample-two-page.pdf').Path
+          $out = Join-Path (Get-Location) 'dist/conversion-selftest-v07-retry'
+          Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $exe = (Resolve-Path 'dist/app/PdfRescue.App.exe').Path
+          $p = Start-Process $exe -ArgumentList '--selftest-conversions', ('"' + $sample + '"'), ('"' + $out + '"') -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            if (Test-Path (Join-Path $out 'conversion-selftest-error.txt')) { Get-Content (Join-Path $out 'conversion-selftest-error.txt') }
+            throw "Conversion self-test exited with $($p.ExitCode)."
+          }
+          foreach ($name in @('exported-page.png','image-created.pdf','conversion-selftest-pass.flag')) {
+            if (-not (Test-Path (Join-Path $out $name))) { throw "Missing conversion output: $name" }
+          }
+          $imagePdf = Join-Path $out 'image-created.pdf'
+          & 'dist/app/engines/qpdf/qpdf.exe' $imagePdf --check
+          if ($LASTEXITCODE -notin 0,3) { throw 'Image-created PDF failed qpdf validation.' }
+          $ocrStatus = Get-Content (Join-Path $out 'ocr-status.txt') -Raw
+          if ($ocrStatus -match 'available') {
+            $ocrPdf = Join-Path $out 'ocr-searchable.pdf'
+            if (-not (Test-Path $ocrPdf)) { throw 'OCR PDF missing.' }
+            & 'dist/app/engines/qpdf/qpdf.exe' $ocrPdf --check
+            if ($LASTEXITCODE -notin 0,3) { throw 'OCR-created PDF failed qpdf validation.' }
+          }
+          $global:LASTEXITCODE = 0
+          Write-Host 'PASS: conversion and OCR regression.'
+
+      - name: Run finishing-tools self-test
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $sample = (Resolve-Path 'tests/TestFiles/sample-two-page.pdf').Path
+          $out = Join-Path (Get-Location) 'dist/finishing-selftest-v07-retry'
+          Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $exe = (Resolve-Path 'dist/app/PdfRescue.App.exe').Path
+          $p = Start-Process $exe -ArgumentList '--selftest-finishing', ('"' + $sample + '"'), ('"' + $out + '"') -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            if (Test-Path (Join-Path $out 'finishing-selftest-error.txt')) { Get-Content (Join-Path $out 'finishing-selftest-error.txt') }
+            throw "Finishing self-test exited with $($p.ExitCode)."
+          }
+          if (-not (Test-Path (Join-Path $out 'finishing-selftest-pass.flag'))) { throw 'Finishing pass flag missing.' }
+          foreach ($name in @('watermarked.pdf','numbered.pdf','header-footer.pdf','metadata.pdf','stamped.pdf')) {
+            $pdf = Join-Path $out $name
+            if (-not (Test-Path $pdf)) { throw "Missing finishing output: $name" }
+            & 'dist/app/engines/qpdf/qpdf.exe' $pdf --check
+            if ($LASTEXITCODE -notin 0,3) { throw "qpdf validation failed for $name" }
+          }
+          $global:LASTEXITCODE = 0
+          Write-Host 'PASS: watermark, page numbering, header/footer, metadata and image/signature stamp.'
+
+      - name: Prepare VC++ runtime
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'dist/prereqs' | Out-Null
+          $vc = 'dist/prereqs/vc_redist.x64.exe'
+          Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $vc
+          $sig = Get-AuthenticodeSignature $vc
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') { throw 'VC++ runtime signature validation failed.' }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress --limit-output
+
+      - name: Build installer
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source }
+          & $iscc '/DSourceDir=..\dist\app' 'installer\PdfRescue.iss'
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path 'dist/installer/PDF Rescue Setup.exe')) { throw 'Installer build failed.' }
+
+      - name: Install and prove main window launches
+        working-directory: pdf-rescue
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'PdfRescueV07Retry'
+          $setup = (Resolve-Path 'dist/installer/PDF Rescue Setup.exe').Path
+          $logDir = Join-Path $env:LOCALAPPDATA 'PDF Rescue\Logs'
+          $ready = Join-Path $logDir 'window-ready.flag'
+          $startupLog = Join-Path $logDir 'startup.log'
+          Remove-Item $ready,$startupLog -Force -ErrorAction SilentlyContinue
+          Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
+          $setupProcess = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$installDir" -Wait -PassThru
+          if ($setupProcess.ExitCode -ne 0) { throw "Installer returned $($setupProcess.ExitCode)." }
+          $exe = Join-Path $installDir 'PdfRescue.App.exe'
+          if (-not (Test-Path $exe)) { throw "Installed executable missing: $exe" }
+          $process = Start-Process $exe -PassThru
+          $readySeen = $false
+          for ($i = 0; $i -lt 40; $i++) {
+            Start-Sleep -Milliseconds 500
+            $process.Refresh()
+            if ($process.HasExited) { break }
+            if (Test-Path $ready) { $readySeen = $true; break }
+          }
+          if (-not $readySeen) {
+            if (Test-Path $startupLog) { Get-Content $startupLog }
+            try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
+            throw 'Installed PDF Rescue 0.7 never reached the loaded main-window gate.'
+          }
+          Write-Host 'PASS: installed PDF Rescue 0.7 reached the loaded main-window gate.'
+          try { if (-not $process.HasExited) { $process.Kill($true) } } catch {}
+
+      - name: Upload internal 0.7 installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-Rescue-0.7-Internal-Launch-Proven
+          path: pdf-rescue/dist/installer/PDF Rescue Setup.exe
+          if-no-files-found: error
+          retention-days: 30
