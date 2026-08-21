@@ -1,0 +1,50 @@
+"Missing finishing output: $name" }
+        & 'dist/app/engines/qpdf/qpdf.exe' $pdf --check
+        if ($LASTEXITCODE -notin 0,3) { throw "qpdf validation failed for $name" }
+    }
+    $global:LASTEXITCODE = 0
+
+    Write-Host '=== Regress markup and permanent redaction ==='
+    $markup = Join-Path (Get-Location) 'dist/markup-selftest-v09'
+    Remove-Item $markup -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $markup | Out-Null
+    $p = Start-Process $exe -ArgumentList '--selftest-markup', ('"' + $sample + '"'), ('"' + $markup + '"') -Wait -PassThru
+    if ($p.ExitCode -ne 0) {
+        if (Test-Path (Join-Path $markup 'markup-selftest-error.txt')) { Get-Content (Join-Path $markup 'markup-selftest-error.txt') }
+        throw "Markup self-test exited with $($p.ExitCode)."
+    }
+    foreach ($name in @('markup-text.pdf','markup-highlight.pdf','markup-redacted.pdf','markup-selftest-pass.flag')) {
+        if (-not (Test-Path (Join-Path $markup $name))) { throw "Missing markup output: $name" }
+    }
+    $redacted = Join-Path $markup 'markup-redacted.pdf'
+    & 'dist/app/engines/qpdf/qpdf.exe' $redacted --check
+    if ($LASTEXITCODE -notin 0,3) { throw 'Redacted PDF failed qpdf validation.' }
+    $global:LASTEXITCODE = 0
+
+    Write-Host '=== Test 0.9 forms, visual signature and batch processing ==='
+    $fb = Join-Path (Get-Location) 'dist/forms-batch-selftest-v09'
+    Remove-Item $fb -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $fb | Out-Null
+    $p = Start-Process $exe -ArgumentList '--selftest-forms-batch', ('"' + $sample + '"'), ('"' + $fb + '"') -Wait -PassThru
+    if ($p.ExitCode -ne 0) {
+        if (Test-Path (Join-Path $fb 'forms-batch-selftest-error.txt')) { Get-Content (Join-Path $fb 'forms-batch-selftest-error.txt') }
+        throw "Forms/batch self-test exited with $($p.ExitCode)."
+    }
+    foreach ($name in @('form-filled.pdf','visual-signature.pdf','forms-batch-selftest-pass.flag')) {
+        if (-not (Test-Path (Join-Path $fb $name))) { throw "Missing 0.9 self-test output: $name" }
+    }
+    foreach ($pdf in @(Join-Path $fb 'form-filled.pdf'), @(Join-Path $fb 'visual-signature.pdf')) {
+        & 'dist/app/engines/qpdf/qpdf.exe' $pdf --check
+        if ($LASTEXITCODE -notin 0,3) { throw "qpdf validation failed for $pdf" }
+    }
+    $batchPdfs = @(Get-ChildItem (Join-Path $fb 'batch') -Filter '*.pdf' -File)
+    if ($batchPdfs.Count -ne 2) { throw "Expected two collision-safe batch PDFs, found $($batchPdfs.Count)." }
+    foreach ($pdf in $batchPdfs) {
+        & 'dist/app/engines/qpdf/qpdf.exe' $pdf.FullName --check
+        if ($LASTEXITCODE -notin 0,3) { throw "qpdf validation failed for batch output $($pdf.Name)" }
+    }
+    $global:LASTEXITCODE = 0
+    Write-Host 'PASS: form filling, visual signature placement, and batch processing.'
+
+    Write-Host '=== Prepare prerequisite and build installer ==='
+    New-Item -ItemType Directory -Force -Path 'dis
