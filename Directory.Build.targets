@@ -6,4 +6,12 @@
     <Copy SourceFiles="$(MSBuildThisFileDirectory)pdf-rescue-ci\v06-hotfix\LocalOcrService.cs"
           DestinationFiles="$(MSBuildProjectDirectory)\Services\LocalOcrService.cs" />
   </Target>
+
+  <Target Name="PdfRescueApplyV07FinishingHotfix"
+          BeforeTargets="CoreCompile"
+          Condition="'$(MSBuildProjectName)' == 'PdfRescue.App' and Exists('$(MSBuildThisFileDirectory)pdf-rescue-ci\v07-overlay-b64\PdfFinishingService.hotfix.cs')">
+    <Message Importance="high" Text="Applying PDF Rescue 0.7 finishing-output normalization hotfix before compilation." />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)pdf-rescue-ci\v07-overlay-b64\PdfFinishingService.hotfix.cs"
+          DestinationFiles="$(MSBuildProjectDirectory)\Services\PdfFinishingService.cs" />
+  </Target>
 </Project>
