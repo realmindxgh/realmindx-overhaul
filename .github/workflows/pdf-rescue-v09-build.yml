@@ -49,7 +49,8 @@ jobs:
           $parts = @(Get-ChildItem 'pdf-rescue-ci/v09-run-parts/part-*' | Sort-Object Name)
           if ($parts.Count -ne 5) { throw "Expected 5 release-runner parts, found $($parts.Count)." }
           $content = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
-          Set-Content -Path 'pdf-rescue-ci/v09-run.ps1' -Value $content -NoNewline
+          $content = $content.Replace("`r`n", "`n")
+          [IO.File]::WriteAllText('pdf-rescue-ci/v09-run.ps1', $content, [Text.UTF8Encoding]::new($false))
           $expected = 'c7ced11cca331a347cfaaa98c57a94868136afc5b9ed37d6b90c2c9cf6699559'
           $actual = (Get-FileHash 'pdf-rescue-ci/v09-run.ps1' -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "0.9 runner SHA mismatch: $actual" }
