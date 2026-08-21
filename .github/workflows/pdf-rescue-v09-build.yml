@@ -56,6 +56,14 @@ jobs:
           if ($actual -ne $expected) { throw "0.9 runner SHA mismatch: $actual" }
           Write-Host "PASS: verified 0.9 runner ($actual)."
 
+          $runner = Get-Content 'pdf-rescue-ci/v09-run.ps1' -Raw
+          $marker = "Expand-Archive -Path 'v09-overlay.zip' -DestinationPath 'pdf-rescue' -Force"
+          if (-not $runner.Contains($marker)) { throw 'Could not locate 0.9 overlay expansion marker for hotfix injection.' }
+          $replacement = $marker + "`nCopy-Item 'pdf-rescue-ci/v09-hotfix/BatchPdfService.cs' 'pdf-rescue/src/PdfRescue.App/Services/BatchPdfService.cs' -Force"
+          $runner = $runner.Replace($marker, $replacement)
+          [IO.File]::WriteAllText('pdf-rescue-ci/v09-run.ps1', $runner, [Text.UTF8Encoding]::new($false))
+          Write-Host 'PASS: deterministic 0.9 batch API hotfix injected after sealed overlay.'
+
       - name: Build test install and launch PDF Rescue 0.9
         shell: pwsh
         run: ./pdf-rescue-ci/v09-run.ps1
