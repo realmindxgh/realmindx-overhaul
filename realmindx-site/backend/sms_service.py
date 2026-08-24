@@ -5,6 +5,7 @@ Returns CommunicationResult from .communications instead of bare True/False.
 """
 
 import uuid
+from math import ceil
 
 import requests
 from flask import current_app
@@ -15,6 +16,54 @@ from .communications import (
     record_attempt,
     resolve_communication_mode,
 )
+
+
+GSM_7_BASIC_CHARACTERS = frozenset(
+    "@\u00a3$\u00a5\u00e8\u00e9\u00f9\u00ec\u00f2\u00c7\n\u00d8\u00f8\r\u00c5\u00e5"
+    "\u0394_\u03a6\u0393\u039b\u03a9\u03a0\u03a8\u03a3\u0398\u039e"
+    "\u001b\u00c6\u00e6\u00df\u00c9 !\"#\u00a4%&'()*+,-./"
+    "0123456789:;<=>?\u00a1ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "\u00c4\u00d6\u00d1\u00dc\u00a7\u00bfabcdefghijklmnopqrstuvwxyz\u00e4\u00f6\u00f1\u00fc\u00e0"
+)
+GSM_7_EXTENSION_CHARACTERS = frozenset("^{}\\[~]|\u20ac")
+
+
+def sms_character_metrics(message: str) -> dict:
+    """Return the encoding and billable segment usage for an SMS message."""
+    text = message or ""
+    gsm_7 = all(char in GSM_7_BASIC_CHARACTERS or char in GSM_7_EXTENSION_CHARACTERS for char in text)
+    if gsm_7:
+        units = sum(2 if char in GSM_7_EXTENSION_CHARACTERS else 1 for char in text)
+        single_limit, multipart_limit = 160, 153
+        encoding = "GSM-7"
+    else:
+        # UCS-2 billing is based on UTF-16 code units; astral characters such
+        # as emoji consume a surrogate pair (two units).
+        units = len(text.encode("utf-16-be")) // 2
+        single_limit, multipart_limit = 70, 67
+        encoding = "Unicode"
+
+    if not units:
+        segments = 0
+        limit = single_limit
+        remaining = single_limit
+    elif units <= single_limit:
+        segments = 1
+        limit = single_limit
+        remaining = single_limit - units
+    else:
+        segments = ceil(units / multipart_limit)
+        limit = multipart_limit
+        remaining = (segments * multipart_limit) - units
+
+    return {
+        "characters": len(text),
+        "units": units,
+        "encoding": encoding,
+        "segments": segments,
+        "segment_limit": limit,
+        "remaining_in_segment": remaining,
+    }
 
 
 def normalise_phone(phone: str) -> str | None:

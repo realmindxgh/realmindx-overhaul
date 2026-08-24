@@ -940,6 +940,7 @@ class NewsletterCampaign(TimestampMixin, db.Model):
     __tablename__ = "newsletter_campaigns"
 
     id = db.Column(db.Integer, primary_key=True)
+    channel = db.Column(db.String(20), nullable=False, default="email", index=True)
     subject = db.Column(db.String(255), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     brand = db.Column(db.String(40), nullable=False, default="realmindx")
@@ -965,6 +966,7 @@ class NewsletterCampaignRecipient(TimestampMixin, db.Model):
     __tablename__ = "newsletter_campaign_recipients"
     __table_args__ = (
         UniqueConstraint("campaign_id", "email", name="uq_newsletter_campaign_recipient_email"),
+        UniqueConstraint("campaign_id", "phone", name="uq_newsletter_campaign_recipient_phone"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -980,7 +982,8 @@ class NewsletterCampaignRecipient(TimestampMixin, db.Model):
         nullable=True,
         index=True,
     )
-    email = db.Column(db.String(255), nullable=False)
+    email = db.Column(db.String(255), nullable=True)
+    phone = db.Column(db.String(40), nullable=True)
     status = db.Column(db.String(30), nullable=False, default="pending", index=True)
     provider = db.Column(db.String(40), nullable=True)
     provider_message_id = db.Column(db.String(255), nullable=True)

@@ -597,6 +597,32 @@ class SmsServiceTests(unittest.TestCase):
         self.assertEqual(len(attempts), 1)
         self.assertEqual(attempts[0].template_name, "greeting")
 
+    def test_sms_character_metrics_handles_gsm_multipart_and_extensions(self):
+        from backend.sms_service import sms_character_metrics
+
+        single = sms_character_metrics("A" * 160)
+        multipart = sms_character_metrics("A" * 161)
+        extension = sms_character_metrics("^" * 80)
+
+        self.assertEqual(single["encoding"], "GSM-7")
+        self.assertEqual(single["segments"], 1)
+        self.assertEqual(multipart["segments"], 2)
+        self.assertEqual(extension["units"], 160)
+        self.assertEqual(extension["segments"], 1)
+
+    def test_sms_character_metrics_handles_unicode_segments(self):
+        from backend.sms_service import sms_character_metrics
+
+        single = sms_character_metrics("漢" * 70)
+        multipart = sms_character_metrics("漢" * 71)
+        emoji = sms_character_metrics("😀")
+
+        self.assertEqual(single["encoding"], "Unicode")
+        self.assertEqual(single["segments"], 1)
+        self.assertEqual(multipart["segments"], 2)
+        self.assertEqual(emoji["characters"], 1)
+        self.assertEqual(emoji["units"], 2)
+
 
 class SmsPhoneNormalisationTests(unittest.TestCase):
     def setUp(self):
@@ -1067,6 +1093,142 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         self.assertEqual(recipient.status, "mocked")
         self.assertEqual(recipient.attempt_count, 1)
         self.assertEqual(len(recipient.attempts), 1)
+
+    def test_sms_campaign_sends_contact_and_manual_numbers_with_tracking(self):
+        from backend.models import Contact, ContactSource, NewsletterCampaign, NewsletterCampaignRecipient
+
+        contact = Contact(
+            email="sms-teacher@example.com",
+            full_name="SMS Teacher",
+            phone="0541234567",
+        )
+        contact.sources.append(ContactSource(source="teacher"))
+        db.session.add(contact)
+        db.session.commit()
+
+        response = self.client.post("/api/admin/newsletters/send", json={
+            "channel": "sms",
+            "subject": "Teacher reminder",
+            "sender_id": "RealMindX",
+            "message": "Training starts at 9:00am.",
+            "contact_ids": [contact.id],
+            "recipient_phones": "0541234567\n+233501234567",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["successful"], 2)
+        self.assertEqual(data["mocked"], 2)
+        self.assertEqual(data["failed"], 0)
+        self.assertEqual(data["campaign"]["channel"], "sms")
+        self.assertEqual(data["sms_metrics"]["segments"], 1)
+
+        campaign = db.session.get(NewsletterCampaign, data["campaign"]["id"])
+        recipients = NewsletterCampaignRecipient.query.filter_by(campaign_id=campaign.id).all()
+        self.assertEqual(campaign.recipient_count, 2)
+        self.assertEqual({row.phone for row in recipients}, {"+233541234567", "+233501234567"})
+        self.assertTrue(all(row.email is None for row in recipients))
+        self.assertTrue(all(row.status == "mocked" for row in recipients))
+
+        details = self.client.get(f"/api/admin/newsletters/campaigns/{campaign.id}/recipients")
+        self.assertEqual(details.status_code, 200)
+        destinations = {row["destination"] for row in details.get_json()["recipients"]}
+        self.assertEqual(destinations, {"+233541234567", "+233501234567"})
+
+    def test_sms_campaign_rejects_invalid_numbers_before_sending(self):
+        from backend.models import NewsletterCampaign
+
+        response = self.client.post("/api/admin/newsletters/send", json={
+            "channel": "sms",
+            "subject": "Invalid audience",
+            "sender_id": "RealMindX",
+            "message": "Hello",
+            "recipient_phones": "not-a-number",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("invalid", response.get_json()["error"].lower())
+        self.assertEqual(NewsletterCampaign.query.filter_by(channel="sms").count(), 0)
+
+    @patch("backend.api.admin.send_sms")
+    def test_sms_campaign_reports_successful_and_failed_recipients(self, mock_send_sms):
+        from backend.models import NewsletterCampaignRecipient
+
+        mock_send_sms.side_effect = [
+            CommunicationResult(
+                channel="sms",
+                purpose="marketing",
+                provider="arkesel",
+                mode="live",
+                status="accepted",
+            ),
+            CommunicationResult(
+                channel="sms",
+                purpose="marketing",
+                provider="arkesel",
+                mode="live",
+                status="rejected",
+                error_code="invalid_destination",
+                error_message="Provider rejected this number.",
+            ),
+        ]
+
+        response = self.client.post("/api/admin/newsletters/send", json={
+            "channel": "sms",
+            "subject": "Mixed delivery",
+            "sender_id": "RealMindX",
+            "message": "Delivery status test",
+            "recipient_phones": "+233541234567\n+233501234567",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["sent"], 1)
+        self.assertEqual(data["failed"], 1)
+        self.assertEqual(data["campaign"]["status"], "partial")
+        rows = NewsletterCampaignRecipient.query.filter_by(campaign_id=data["campaign"]["id"]).all()
+        self.assertEqual({row.status for row in rows}, {"accepted", "rejected"})
+        rejected = next(row for row in rows if row.status == "rejected")
+        self.assertEqual(rejected.error_message, "Provider rejected this number.")
+
+    def test_failed_sms_recipient_can_be_retried(self):
+        from backend.models import NewsletterCampaign, NewsletterCampaignRecipient
+
+        campaign = NewsletterCampaign(
+            channel="sms",
+            subject="Retry SMS",
+            title="Retry SMS",
+            sender="RealMindX",
+            content={"message": "Please try again"},
+            audience={},
+            recipient_count=1,
+            failed_count=1,
+            status="failed",
+            initiated_by=self.admin.id,
+        )
+        db.session.add(campaign)
+        db.session.flush()
+        recipient = NewsletterCampaignRecipient(
+            campaign_id=campaign.id,
+            phone="+233541234567",
+            status="failed",
+            attempt_count=1,
+            attempts=[{"status": "failed"}],
+        )
+        db.session.add(recipient)
+        db.session.commit()
+
+        response = self.client.post(
+            f"/api/admin/newsletters/campaigns/{campaign.id}/recipients/{recipient.id}/resend"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        db.session.refresh(recipient)
+        db.session.refresh(campaign)
+        self.assertEqual(recipient.status, "mocked")
+        self.assertEqual(recipient.attempt_count, 2)
+        self.assertEqual(campaign.mocked_count, 1)
+        self.assertEqual(campaign.failed_count, 0)
 
     def test_resend_all_retries_only_failed_newsletter_recipients(self):
         from backend.models import Contact, NewsletterCampaign, NewsletterCampaignRecipient

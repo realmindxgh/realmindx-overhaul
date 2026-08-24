@@ -84,7 +84,7 @@ from ..delivery_service import (
 from ..location_data import parse_location_ids
 from ..order_status import normalize_order_status
 from ..profile_completion import teacher_profile_completion
-from ..sms_service import normalise_phone
+from ..sms_service import normalise_phone, send_sms, sms_character_metrics
 from ..teacher_ids import ensure_application_id, generate_teacher_id, is_valid_teacher_id
 from ..bookshop_search import canonical_taxonomy_value
 
@@ -6710,6 +6710,7 @@ def _newsletter_footer_note(contact, subscriber):
 def _newsletter_campaign_json(row, *, include_content=False):
     payload = {
         "id": row.id,
+        "channel": row.channel or "email",
         "subject": row.subject,
         "title": row.title,
         "brand": row.brand,
@@ -6734,11 +6735,16 @@ NEWSLETTER_FAILED_STATUSES = {"disabled", "failed", "rejected", "expired", "skip
 
 def _newsletter_recipient_json(row):
     attempts = row.attempts or []
+    channel = row.campaign.channel if row.campaign else ("sms" if row.phone else "email")
+    destination = row.phone if channel == "sms" else row.email
     return {
         "id": row.id,
         "campaign_id": row.campaign_id,
         "contact_id": row.contact_id,
         "email": row.email,
+        "phone": row.phone,
+        "channel": channel,
+        "destination": destination,
         "status": row.status,
         "successful": row.status in NEWSLETTER_SUCCESS_STATUSES,
         "provider": row.provider,
@@ -6787,6 +6793,21 @@ def _refresh_newsletter_campaign_counts(campaign):
 
 
 def _send_saved_newsletter_recipient(campaign, recipient):
+    if (campaign.channel or "email") == "sms":
+        message = (campaign.content or {}).get("message") or ""
+        if not message.strip():
+            raise ValueError("This SMS campaign has no saved message to resend.")
+        if not recipient.phone:
+            raise ValueError("This SMS recipient has no saved phone number.")
+        return send_sms(
+            recipient.phone,
+            message,
+            sender_id=campaign.sender,
+            purpose="marketing",
+            recipient_user_id=None,
+            template_name="newsletter_sms_campaign_retry",
+        )
+
     contact = db.session.get(Contact, recipient.contact_id) if recipient.contact_id else None
     if contact is None:
         contact = Contact.query.filter(func.lower(Contact.email) == recipient.email.lower()).first()
@@ -6839,7 +6860,11 @@ def _send_saved_newsletter_recipient(campaign, recipient):
 @login_required
 @permission_required("newsletters.view")
 def list_newsletter_campaigns():
-    rows = NewsletterCampaign.query.order_by(NewsletterCampaign.sent_at.desc(), NewsletterCampaign.id.desc()).limit(100).all()
+    query = NewsletterCampaign.query
+    channel = (request.args.get("channel") or "").strip().lower()
+    if channel in {"email", "sms"}:
+        query = query.filter(NewsletterCampaign.channel == channel)
+    rows = query.order_by(NewsletterCampaign.sent_at.desc(), NewsletterCampaign.id.desc()).limit(100).all()
     return jsonify(items=[_newsletter_campaign_json(row, include_content=True) for row in rows])
 
 
@@ -6851,7 +6876,11 @@ def list_newsletter_campaign_recipients(campaign_id):
     rows = (
         NewsletterCampaignRecipient.query
         .filter_by(campaign_id=campaign.id)
-        .order_by(NewsletterCampaignRecipient.status.asc(), NewsletterCampaignRecipient.email.asc())
+        .order_by(
+            NewsletterCampaignRecipient.status.asc(),
+            NewsletterCampaignRecipient.email.asc(),
+            NewsletterCampaignRecipient.phone.asc(),
+        )
         .all()
     )
     return jsonify(
@@ -6933,6 +6962,7 @@ def delete_newsletter_campaign(campaign_id):
     campaign = db.get_or_404(NewsletterCampaign, campaign_id)
     audit_details = {
         "subject": campaign.subject,
+        "channel": campaign.channel or "email",
         "sender": campaign.sender,
         "sent_at": campaign.sent_at.isoformat() if campaign.sent_at else None,
     }
@@ -6979,11 +7009,173 @@ def preview_newsletter_campaign():
     return jsonify(html=html, subject=subject, brand=brand, sender=sender)
 
 
+def _split_sms_recipients(raw_numbers):
+    if isinstance(raw_numbers, str):
+        return [item.strip() for item in re.split(r"[\n,;]+", raw_numbers) if item.strip()]
+    if isinstance(raw_numbers, list):
+        return [str(item).strip() for item in raw_numbers if str(item).strip()]
+    return []
+
+
+def _send_newsletter_sms_campaign(payload):
+    campaign_name = (payload.get("subject") or payload.get("title") or "").strip()
+    message = payload.get("message") or payload.get("sms_message") or ""
+    sender_id = (
+        payload.get("sender_id")
+        or payload.get("sender")
+        or current_app.config.get("ARKESEL_SENDER_ID", "RealMindX")
+    ).strip()
+    if not campaign_name or not message.strip():
+        return jsonify(error="Campaign name and SMS message are required."), 400
+    if len(campaign_name) > 255:
+        return jsonify(error="Campaign name must be 255 characters or fewer."), 400
+    if not re.fullmatch(r"[A-Za-z0-9 ]{3,11}", sender_id):
+        return jsonify(error="Sender ID must be 3 to 11 letters, numbers, or spaces."), 400
+
+    raw_contact_ids = payload.get("contact_ids") or []
+    contact_ids = []
+    for value in raw_contact_ids:
+        try:
+            contact_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    selected_contacts = Contact.query.filter(Contact.id.in_(contact_ids)).all() if contact_ids else []
+    recipients = []
+    invalid_contacts = []
+    seen = set()
+    for contact in selected_contacts:
+        phone = normalise_phone(contact.phone)
+        if not phone:
+            invalid_contacts.append(contact.full_name or contact.email)
+            continue
+        if phone not in seen:
+            recipients.append((contact, phone))
+            seen.add(phone)
+
+    invalid_numbers = []
+    manual_numbers = _split_sms_recipients(
+        payload.get("recipient_phones") or payload.get("manual_numbers") or payload.get("recipients")
+    )
+    for raw_phone in manual_numbers:
+        phone = normalise_phone(raw_phone)
+        if not phone:
+            invalid_numbers.append(raw_phone)
+            continue
+        if phone not in seen:
+            recipients.append((None, phone))
+            seen.add(phone)
+
+    if invalid_contacts or invalid_numbers:
+        problems = []
+        if invalid_contacts:
+            problems.append(f"{len(invalid_contacts)} selected contact(s) do not have a valid Ghana phone number")
+        if invalid_numbers:
+            problems.append(f"{len(invalid_numbers)} pasted number(s) are invalid")
+        return jsonify(
+            error="; ".join(problems) + ". Correct or remove them before sending.",
+            invalid_contacts=invalid_contacts,
+            invalid_numbers=invalid_numbers,
+        ), 400
+    if not recipients:
+        return jsonify(error="Select at least one contact with a phone number or paste a Ghana phone number."), 400
+
+    metrics = sms_character_metrics(message)
+    sent = 0
+    mocked = 0
+    failed = 0
+    delivery_results = []
+    for contact, phone in recipients:
+        attempted_at = datetime.now(timezone.utc)
+        result = send_sms(
+            phone,
+            message,
+            sender_id=sender_id,
+            purpose="marketing",
+            recipient_user_id=None,
+            template_name="newsletter_sms_campaign",
+        )
+        delivery_results.append((contact, phone, result, attempted_at))
+        if result.status == "mocked":
+            mocked += 1
+        elif result.status in NEWSLETTER_SUCCESS_STATUSES:
+            sent += 1
+        else:
+            failed += 1
+
+    campaign = NewsletterCampaign(
+        channel="sms",
+        subject=campaign_name,
+        title=campaign_name,
+        brand="realmindx",
+        sender=sender_id,
+        content={
+            "message": message,
+            "sender_id": sender_id,
+            "sms_metrics": metrics,
+        },
+        audience={
+            "contact_ids": contact_ids,
+            "recipient_phones": manual_numbers,
+        },
+        recipient_count=len(recipients),
+        sent_count=sent,
+        mocked_count=mocked,
+        failed_count=failed,
+        status="failed" if failed and not (sent or mocked) else "partial" if failed else "completed",
+        initiated_by=current_user.id,
+        sent_at=datetime.now(timezone.utc),
+    )
+    db.session.add(campaign)
+    db.session.flush()
+    for contact, phone, result, attempted_at in delivery_results:
+        recipient = NewsletterCampaignRecipient(
+            campaign_id=campaign.id,
+            contact_id=contact.id if contact else None,
+            phone=phone,
+            status="pending",
+            attempt_count=0,
+            attempts=[],
+        )
+        _apply_newsletter_result(recipient, result, attempted_at)
+        db.session.add(recipient)
+
+    log_action(
+        "send_newsletter_sms_campaign",
+        "newsletter",
+        campaign.id,
+        {
+            "channel": "sms",
+            "subject": campaign_name,
+            "sender_id": sender_id,
+            "segments_per_recipient": metrics["segments"],
+            "sent": sent,
+            "mocked": mocked,
+            "failed": failed,
+        },
+    )
+    db.session.commit()
+    successful = sent + mocked
+    return jsonify(
+        message=f"SMS campaign processed for {len(recipients)} recipient(s): {successful} successful, {failed} failed.",
+        sent=sent,
+        successful=successful,
+        mocked=mocked,
+        failed=failed,
+        sms_metrics=metrics,
+        campaign=_newsletter_campaign_json(campaign, include_content=True),
+    )
+
+
 @admin_bp.post("/newsletters/send")
 @login_required
 @permission_required("newsletters.create")
 def send_newsletter_campaign():
     payload = request.get_json(silent=True) or {}
+    channel = (payload.get("channel") or "email").strip().lower()
+    if channel == "sms":
+        return _send_newsletter_sms_campaign(payload)
+    if channel != "email":
+        return jsonify(error="Newsletter channel must be email or SMS."), 400
     subject = (payload.get("subject") or "").strip()
     title = (payload.get("title") or subject).strip()
     body = (payload.get("body") or "").strip()
@@ -7068,6 +7260,7 @@ def send_newsletter_campaign():
             failed += 1
 
     campaign = NewsletterCampaign(
+        channel="email",
         subject=subject,
         title=title,
         brand=brand,

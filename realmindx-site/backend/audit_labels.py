@@ -97,6 +97,7 @@ ACTION_LABELS = {
     "teacher_document_downloaded": "Downloaded a teacher document",
     "teacher_profile_submitted": "Teacher submitted profile for review",
     "send_newsletter_campaign": "Sent a newsletter campaign",
+    "send_newsletter_sms_campaign": "Sent an SMS campaign",
     "delete_newsletter_campaign": "Deleted a newsletter campaign record",
     "settlement_exported": "Exported a delivery settlement",
     "toggle_user_active": "Changed whether an account can sign in",
@@ -166,6 +167,12 @@ def readable_audit_action(action, details=None):
         if details.get("mocked") and not details.get("failed"):
             return "Recorded a newsletter campaign in mock mode"
         return "Could not deliver a newsletter campaign"
+    if action == "send_newsletter_sms_campaign":
+        if details.get("sent"):
+            return "Sent an SMS campaign"
+        if details.get("mocked") and not details.get("failed"):
+            return "Recorded an SMS campaign in mock mode"
+        return "Could not deliver an SMS campaign"
     if action == "book_request_acknowledgement" and "sent" not in {details.get("email"), details.get("sms")}:
         return "Could not send the book request confirmation"
     if action in {"book_request_availability_notification", "book_request_notification_retried"} and "sent" not in {details.get("email"), details.get("sms")}:
