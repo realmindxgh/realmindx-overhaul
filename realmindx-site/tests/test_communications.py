@@ -1150,6 +1150,21 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         self.assertIn("invalid", response.get_json()["error"].lower())
         self.assertEqual(NewsletterCampaign.query.filter_by(channel="sms").count(), 0)
 
+    def test_sms_campaign_rejects_unapproved_sender_id(self):
+        from backend.models import NewsletterCampaign
+
+        response = self.client.post("/api/admin/newsletters/send", json={
+            "channel": "sms",
+            "subject": "Unapproved sender",
+            "sender_id": "AnotherName",
+            "message": "Hello",
+            "recipient_phones": "+233541234567",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not approved", response.get_json()["error"].lower())
+        self.assertEqual(NewsletterCampaign.query.filter_by(channel="sms").count(), 0)
+
     @patch("backend.api.admin.send_sms")
     def test_sms_campaign_reports_successful_and_failed_recipients(self, mock_send_sms):
         from backend.models import NewsletterCampaignRecipient

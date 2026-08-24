@@ -3028,6 +3028,7 @@ const GSM7_BASIC_CHARACTERS = new Set(Array.from(
   "@\u00a3$\u00a5\u00e8\u00e9\u00f9\u00ec\u00f2\u00c7\n\u00d8\u00f8\r\u00c5\u00e5\u0394_\u03a6\u0393\u039b\u03a9\u03a0\u03a8\u03a3\u0398\u039e\u001b\u00c6\u00e6\u00df\u00c9 !\"#\u00a4%&'()*+,-./0123456789:;<=>?\u00a1ABCDEFGHIJKLMNOPQRSTUVWXYZ\u00c4\u00d6\u00d1\u00dc\u00a7\u00bfabcdefghijklmnopqrstuvwxyz\u00e4\u00f6\u00f1\u00fc\u00e0"
 ));
 const GSM7_EXTENSION_CHARACTERS = new Set(Array.from('^{}\\[~]|\u20ac'));
+const APPROVED_SMS_SENDER_IDS = ['RealMindX'];
 const smsCharacterMetrics = message => {
   const characters = Array.from(message || '');
   const isGsm7 = characters.every(character => GSM7_BASIC_CHARACTERS.has(character) || GSM7_EXTENSION_CHARACTERS.has(character));
@@ -3113,7 +3114,7 @@ const NewsletterWorkspace = ({ onSent }) => {
         ...emptyForm,
         channel: 'sms',
         subject: campaign.subject || '',
-        sms_sender_id: campaign.sender || content.sender_id || 'RealMindX',
+        sms_sender_id: APPROVED_SMS_SENDER_IDS.includes(campaign.sender) ? campaign.sender : APPROVED_SMS_SENDER_IDS[0],
         sms_message: content.message || '',
         manual_numbers: (campaign.audience?.recipient_phones || []).join('\n'),
       });
@@ -3201,8 +3202,8 @@ const NewsletterWorkspace = ({ onSent }) => {
       if (!form.subject.trim() || !form.sms_message.trim()) {
         setError('Add a campaign name and SMS message.'); return;
       }
-      if (!/^[A-Za-z0-9 ]{3,11}$/.test(form.sms_sender_id.trim())) {
-        setError('Sender ID must be 3 to 11 letters, numbers, or spaces.'); return;
+      if (!APPROVED_SMS_SENDER_IDS.includes(form.sms_sender_id)) {
+        setError('Select an approved sender ID.'); return;
       }
       const invalidNumbers = splitSmsNumbers(form.manual_numbers).filter(number => !normaliseGhanaPhone(number));
       if (invalidNumbers.length) {
@@ -3270,7 +3271,7 @@ const NewsletterWorkspace = ({ onSent }) => {
       </> : <div className="newsletter-sms-composer">
         <div className="newsletter-sms-fields">
           <label className="form-group"><span className="form-label">Campaign name</span><input className="form-input" maxLength="255" value={form.subject} onChange={event => setForm(previous => ({ ...previous, subject: event.target.value }))} placeholder="Internal name, e.g. Teacher workshop reminder" /><small>Used in history only; recipients will not see it.</small></label>
-          <label className="form-group"><span className="form-label">Sender ID</span><input className="form-input" maxLength="11" value={form.sms_sender_id} onChange={event => setForm(previous => ({ ...previous, sms_sender_id: event.target.value }))} placeholder="RealMindX" /><small>3–11 registered letters, numbers, or spaces.</small></label>
+          <label className="form-group"><span className="form-label">Approved sender ID</span><select className="form-select" value={form.sms_sender_id} onChange={event => setForm(previous => ({ ...previous, sms_sender_id: event.target.value }))}>{APPROVED_SMS_SENDER_IDS.map(senderId => <option key={senderId} value={senderId}>{senderId}</option>)}</select><small>Only sender IDs registered and approved for RealMindX appear here.</small></label>
         </div>
         <label className="form-group newsletter-sms-message"><span className="form-label">SMS message</span><textarea className="form-textarea" rows="8" value={form.sms_message} onChange={event => setForm(previous => ({ ...previous, sms_message: event.target.value }))} placeholder="Write the text recipients should receive…" /></label>
         <div className="newsletter-sms-metrics" aria-live="polite">

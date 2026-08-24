@@ -7017,20 +7017,21 @@ def _split_sms_recipients(raw_numbers):
     return []
 
 
+NEWSLETTER_SMS_SENDER_IDS = ("RealMindX",)
+
+
 def _send_newsletter_sms_campaign(payload):
     campaign_name = (payload.get("subject") or payload.get("title") or "").strip()
     message = payload.get("message") or payload.get("sms_message") or ""
-    sender_id = (
-        payload.get("sender_id")
-        or payload.get("sender")
-        or current_app.config.get("ARKESEL_SENDER_ID", "RealMindX")
-    ).strip()
+    sender_id = str(payload.get("sender_id") or payload.get("sender") or NEWSLETTER_SMS_SENDER_IDS[0]).strip()
     if not campaign_name or not message.strip():
         return jsonify(error="Campaign name and SMS message are required."), 400
     if len(campaign_name) > 255:
         return jsonify(error="Campaign name must be 255 characters or fewer."), 400
-    if not re.fullmatch(r"[A-Za-z0-9 ]{3,11}", sender_id):
-        return jsonify(error="Sender ID must be 3 to 11 letters, numbers, or spaces."), 400
+    if sender_id not in NEWSLETTER_SMS_SENDER_IDS:
+        return jsonify(
+            error=f"Sender ID is not approved. Choose one of: {', '.join(NEWSLETTER_SMS_SENDER_IDS)}."
+        ), 400
 
     raw_contact_ids = payload.get("contact_ids") or []
     contact_ids = []
