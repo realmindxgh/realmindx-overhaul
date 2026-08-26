@@ -282,6 +282,13 @@ export const api = {
   adminGetNewsletterDraft: () => apiFetch('/admin/newsletter-draft'),
   adminSaveNewsletterDraft: (payload) => apiFetch('/admin/newsletter-draft', { method: 'POST', body: payload }),
   adminDeleteNewsletterDraft: () => apiFetch('/admin/newsletter-draft', { method: 'DELETE' }),
+  adminListContactGroups: () => apiFetch('/admin/contact-groups'),
+  adminCreateContactGroup: (payload) => apiFetch('/admin/contact-groups', { method: 'POST', body: payload }),
+  adminUpdateContactGroup: (id, payload) => apiFetch(`/admin/contact-groups/${id}`, { method: 'PUT', body: payload }),
+  adminDeleteContactGroup: (id) => apiFetch(`/admin/contact-groups/${id}`, { method: 'DELETE' }),
+  adminContactGroupContacts: (id) => apiFetch(`/admin/contact-groups/${id}/contacts`),
+  adminAddContactsToGroup: (id, payload) => apiFetch(`/admin/contact-groups/${id}/contacts`, { method: 'POST', body: payload }),
+  adminRemoveContactsFromGroup: (id, payload) => apiFetch(`/admin/contact-groups/${id}/contacts`, { method: 'DELETE', body: payload }),
   adminContacts: (params = {}) => {
     const sp = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {

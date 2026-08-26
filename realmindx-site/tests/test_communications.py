@@ -1672,6 +1672,88 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         self.assertEqual(draft["channel"], "sms")
         self.assertEqual(draft["sms_sender_id"], "RealMindX")
 
+    def test_contact_group_create_and_list(self):
+        from backend.models import Contact
+        c1 = Contact(email="grp1@example.com", full_name="G1")
+        c2 = Contact(email="grp2@example.com", full_name="G2")
+        db.session.add_all([c1, c2]); db.session.commit()
+
+        resp = self.client.post("/api/admin/contact-groups", json={
+            "name": "Test Group", "contact_ids": [c1.id, c2.id],
+        })
+        self.assertEqual(resp.status_code, 201)
+        group_id = resp.get_json()["contact_group"]["id"]
+
+        resp2 = self.client.get("/api/admin/contact-groups")
+        self.assertEqual(resp2.status_code, 200)
+        items = resp2.get_json()["items"]
+        self.assertTrue(any(g["id"] == group_id and g["member_count"] == 2 for g in items))
+
+    def test_contact_group_update_name(self):
+        resp = self.client.post("/api/admin/contact-groups", json={"name": "Old Name"})
+        gid = resp.get_json()["contact_group"]["id"]
+        resp2 = self.client.put(f"/api/admin/contact-groups/{gid}", json={"name": "New Name"})
+        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.get_json()["contact_group"]["name"], "New Name")
+
+    def test_contact_group_delete(self):
+        resp = self.client.post("/api/admin/contact-groups", json={"name": "Delete Me"})
+        gid = resp.get_json()["contact_group"]["id"]
+        resp2 = self.client.delete(f"/api/admin/contact-groups/{gid}")
+        self.assertEqual(resp2.status_code, 200)
+        resp3 = self.client.get(f"/api/admin/contact-groups/{gid}/contacts")
+        self.assertEqual(resp3.status_code, 404)
+
+    def test_contact_group_add_remove_contacts(self):
+        from backend.models import Contact
+        c = Contact(email="addremove@example.com", full_name="AddRemove")
+        db.session.add(c); db.session.commit()
+        resp = self.client.post("/api/admin/contact-groups", json={"name": "AR Group"})
+        gid = resp.get_json()["contact_group"]["id"]
+
+        resp2 = self.client.post(f"/api/admin/contact-groups/{gid}/contacts", json={"contact_ids": [c.id]})
+        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.get_json()["added"], 1)
+
+        resp3 = self.client.get(f"/api/admin/contact-groups/{gid}/contacts")
+        self.assertEqual(len(resp3.get_json()["contacts"]), 1)
+
+        self.client.delete(f"/api/admin/contact-groups/{gid}/contacts", json={"contact_ids": [c.id]})
+        resp4 = self.client.get(f"/api/admin/contact-groups/{gid}/contacts")
+        self.assertEqual(len(resp4.get_json()["contacts"]), 0)
+
+    def test_contact_group_load_in_newsletter(self):
+        from backend.models import Contact
+        c = Contact(email="newslettergroup@example.com", full_name="NL Group")
+        db.session.add(c); db.session.commit()
+        resp = self.client.post("/api/admin/contact-groups", json={"name": "NL Group", "contact_ids": [c.id]})
+        gid = resp.get_json()["contact_group"]["id"]
+
+        resp2 = self.client.get(f"/api/admin/contact-groups/{gid}/contacts")
+        self.assertEqual(resp2.status_code, 200)
+        contacts = resp2.get_json()["contacts"]
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0]["email"], "newslettergroup@example.com")
+
+    def test_newsletter_send_with_group_contacts(self):
+        from backend.models import Contact
+        c = Contact(email="groupsend@example.com", full_name="Group Send")
+        db.session.add(c); db.session.commit()
+        resp = self.client.post("/api/admin/contact-groups", json={"name": "Send Group", "contact_ids": [c.id]})
+        gid = resp.get_json()["contact_group"]["id"]
+
+        resp2 = self.client.get(f"/api/admin/contact-groups/{gid}/contacts")
+        contact_ids = [x["id"] for x in resp2.get_json()["contacts"]]
+
+        resp3 = self.client.post("/api/admin/newsletters/send", json={
+            "subject": "Group send", "title": "Group send",
+            "sections": [{"body": "<p>Group email</p>"}],
+            "contact_ids": contact_ids,
+        })
+        self.assertEqual(resp3.status_code, 200)
+        data = resp3.get_json()
+        self.assertTrue(data["sent"] + data["mocked"] > 0)
+
 
 class NewsletterUnsubscribeEndpointTests(unittest.TestCase):
     def setUp(self):

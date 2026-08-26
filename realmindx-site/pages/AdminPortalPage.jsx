@@ -3306,7 +3306,15 @@ const NewsletterWorkspace = ({ onSent }) => {
     try { setHistory((await api.adminList('newsletters/campaigns')).items || []); }
     catch (err) { setError(err.message || 'Could not load newsletter history.'); }
   }, []);
-  React.useEffect(() => { loadAudience(); loadHistory(); }, [loadAudience, loadHistory]);
+  const [contactGroups, setContactGroups] = React.useState([]);
+  const [groupName, setGroupName] = React.useState('');
+  const [savingGroup, setSavingGroup] = React.useState(false);
+  const loadGroups = React.useCallback(async () => {
+    if (!isApiMode()) return;
+    try { setContactGroups((await api.adminListContactGroups()).items || []); }
+    catch { /* ignore */ }
+  }, []);
+  React.useEffect(() => { loadAudience(); loadHistory(); loadGroups(); }, [loadAudience, loadHistory, loadGroups]);
   React.useEffect(() => {
     if (!sendingCampaign || sendingCampaign.status !== 'sending') return;
     let active = true;
@@ -3430,6 +3438,30 @@ const NewsletterWorkspace = ({ onSent }) => {
     setSendingProgress([]);
     await loadHistory();
     setTab('history');
+  };
+  const saveSelectionAsGroup = async () => {
+    if (!selected.size || !groupName.trim()) return;
+    setSavingGroup(true); setError('');
+    try {
+      await api.adminCreateContactGroup({ name: groupName.trim(), contact_ids: [...selected] });
+      setGroupName('');
+      await loadGroups();
+      globalToast.success('Contact group saved.');
+    } catch (err) { setError(err.message || 'Could not save group.'); }
+    finally { setSavingGroup(false); }
+  };
+  const loadGroupIntoSelection = async groupId => {
+    if (!groupId) return;
+    try {
+      const data = await api.adminContactGroupContacts(groupId);
+      const groupContactIds = (data.contacts || []).map(c => c.id);
+      setSelected(previous => {
+        const next = new Set(previous);
+        groupContactIds.forEach(id => next.add(id));
+        return next;
+      });
+      globalToast.success(`Loaded ${(data.group || {}).name || 'group'} contacts.`);
+    } catch (err) { setError(err.message || 'Could not load group.'); }
   };
   const submit = async event => {
     event.preventDefault(); setError(''); setResult(null);
@@ -3568,6 +3600,10 @@ const NewsletterWorkspace = ({ onSent }) => {
         <div className="newsletter-audience-search"><Icon name="search" size={16}/><input value={filters.q} onChange={event => setFilters(previous => ({ ...previous, q: event.target.value }))} placeholder="Search name, email, or phone"/></div>
         <select className="form-select" value={filters.source} onChange={event => setFilters(previous => ({ ...previous, source: event.target.value }))}><option value="">All contact sources</option>{['teacher','bookshop','newsletter','enquiry','school','client','admin_added'].map(source => <option key={source} value={source}>{statusLabel(source)}</option>)}</select>
         <div className="newsletter-audience-actions"><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => setSelected(new Set(eligibleContacts.map(contact => contact.id)))}>Select all eligible</button><button type="button" className="btn btn-ghost btn-sm" disabled={!selected.size} onClick={() => setSelected(new Set())}>Clear</button></div>
+      </div>
+      <div className="newsletter-groups-bar">
+        <div className="newsletter-group-load"><span className="form-label">Groups</span><select className="form-select" value="" onChange={event => { const val = event.target.value; if (val) loadGroupIntoSelection(Number(val)); }}><option value="">Load a saved group…</option>{contactGroups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.member_count})</option>)}</select></div>
+        {selected.size > 0 && <div className="newsletter-group-save"><input className="form-input" value={groupName} onChange={event => setGroupName(event.target.value)} placeholder="Group name" onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveSelectionAsGroup(); } }} /><button type="button" className="btn btn-outline-navy btn-sm" disabled={savingGroup || !groupName.trim()} onClick={saveSelectionAsGroup}>{savingGroup ? 'Saving…' : `Save ${selected.size} as group`}</button></div>}
       </div>
       <div className="newsletter-audience-meta"><span><strong>{contacts.length}</strong> contacts shown · <strong>{eligibleContacts.length}</strong> {isSms ? 'with valid phone numbers' : 'eligible'}</span><span className={selected.size ? 'has-selection' : ''}><strong>{selected.size}</strong> selected</span></div>
       <div className="newsletter-contact-grid">{contacts.map(contact => {

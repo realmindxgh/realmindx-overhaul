@@ -7617,3 +7617,18 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 .newsletter-draft-dot.is-saving { background: #f59e0b; animation: newsletter-spin 1s linear infinite; }
 .newsletter-draft-dot.is-saved { background: #22c55e; }
 .newsletter-draft-dot.is-error { background: #dc2626; }
+
+/* Contact groups bar */
+.newsletter-groups-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--gray-100, #e5e7eb);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.newsletter-group-load { display: flex; align-items: center; gap: 6px; }
+.newsletter-group-load .form-select { max-width: 220px; font-size: .78rem; }
+.newsletter-group-save { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.newsletter-group-save .form-input { max-width: 180px; font-size: .78rem; }

@@ -124,6 +124,8 @@ from ..models import (
     NewsletterCampaign,
     NewsletterCampaignRecipient,
     NewsletterDraft,
+    ContactGroup,
+    ContactGroupMember,
     News,
     Order,
     OrderDelivery,
@@ -8175,3 +8177,117 @@ def delete_newsletter_draft():
         db.session.delete(row)
         db.session.commit()
     return jsonify(message="Draft cleared.")
+
+
+def _contact_group_json(row):
+    return {
+        "id": row.id,
+        "name": row.name,
+        "member_count": len(row.members),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@admin_bp.get("/contact-groups")
+@login_required
+@permission_required("newsletters.view")
+def list_contact_groups():
+    rows = ContactGroup.query.order_by(ContactGroup.name.asc()).all()
+    return jsonify(items=[_contact_group_json(row) for row in rows])
+
+
+@admin_bp.post("/contact-groups")
+@login_required
+@permission_required("newsletters.create")
+def create_contact_group():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return jsonify(error="Group name is required."), 400
+    row = ContactGroup(name=name, created_by=current_user.id)
+    db.session.add(row)
+    contact_ids = payload.get("contact_ids") or []
+    if contact_ids:
+        contacts = Contact.query.filter(Contact.id.in_(contact_ids)).all()
+        for contact in contacts:
+            db.session.add(ContactGroupMember(group=row, contact=contact))
+    db.session.commit()
+    return jsonify(contact_group=_contact_group_json(row)), 201
+
+
+@admin_bp.put("/contact-groups/<int:group_id>")
+@login_required
+@permission_required("newsletters.create")
+def update_contact_group(group_id):
+    row = db.get_or_404(ContactGroup, group_id)
+    payload = request.get_json(silent=True) or {}
+    if "name" in payload:
+        name = (payload["name"] or "").strip()
+        if not name:
+            return jsonify(error="Group name is required."), 400
+        row.name = name
+    db.session.commit()
+    return jsonify(contact_group=_contact_group_json(row))
+
+
+@admin_bp.delete("/contact-groups/<int:group_id>")
+@login_required
+@permission_required("newsletters.create")
+def delete_contact_group(group_id):
+    row = db.get_or_404(ContactGroup, group_id)
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify(message="Group deleted.")
+
+
+@admin_bp.get("/contact-groups/<int:group_id>/contacts")
+@login_required
+@permission_required("newsletters.view")
+def list_contact_group_contacts(group_id):
+    row = db.get_or_404(ContactGroup, group_id)
+    contacts = (
+        Contact.query
+        .join(ContactGroupMember, ContactGroupMember.contact_id == Contact.id)
+        .filter(ContactGroupMember.group_id == group_id)
+        .order_by(Contact.full_name.asc(), Contact.email.asc())
+        .all()
+    )
+    return jsonify(
+        group=_contact_group_json(row),
+        contacts=[contact_json(c) for c in contacts],
+    )
+
+
+@admin_bp.post("/contact-groups/<int:group_id>/contacts")
+@login_required
+@permission_required("newsletters.create")
+def add_contacts_to_group(group_id):
+    row = db.get_or_404(ContactGroup, group_id)
+    payload = request.get_json(silent=True) or {}
+    contact_ids = payload.get("contact_ids") or []
+    if not contact_ids:
+        return jsonify(error="Provide at least one contact ID."), 400
+    existing = {m.contact_id for m in ContactGroupMember.query.filter_by(group_id=group_id).all()}
+    added = 0
+    for cid in contact_ids:
+        if cid not in existing:
+            db.session.add(ContactGroupMember(group_id=group_id, contact_id=cid))
+            added += 1
+    db.session.commit()
+    return jsonify(contact_group=_contact_group_json(row), added=added)
+
+
+@admin_bp.delete("/contact-groups/<int:group_id>/contacts")
+@login_required
+@permission_required("newsletters.create")
+def remove_contacts_from_group(group_id):
+    row = db.get_or_404(ContactGroup, group_id)
+    payload = request.get_json(silent=True) or {}
+    contact_ids = payload.get("contact_ids") or []
+    if contact_ids:
+        ContactGroupMember.query.filter(
+            ContactGroupMember.group_id == group_id,
+            ContactGroupMember.contact_id.in_(contact_ids),
+        ).delete(synchronize_session=False)
+        db.session.commit()
+    return jsonify(contact_group=_contact_group_json(row))

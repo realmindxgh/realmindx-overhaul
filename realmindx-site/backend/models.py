@@ -909,6 +909,48 @@ class ContactSource(TimestampMixin, db.Model):
     contact = db.relationship("Contact", back_populates="sources")
 
 
+class ContactGroup(TimestampMixin, db.Model):
+    __tablename__ = "contact_groups"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    created_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    members = db.relationship(
+        "ContactGroupMember",
+        back_populates="group",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ContactGroupMember(TimestampMixin, db.Model):
+    __tablename__ = "contact_group_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "contact_id", name="uq_contact_group_member"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contact_groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    contact_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contacts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    group = db.relationship("ContactGroup", back_populates="members")
+    contact = db.relationship("Contact")
+
+
 class NewsletterSubscriber(TimestampMixin, db.Model):
     __tablename__ = "newsletter_subscribers"
 
