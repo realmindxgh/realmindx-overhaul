@@ -1563,6 +1563,43 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         self.assertEqual(campaign_data["failed_count"], 1)
         self.assertEqual(campaign_data["sent_count"], 2)
 
+    def test_newsletter_send_creates_contact_for_manual_email(self):
+        from backend.models import Contact, NewsletterCampaignRecipient
+        response = self.client.post("/api/admin/newsletters/send", json={
+            "subject": "Manual email test",
+            "title": "Manual email test",
+            "sections": [{"body": "<p>Hello manual</p>"}],
+            "recipient_emails": "manual-new-user@example.com",
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["sent"] + data["mocked"] > 0, "Manual email should be accepted")
+        self.assertEqual(data["failed"], 0)
+        contact = Contact.query.filter_by(email="manual-new-user@example.com").first()
+        self.assertIsNotNone(contact, "Manual email should create a Contact")
+        campaign_id = data["campaign"]["id"]
+        recipients = NewsletterCampaignRecipient.query.filter_by(campaign_id=campaign_id).all()
+        self.assertEqual(len(recipients), 1)
+        self.assertEqual(recipients[0].email, "manual-new-user@example.com")
+
+    def test_newsletter_send_manual_email_known_contact(self):
+        from backend.models import Contact, NewsletterCampaignRecipient
+        contact = Contact(email="known-manual@example.com", full_name="Known Manual")
+        db.session.add(contact)
+        db.session.commit()
+        response = self.client.post("/api/admin/newsletters/send", json={
+            "subject": "Known manual",
+            "title": "Known manual",
+            "sections": [{"body": "<p>Hello known</p>"}],
+            "recipient_emails": "known-manual@example.com",
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertTrue(data["sent"] + data["mocked"] > 0, "Known contact should be accepted")
+        recipients = NewsletterCampaignRecipient.query.filter_by(campaign_id=data["campaign"]["id"]).all()
+        self.assertEqual(len(recipients), 1)
+        self.assertEqual(recipients[0].contact_id, contact.id)
+
     def test_newsletter_draft_create_and_retrieve(self):
         resp = self.client.post("/api/admin/newsletter-draft", json={
             "channel": "email",

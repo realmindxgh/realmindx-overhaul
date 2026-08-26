@@ -7290,8 +7290,9 @@ def send_newsletter_campaign():
         except ValueError:
             continue
         contact = Contact.query.filter_by(email=email).first()
-        if contact:
-            recipients.append((contact, contact.newsletter_subscription))
+        if not contact:
+            contact = upsert_contact(email, source="manual_campaign_recipient")
+        recipients.append((contact, contact.newsletter_subscription))
     if not recipients:
         return jsonify(error="Select at least one gathered contact before sending."), 400
 
