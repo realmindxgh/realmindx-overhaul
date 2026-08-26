@@ -6719,6 +6719,7 @@ def _newsletter_campaign_json(row, *, include_content=False):
         "sent_count": row.sent_count,
         "mocked_count": row.mocked_count,
         "failed_count": row.failed_count,
+        "unknown_count": getattr(row, "unknown_count", 0),
         "status": row.status,
         "sent_at": row.sent_at.isoformat() if row.sent_at else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -6731,6 +6732,7 @@ def _newsletter_campaign_json(row, *, include_content=False):
 
 NEWSLETTER_SUCCESS_STATUSES = {"mocked", "queued", "accepted", "sent", "delivered"}
 NEWSLETTER_FAILED_STATUSES = {"disabled", "failed", "rejected", "expired", "skipped"}
+NEWSLETTER_UNCERTAIN_STATUSES = {"unknown", "pending"}
 
 
 def _newsletter_recipient_json(row):
@@ -6747,7 +6749,9 @@ def _newsletter_recipient_json(row):
         "destination": destination,
         "status": row.status,
         "successful": row.status in NEWSLETTER_SUCCESS_STATUSES,
+        "uncertain": row.status in NEWSLETTER_UNCERTAIN_STATUSES,
         "provider": row.provider,
+        "provider_message_id": row.provider_message_id,
         "error_code": row.error_code,
         "error_message": row.error_message,
         "attempt_count": row.attempt_count,
@@ -6768,7 +6772,10 @@ def _newsletter_attempt_json(result, attempted_at):
 
 
 def _apply_newsletter_result(recipient, result, attempted_at):
-    recipient.status = result.status
+    status = result.status
+    if status == "failed" and result.error_code in ("timeout", "provider_error"):
+        status = "unknown"
+    recipient.status = status
     recipient.provider = result.provider
     recipient.provider_message_id = result.provider_message_id
     recipient.error_code = result.error_code
@@ -6784,10 +6791,13 @@ def _refresh_newsletter_campaign_counts(campaign):
     campaign.mocked_count = sum(row.status == "mocked" for row in rows)
     campaign.sent_count = sum(row.status in (NEWSLETTER_SUCCESS_STATUSES - {"mocked"}) for row in rows)
     campaign.failed_count = sum(row.status in NEWSLETTER_FAILED_STATUSES for row in rows)
+    campaign.unknown_count = sum(row.status in NEWSLETTER_UNCERTAIN_STATUSES for row in rows)
     successful = campaign.sent_count + campaign.mocked_count
+    if campaign.status == "sending":
+        return
     campaign.status = (
         "failed" if campaign.failed_count and not successful
-        else "partial" if campaign.failed_count
+        else "partial" if campaign.failed_count or campaign.unknown_count
         else "completed"
     )
 
@@ -6868,6 +6878,16 @@ def list_newsletter_campaigns():
     return jsonify(items=[_newsletter_campaign_json(row, include_content=True) for row in rows])
 
 
+@admin_bp.get("/newsletters/campaigns/<int:campaign_id>/status")
+@login_required
+@permission_required("newsletters.view")
+def newsletter_campaign_status(campaign_id):
+    campaign = db.get_or_404(NewsletterCampaign, campaign_id)
+    _refresh_newsletter_campaign_counts(campaign)
+    db.session.commit()
+    return jsonify(campaign=_newsletter_campaign_json(campaign, include_content=True))
+
+
 @admin_bp.get("/newsletters/campaigns/<int:campaign_id>/recipients")
 @login_required
 @permission_required("newsletters.view")
@@ -6913,8 +6933,8 @@ def resend_newsletter_recipient(campaign_id, recipient_id):
         id=recipient_id,
         campaign_id=campaign.id,
     ).first_or_404()
-    if recipient.status not in NEWSLETTER_FAILED_STATUSES:
-        return jsonify(error="Only failed newsletter deliveries can be resent."), 409
+    if recipient.status not in NEWSLETTER_FAILED_STATUSES and recipient.status not in NEWSLETTER_UNCERTAIN_STATUSES:
+        return jsonify(error="Only failed or uncertain newsletter deliveries can be resent."), 409
     results = _retry_newsletter_recipients(campaign, [recipient])
     log_action(
         "resend_newsletter_recipient",
@@ -6936,7 +6956,7 @@ def resend_failed_newsletter_recipients(campaign_id):
     campaign = db.get_or_404(NewsletterCampaign, campaign_id)
     failed_rows = NewsletterCampaignRecipient.query.filter(
         NewsletterCampaignRecipient.campaign_id == campaign.id,
-        NewsletterCampaignRecipient.status.in_(NEWSLETTER_FAILED_STATUSES),
+        NewsletterCampaignRecipient.status.in_(NEWSLETTER_FAILED_STATUSES | NEWSLETTER_UNCERTAIN_STATUSES),
     ).all()
     if not failed_rows:
         return jsonify(error="This campaign has no failed recipients to resend."), 409
@@ -7081,27 +7101,6 @@ def _send_newsletter_sms_campaign(payload):
         return jsonify(error="Select at least one contact with a phone number or paste a Ghana phone number."), 400
 
     metrics = sms_character_metrics(message)
-    sent = 0
-    mocked = 0
-    failed = 0
-    delivery_results = []
-    for contact, phone in recipients:
-        attempted_at = datetime.now(timezone.utc)
-        result = send_sms(
-            phone,
-            message,
-            sender_id=sender_id,
-            purpose="marketing",
-            recipient_user_id=None,
-            template_name="newsletter_sms_campaign",
-        )
-        delivery_results.append((contact, phone, result, attempted_at))
-        if result.status == "mocked":
-            mocked += 1
-        elif result.status in NEWSLETTER_SUCCESS_STATUSES:
-            sent += 1
-        else:
-            failed += 1
 
     campaign = NewsletterCampaign(
         channel="sms",
@@ -7119,16 +7118,18 @@ def _send_newsletter_sms_campaign(payload):
             "recipient_phones": manual_numbers,
         },
         recipient_count=len(recipients),
-        sent_count=sent,
-        mocked_count=mocked,
-        failed_count=failed,
-        status="failed" if failed and not (sent or mocked) else "partial" if failed else "completed",
+        sent_count=0,
+        mocked_count=0,
+        failed_count=0,
+        unknown_count=0,
+        status="sending",
         initiated_by=current_user.id,
         sent_at=datetime.now(timezone.utc),
     )
     db.session.add(campaign)
     db.session.flush()
-    for contact, phone, result, attempted_at in delivery_results:
+
+    for contact, phone in recipients:
         recipient = NewsletterCampaignRecipient(
             campaign_id=campaign.id,
             contact_id=contact.id if contact else None,
@@ -7137,8 +7138,16 @@ def _send_newsletter_sms_campaign(payload):
             attempt_count=0,
             attempts=[],
         )
-        _apply_newsletter_result(recipient, result, attempted_at)
         db.session.add(recipient)
+
+    db.session.flush()
+
+    recipient_rows = (
+        NewsletterCampaignRecipient.query
+        .filter_by(campaign_id=campaign.id)
+        .order_by(NewsletterCampaignRecipient.id.asc())
+        .all()
+    )
 
     log_action(
         "send_newsletter_sms_campaign",
@@ -7149,21 +7158,88 @@ def _send_newsletter_sms_campaign(payload):
             "subject": campaign_name,
             "sender_id": sender_id,
             "segments_per_recipient": metrics["segments"],
-            "sent": sent,
-            "mocked": mocked,
-            "failed": failed,
+            "total_recipients": len(recipients),
         },
     )
     db.session.commit()
-    successful = sent + mocked
+
+    campaign_data = _newsletter_campaign_json(campaign, include_content=True)
+    campaign_id = campaign.id
+
+    _run_in_background(
+        "SMS campaign %d" % campaign_id,
+        _background_send_sms_campaign,
+        campaign_id,
+    )
+
     return jsonify(
-        message=f"SMS campaign processed for {len(recipients)} recipient(s): {successful} successful, {failed} failed.",
-        sent=sent,
-        successful=successful,
-        mocked=mocked,
-        failed=failed,
-        sms_metrics=metrics,
-        campaign=_newsletter_campaign_json(campaign, include_content=True),
+        message=f"SMS campaign is being sent to {len(recipients)} recipient(s).",
+        campaign=campaign_data,
+        sending=True,
+    )
+
+
+def _background_send_sms_campaign(campaign_id):
+    campaign = db.session.get(NewsletterCampaign, campaign_id)
+    if campaign is None:
+        current_app.logger.warning("[sms campaign %d] Campaign not found.", campaign_id)
+        return
+
+    sender_id = campaign.sender or "RealMindX"
+    message = (campaign.content or {}).get("message") or ""
+    if not message.strip():
+        current_app.logger.warning("[sms campaign %d] Empty message content.", campaign_id)
+        campaign.status = "failed"
+        db.session.commit()
+        return
+
+    pending = (
+        NewsletterCampaignRecipient.query
+        .filter_by(campaign_id=campaign_id, status="pending")
+        .order_by(NewsletterCampaignRecipient.id.asc())
+        .all()
+    )
+
+    for recipient in pending:
+        phone = recipient.phone
+        if not phone:
+            _apply_newsletter_result(
+                recipient,
+                CommunicationResult(
+                    channel="sms", purpose="marketing", provider="none", mode="live",
+                    status="failed", error_code="missing_phone",
+                    error_message="Recipient has no phone number.",
+                ),
+                datetime.now(timezone.utc),
+            )
+            db.session.commit()
+            continue
+
+        attempted_at = datetime.now(timezone.utc)
+        result = send_sms(
+            phone,
+            message,
+            sender_id=sender_id,
+            purpose="marketing",
+            recipient_user_id=None,
+            template_name="newsletter_sms_campaign",
+        )
+        _apply_newsletter_result(recipient, result, attempted_at)
+        db.session.commit()
+
+    _refresh_newsletter_campaign_counts(campaign)
+    if campaign.status == "sending":
+        successful = campaign.sent_count + campaign.mocked_count
+        if campaign.failed_count and not successful:
+            campaign.status = "failed"
+        elif campaign.failed_count or campaign.unknown_count:
+            campaign.status = "partial"
+        else:
+            campaign.status = "completed"
+    db.session.commit()
+    current_app.logger.info(
+        "[sms campaign %d] Complete: %d sent, %d failed, %d unknown",
+        campaign_id, campaign.sent_count, campaign.failed_count, campaign.unknown_count,
     )
 
 

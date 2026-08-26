@@ -951,6 +951,7 @@ class NewsletterCampaign(TimestampMixin, db.Model):
     sent_count = db.Column(db.Integer, default=0, nullable=False)
     mocked_count = db.Column(db.Integer, default=0, nullable=False)
     failed_count = db.Column(db.Integer, default=0, nullable=False)
+    unknown_count = db.Column(db.Integer, default=0, nullable=False)
     status = db.Column(db.String(30), default="completed", nullable=False, index=True)
     initiated_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     sent_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, index=True)

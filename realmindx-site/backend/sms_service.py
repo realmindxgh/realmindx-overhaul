@@ -165,7 +165,7 @@ def send_sms(
                 "from": sender,
                 "sms": message,
             },
-            timeout=10,
+            timeout=current_app.config.get("SMS_SEND_TIMEOUT", 5),
         )
         data = response.json()
         if str(data.get("code", "")).lower() == "ok":

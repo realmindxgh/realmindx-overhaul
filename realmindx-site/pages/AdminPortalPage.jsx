@@ -1910,13 +1910,32 @@ const ArticleSectionsField = ({ sections, onChange }) => {
   const removeSection = index => {
     onChange(safeSections.filter((_, currentIndex) => currentIndex !== index));
   };
-
+  const insertAfter = index => {
+    const blank = { heading: '', body: '', caption: '', image_position: 'top', image_size: 'medium', image_file_id: '', image_url: '' };
+    const next = safeSections.slice();
+    next.splice(index + 1, 0, blank);
+    onChange(next);
+  };
+  const moveSection = (index, direction) => {
+    const target = index + direction;
+    if (target < 0 || target >= safeSections.length) return;
+    const next = safeSections.slice();
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
   return (
     <div className="article-sections-field">
       {safeSections.map((section, index) => (
-        <section className="article-section-editor" key={`section-${index}`}>
+        <React.Fragment key={`section-${index}`}>
+        <section className="article-section-editor">
           <div className="article-section-editor-head">
-            <strong>Section {index + 1}</strong>
+            <div className="article-section-editor-head-left">
+              <span className="article-section-move-buttons">
+                <button type="button" className="article-section-move-btn" disabled={index === 0} onClick={() => moveSection(index, -1)} aria-label="Move section up">&#9650;</button>
+                <button type="button" className="article-section-move-btn" disabled={index === safeSections.length - 1} onClick={() => moveSection(index, 1)} aria-label="Move section down">&#9660;</button>
+              </span>
+              <strong>Section {index + 1}</strong>
+            </div>
             <button type="button" className="table-action-btn danger" onClick={() => removeSection(index)}>Remove</button>
           </div>
           <div className="admin-form-grid">
@@ -1990,6 +2009,10 @@ const ArticleSectionsField = ({ sections, onChange }) => {
             </div>
           </div>
         </section>
+        <button type="button" className="article-section-insert-btn" onClick={() => insertAfter(index)}>
+          <span aria-hidden="true">+</span> Insert section here
+        </button>
+        </React.Fragment>
       ))}
       <button type="button" className="btn btn-outline-navy btn-sm" onClick={addSection}>
         Add Article Section
@@ -3080,6 +3103,8 @@ const NewsletterWorkspace = ({ onSent }) => {
   const [resendingRecipient, setResendingRecipient] = React.useState(null);
   const [result, setResult] = React.useState(null);
   const [error, setError] = React.useState('');
+  const [sendingCampaign, setSendingCampaign] = React.useState(null);
+  const [sendingProgress, setSendingProgress] = React.useState([]);
 
   const loadAudience = React.useCallback(async () => {
     if (!isApiMode()) return;
@@ -3093,6 +3118,21 @@ const NewsletterWorkspace = ({ onSent }) => {
     catch (err) { setError(err.message || 'Could not load newsletter history.'); }
   }, []);
   React.useEffect(() => { loadAudience(); loadHistory(); }, [loadAudience, loadHistory]);
+  React.useEffect(() => {
+    if (!sendingCampaign || sendingCampaign.status !== 'sending') return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const data = await api.adminNewsletterCampaignRecipients(sendingCampaign.id);
+        if (!active) return;
+        if (data.campaign) setSendingCampaign(prev => prev ? { ...prev, ...data.campaign } : prev);
+        setSendingProgress(data.recipients || []);
+      } catch { /* retry next tick */ }
+    };
+    poll();
+    const timer = setInterval(poll, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [sendingCampaign?.id, sendingCampaign?.status]);
 
   const toggle = id => setSelected(previous => { const next = new Set(previous); next.has(id) ? next.delete(id) : next.add(id); return next; });
   const selectChannel = channel => {
@@ -3196,6 +3236,12 @@ const NewsletterWorkspace = ({ onSent }) => {
     } catch (err) { globalToast.error(err.message || 'Failed recipients could not be resent.'); }
     finally { setResendingRecipient(null); }
   };
+  const dismissSendingCampaign = async () => {
+    setSendingCampaign(null);
+    setSendingProgress([]);
+    await loadHistory();
+    setTab('history');
+  };
   const submit = async event => {
     event.preventDefault(); setError(''); setResult(null);
     if (form.channel === 'sms') {
@@ -3215,10 +3261,23 @@ const NewsletterWorkspace = ({ onSent }) => {
     setSending(true);
     try {
       const response = await api.adminSendNewsletter(campaignPayload());
-      setResult(response); setForm({ ...emptyForm, channel: form.channel }); setSelected(new Set());
-      globalToast.success(response.message || (form.channel === 'sms' ? 'SMS campaign sent successfully.' : 'Newsletter sent successfully.'));
-      await loadHistory(); onSent?.(); setTab('history');
-    } catch (err) { setError(err.message || `${form.channel === 'sms' ? 'SMS campaign' : 'Newsletter'} could not be sent.`); globalToast.error(err.message || `${form.channel === 'sms' ? 'SMS campaign' : 'Newsletter'} could not be sent.`); }
+      if (response.sending) {
+        setSendingCampaign(response.campaign);
+        setSendingProgress([]);
+        setForm({ ...emptyForm, channel: form.channel }); setSelected(new Set());
+        globalToast.success(response.message || 'SMS campaign is being sent.');
+        onSent?.();
+      } else {
+        setResult(response); setForm({ ...emptyForm, channel: form.channel }); setSelected(new Set());
+        globalToast.success(response.message || 'Newsletter sent successfully.');
+        await loadHistory(); onSent?.(); setTab('history');
+      }
+    } catch (err) {
+      const message = err.status === 504
+        ? 'The request timed out. The campaign may still be processing — refresh the history before resending.'
+        : (err.message || `${form.channel === 'sms' ? 'SMS campaign' : 'Newsletter'} could not be sent.`);
+      setError(message); globalToast.error(message);
+    }
     finally { setSending(false); }
   };
 
@@ -3227,9 +3286,11 @@ const NewsletterWorkspace = ({ onSent }) => {
   const normalizedRecipientSearch = recipientSearch.trim().toLowerCase();
   const matchesRecipientSearch = recipient => !normalizedRecipientSearch || (recipient.destination || recipient.email || recipient.phone || '').toLowerCase().includes(normalizedRecipientSearch);
   const successfulRecipientTotal = recipientRows.filter(recipient => recipient.successful).length;
-  const failedRecipientTotal = recipientRows.filter(recipient => !recipient.successful).length;
+  const uncertainRecipientTotal = recipientRows.filter(recipient => recipient.uncertain).length;
+  const failedRecipientTotal = recipientRows.filter(recipient => !recipient.successful && !recipient.uncertain).length;
   const successfulRecipients = recipientRows.filter(recipient => recipient.successful && matchesRecipientSearch(recipient));
-  const failedRecipients = recipientRows.filter(recipient => !recipient.successful && matchesRecipientSearch(recipient));
+  const uncertainRecipients = recipientRows.filter(recipient => recipient.uncertain && matchesRecipientSearch(recipient));
+  const failedRecipients = recipientRows.filter(recipient => !recipient.successful && !recipient.uncertain && matchesRecipientSearch(recipient));
   const isSms = form.channel === 'sms';
   const smsMetrics = smsCharacterMetrics(form.sms_message);
   const eligibleContacts = contacts.filter(contact => isSms ? Boolean(normaliseGhanaPhone(contact.phone)) : contact.newsletter_status !== 'unsubscribed');
@@ -3257,6 +3318,30 @@ const NewsletterWorkspace = ({ onSent }) => {
       document.body
     )}
     {error && <div className="newsletter-error">{error}</div>}
+
+    {sendingCampaign ? <div className="newsletter-sending-progress">
+      <div className="newsletter-sending-head">
+        <div>
+          {sendingCampaign.status === 'sending' && <span className="newsletter-sending-spinner" aria-hidden="true" />}
+          <h3>{sendingCampaign.status === 'sending' ? 'Sending campaign…' : sendingCampaign.status === 'completed' ? 'Campaign complete' : sendingCampaign.status === 'partial' ? 'Campaign partially complete' : 'Campaign failed'}</h3>
+          <p>{sendingCampaign.subject} · {sendingCampaign.recipient_count} recipient{sendingCampaign.recipient_count === 1 ? '' : 's'}</p>
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={dismissSendingCampaign}><Icon name="arrow" size={14}/> Back to History</button>
+      </div>
+      <div className="newsletter-sending-counts">
+        <div className="is-success"><strong>{sendingCampaign.sent_count + sendingCampaign.mocked_count}</strong><span>Sent</span></div>
+        {sendingCampaign.unknown_count > 0 && <div className="is-uncertain"><strong>{sendingCampaign.unknown_count}</strong><span>Unknown</span></div>}
+        {sendingCampaign.failed_count > 0 && <div className="is-failed"><strong>{sendingCampaign.failed_count}</strong><span>Failed</span></div>}
+        <div><strong>{sendingProgress.filter(r => r.status === 'pending').length}</strong><span>Pending</span></div>
+      </div>
+      <div className="newsletter-sending-list" role="table" aria-label="Sending progress">
+        {sendingProgress.length ? sendingProgress.map(recipient => <div className="newsletter-sending-row" role="row" key={recipient.id}>
+          <span className={`newsletter-sending-dot is-${recipient.status}`} aria-hidden="true" />
+          <span className="newsletter-sending-dest">{recipient.destination}</span>
+          <span className={`newsletter-sending-label is-${recipient.status}`}>{recipient.status === 'pending' ? 'Waiting…' : recipient.status === 'sent' || recipient.status === 'accepted' || recipient.status === 'delivered' ? 'Sent' : recipient.status === 'mocked' ? 'Mocked' : recipient.status === 'unknown' ? 'Unknown' : recipient.status === 'failed' || recipient.status === 'rejected' ? 'Failed' : recipient.status}</span>
+        </div>) : <p className="newsletter-sending-empty">Preparing recipients…</p>}
+      </div>
+    </div> : <>
 
     {tab === 'compose' && <div className="newsletter-panel newsletter-compose-panel">
       {!isSms ? <>
@@ -3305,7 +3390,7 @@ const NewsletterWorkspace = ({ onSent }) => {
       {isSms ? <label className="form-group newsletter-manual"><span className="form-label">Add any Ghana phone numbers</span><textarea className="form-textarea" rows="4" value={form.manual_numbers} onChange={event => setForm(previous => ({ ...previous, manual_numbers: event.target.value }))} placeholder={"One number per line\n0541234567\n+233541234568"}/><small>These can be new numbers that are not yet in Contacts. Duplicates are removed automatically.</small></label> : <label className="form-group newsletter-manual"><span className="form-label">Paste gathered contact emails</span><textarea className="form-textarea" rows="3" value={form.manual_recipients} onChange={event => setForm(previous => ({ ...previous, manual_recipients: event.target.value }))} placeholder="Only addresses already in the contacts directory will be used."/></label>}
     </div>}
 
-    {tab === 'history' && <div className="newsletter-panel"><div className="newsletter-history-head"><div><h3>Campaign history</h3><p>Email and SMS delivery results with reusable campaign content.</p></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={loadHistory}>Refresh</button></div>{history.length ? <div className="newsletter-history-list">{history.map(campaign => <article key={campaign.id} className="newsletter-history-card"><div><div className="newsletter-history-badges"><span className={`newsletter-status ${campaign.status}`}>{campaign.status}</span><span className={`newsletter-channel-badge is-${campaign.channel || 'email'}`}>{campaign.channel === 'sms' ? 'SMS' : 'Email'}</span></div><h4>{campaign.subject}</h4><p>{campaign.channel === 'sms' ? `Sender ID: ${campaign.sender}` : campaign.sender} · {campaign.sent_at ? new Date(campaign.sent_at).toLocaleString() : ''}</p></div><div className="newsletter-history-counts"><div className="newsletter-recipient-total"><strong>{campaign.recipient_count}</strong><small>recipient{campaign.recipient_count === 1 ? '' : 's'}</small></div><div className="newsletter-history-result-line"><button type="button" className="newsletter-view-recipients" onClick={() => loadCampaignRecipients(campaign)}>View recipients</button><span>{campaign.sent_count + campaign.mocked_count} successful · {campaign.failed_count} failed</span></div></div><div className="newsletter-history-actions"><button type="button" className="btn btn-outline-navy btn-sm" disabled={previewing} onClick={() => viewCampaign(campaign)}><Icon name="eye" size={15}/> View</button><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => loadCampaign(campaign)}><Icon name="edit" size={15}/> Edit & resend</button><button type="button" className="btn btn-sm newsletter-history-delete" onClick={() => setDeletingCampaign(campaign)}><Icon name="trash" size={15}/> Delete</button></div></article>)}</div> : <div className="newsletter-empty"><h3>No campaign history yet</h3><p>Your next email or SMS send will appear here with its recipient-level results.</p></div>}</div>}
+    {tab === 'history' && <div className="newsletter-panel"><div className="newsletter-history-head"><div><h3>Campaign history</h3><p>Email and SMS delivery results with reusable campaign content.</p></div><button type="button" className="btn btn-outline-navy btn-sm" onClick={loadHistory}>Refresh</button></div>{history.length ? <div className="newsletter-history-list">{history.map(campaign => <article key={campaign.id} className="newsletter-history-card"><div><div className="newsletter-history-badges"><span className={`newsletter-status ${campaign.status}`}>{campaign.status}</span><span className={`newsletter-channel-badge is-${campaign.channel || 'email'}`}>{campaign.channel === 'sms' ? 'SMS' : 'Email'}</span></div><h4>{campaign.subject}</h4><p>{campaign.channel === 'sms' ? `Sender ID: ${campaign.sender}` : campaign.sender} · {campaign.sent_at ? new Date(campaign.sent_at).toLocaleString() : ''}</p></div><div className="newsletter-history-counts"><div className="newsletter-recipient-total"><strong>{campaign.recipient_count}</strong><small>recipient{campaign.recipient_count === 1 ? '' : 's'}</small></div><div className="newsletter-history-result-line"><button type="button" className="newsletter-view-recipients" onClick={() => loadCampaignRecipients(campaign)}>View recipients</button><span>{campaign.sent_count + campaign.mocked_count} successful{campaign.unknown_count ? `, ${campaign.unknown_count} unknown` : ''} · {campaign.failed_count} failed</span></div></div><div className="newsletter-history-actions"><button type="button" className="btn btn-outline-navy btn-sm" disabled={previewing} onClick={() => viewCampaign(campaign)}><Icon name="eye" size={15}/> View</button><button type="button" className="btn btn-outline-navy btn-sm" onClick={() => loadCampaign(campaign)}><Icon name="edit" size={15}/> Edit & resend</button><button type="button" className="btn btn-sm newsletter-history-delete" onClick={() => setDeletingCampaign(campaign)}><Icon name="trash" size={15}/> Delete</button></div></article>)}</div> : <div className="newsletter-empty"><h3>No campaign history yet</h3><p>Your next email or SMS send will appear here with its recipient-level results.</p></div>}</div>}
     {recipientCampaign && ReactDOM.createPortal(
       <div
         className="admin-modal-backdrop newsletter-recipients-backdrop"
@@ -3333,8 +3418,12 @@ const NewsletterWorkspace = ({ onSent }) => {
               <div className="newsletter-recipient-column-head"><div><h3>Successful</h3><span>{normalizedRecipientSearch ? `${successfulRecipients.length}/${successfulRecipientTotal}` : successfulRecipientTotal}</span></div></div>
               <div className="newsletter-recipient-table" role="table" aria-label="Successful campaign recipients">{successfulRecipients.length ? successfulRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id}><div role="cell"><strong>{recipient.destination || recipient.email || recipient.phone}</strong><small>{statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div></div>) : <p className="newsletter-recipient-empty">{normalizedRecipientSearch ? 'No successful recipients match your search.' : 'No successful recipients.'}</p>}</div>
             </section>
+            {uncertainRecipientTotal > 0 && <section className="newsletter-recipient-column is-uncertain">
+              <div className="newsletter-recipient-column-head"><div><h3>Uncertain</h3><span>{normalizedRecipientSearch ? `${uncertainRecipients.length}/${uncertainRecipientTotal}` : uncertainRecipientTotal}</span></div><button type="button" className="btn btn-sm newsletter-resend-all" disabled={Boolean(resendingRecipient)} onClick={resendAllFailed}>{resendingRecipient === 'all' ? 'Resending…' : 'Resend all'}</button></div>
+              <div className="newsletter-recipient-table" role="table" aria-label="Uncertain campaign recipients">{uncertainRecipients.length ? uncertainRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id}><div role="cell"><strong>{recipient.destination || recipient.email || recipient.phone}</strong><small>{recipient.error_message || statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div><button type="button" className="btn btn-outline-navy btn-sm" disabled={Boolean(resendingRecipient)} onClick={() => resendRecipient(recipient.id)}>{resendingRecipient === recipient.id ? 'Resending…' : 'Resend'}</button></div>) : <p className="newsletter-recipient-empty">{normalizedRecipientSearch ? 'No uncertain recipients match your search.' : 'No uncertain recipients.'}</p>}</div>
+            </section>}
             <section className="newsletter-recipient-column is-failed">
-              <div className="newsletter-recipient-column-head"><div><h3>Failed</h3><span>{normalizedRecipientSearch ? `${failedRecipients.length}/${failedRecipientTotal}` : failedRecipientTotal}</span></div><button type="button" className="btn btn-sm newsletter-resend-all" disabled={!recipientRows.some(recipient => !recipient.successful && ['disabled','failed','rejected','expired'].includes(recipient.status)) || Boolean(resendingRecipient)} onClick={resendAllFailed}>{resendingRecipient === 'all' ? 'Resending…' : 'Resend all'}</button></div>
+              <div className="newsletter-recipient-column-head"><div><h3>Failed</h3><span>{normalizedRecipientSearch ? `${failedRecipients.length}/${failedRecipientTotal}` : failedRecipientTotal}</span></div>{uncertainRecipientTotal === 0 && <button type="button" className="btn btn-sm newsletter-resend-all" disabled={!recipientRows.some(recipient => !recipient.successful && ['disabled','failed','rejected','expired'].includes(recipient.status)) || Boolean(resendingRecipient)} onClick={resendAllFailed}>{resendingRecipient === 'all' ? 'Resending…' : 'Resend all'}</button>}</div>
               <div className="newsletter-recipient-table" role="table" aria-label="Failed campaign recipients">{failedRecipients.length ? failedRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id}><div role="cell"><strong>{recipient.destination || recipient.email || recipient.phone}</strong><small>{recipient.error_message || statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div><button type="button" className="btn btn-outline-navy btn-sm" disabled={!['disabled','failed','rejected','expired'].includes(recipient.status) || Boolean(resendingRecipient)} onClick={() => resendRecipient(recipient.id)}>{resendingRecipient === recipient.id ? 'Resending…' : 'Resend'}</button></div>) : <p className="newsletter-recipient-empty">{normalizedRecipientSearch ? 'No failed recipients match your search.' : 'No failed recipients.'}</p>}</div>
             </section>
           </div>}
@@ -3342,10 +3431,11 @@ const NewsletterWorkspace = ({ onSent }) => {
       </div>,
       document.body
     )}
+    </>}
     {preview && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-preview-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPreview(null); }}><section className={`admin-modal-panel newsletter-preview-modal is-${preview.device}`} role="dialog" aria-modal="true" aria-label={`${preview.device} newsletter preview`}><button className="admin-modal-close" type="button" onClick={() => setPreview(null)} aria-label="Close"><Icon name="x" size={16}/></button><header className="newsletter-preview-head"><div><p className="overline">{preview.device} preview</p><h2>{preview.subject || 'Newsletter preview'}</h2><p>{preview.brand === 'bookshop' ? 'RealMindX Bookshop letterhead' : 'RealMindX Education letterhead'}</p></div><div className="newsletter-preview-switch"><button type="button" className={preview.device === 'mobile' ? 'active' : ''} onClick={() => setPreview(p => ({ ...p, device: 'mobile' }))}><Icon name="mobile" size={17}/> Phone</button><button type="button" className={preview.device === 'desktop' ? 'active' : ''} onClick={() => setPreview(p => ({ ...p, device: 'desktop' }))}><Icon name="monitor" size={17}/> Desktop</button></div></header><div className="newsletter-preview-stage"><iframe title="Newsletter email preview" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={preview.html}/></div></section></div>, document.body)}
     {smsPreview && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-preview-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSmsPreview(null); }}><section className="admin-modal-panel newsletter-sms-preview-modal" role="dialog" aria-modal="true" aria-label="SMS campaign preview"><button className="admin-modal-close" type="button" onClick={() => setSmsPreview(null)} aria-label="Close"><Icon name="x" size={16}/></button><p className="overline">SMS campaign</p><h2>{smsPreview.subject}</h2><div className="newsletter-sms-phone-preview"><div className="newsletter-sms-phone-head"><span>{smsPreview.sender}</span><small>{smsCharacterMetrics(smsPreview.content?.message || '').segments} SMS part{smsCharacterMetrics(smsPreview.content?.message || '').segments === 1 ? '' : 's'}</small></div><p>{smsPreview.content?.message}</p></div><div className="newsletter-sms-preview-meta"><span>{smsCharacterMetrics(smsPreview.content?.message || '').characters} characters</span><span>{smsCharacterMetrics(smsPreview.content?.message || '').encoding}</span><span>{smsPreview.recipient_count} recipients</span></div></section></div>, document.body)}
     {deletingCampaign && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-delete-backdrop" role="presentation" onMouseDown={event => { if (!deleting && event.target === event.currentTarget) setDeletingCampaign(null); }}><section className="admin-modal-panel newsletter-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="newsletter-delete-title"><div className="newsletter-delete-icon"><Icon name="trash" size={22}/></div><p className="overline">Delete history record</p><h2 id="newsletter-delete-title">Delete this campaign?</h2><p><strong>{deletingCampaign.subject}</strong> will be removed from campaign history. Contacts, subscribers, communication attempts, uploaded images, and audit records will not be deleted.</p><div className="newsletter-delete-actions"><button type="button" className="btn btn-outline-navy" disabled={deleting} onClick={() => setDeletingCampaign(null)}>Keep campaign</button><button type="button" className="btn newsletter-delete-confirm" disabled={deleting} onClick={deleteCampaign}>{deleting ? 'Deleting…' : 'Delete campaign'}</button></div></section></div>, document.body)}
-    {tab === 'audience' && <div className="newsletter-sendbar"><div><strong>{isSms ? selected.size + manualSmsRecipientCount : selected.size || 'No'} recipient{(isSms ? selected.size + manualSmsRecipientCount : selected.size) === 1 ? '' : 's'} selected</strong><small>{isSms ? `${smsMetrics.segments || 0} SMS part${smsMetrics.segments === 1 ? '' : 's'} per recipient · provider acceptance will be tracked` : 'Review this audience before sending.'}</small></div><button className="btn btn-primary" disabled={sending}>{sending ? 'Sending…' : isSms ? 'Send SMS campaign' : 'Send newsletter'}</button></div>}
+    {!sendingCampaign && tab === 'audience' && <div className="newsletter-sendbar"><div><strong>{isSms ? selected.size + manualSmsRecipientCount : selected.size || 'No'} recipient{(isSms ? selected.size + manualSmsRecipientCount : selected.size) === 1 ? '' : 's'} selected</strong><small>{isSms ? `${smsMetrics.segments || 0} SMS part${smsMetrics.segments === 1 ? '' : 's'} per recipient · provider acceptance will be tracked` : 'Review this audience before sending.'}</small></div><button className="btn btn-primary" disabled={sending}>{sending ? 'Sending…' : isSms ? 'Send SMS campaign' : 'Send newsletter'}</button></div>}
   </form>;
 };
 

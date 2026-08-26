@@ -270,6 +270,7 @@ export const api = {
   adminPreviewNewsletter: (payload) => apiFetch('/admin/newsletters/preview', { method: 'POST', body: payload }),
   adminDeleteNewsletterCampaign: (id) => apiFetch(`/admin/newsletters/campaigns/${id}`, { method: 'DELETE' }),
   adminNewsletterCampaignRecipients: (id) => apiFetch(`/admin/newsletters/campaigns/${id}/recipients`),
+  adminNewsletterCampaignStatus: (id) => apiFetch(`/admin/newsletters/campaigns/${id}/status`),
   adminResendNewsletterRecipient: (campaignId, recipientId) => apiFetch(
     `/admin/newsletters/campaigns/${campaignId}/recipients/${recipientId}/resend`,
     { method: 'POST' },

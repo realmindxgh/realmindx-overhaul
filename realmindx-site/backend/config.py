@@ -94,6 +94,7 @@ class Config:
     UPLOAD_MALWARE_SCANNING_ENABLED = _bool_env("UPLOAD_MALWARE_SCANNING_ENABLED", False)
     UPLOAD_MALWARE_SCANNER_PATH = os.getenv("UPLOAD_MALWARE_SCANNER_PATH", "clamdscan").strip()
     UPLOAD_MALWARE_SCAN_TIMEOUT_SECONDS = int(os.getenv("UPLOAD_MALWARE_SCAN_TIMEOUT_SECONDS", "30"))
+    SMS_SEND_TIMEOUT = int(os.getenv("SMS_SEND_TIMEOUT", "5"))
 
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "RealMindX <notifications@send.realmindxgh.com>")
     ADMIN_CC_EMAIL = os.getenv("ADMIN_CC_EMAIL", "realmindxgh@gmail.com")  # secondary inbox CC
