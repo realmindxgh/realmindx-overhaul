@@ -2022,7 +2022,7 @@ const ArticleSectionsField = ({ sections, onChange }) => {
   );
 };
 
-const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
+const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate, onAutoSave }) => {
   const [form, setForm] = React.useState(() =>
     config.fields.reduce((acc, itemField) => {
       const rawValue = initialItem ? initialItem[itemField.name] : itemField.defaultValue;
@@ -2030,6 +2030,11 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
       return acc;
     }, {}),
   );
+  const [autoSaveId, setAutoSaveId] = React.useState(initialItem?.id || null);
+  const [autoSaveStatus, setAutoSaveStatus] = React.useState('idle');
+  const [lastSavedAt, setLastSavedAt] = React.useState(null);
+  const autoSaveTimer = React.useRef(null);
+  const latestForm = React.useRef(form);
   // Track upload preview URLs separately (not sent in payload, only the file ID is)
   const [uploadMeta, setUploadMeta] = React.useState(() => {
     const urls = {};
@@ -2087,6 +2092,54 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
       });
     return () => { alive = false; };
   }, [config.fields]);
+
+  React.useEffect(() => {
+    latestForm.current = form;
+  }, [form]);
+
+  const [formVersion, setFormVersion] = React.useState(0);
+  const prevForm = React.useRef(form);
+  React.useEffect(() => {
+    if (form !== prevForm.current) {
+      prevForm.current = form;
+      setFormVersion(v => v + 1);
+    }
+  }, [form]);
+
+  const doAutoSave = React.useCallback(async () => {
+    if (!onAutoSave) return;
+    const current = latestForm.current;
+    const hasContent = config.fields.some(f => {
+      const v = current[f.name];
+      if (typeof v === 'string') return v.trim().length > 0;
+      if (Array.isArray(v)) return v.length > 0;
+      return Boolean(v);
+    });
+    if (!hasContent) return;
+    setAutoSaveStatus('saving');
+    try {
+      const payload = config.fields.reduce((acc, itemField) => {
+        acc[itemField.name] = normalizeFormValue(current[itemField.name], itemField);
+        return acc;
+      }, {});
+      const result = await onAutoSave(payload, autoSaveId);
+      if (result?.id) setAutoSaveId(result.id);
+      setLastSavedAt(new Date());
+      setAutoSaveStatus('saved');
+    } catch {
+      setAutoSaveStatus('error');
+    }
+  }, [onAutoSave, autoSaveId, config.fields]);
+
+  React.useEffect(() => () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); }, []);
+
+  React.useEffect(() => {
+    if (!onAutoSave || formVersion === 0) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    setAutoSaveStatus('unsaved');
+    autoSaveTimer.current = setTimeout(doAutoSave, 2000);
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
+  }, [formVersion, onAutoSave, doAutoSave]);
 
   const submit = async event => {
     event.preventDefault();
@@ -2281,9 +2334,15 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate }) => {
           </div>
         ))}
       </div>
-      <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+      <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center' }}>
         <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : (initialItem ? 'Save Changes' : config.createLabel)}</button>
         <button className="btn btn-outline-navy" type="button" onClick={onCancel}>Cancel</button>
+        {onAutoSave && <span className="managed-form-autosave-indicator" aria-live="polite">
+          {autoSaveStatus === 'saving' && <span>Saving draft…</span>}
+          {autoSaveStatus === 'saved' && lastSavedAt && <span>Draft saved {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+          {autoSaveStatus === 'unsaved' && <span className="unsaved">Editing</span>}
+          {autoSaveStatus === 'error' && <span className="autosave-error">Draft save failed</span>}
+        </span>}
       </div>
       {formError && <p className="form-error" style={{ marginTop: 10 }}>{formError}</p>}
     </form>
@@ -3105,6 +3164,136 @@ const NewsletterWorkspace = ({ onSent }) => {
   const [error, setError] = React.useState('');
   const [sendingCampaign, setSendingCampaign] = React.useState(null);
   const [sendingProgress, setSendingProgress] = React.useState([]);
+  const [draftStatus, setDraftStatus] = React.useState('idle');
+  const [lastDraftAt, setLastDraftAt] = React.useState(null);
+  const [recoveryDraft, setRecoveryDraft] = React.useState(null);
+  const [showRecovery, setShowRecovery] = React.useState(false);
+  const draftTimer = React.useRef(null);
+  const draftVersion = React.useRef(0);
+  const latestFormRef = React.useRef(form);
+  const latestSelectedRef = React.useRef(selected);
+  const DRAFT_STORAGE_KEY = 'realmindx_newsletter_draft';
+
+  React.useEffect(() => { latestFormRef.current = form; }, [form]);
+  React.useEffect(() => { latestSelectedRef.current = selected; }, [selected]);
+
+  React.useEffect(() => {
+    if (!isApiMode()) return;
+    let alive = true;
+    api.adminGetNewsletterDraft().then(data => {
+      if (!alive || !data?.draft) return;
+      const content = data.draft.content || {};
+      const hasContent = (data.draft.subject || '').trim() || (data.draft.sms_sender_id || '').trim() || (content.message || '').trim() || (content.sections || []).some(s => (s.heading || '').trim() || (s.body || '').trim());
+      if (hasContent) setRecoveryDraft(data.draft);
+    }).catch(() => {});
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (cached?.subject || cached?.sms_message) {
+          if (!alive) return;
+          setRecoveryDraft(prev => prev || cached);
+        }
+      }
+    } catch {}
+    return () => { alive = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (recoveryDraft && !showRecovery) setShowRecovery(true);
+  }, [recoveryDraft]);
+
+  const clearDraft = React.useCallback(() => {
+    try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch {}
+    api.adminDeleteNewsletterDraft().catch(() => {});
+    setRecoveryDraft(null);
+    setShowRecovery(false);
+    setLastDraftAt(null);
+  }, []);
+
+  const loadRecoveryDraft = React.useCallback(() => {
+    if (!recoveryDraft) return;
+    const content = recoveryDraft.content || {};
+    if ((recoveryDraft.channel || 'email') === 'sms') {
+      setForm({
+        ...emptyForm,
+        channel: 'sms',
+        subject: recoveryDraft.subject || '',
+        sms_sender_id: APPROVED_SMS_SENDER_IDS.includes(recoveryDraft.sms_sender_id) ? recoveryDraft.sms_sender_id : APPROVED_SMS_SENDER_IDS[0],
+        sms_message: content.message || '',
+        manual_numbers: (recoveryDraft.audience?.recipient_phones || []).join('\n'),
+      });
+      if (recoveryDraft.audience?.contact_ids) setSelected(new Set(recoveryDraft.audience.contact_ids));
+    } else {
+      setForm({
+        ...emptyForm,
+        ...content,
+        channel: 'email',
+        subject: recoveryDraft.subject || '',
+        title: recoveryDraft.title || content.title || '',
+        brand: recoveryDraft.brand || 'realmindx',
+        sender: recoveryDraft.sender || 'news',
+        sections: content.sections?.length ? content.sections : [emptySection()],
+        manual_recipients: (recoveryDraft.audience?.recipient_emails || []).join('\n'),
+      });
+      if (recoveryDraft.audience?.contact_ids) setSelected(new Set(recoveryDraft.audience.contact_ids));
+    }
+    setShowRecovery(false);
+    globalToast.success('Draft restored. Continue editing where you left off.');
+  }, [recoveryDraft, emptySection]);
+
+  const autoSaveDraft = React.useCallback(async () => {
+    const current = latestFormRef.current;
+    const currentSelected = latestSelectedRef.current;
+    const isSms = current.channel === 'sms';
+    const hasContent = (current.subject || '').trim() || (isSms ? (current.sms_message || '').trim() : (current.sections || []).some(s => (s.heading || '').trim() || (s.body || '').trim()));
+    if (!hasContent) return;
+    const payload = {
+      channel: current.channel,
+      subject: current.subject,
+      title: current.title || current.subject,
+      brand: current.brand,
+      sender: current.sender,
+      sms_sender_id: current.sms_sender_id,
+      content: isSms
+        ? { message: current.sms_message }
+        : {
+            sections: current.sections,
+            title: current.title || current.subject,
+            preheader: current.preheader,
+            cta_label: current.cta_label,
+            cta_url: current.cta_url,
+            image_file_id: current.image_file_id,
+          },
+      audience: {
+        contact_ids: [...currentSelected],
+        recipient_emails: isSms ? [] : (current.manual_recipients || '').split(/[\s,;]+/).filter(Boolean),
+        recipient_phones: isSms ? (current.manual_numbers || '').split(/[\s,]+/).filter(Boolean) : [],
+      },
+    };
+    setDraftStatus('saving');
+    try {
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ ...current, selectedIds: [...currentSelected] }));
+      const result = await api.adminSaveNewsletterDraft(payload);
+      if (result?.draft) setLastDraftAt(new Date(result.draft.updated_at));
+      setDraftStatus('saved');
+    } catch {
+      setDraftStatus('error');
+    }
+  }, []);
+
+  React.useEffect(() => () => { if (draftTimer.current) clearTimeout(draftTimer.current); }, []);
+
+  React.useEffect(() => {
+    draftVersion.current += 1;
+    const version = draftVersion.current;
+    setDraftStatus('unsaved');
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => {
+      if (draftVersion.current === version) autoSaveDraft();
+    }, 2500);
+    return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
+  }, [form, selected]);
 
   const loadAudience = React.useCallback(async () => {
     if (!isApiMode()) return;
@@ -3264,11 +3453,12 @@ const NewsletterWorkspace = ({ onSent }) => {
       if (response.sending) {
         setSendingCampaign(response.campaign);
         setSendingProgress([]);
+        clearDraft();
         setForm({ ...emptyForm, channel: form.channel }); setSelected(new Set());
         globalToast.success(response.message || 'SMS campaign is being sent.');
         onSent?.();
       } else {
-        setResult(response); setForm({ ...emptyForm, channel: form.channel }); setSelected(new Set());
+        setResult(response); clearDraft(); setForm({ ...emptyForm, channel: form.channel }); setSelected(new Set());
         globalToast.success(response.message || 'Newsletter sent successfully.');
         await loadHistory(); onSent?.(); setTab('history');
       }
@@ -3299,6 +3489,8 @@ const NewsletterWorkspace = ({ onSent }) => {
   return <form className="newsletter-workspace" onSubmit={submit}>
     <div className="newsletter-workspace-head"><div><p className="overline">Newsletter</p><h2>Campaign workspace</h2><p>Send targeted email newsletters or SMS broadcasts from one place.</p></div><div className="newsletter-channel-switch" aria-label="Campaign channel"><button type="button" className={!isSms ? 'active' : ''} onClick={() => selectChannel('email')}><Icon name="mail" size={16}/> Email</button><button type="button" className={isSms ? 'active' : ''} onClick={() => selectChannel('sms')}><Icon name="mobile" size={16}/> SMS</button></div></div>
     <div className="newsletter-tabs">{tabs.map(([key, label]) => <button key={key} type="button" className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>{label}</button>)}</div>
+    {showRecovery && recoveryDraft && <div className="newsletter-draft-recovery" role="alert"><div><strong>Draft found</strong><small>You have an unsaved newsletter draft{recoveryDraft.updated_at ? ` from ${new Date(recoveryDraft.updated_at).toLocaleString()}` : ''}.</small></div><div className="newsletter-draft-recovery-actions"><button type="button" className="btn btn-primary btn-sm" onClick={loadRecoveryDraft}>Load draft</button><button type="button" className="btn btn-ghost btn-sm" onClick={clearDraft}>Discard</button></div></div>}
+    {draftStatus !== 'idle' && draftStatus !== 'unsaved' && !showRecovery && <div className="newsletter-draft-status" aria-live="polite"><span className={`newsletter-draft-dot is-${draftStatus}`} /><span>{draftStatus === 'saving' ? 'Saving draft…' : draftStatus === 'saved' && lastDraftAt ? `Draft saved ${lastDraftAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : draftStatus === 'error' ? 'Draft save failed' : ''}</span></div>}
     {result && ReactDOM.createPortal(
       <div className="admin-modal-backdrop newsletter-success-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setResult(null); }}>
         <section className="admin-modal-panel newsletter-success-modal" role="dialog" aria-modal="true" aria-labelledby="newsletter-success-title">
@@ -4022,6 +4214,20 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     setEditing(null);
   };
 
+  const handleAutoSave = React.useCallback(async (payload, existingId) => {
+    if (config.collection !== 'news') return null;
+    if (existingId) {
+      await api.adminUpdate('news', existingId, { ...payload, status: 'draft' });
+      return { id: existingId };
+    }
+    const result = await api.adminCreate('news', { ...payload, status: 'draft' });
+    if (result?.id) {
+      await fetchCollection(config.collection, { force: true });
+      return { id: result.id };
+    }
+    return null;
+  }, [config.collection, fetchCollection]);
+
   const labelForRow = (row) => row.name || row.label || row.title || row.email || row.order_reference || 'this record';
 
   // Auto-dismiss the action-status toast after 2.5 s
@@ -4644,6 +4850,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               onCancel={closeFormModal}
               onCreate={handleCreate}
               onUpdate={handleUpdate}
+              onAutoSave={config.collection === 'news' ? handleAutoSave : undefined}
             />
           </div>
         </div>

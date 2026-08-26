@@ -1563,6 +1563,78 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         self.assertEqual(campaign_data["failed_count"], 1)
         self.assertEqual(campaign_data["sent_count"], 2)
 
+    def test_newsletter_draft_create_and_retrieve(self):
+        resp = self.client.post("/api/admin/newsletter-draft", json={
+            "channel": "email",
+            "subject": "Draft subject",
+            "title": "Draft title",
+            "brand": "realmindx",
+            "sender": "news",
+            "content": {"sections": [{"heading": "Hi", "body": "Hello"}]},
+            "audience": {"contact_ids": [1, 2]},
+        })
+        self.assertEqual(resp.status_code, 200)
+        draft = resp.get_json()["draft"]
+        self.assertEqual(draft["subject"], "Draft subject")
+        self.assertEqual(draft["channel"], "email")
+        self.assertIsNotNone(draft["id"])
+
+        resp2 = self.client.get("/api/admin/newsletter-draft")
+        self.assertEqual(resp2.status_code, 200)
+        loaded = resp2.get_json()["draft"]
+        self.assertEqual(loaded["id"], draft["id"])
+        self.assertEqual(loaded["subject"], "Draft subject")
+
+    def test_newsletter_draft_upsert_updates_existing(self):
+        resp1 = self.client.post("/api/admin/newsletter-draft", json={
+            "subject": "First draft",
+            "content": {"message": "original"},
+        })
+        id1 = resp1.get_json()["draft"]["id"]
+
+        resp2 = self.client.post("/api/admin/newsletter-draft", json={
+            "subject": "Updated draft",
+            "content": {"message": "updated"},
+        })
+        id2 = resp2.get_json()["draft"]["id"]
+        self.assertEqual(id1, id2)
+        self.assertEqual(resp2.get_json()["draft"]["subject"], "Updated draft")
+
+    def test_newsletter_draft_delete_clears(self):
+        self.client.post("/api/admin/newsletter-draft", json={"subject": "To delete"})
+        resp = self.client.delete("/api/admin/newsletter-draft")
+        self.assertEqual(resp.status_code, 200)
+
+        resp2 = self.client.get("/api/admin/newsletter-draft")
+        self.assertIsNone(resp2.get_json()["draft"])
+
+    def test_newsletter_draft_deleted_on_send(self):
+        from backend.models import NewsletterDraft
+        self.client.post("/api/admin/newsletter-draft", json={
+            "subject": "Will be sent",
+            "content": {"sections": [{"body": "content"}]},
+        })
+        draft_before = NewsletterDraft.query.filter_by(initiated_by=self.admin.id).count()
+        self.assertEqual(draft_before, 1)
+
+    def test_newsletter_draft_requires_login(self):
+        self.client.post("/api/auth/logout")
+        resp = self.client.get("/api/admin/newsletter-draft")
+        self.assertIn(resp.status_code, (302, 401, 403))
+
+    def test_newsletter_draft_sms_channel(self):
+        resp = self.client.post("/api/admin/newsletter-draft", json={
+            "channel": "sms",
+            "subject": "SMS campaign",
+            "sms_sender_id": "RealMindX",
+            "content": {"message": "Hello via SMS"},
+            "audience": {"recipient_phones": ["0541234567"]},
+        })
+        self.assertEqual(resp.status_code, 200)
+        draft = resp.get_json()["draft"]
+        self.assertEqual(draft["channel"], "sms")
+        self.assertEqual(draft["sms_sender_id"], "RealMindX")
+
 
 class NewsletterUnsubscribeEndpointTests(unittest.TestCase):
     def setUp(self):

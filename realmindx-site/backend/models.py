@@ -998,6 +998,25 @@ class NewsletterCampaignRecipient(TimestampMixin, db.Model):
     contact = db.relationship("Contact", foreign_keys=[contact_id])
 
 
+class NewsletterDraft(TimestampMixin, db.Model):
+    __tablename__ = "newsletter_drafts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    channel = db.Column(db.String(20), nullable=False, default="email")
+    subject = db.Column(db.String(255), nullable=False, default="")
+    title = db.Column(db.String(255), nullable=False, default="")
+    brand = db.Column(db.String(40), nullable=False, default="realmindx")
+    sender = db.Column(db.String(40), nullable=False, default="news")
+    sms_sender_id = db.Column(db.String(40), nullable=True)
+    content = db.Column(db.JSON, default=dict, nullable=False)
+    audience = db.Column(db.JSON, default=dict, nullable=False)
+    initiated_by = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
 class News(TimestampMixin, db.Model):
     __tablename__ = "news"
 

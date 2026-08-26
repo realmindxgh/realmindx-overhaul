@@ -279,6 +279,9 @@ export const api = {
     `/admin/newsletters/campaigns/${campaignId}/recipients/resend-failed`,
     { method: 'POST' },
   ),
+  adminGetNewsletterDraft: () => apiFetch('/admin/newsletter-draft'),
+  adminSaveNewsletterDraft: (payload) => apiFetch('/admin/newsletter-draft', { method: 'POST', body: payload }),
+  adminDeleteNewsletterDraft: () => apiFetch('/admin/newsletter-draft', { method: 'DELETE' }),
   adminContacts: (params = {}) => {
     const sp = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {

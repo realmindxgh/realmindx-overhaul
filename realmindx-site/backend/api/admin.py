@@ -123,6 +123,7 @@ from ..models import (
     NewsletterSubscriber,
     NewsletterCampaign,
     NewsletterCampaignRecipient,
+    NewsletterDraft,
     News,
     Order,
     OrderDelivery,
@@ -8101,3 +8102,75 @@ def delete_setting(key):
     db.session.delete(row)
     db.session.commit()
     return jsonify(message="Setting deleted.")
+
+
+def _newsletter_draft_json(row):
+    return {
+        "id": row.id,
+        "channel": row.channel or "email",
+        "subject": row.subject or "",
+        "title": row.title or "",
+        "brand": row.brand or "realmindx",
+        "sender": row.sender or "news",
+        "sms_sender_id": row.sms_sender_id or "",
+        "content": row.content or {},
+        "audience": row.audience or {},
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@admin_bp.get("/newsletter-draft")
+@login_required
+@permission_required("newsletters.create")
+def get_newsletter_draft():
+    row = (
+        NewsletterDraft.query
+        .filter_by(initiated_by=current_user.id)
+        .order_by(NewsletterDraft.updated_at.desc())
+        .first()
+    )
+    if not row:
+        return jsonify(draft=None)
+    return jsonify(draft=_newsletter_draft_json(row))
+
+
+@admin_bp.post("/newsletter-draft")
+@login_required
+@permission_required("newsletters.create")
+def save_newsletter_draft():
+    payload = request.get_json(silent=True) or {}
+    row = (
+        NewsletterDraft.query
+        .filter_by(initiated_by=current_user.id)
+        .order_by(NewsletterDraft.updated_at.desc())
+        .first()
+    )
+    if row is None:
+        row = NewsletterDraft(initiated_by=current_user.id)
+        db.session.add(row)
+    row.channel = (payload.get("channel") or "email").strip()
+    row.subject = (payload.get("subject") or "").strip()
+    row.title = (payload.get("title") or "").strip()
+    row.brand = (payload.get("brand") or "realmindx").strip()
+    row.sender = (payload.get("sender") or "news").strip()
+    row.sms_sender_id = (payload.get("sms_sender_id") or "").strip() or None
+    row.content = payload.get("content") or {}
+    row.audience = payload.get("audience") or {}
+    db.session.commit()
+    return jsonify(draft=_newsletter_draft_json(row))
+
+
+@admin_bp.delete("/newsletter-draft")
+@login_required
+@permission_required("newsletters.create")
+def delete_newsletter_draft():
+    row = (
+        NewsletterDraft.query
+        .filter_by(initiated_by=current_user.id)
+        .order_by(NewsletterDraft.updated_at.desc())
+        .first()
+    )
+    if row:
+        db.session.delete(row)
+        db.session.commit()
+    return jsonify(message="Draft cleared.")

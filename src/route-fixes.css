@@ -7572,3 +7572,48 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
     font-size: .66rem !important;
   }
 }
+
+/* Auto-save draft indicators */
+.managed-form-autosave-indicator {
+  margin-left: 10px;
+  font-size: .75rem;
+  color: var(--gray-500, #64748b);
+  font-family: 'Montserrat', sans-serif;
+  white-space: nowrap;
+}
+.managed-form-autosave-indicator .unsaved { opacity: .6; }
+.managed-form-autosave-indicator .autosave-error { color: #dc2626; }
+.newsletter-draft-recovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  background: #eef2ff;
+  margin-bottom: 14px;
+  font-family: 'Montserrat', sans-serif;
+}
+.newsletter-draft-recovery strong { color: var(--navy, #143670); display: block; margin-bottom: 2px; }
+.newsletter-draft-recovery small { color: var(--gray-600, #4b5563); }
+.newsletter-draft-recovery-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.newsletter-draft-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 10px;
+  font-size: .75rem;
+  color: var(--gray-500, #64748b);
+  font-family: 'Montserrat', sans-serif;
+}
+.newsletter-draft-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gray-300, #cbd5e1);
+}
+.newsletter-draft-dot.is-saving { background: #f59e0b; animation: newsletter-spin 1s linear infinite; }
+.newsletter-draft-dot.is-saved { background: #22c55e; }
+.newsletter-draft-dot.is-error { background: #dc2626; }
