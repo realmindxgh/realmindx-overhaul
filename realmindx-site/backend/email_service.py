@@ -20,7 +20,24 @@ from .communications import (
 
 
 ADMIN_ALERT_EMAIL = "info@realmindxgh.com"
+ADMIN_ALERT_EMAILS = ["info@realmindxgh.com", "iasare@realmindxgh.com"]
 _SUCCESSFUL_EMAIL_STATUSES = frozenset({"queued", "accepted", "sent", "delivered", "mocked"})
+
+
+def _admin_alert_recipients():
+    raw = current_app.config.get("ADMIN_ALERT_EMAILS") or current_app.config.get("ADMIN_ALERT_EMAIL") or ADMIN_ALERT_EMAIL
+    if isinstance(raw, (list, tuple, set)):
+        candidates = [str(item).strip() for item in raw if str(item).strip()]
+    else:
+        candidates = [item.strip() for item in str(raw).split(",") if item.strip()]
+    seen: set[str] = set()
+    recipients: list[str] = []
+    for addr in candidates:
+        key = addr.lower()
+        if key not in seen:
+            seen.add(key)
+            recipients.append(addr)
+    return recipients or [ADMIN_ALERT_EMAIL]
 
 
 @dataclass
@@ -896,29 +913,47 @@ def send_admin_alert(
     from_email: str | None = None,
     reply_to: str | None = None,
 ):
-    """Best-effort operational alert to the canonical RealMindX admin inbox."""
-    try:
-        result = send_email(
-            OutboundEmail(
-                to=ADMIN_ALERT_EMAIL,
-                subject=subject,
-                html=html,
-                text=text,
-                from_email=from_email,
-                reply_to=reply_to,
-            ),
-            purpose="admin_alert",
-            recipient_user_id=None,
-            template_name=template_name,
-        )
-    except Exception:
-        current_app.logger.exception("Admin alert %s could not be sent.", template_name)
+    """Best-effort operational alert to every configured admin inbox."""
+    recipients = _admin_alert_recipients()
+    last_result = None
+    any_failed = False
+    for recipient in recipients:
+        try:
+            result = send_email(
+                OutboundEmail(
+                    to=recipient,
+                    subject=subject,
+                    html=html,
+                    text=text,
+                    from_email=from_email,
+                    reply_to=reply_to,
+                ),
+                purpose="admin_alert",
+                recipient_user_id=None,
+                template_name=template_name,
+            )
+            last_result = result
+            if result.status not in _SUCCESSFUL_EMAIL_STATUSES:
+                any_failed = True
+                current_app.logger.warning(
+                    "Admin alert %s to %s was not accepted for delivery (status=%s).",
+                    template_name,
+                    mask_destination("email", recipient),
+                    result.status,
+                )
+        except Exception:
+            any_failed = True
+            current_app.logger.exception(
+                "Admin alert %s to %s could not be sent.",
+                template_name,
+                mask_destination("email", recipient),
+            )
+    if last_result is None:
         return None
-
-    if result.status not in _SUCCESSFUL_EMAIL_STATUSES:
+    if any_failed:
         current_app.logger.warning(
             "Admin alert %s was not accepted for delivery (status=%s).",
             template_name,
-            result.status,
+            last_result.status,
         )
-    return result
+    return last_result

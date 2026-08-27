@@ -99,6 +99,9 @@ class Config:
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "RealMindX <notifications@send.realmindxgh.com>")
     ADMIN_CC_EMAIL = os.getenv("ADMIN_CC_EMAIL", "realmindxgh@gmail.com")  # secondary inbox CC
     DEFAULT_REPLY_TO_EMAIL = os.getenv("DEFAULT_REPLY_TO_EMAIL", "info@realmindxgh.com")
+    # Comma-separated admin alert recipients. Prefer this over ADMIN_ALERT_EMAIL for multi-recipient setups.
+    ADMIN_ALERT_EMAIL = os.getenv("ADMIN_ALERT_EMAIL", "info@realmindxgh.com")
+    ADMIN_ALERT_EMAILS = os.getenv("ADMIN_ALERT_EMAILS", "info@realmindxgh.com,iasare@realmindxgh.com")
     JOBS_FROM_EMAIL = os.getenv("JOBS_FROM_EMAIL", "RealMindX Jobs <jobs@send.realmindxgh.com>")
     BOOKSHOP_FROM_EMAIL = os.getenv("BOOKSHOP_FROM_EMAIL", "RealMindX Bookshop <bookshop@send.realmindxgh.com>")
     NEWSLETTER_FROM_EMAIL = os.getenv("NEWSLETTER_FROM_EMAIL", "RealMindX News <news@send.realmindxgh.com>")

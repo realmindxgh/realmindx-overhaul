@@ -950,3 +950,17 @@ def register_cli(app):
             click.echo("  - No webhook events received. Check Meta WABA subscription and phone number registration.")
         click.echo("  - The webhook endpoint must be reachable at: https://realmindxgh.com/api/webhooks/whatsapp")
         click.echo("  - Verify GET challenge: https://realmindxgh.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=YOUR_TOKEN&hub.challenge=test")
+
+    @app.cli.command("send-stale-pending-digest")
+    @click.option("--dry-run", is_flag=True, help="Show counts without sending email.")
+    def stale_pending_digest_command(dry_run):
+        """Send digest of stale pending teacher apps, book requests, and orders to admin inboxes."""
+        from .pending_digest import send_stale_pending_digest
+
+        result = send_stale_pending_digest(dry_run=dry_run)
+        if result.get("dry_run"):
+            click.echo(f"[dry-run] stale items: {result}")
+        elif result.get("sent"):
+            click.echo(f"Stale pending digest sent: {result}")
+        else:
+            click.echo(f"Digest not sent: {result}")

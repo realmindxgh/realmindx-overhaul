@@ -175,6 +175,7 @@ def update_profile():
     profile = get_or_create_profile()
 
     change_reason = str(payload.pop("change_reason", "") or "").strip()
+    was_revision_required = profile.profile_status == "revision_required"
     was_verified = profile.profile_status == "verified"
     if was_verified and len(change_reason) < 8:
         return jsonify(error="Explain why you need this approved profile changed (at least 8 characters)."), 400
@@ -264,6 +265,36 @@ def update_profile():
         "reverification_requested": reverification,
     })
     db.session.commit()
+
+    if was_revision_required and profile.profile_status == "complete":
+        try:
+            admin_url = absolute_app_url("/admin/dashboard")
+            send_admin_alert(
+                subject=f"Teacher revision resubmitted: {current_user.application_id or current_user.email}",
+                html=app_email_shell(
+                    "Teacher resubmitted after revision",
+                    (
+                        f"<p><strong>Teacher:</strong> {escape(current_user.full_name or current_user.first_name or 'Teacher')}</p>"
+                        f"<p><strong>Application ID:</strong> {escape(current_user.application_id or 'N/A')}</p>"
+                        f"<p><strong>Email:</strong> {escape(current_user.email)}</p>"
+                        "<p>The teacher has updated the profile after a revision was requested. "
+                        "The profile is now complete and ready to be submitted for re-review.</p>"
+                    ),
+                    cta_label="Open Teacher Review Queue",
+                    cta_url=admin_url,
+                    eyebrow="RealMindX Internal: Teacher Resubmission",
+                    preheader="A teacher resubmitted after revision.",
+                ),
+                text=(
+                    f"Teacher revision resubmitted: {current_user.full_name or current_user.email}; "
+                    f"application ID {current_user.application_id or 'N/A'}. Open {admin_url}"
+                ),
+                reply_to=current_user.email,
+                template_name="teacher_revision_resubmitted_admin_alert",
+            )
+        except Exception:
+            current_app.logger.exception("Revision resubmission alert failed for user %s", current_user.id)
+
     return jsonify(profile=profile_json(profile))
 
 
@@ -910,16 +941,25 @@ def _send_submission_email(user, profile):
 def _send_submission_admin_alert(user, profile):
     admin_url = absolute_app_url("/admin/dashboard")
     submitted_at = profile.submitted_at.strftime("%B %d, %Y at %H:%M UTC") if profile.submitted_at else "N/A"
+    is_resubmit = bool(getattr(profile, "review_notes", None))
+    subject_prefix = "Teacher application resubmitted" if is_resubmit else "Teacher application submitted"
+    heading = "Teacher application resubmitted for review" if is_resubmit else "Teacher application ready for review"
+    body_note = (
+        "<p>The teacher has addressed the requested revisions and the profile is now waiting for re-review.</p>"
+        if is_resubmit else
+        "<p>The completed profile and documents are now waiting in the teacher review queue.</p>"
+    )
+    template = "teacher_profile_resubmitted_admin_alert" if is_resubmit else "teacher_profile_submitted_admin_alert"
     send_admin_alert(
-        subject=f"Teacher application submitted: {user.application_id or user.email}",
+        subject=f"{subject_prefix}: {user.application_id or user.email}",
         html=app_email_shell(
-            "Teacher application ready for review",
+            heading,
             (
                 f"<p><strong>Teacher:</strong> {escape(user.full_name or user.first_name or 'Teacher')}</p>"
                 f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
                 f"<p><strong>Email:</strong> {escape(user.email)}</p>"
                 f"<p><strong>Submitted:</strong> {escape(submitted_at)}</p>"
-                "<p>The completed profile and documents are now waiting in the teacher review queue.</p>"
+                + body_note
             ),
             cta_label="Open Teacher Review Queue",
             cta_url=admin_url,
@@ -927,11 +967,11 @@ def _send_submission_admin_alert(user, profile):
             preheader="A teacher application is ready for admin review.",
         ),
         text=(
-            f"Teacher application ready for review: {user.full_name or user.email}; "
+            f"{heading}: {user.full_name or user.email}; "
             f"application ID {user.application_id or 'N/A'}. Open {admin_url}"
         ),
         reply_to=user.email,
-        template_name="teacher_profile_submitted_admin_alert",
+        template_name=template,
     )
 
 

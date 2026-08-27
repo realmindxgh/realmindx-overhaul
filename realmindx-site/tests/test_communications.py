@@ -351,10 +351,12 @@ class EmailServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(result.status, "accepted")
-        message = send_email_mock.call_args.args[0]
-        self.assertEqual(message.to, "info@realmindxgh.com")
-        self.assertEqual(send_email_mock.call_args.kwargs["purpose"], "admin_alert")
-        self.assertEqual(send_email_mock.call_args.kwargs["template_name"], "test_admin_alert")
+        recipients = [call.args[0].to for call in send_email_mock.call_args_list]
+        self.assertIn("info@realmindxgh.com", recipients)
+        self.assertIn("iasare@realmindxgh.com", recipients)
+        for call in send_email_mock.call_args_list:
+            self.assertEqual(call.kwargs["purpose"], "admin_alert")
+            self.assertEqual(call.kwargs["template_name"], "test_admin_alert")
 
     def test_send_email_purpose_defaults_to_transactional(self):
         self.app.config["COMMUNICATION_MODE"] = "mock"

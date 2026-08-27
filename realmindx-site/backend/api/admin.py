@@ -8291,3 +8291,14 @@ def remove_contacts_from_group(group_id):
         ).delete(synchronize_session=False)
         db.session.commit()
     return jsonify(contact_group=_contact_group_json(row))
+
+
+@admin_bp.post("/digest/stale-pending")
+@login_required
+@permission_required("teachers.view")
+def trigger_stale_pending_digest():
+    from ..pending_digest import send_stale_pending_digest
+
+    dry_run = (request.args.get("dry_run") or "").strip().lower() in {"1", "true", "yes"}
+    result = send_stale_pending_digest(dry_run=dry_run)
+    return jsonify(result)
