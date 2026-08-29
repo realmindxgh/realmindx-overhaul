@@ -370,6 +370,14 @@ jobs:
             false
           fi
 
+          echo "── Installing stale-pending digest timer (Mon/Wed/Fri 08:00) ──"
+          cp deployment/realmindx-stale-digest.service /etc/systemd/system/realmindx-stale-digest.service
+          cp deployment/realmindx-stale-digest.timer /etc/systemd/system/realmindx-stale-digest.timer
+          systemctl daemon-reload
+          systemctl enable realmindx-stale-digest.service
+          systemctl enable --now realmindx-stale-digest.timer
+          systemctl restart realmindx-stale-digest.timer
+
           echo "── Updating managed nginx routes ──"
           NGINX_SITE="/etc/nginx/sites-available/realmindxgh.com"
           if [ ! -f "$NGINX_SITE" ]; then

@@ -48,7 +48,7 @@ def collect_stale_items():
     )
 
     stale_orders = (
-        Order.query.filter(Order.status.in_(["new", "confirmed", "processing"]))
+        Order.query.filter(Order.status.in_(["new", "confirmed", "shipped"]))
         .filter(Order.created_at < cutoff_48)
         .order_by(Order.created_at.asc())
         .limit(50)

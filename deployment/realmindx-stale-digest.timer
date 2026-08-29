@@ -1,0 +1,21 @@
+# /etc/systemd/system/realmindx-stale-digest.timer
+# Fires Mon/Wed/Fri at 08:00 in the system's local timezone (Ghana, UTC+0).
+# Points at realmindx-stale-digest.service, which emails the admin digest
+# only when there are stale items to report.
+#
+# After install:  sudo systemctl daemon-reload && sudo systemctl enable --now realmindx-stale-digest.timer
+# Inspection:     systemctl list-timers realmindx-stale-digest.timer
+# Remote run:     systemctl start realmindx-stale-digest.service
+#
+# The deploy workflow installs/enables/restarts this timer idempotently.
+
+[Unit]
+Description=Run RealMindX stale pending digest Mon/Wed/Fri at 08:00
+
+[Timer]
+OnCalendar=Mon,Wed,Fri 08:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
