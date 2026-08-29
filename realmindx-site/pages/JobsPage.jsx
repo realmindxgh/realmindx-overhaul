@@ -6,6 +6,7 @@ import { Icon } from '../assets/components.jsx';
 import { getDemoSession } from '../../src/lib/demoAccounts.js';
 import { syncSessionFromApi } from '../../src/lib/authClient.js';
 import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
+import { AsyncButtonContent, AsyncState, ContentSkeleton } from '../../src/lib/AsyncUI.jsx';
 
 /* â”€â”€ Sample data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const SAMPLE_JOBS = [
@@ -67,15 +68,7 @@ const SAMPLE_JOBS = [
 
 /* â”€â”€ Empty / status states â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const LoadingJobs = () => (
-  <div style={{ textAlign: 'center', padding: '80px 24px', background: 'var(--white)', borderRadius: 'var(--r-lg)' }}>
-    <div className="jobs-loading-spinner" />
-    <h3 style={{ fontFamily: "'Montserrat', sans-serif", fontSize: '1.2rem', color: 'var(--navy)', marginBottom: 8 }}>
-      Loading Jobs...
-    </h3>
-    <p style={{ color: 'var(--gray-600)', fontSize: '0.9rem' }}>
-      Fetching the latest teaching vacancies for you.
-    </p>
-  </div>
+  <ContentSkeleton variant="list" count={5} label="Loading the latest teaching vacancies…" />
 );
 
 const EmptyJobs = ({ onClear }) => (
@@ -306,8 +299,8 @@ const JobModal = ({ job, onClose, applyState, applyError, onApply }) => {
         {showApplyForm && (
           <div className="job-modal-footer">
             <button className="btn btn-outline-navy" onClick={onClose}>Close</button>
-            <button className="btn btn-primary" onClick={onApply} disabled={applyState === 'submitting'}>
-              {applyState === 'submitting' ? 'Submitting...' : 'Apply for this Job'}
+            <button className="btn btn-primary" onClick={onApply} disabled={applyState === 'submitting'} aria-busy={applyState === 'submitting'}>
+              <AsyncButtonContent pending={applyState === 'submitting'} pendingLabel="Submitting application…">Apply for this Job</AsyncButtonContent>
             </button>
           </div>
         )}
@@ -534,18 +527,29 @@ const JOB_ALERT_MODAL_KEY = 'rmx-jobs-alert-modal-dismissed';
 const JobsPage = () => {
   const managedJobs = publicItems(useManagedCollection('jobs'));
   const [apiJobs, setApiJobs] = React.useState(null);
+  const [apiJobsError, setApiJobsError] = React.useState('');
+  const [jobsReloadToken, setJobsReloadToken] = React.useState(0);
   const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const [sessionResolved, setSessionResolved] = React.useState(() => !isApiMode());
 
   React.useEffect(() => {
     if (!isApiMode()) return;
-    api.fetchProducts && api.fetchProducts; // ensure client is initialised
-    fetch('/api/jobs', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : { items: [] })
+    const controller = new AbortController();
+    setApiJobsError('');
+    fetch('/api/jobs', { credentials: 'include', signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error('The jobs service is temporarily unavailable.');
+        return response.json();
+      })
       // keep raw — normalisation happens once, in the render pipeline below
       .then(data => setApiJobs(data.items || []))
-      .catch(() => setApiJobs([]));
-  }, []);
+      .catch(error => {
+        if (error?.name === 'AbortError') return;
+        setApiJobs([]);
+        setApiJobsError('We could not load the latest teaching vacancies.');
+      });
+    return () => controller.abort();
+  }, [jobsReloadToken]);
 
   React.useEffect(() => {
     let alive = true;
@@ -804,7 +808,13 @@ const JobsPage = () => {
             )}
 
             {/* Job list, loading, or empty state */}
-            {isLoadingJobs
+            {apiJobsError ? (
+              <AsyncState
+                error={apiJobsError}
+                errorTitle="Teaching vacancies are unavailable"
+                onRetry={() => { setApiJobs(null); setJobsReloadToken(token => token + 1); }}
+              />
+            ) : isLoadingJobs
               ? <LoadingJobs />
               : sorted.length === 0
                 ? (hasActiveFilters ? <EmptyJobs onClear={clearFilters} /> : <NoJobsAvailable isLoggedIn={isTeacherLoggedIn} />)

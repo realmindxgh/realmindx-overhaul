@@ -11,6 +11,7 @@ import { bookshopPathForRoute } from './urls.js';
 import { fuzzyMatches, rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { buildShopCacheKey, saveShopCache, saveHomeCache, getHomeCacheStale } from '../src/lib/bookshopRouteCache.js';
+import { AsyncButtonContent, ErrorState, RefreshingIndicator } from '../src/lib/AsyncUI.jsx';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
@@ -379,6 +380,8 @@ const HomePage = ({ navigate, onLoadingChange }) => {
   const [examPicks, setExamPicks] = React.useState([]);
   const [sectionLoading, setSectionLoading] = React.useState(true);
   const [sectionError, setSectionError] = React.useState('');
+  const [sectionReloadToken, setSectionReloadToken] = React.useState(0);
+  const [subscribeBusy, setSubscribeBusy] = React.useState(false);
   const newArrivalsRef = React.useRef(newArrivals);
   const examPicksRef = React.useRef(examPicks);
   newArrivalsRef.current = newArrivals;
@@ -406,22 +409,32 @@ const HomePage = ({ navigate, onLoadingChange }) => {
   const examQs = `?exam_picks=1&per_page=${HOMEPAGE_SECTION_LIMIT}&sort=newest`;
 
   React.useEffect(() => {
+    let alive = true;
+    const fetchSections = async () => {
+      setSectionLoading(true);
+      setSectionError('');
+      const [newResult, examResult] = await Promise.allSettled([
+        api.fetchProductSearch(`?sort=newest&per_page=${HOMEPAGE_SECTION_LIMIT}`),
+        api.fetchProductSearch(examQs),
+      ]);
+      if (!alive) return;
+      if (newResult.status === 'fulfilled') setNewArrivals((newResult.value.items || []).map(fromApiProduct));
+      if (examResult.status === 'fulfilled') setExamPicks((examResult.value.items || []).map(fromApiProduct));
+      if (newResult.status === 'rejected' || examResult.status === 'rejected') {
+        setSectionError(newResult.status === 'rejected' && examResult.status === 'rejected'
+          ? 'The latest bookshop sections could not load.'
+          : 'One bookshop section could not be refreshed.');
+      }
+      setSectionLoading(false);
+    };
     const cached = getHomeCacheStale();
     if (cached && (cached.newArrivals?.length > 0 || cached.examPicks?.length > 0)) {
       setNewArrivals(cached.newArrivals || []);
       setExamPicks(cached.examPicks || []);
       setSectionLoading(false);
       setSectionError('');
-      if (cached.stale) {
-        Promise.all([
-          api.fetchProductSearch(`?sort=newest&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
-          api.fetchProductSearch(examQs).catch(() => ({ items: [] })),
-        ]).then(([newData, examData]) => {
-          setNewArrivals((newData.items || []).map(fromApiProduct));
-          setExamPicks((examData.items || []).map(fromApiProduct));
-        }).catch(() => {});
-      }
-      return;
+      if (cached.stale || sectionReloadToken > 0) fetchSections();
+      return () => { alive = false; };
     }
     if (!isApiMode()) {
       if (catalogBooks.length > 0) {
@@ -433,26 +446,11 @@ const HomePage = ({ navigate, onLoadingChange }) => {
         setExamPicks(combined.length ? combined : []);
       }
       setSectionLoading(false);
-      return;
+      return () => { alive = false; };
     }
-    let alive = true;
-    setSectionLoading(true);
-    setSectionError('');
-    Promise.all([
-      api.fetchProductSearch(`?sort=newest&per_page=${HOMEPAGE_SECTION_LIMIT}`).catch(() => ({ items: [] })),
-      api.fetchProductSearch(examQs).catch(() => ({ items: [] })),
-    ]).then(([newData, examData]) => {
-      if (!alive) return;
-      setNewArrivals((newData.items || []).map(fromApiProduct));
-      setExamPicks((examData.items || []).map(fromApiProduct));
-      setSectionLoading(false);
-    }).catch(() => {
-      if (!alive) return;
-      setSectionError('Could not load sections.');
-      setSectionLoading(false);
-    });
+    fetchSections();
     return () => { alive = false; };
-  }, []);
+  }, [sectionReloadToken]);
 
   React.useEffect(() => {
     onLoadingChange?.(sectionLoading && !hasContent);
@@ -474,8 +472,10 @@ const HomePage = ({ navigate, onLoadingChange }) => {
 
   const onSubscribe = async (event) => {
     event.preventDefault();
+    if (subscribeBusy) return;
     const formEl = event.currentTarget;
     const email = new FormData(formEl).get('email');
+    setSubscribeBusy(true);
     try {
       const response = await subscribeNewsletter(email, 'bookshop', turnstileToken);
       formEl.reset();
@@ -483,6 +483,8 @@ const HomePage = ({ navigate, onLoadingChange }) => {
       globalToast.success(response?.status === 'already_subscribed' ? "You're already subscribed" : 'Subscribed - thank you!');
     } catch (err) {
       globalToast.error(err?.message || 'Could not subscribe.');
+    } finally {
+      setSubscribeBusy(false);
     }
   };
 
@@ -527,6 +529,9 @@ const HomePage = ({ navigate, onLoadingChange }) => {
         {sectionError && 'Some sections could not load.'}
       </div>
       <HeroSlideshow navigate={navigate} />
+
+      {sectionLoading && hasContent ? <div className="bs-container"><RefreshingIndicator active label="Refreshing bookshop sections…" /></div> : null}
+      {sectionError ? <div className="bs-container"><ErrorState compact title={hasContent ? 'Some bookshop content is out of date' : 'Bookshop sections are unavailable'} message={sectionError} onRetry={() => setSectionReloadToken(token => token + 1)} /></div> : null}
 
       {sortedNewArrivals.length > 0 && (
         <section className="bs-section bs-container">
@@ -577,7 +582,7 @@ const HomePage = ({ navigate, onLoadingChange }) => {
           <p>New arrivals, price drops, and study tips. Straight to your inbox.</p>
           <form className="bs-newsletter-form" onSubmit={onSubscribe}>
             <input name="email" type="email" placeholder="you@email.com" aria-label="Email address" required />
-            <button className="bs-btn bs-btn-gold" type="submit">Subscribe</button>
+            <button className="bs-btn bs-btn-gold" type="submit" disabled={subscribeBusy} aria-busy={subscribeBusy}><AsyncButtonContent pending={subscribeBusy} pendingLabel="Subscribing…">Subscribe</AsyncButtonContent></button>
             <TurnstileField className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
           </form>
         </div>

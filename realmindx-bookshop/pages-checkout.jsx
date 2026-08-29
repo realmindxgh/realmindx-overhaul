@@ -17,6 +17,7 @@ import {
 import { normalizeOrderStatus } from '../src/lib/orderStatus.js';
 import { rankByFuzzyMatch } from '../src/lib/fuzzySearch.js';
 import { usePublicSettings } from '../src/lib/siteContent.js';
+import { AsyncButtonContent } from '../src/lib/AsyncUI.jsx';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 const PHONE_RE = /^[0-9+\s]{9,}$/;
@@ -891,8 +892,9 @@ const CheckoutPage = ({ navigate }) => {
               </>}
 
               {savedDetailsError && <p className="bs-saved-checkout-error">{savedDetailsError}</p>}
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block bs-checkout-primary-action" style={{ marginTop:10 }} disabled={savingDetails} onClick={continueToPayment}>
-                {savingDetails ? 'Saving details...' : 'Continue to Payment'} {!savingDetails && <Icon name="arrow" size={16} />}
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block bs-checkout-primary-action" style={{ marginTop:10 }} disabled={savingDetails} aria-busy={savingDetails} onClick={continueToPayment}>
+                <AsyncButtonContent pending={savingDetails} pendingLabel="Saving delivery details…">Continue to Payment</AsyncButtonContent>
+                {!savingDetails && <Icon name="arrow" size={16} />}
               </button>
               <AuthReturnActions navigate={navigate} />
             </div>
@@ -943,8 +945,8 @@ const CheckoutPage = ({ navigate }) => {
                       if (event.key === 'Enter' && promoInput.trim() && !checkingPromo) applyPromo();
                     }}
                   />
-                  <button type="button" className="bs-btn bs-btn-gold" disabled={checkingPromo || !promoInput.trim()} onClick={applyPromo}>
-                    <span>{checkingPromo ? 'Applying' : 'Apply code'}</span>
+                  <button type="button" className="bs-btn bs-btn-gold" disabled={checkingPromo || !promoInput.trim()} aria-busy={checkingPromo} onClick={applyPromo}>
+                    <AsyncButtonContent pending={checkingPromo} pendingLabel="Checking code…">Apply code</AsyncButtonContent>
                   </button>
                 </div>
               </div>
@@ -978,11 +980,11 @@ const CheckoutPage = ({ navigate }) => {
               <div className="bs-summary-row bs-total" style={{ fontSize:22, borderTop:'1px solid var(--bs-border)', paddingTop:14, marginTop:0 }}><span>Total</span><span>{cedis(total)}</span></div>
               <TurnstileField className="bs-turnstile-wrap bs-checkout-turnstile" theme="light" onVerify={setTurnstileToken} />
               {orderError && <p className="bs-track-error" role="alert" style={{ marginTop:14 }}>{orderError}</p>}
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block bs-checkout-primary-action" style={{ marginTop:16 }} disabled={placing} onClick={placeOrder}>
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block bs-checkout-primary-action" style={{ marginTop:16 }} disabled={placing} aria-busy={placing} onClick={placeOrder}>
                 <Icon name={paymentMethod === 'online' ? 'lock' : 'truck'} size={17} />
-                {placing
-                  ? paymentMethod === 'online' ? 'Opening secure payment...' : 'Placing order...'
-                  : paymentMethod === 'online' ? `Pay ${cedis(total)} Online` : 'Confirm Order · Pay on Delivery'}
+                <AsyncButtonContent pending={placing} pendingLabel={paymentMethod === 'online' ? 'Opening secure payment…' : 'Placing order…'}>
+                  {paymentMethod === 'online' ? `Pay ${cedis(total)} Online` : 'Confirm Order · Pay on Delivery'}
+                </AsyncButtonContent>
               </button>
               <AuthReturnActions navigate={navigate} />
               <div className="bs-trust-badges">
@@ -1001,17 +1003,20 @@ const CheckoutPage = ({ navigate }) => {
                 <strong>{cedis(total)}</strong>
               </div>
               {step === 0 ? (
-                <button type="button" className="bs-btn bs-btn-gold" disabled={savingDetails} onClick={continueToPayment}>
-                  {savingDetails ? 'Saving...' : 'Continue'} {!savingDetails && <Icon name="arrow" size={14} />}
+                <button type="button" className="bs-btn bs-btn-gold" disabled={savingDetails} aria-busy={savingDetails} onClick={continueToPayment}>
+                  <AsyncButtonContent pending={savingDetails} pendingLabel="Saving details…">Continue</AsyncButtonContent>
+                  {!savingDetails && <Icon name="arrow" size={14} />}
                 </button>
               ) : (
                 <>
                   <button type="button" className="bs-btn bs-btn-outline-navy bs-checkout-mobile-back" onClick={() => setStep(0)}>
                     <Icon name="chevL" size={13} /> Back to details
                   </button>
-                  <button type="button" className="bs-btn bs-btn-gold" disabled={placing} onClick={placeOrder}>
+                  <button type="button" className="bs-btn bs-btn-gold" disabled={placing} aria-busy={placing} onClick={placeOrder}>
                     <Icon name={paymentMethod === 'online' ? 'lock' : 'truck'} size={14} />
-                    {placing ? 'Processing...' : paymentMethod === 'online' ? 'Pay now' : 'Confirm order'}
+                    <AsyncButtonContent pending={placing} pendingLabel={paymentMethod === 'online' ? 'Opening payment…' : 'Placing order…'}>
+                      {paymentMethod === 'online' ? 'Pay now' : 'Confirm order'}
+                    </AsyncButtonContent>
                   </button>
                 </>
               )}
@@ -1190,8 +1195,8 @@ const TrackPage = ({ navigate }) => {
         </div>
         <form className="bs-track-input-row" onSubmit={submit}>
           <input ref={inputRef} placeholder="e.g. RMX-8D40F71A6C2B4E119A7F" value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
-          <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading}>
-            {loading ? 'Checking...' : 'Track'}
+          <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading} aria-busy={loading}>
+            <AsyncButtonContent pending={loading} pendingLabel="Checking order…">Track</AsyncButtonContent>
           </button>
         </form>
         {error && <p className="bs-track-error">{error}</p>}
@@ -1385,8 +1390,8 @@ const InvoicePage = ({ navigate }) => {
         </div>
         <form className="bs-track-input-row" onSubmit={submit}>
           <input ref={inputRef} placeholder="e.g. RMX-INV-9F2A7C4B11 or RMX-ORDER-..." value={query} onChange={e => setQuery(e.target.value)} aria-invalid={Boolean(error)} />
-          <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading}>
-            {loading ? 'Verifying...' : 'Verify'}
+          <button className="bs-btn bs-btn-navy bs-btn-lg" type="submit" disabled={loading} aria-busy={loading}>
+            <AsyncButtonContent pending={loading} pendingLabel="Verifying invoice…">Verify</AsyncButtonContent>
           </button>
         </form>
         {error && <p className="bs-track-error">{error}</p>}

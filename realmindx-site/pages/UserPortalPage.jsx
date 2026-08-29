@@ -17,6 +17,14 @@ import {
 } from '../../src/lib/teachingOptions.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
+import { AsyncButtonContent, ContentSkeleton, InlineStatus, ProgressStatus } from '../../src/lib/AsyncUI.jsx';
+
+const formatUploadSize = bytes => {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 // Splits a comma-joined multi-select value (e.g. "Mathematics, Physics, ICT")
 // into trimmed, non-empty parts. Mirrors the `.join(', ')` used whenever a
@@ -629,14 +637,15 @@ const ProfileAvatarUpload = ({ user, onUploadAvatar, avatarUploading }) => {
   return (
     <div className="profile-avatar-wrapper">
       {cropModal}
-      <label className="profile-avatar avatar-preview-button" aria-label="Upload or replace profile picture" title="Upload or replace profile picture">
+      <label className="profile-avatar avatar-preview-button" aria-label="Upload or replace profile picture" aria-busy={avatarUploading} title="Upload or replace profile picture">
         {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : user.initials}
         <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={avatarUploading} {...inputProps} />
       </label>
-      <label className="profile-avatar-edit" title="Change photo" aria-label="Change profile picture">
+      <label className="profile-avatar-edit" title="Change photo" aria-label="Change profile picture" aria-busy={avatarUploading}>
         <Icon name={avatarUploading ? 'clock' : 'camera'} size={15} stroke={2} />
         <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={avatarUploading} {...inputProps} />
       </label>
+      {avatarUploading ? <InlineStatus busy className="profile-avatar-upload-status">Uploading photo…</InlineStatus> : null}
     </div>
   );
 };
@@ -1261,8 +1270,8 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
         )}
         {error && <p className="form-error" style={{ marginTop: 12 }}>{error}</p>}
         <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-          <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</button>
-          <button className="btn btn-outline-navy" type="button" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-primary" type="submit" disabled={saving} aria-busy={saving}><AsyncButtonContent pending={saving} pendingLabel="Saving profile changes…">Save Changes</AsyncButtonContent></button>
+          <button className="btn btn-outline-navy" type="button" disabled={saving} onClick={onCancel}>Cancel</button>
         </div>
       </form>
     </div>
@@ -1270,7 +1279,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
 };
 
 /* â”€â”€ DOCUMENTS VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, highlight }) => {
+const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, uploadMeta, highlight }) => {
   const cvRef   = React.useRef(null);
   const certRef = React.useRef(null);
   const [changeReason, setChangeReason] = React.useState('');
@@ -1306,6 +1315,17 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
       </div>
     )}
 
+    {uploadMeta && uploadMeta.kind !== 'profile_picture' ? (
+      <ProgressStatus
+        label={uploadMeta.status === 'complete' ? `${uploadMeta.name} uploaded` : `Uploading ${uploadMeta.name}`}
+        detail={formatUploadSize(uploadMeta.size)}
+        stage={uploadMeta.status === 'uploading' ? 'Uploading document securely' : ''}
+        complete={uploadMeta.status === 'complete'}
+        error={uploadMeta.error}
+        onRetry={uploadMeta.error ? () => onUploadDocument?.(uploadMeta.kind, uploadMeta.file, uploadMeta.reason || '') : undefined}
+      />
+    ) : null}
+
     <div className="profile-sections-grid">
       {/* CV Video Tutorial */}
       <CvTutorialCard />
@@ -1323,9 +1343,9 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
               </div>
               <div className="doc-actions">
                 {user.cvFileId && <button type="button" className="btn btn-sm btn-outline-navy" onClick={() => setViewerFile({ id: user.cvFileId, name: user.cvFilename || 'CV' })}>View</button>}
-                <label className="btn btn-sm btn-outline-navy">
-                  {uploadingKind === 'cv' ? 'Uploading...' : 'Replace'}
-                  <input type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
+                <label className="btn btn-sm btn-outline-navy" aria-busy={uploadingKind === 'cv'}>
+                  <AsyncButtonContent pending={uploadingKind === 'cv'} pendingLabel="Uploading CV…">Replace</AsyncButtonContent>
+                  <input type="file" hidden disabled={Boolean(uploadingKind)} accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
                 </label>
               </div>
             </div>
@@ -1339,9 +1359,9 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
               <div style={{ fontSize: '2rem', marginBottom: 8, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="file" size={34} stroke={1.7} /></div>
               <p style={{ fontWeight: 600, color: 'var(--navy)', fontSize: '0.88rem' }}>Upload your CV</p>
               <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>PDF or DOCX up to 10MB</p>
-              <label className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>
-                {uploadingKind === 'cv' ? 'Uploading...' : 'Choose File'}
-              <input type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
+              <label className="btn btn-primary btn-sm" aria-busy={uploadingKind === 'cv'} style={{ marginTop: 12 }}>
+                <AsyncButtonContent pending={uploadingKind === 'cv'} pendingLabel="Uploading CV…">Choose File</AsyncButtonContent>
+              <input type="file" hidden disabled={Boolean(uploadingKind)} accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('cv', event.target.files?.[0], changeReason)} />
               </label>
             </div>
           </>
@@ -1367,9 +1387,9 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
                 </div>
               </div>
             ))}
-            <label className="btn btn-outline-navy btn-sm" style={{ marginTop: 12 }}>
-              {uploadingKind === 'certificate' ? 'Uploading...' : 'Replace Certificate'}
-              <input type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
+            <label className="btn btn-outline-navy btn-sm" aria-busy={uploadingKind === 'certificate'} style={{ marginTop: 12 }}>
+              <AsyncButtonContent pending={uploadingKind === 'certificate'} pendingLabel="Uploading certificate…">Replace Certificate</AsyncButtonContent>
+              <input type="file" hidden disabled={Boolean(uploadingKind)} accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
             </label>
           </div>
         ) : (
@@ -1381,9 +1401,9 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
               <div style={{ fontSize: '2rem', marginBottom: 8, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="award" size={34} stroke={1.7} /></div>
               <p style={{ fontWeight: 600, color: 'var(--navy)', fontSize: '0.88rem' }}>Upload Certificates</p>
               <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>PDF or DOCX up to 10MB</p>
-              <label className="btn btn-primary btn-sm" style={{ marginTop: 12 }}>
-                {uploadingKind === 'certificate' ? 'Uploading...' : 'Choose Files'}
-                <input type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
+              <label className="btn btn-primary btn-sm" aria-busy={uploadingKind === 'certificate'} style={{ marginTop: 12 }}>
+                <AsyncButtonContent pending={uploadingKind === 'certificate'} pendingLabel="Uploading certificate…">Choose File</AsyncButtonContent>
+                <input type="file" hidden disabled={Boolean(uploadingKind)} accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => onUploadDocument?.('certificate', event.target.files?.[0], changeReason)} />
               </label>
             </div>
           </>
@@ -1397,9 +1417,9 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, hig
           <div style={{ fontSize: '1.5rem', marginBottom: 6, display: 'inline-flex', color: 'var(--yellow-dark)' }}><Icon name="folder" size={26} stroke={1.8} /></div>
           <p style={{ fontWeight: 600, color: 'var(--navy)', fontSize: '0.88rem' }}>Upload any other supporting documents</p>
           <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', marginTop: 4 }}>Reference letters, additional qualifications, etc.</p>
-          <label className="btn btn-outline-navy btn-sm" style={{ marginTop: 12 }}>
-            {uploadingKind === 'document' ? 'Uploading...' : 'Choose Files'}
-            <input type="file" hidden accept=".pdf,.docx" onChange={event => onUploadDocument?.('document', event.target.files?.[0])} />
+          <label className="btn btn-outline-navy btn-sm" aria-busy={uploadingKind === 'document'} style={{ marginTop: 12 }}>
+            <AsyncButtonContent pending={uploadingKind === 'document'} pendingLabel="Uploading document…">Choose File</AsyncButtonContent>
+            <input type="file" hidden disabled={Boolean(uploadingKind)} accept=".pdf,.docx" onChange={event => onUploadDocument?.('document', event.target.files?.[0])} />
           </label>
           {uploadError && <p className="form-error" style={{ marginTop: 10 }}>{uploadError}</p>}
         </div>
@@ -1476,6 +1496,7 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
   const blankForm = { id: null, is_default: false, subject: '', location: '', location_ids: '', preferred_level: '', curriculum: '', employment_type: '', frequency: 'instant', alert_by_email: true };
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState('');
 
   React.useEffect(() => {
@@ -1542,14 +1563,21 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
   };
 
   const deleteAlert = async alert => {
-    if (alert.isDefault) return;
+    if (alert.isDefault || deletingId) return;
+    const previous = alerts;
+    const next = alerts.filter(item => String(item.id) !== String(alert.id));
+    setDeletingId(alert.id);
+    setError('');
+    setAlerts(next);
+    onSaved?.(next);
     try {
       if (isApiMode()) await api.deleteJobAlert(alert.id);
-      const next = alerts.filter(item => String(item.id) !== String(alert.id));
-      setAlerts(next);
-      onSaved?.(next);
     } catch (err) {
+      setAlerts(previous);
+      onSaved?.(previous);
       setError(err.message || 'Could not delete this alert.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -1604,7 +1632,7 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
               </div>
               <div className="portal-alert-actions">
                 <button className="btn btn-sm btn-outline-navy" onClick={() => openForm(alert)}>Edit</button>
-                {!alert.isDefault && <button className="portal-alert-delete" type="button" onClick={() => deleteAlert(alert)}>Delete</button>}
+                {!alert.isDefault && <button className="portal-alert-delete" type="button" disabled={deletingId === alert.id} aria-busy={deletingId === alert.id} onClick={() => deleteAlert(alert)}><AsyncButtonContent pending={deletingId === alert.id} pendingLabel="Deleting…">Delete</AsyncButtonContent></button>}
               </div>
             </div>
           ))}
@@ -1612,9 +1640,9 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
       )}
 
       {showForm && (
-        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setShowForm(false); }}>
+        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (!saving && event.target === event.currentTarget) setShowForm(false); }}>
           <form className="admin-modal-panel portal-alert-modal" onSubmit={saveAlert} role="dialog" aria-modal="true" aria-label="Create job alert">
-            <button className="admin-modal-close" type="button" onClick={() => setShowForm(false)}>
+            <button className="admin-modal-close" type="button" disabled={saving} onClick={() => setShowForm(false)}>
               <Icon name="x" size={16} stroke={2.1} />
               <span>Close</span>
             </button>
@@ -1680,8 +1708,8 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
             </label>
             {error && <p className="form-error">{error}</p>}
             <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Alert'}</button>
-              <button className="btn btn-outline-navy" type="button" onClick={() => setShowForm(false)}>Cancel</button>
+              <button className="btn btn-primary" type="submit" disabled={saving} aria-busy={saving}><AsyncButtonContent pending={saving} pendingLabel="Saving job alert…">Save Alert</AsyncButtonContent></button>
+              <button className="btn btn-outline-navy" type="button" disabled={saving} onClick={() => setShowForm(false)}>Cancel</button>
             </div>
           </form>
         </div>
@@ -1739,7 +1767,7 @@ const SettingsView = ({ onNavigate }) => {
           <div className="form-group"><label className="form-label">Confirm New Password</label><PasswordRevealInput autoComplete="new-password" placeholder="Repeat new password" value={passwords.confirm} onChange={event => setPasswords(prev => ({ ...prev, confirm: event.target.value }))} required /></div>
           {error && <p className="form-error" role="alert">{error}</p>}
           {success && <p className="form-success" role="status">{success}</p>}
-          <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>{saving ? 'Updating...' : 'Update Password'}</button>
+          <button className="btn btn-primary btn-sm" type="submit" disabled={saving} aria-busy={saving}><AsyncButtonContent pending={saving} pendingLabel="Updating password…">Update Password</AsyncButtonContent></button>
         </form>
         <div className="profile-section-card">
           <h3>Notifications</h3>
@@ -1778,14 +1806,15 @@ const SettingsView = ({ onNavigate }) => {
   );
 };
 
-const PortalLoadingState = ({ error = '' }) => (
-  <div className="portal-loading-screen" role="status" aria-live="polite">
+const PortalLoadingState = ({ error = '', onRetry }) => (
+  <div className="portal-loading-screen" role={error ? 'alert' : 'status'} aria-live="polite" aria-busy={!error}>
     <img src={logoWhite} alt="RealMindX Education" />
     <div className="portal-loading-card">
-      {error ? <Icon name="warning" size={28} stroke={1.9} /> : <span className="portal-loading-spinner" aria-hidden="true" />}
+      {error ? <Icon name="warning" size={28} stroke={1.9} /> : null}
       <h1>{error ? 'We could not load your portal' : 'Loading your teacher portal'}</h1>
       <p>{error || 'Getting your profile, applications, documents, and job alerts ready.'}</p>
-      {error && <button className="btn btn-primary" type="button" onClick={() => window.location.reload()}>Try Again</button>}
+      {!error ? <ContentSkeleton variant="table" count={4} label="Loading teacher portal data…" /> : null}
+      {error && <button className="btn btn-primary" type="button" onClick={onRetry}>Try Again</button>}
     </div>
   </div>
 );
@@ -1802,12 +1831,14 @@ const UserPortalPage = () => {
   const [apiAlerts, setApiAlerts] = React.useState(null);
   const [portalLoading, setPortalLoading] = React.useState(isApiMode());
   const [portalLoadError, setPortalLoadError] = React.useState('');
+  const [portalReloadToken, setPortalReloadToken] = React.useState(0);
   const [accountStatus, setAccountStatus] = React.useState(null);
   const [avatarPreview, setAvatarPreview] = React.useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = React.useState(false);
   const [avatarUploading, setAvatarUploading] = React.useState(false);
   const [uploadingKind, setUploadingKind] = React.useState('');
   const [uploadError, setUploadError] = React.useState('');
+  const [uploadMeta, setUploadMeta] = React.useState(null);
   const [profileEditSection, setProfileEditSection] = React.useState('');
   const [profileForm, setProfileForm] = React.useState({});
   const [profileSaving, setProfileSaving] = React.useState(false);
@@ -1932,7 +1963,7 @@ const UserPortalPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [session, sessionChecked]);
+  }, [session, sessionChecked, portalReloadToken]);
 
   React.useEffect(() => {
     if (!sessionChecked || portalLoading || !session || !apiProfile) return undefined;
@@ -2003,7 +2034,7 @@ const UserPortalPage = () => {
   if (!sessionChecked || !session) return <AuthLoadingScreen />;
   if (['admin', 'staff'].includes(session.role)) return null;
   if (portalLoading) return <PortalLoadingState />;
-  if (portalLoadError) return <PortalLoadingState error={portalLoadError} />;
+  if (portalLoadError) return <PortalLoadingState error={portalLoadError} onRetry={() => { setPortalLoadError(''); setPortalReloadToken(token => token + 1); }} />;
 
   const applications = isApiMode()
     ? (apiApplications || []).map(normaliseApplication)
@@ -2121,6 +2152,7 @@ const UserPortalPage = () => {
   const handleFileUpload = async (kind, file, suppliedReason = '') => {
     if (!file) return;
     setUploadError('');
+    setUploadMeta({ kind, file, reason: suppliedReason, name: file.name, size: file.size, status: 'uploading', error: '' });
     if (kind === 'profile_picture') setAvatarUploading(true);
     else setUploadingKind(kind);
     try {
@@ -2129,6 +2161,7 @@ const UserPortalPage = () => {
         if (localUrl) {
           setApiProfile(prev => ({ ...(prev || {}), profile_picture_url: localUrl }));
         }
+        setUploadMeta({ kind, file, reason: suppliedReason, name: file.name, size: file.size, status: 'complete', error: '' });
         return;
       }
       let changeReason = suppliedReason;
@@ -2138,8 +2171,11 @@ const UserPortalPage = () => {
       const result = await api.uploadUserFile(file, kind, changeReason);
       mergeUploadedProfile(result, kind);
       await refreshAccountStatus();
+      setUploadMeta({ kind, file, reason: changeReason, name: file.name, size: file.size, status: 'complete', error: '' });
     } catch (err) {
-      setUploadError(err?.message || 'Upload failed. Please try again.');
+      const message = err?.message || 'Upload failed. Please try again.';
+      setUploadError(message);
+      setUploadMeta({ kind, file, reason: suppliedReason, name: file.name, size: file.size, status: 'error', error: message });
     } finally {
       setAvatarUploading(false);
       setUploadingKind('');
@@ -2280,7 +2316,7 @@ const UserPortalPage = () => {
   const renderView = () => {
     switch (activeView) {
       case 'profile':      return <ProfileView      user={user} onUploadAvatar={file => handleFileUpload('profile_picture', file)} onEditProfile={openProfileEdit} onContactUpdated={refreshProfileAfterContact} avatarUploading={avatarUploading} uploadError={uploadError} />;
-      case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} highlight={pendingActionRef.current === 'highlight-cv' ? 'cv' : pendingActionRef.current === 'highlight-cert' ? 'cert' : null} />;
+      case 'documents':    return <DocumentsView    user={user} onUploadDocument={handleFileUpload} uploadingKind={uploadingKind} uploadError={uploadError} uploadMeta={uploadMeta} highlight={pendingActionRef.current === 'highlight-cv' ? 'cv' : pendingActionRef.current === 'highlight-cert' ? 'cert' : null} />;
       case 'applications': return <ApplicationsView applications={applications} />;
       case 'alerts':       return <AlertsView initialAlerts={alerts} user={user} onSaved={next => { if (isApiMode()) setApiAlerts(next); }} />;
       case 'settings':     return <SettingsView onNavigate={setActiveView} />;
@@ -2398,11 +2434,12 @@ const UserPortalPage = () => {
             </div>
             <h3>{user.firstName} {user.lastName}</h3>
             <p>{user.avatarUrl ? 'Profile picture' : 'No uploaded profile picture yet.'}</p>
-            <label className="btn btn-primary" style={{ marginTop: 18 }}>
-              {avatarUploading ? 'Uploading...' : user.avatarUrl ? 'Replace Photo' : 'Upload Photo'}
-              <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => handleFileUpload('profile_picture', event.target.files?.[0])} />
+            <label className="btn btn-primary" aria-busy={avatarUploading} style={{ marginTop: 18 }}>
+              <AsyncButtonContent pending={avatarUploading} pendingLabel="Uploading photo…">{user.avatarUrl ? 'Replace Photo' : 'Upload Photo'}</AsyncButtonContent>
+              <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={avatarUploading} onChange={event => handleFileUpload('profile_picture', event.target.files?.[0])} />
             </label>
-            {uploadError && <p className="form-error" style={{ marginTop: 10 }}>{uploadError}</p>}
+            {uploadMeta?.kind === 'profile_picture' ? <ProgressStatus label={uploadMeta.status === 'complete' ? `${uploadMeta.name} uploaded` : `Uploading ${uploadMeta.name}`} detail={formatUploadSize(uploadMeta.size)} stage="Uploading profile photo securely" complete={uploadMeta.status === 'complete'} error={uploadMeta.error} onRetry={uploadMeta.error ? () => handleFileUpload('profile_picture', uploadMeta.file, uploadMeta.reason || '') : undefined} /> : null}
+            {uploadError && <p className="form-error" role="alert" style={{ marginTop: 10 }}>{uploadError}</p>}
           </div>
         </div>
       )}
@@ -2491,9 +2528,10 @@ const UserPortalPage = () => {
                 className="btn btn-primary terms-accept-btn"
                 type="button"
                 disabled={termsAccepting}
+                aria-busy={termsAccepting}
                 onClick={acceptTerms}
               >
-                {termsAccepting ? 'Please wait...' : 'Accept'}
+                <AsyncButtonContent pending={termsAccepting} pendingLabel="Recording acceptance…">Accept</AsyncButtonContent>
               </button>
               <button
                 className="btn terms-decline-btn"
@@ -2543,9 +2581,10 @@ const UserPortalPage = () => {
                 className="btn terms-delete-confirm-btn"
                 type="button"
                 disabled={deleteConfirming}
+                aria-busy={deleteConfirming}
                 onClick={executeDelete}
               >
-                {deleteConfirming ? 'Deleting...' : 'Yes, Delete My Account'}
+                <AsyncButtonContent pending={deleteConfirming} pendingLabel="Deleting account…">Yes, Delete My Account</AsyncButtonContent>
               </button>
               <button
                 className="btn btn-outline"
@@ -2610,7 +2649,7 @@ const UserPortalPage = () => {
             ) : null}
             {submitError && <p className="form-error" style={{ textAlign: 'center', marginBottom: 8 }}>{submitError}</p>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 18 }}>
-              <button className="btn btn-primary" type="button" disabled={submitting} onClick={handleSubmitProfile}>{submitting ? 'Submitting...' : 'Confirm Submission'}</button>
+              <button className="btn btn-primary" type="button" disabled={submitting} aria-busy={submitting} onClick={handleSubmitProfile}><AsyncButtonContent pending={submitting} pendingLabel="Submitting profile…">Confirm Submission</AsyncButtonContent></button>
               <button className="btn" type="button" disabled={submitting} onClick={() => setSubmitModalOpen(false)}>Cancel</button>
             </div>
           </div>

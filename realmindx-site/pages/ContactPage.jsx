@@ -4,6 +4,7 @@ import { Icon } from '../assets/components.jsx';
 import { TurnstileField } from '../../src/lib/TurnstileField.jsx';
 import { submitMessage } from '../../src/lib/managedContent.js';
 import { usePublicServices, usePublicSettings } from '../../src/lib/siteContent.js';
+import { AsyncButtonContent } from '../../src/lib/AsyncUI.jsx';
 
 const SERVICE_OPTIONS = [
   'Teacher Recruitment',
@@ -276,9 +277,10 @@ const ContactPage = () => {
                 type="submit"
                 className="btn btn-primary btn-lg"
                 disabled={loading}
+                aria-busy={loading}
                 style={{ width: '100%', justifyContent: 'center', opacity: loading ? 0.7 : 1 }}
               >
-                {loading ? 'Sending...' : 'Send Message'}
+                <AsyncButtonContent pending={loading} pendingLabel="Sending message…">Send Message</AsyncButtonContent>
               </button>
 
               <p style={{ fontSize: '0.78rem', color: 'var(--gray-600)', textAlign: 'center', marginTop: 12 }}>

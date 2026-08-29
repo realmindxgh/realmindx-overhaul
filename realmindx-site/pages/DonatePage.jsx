@@ -4,6 +4,7 @@ import { Icon } from '../assets/components.jsx';
 import { submitMessage } from '../../src/lib/managedContent.js';
 import { useDonationSlides } from '../../src/lib/siteContent.js';
 import { api, isApiMode } from '../../src/lib/apiClient.js';
+import { AsyncButtonContent } from '../../src/lib/AsyncUI.jsx';
 
 const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || '';
 
@@ -12,10 +13,24 @@ let paystackLoaded = false;
 function loadPaystack() {
   if (paystackLoaded || typeof window === 'undefined') return Promise.resolve();
   if (window.PaystackPop) { paystackLoaded = true; return Promise.resolve(); }
-  return new Promise((res) => {
+  return new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = 'https://js.paystack.co/v1/inline.js';
-    s.onload = () => { paystackLoaded = true; res(); };
+    s.async = true;
+    const timeout = window.setTimeout(() => {
+      s.remove();
+      reject(new Error('Secure checkout took too long to load. Check your connection and try again.'));
+    }, 15000);
+    s.onload = () => {
+      window.clearTimeout(timeout);
+      paystackLoaded = true;
+      resolve();
+    };
+    s.onerror = () => {
+      window.clearTimeout(timeout);
+      s.remove();
+      reject(new Error('Secure checkout could not load. Check your connection and try again.'));
+    };
     document.body.appendChild(s);
   });
 }
@@ -338,21 +353,23 @@ const DonateForm = () => {
         </div>
       </div>
 
-      {error && <p style={{ color:'var(--danger)', fontSize:'0.85rem', marginTop:8 }}>{error}</p>}
+      {error && <p role="alert" style={{ color:'var(--danger)', fontSize:'0.85rem', marginTop:8 }}>{error}</p>}
 
       <div className="donate-actions">
         {/* Pay via Paystack - only for GHS monetary */}
         {canPayNow && (
-          <button className="btn btn-primary btn-lg donate-paystack-btn" type="button" disabled={paying || loading}
+          <button className="btn btn-primary btn-lg donate-paystack-btn" type="button" disabled={paying || loading} aria-busy={paying}
             onClick={handlePaystack}>
             <Icon name="lock" size={15} />
-            {paying ? 'Opening...' : `Donate GHS ${form.amount} via Paystack`}
+            <AsyncButtonContent pending={paying} pendingLabel="Opening secure checkout…">{`Donate GHS ${form.amount} via Paystack`}</AsyncButtonContent>
           </button>
         )}
         {/* Submit enquiry - always available */}
-        <button className="btn btn-outline btn-lg donate-enquiry-btn" type="submit" disabled={loading || paying}
+        <button className="btn btn-outline btn-lg donate-enquiry-btn" type="submit" disabled={loading || paying} aria-busy={loading}
           style={!canPayNow ? { background:'var(--navy)', color:'#fff', borderColor:'var(--navy)' } : {}}>
-          {loading ? 'Sending...' : (isMonetary && form.currency !== 'GHS') ? "Submit - We'll Follow Up" : 'Submit Enquiry'}
+          <AsyncButtonContent pending={loading} pendingLabel="Sending enquiry…">
+            {(isMonetary && form.currency !== 'GHS') ? "Submit - We'll Follow Up" : 'Submit Enquiry'}
+          </AsyncButtonContent>
         </button>
         {/* WhatsApp button */}
         <a className="donate-whatsapp-btn" href="https://wa.link/q5rjtp" target="_blank" rel="noreferrer">

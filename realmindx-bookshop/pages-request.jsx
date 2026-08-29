@@ -4,6 +4,7 @@ import TurnstileField from '../src/lib/TurnstileField.jsx';
 import { api } from '../src/lib/apiClient.js';
 import { getDemoSession } from '../src/lib/demoAccounts.js';
 import { bookshopPathForRoute } from './urls.js';
+import { AsyncButtonContent } from '../src/lib/AsyncUI.jsx';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
 const PREFIX = ON_SUBDOMAIN ? '' : '/bookshop';
@@ -115,7 +116,7 @@ const RequestBookPage = ({ navigate }) => {
             </div>
             <TurnstileField className="bs-turnstile-wrap" onVerify={setTurnstileToken} />
             {error && <p className="bs-request-error" role="alert">{error}</p>}
-            <button type="submit" className="bs-btn bs-btn-gold bs-btn-lg" disabled={busy}>{busy ? 'Sending request...' : 'Send book request'}</button>
+            <button type="submit" className="bs-btn bs-btn-gold bs-btn-lg" disabled={busy} aria-busy={busy}><AsyncButtonContent pending={busy} pendingLabel="Sending book request…">Send book request</AsyncButtonContent></button>
           </form>
         )}
       </div>

@@ -23,6 +23,7 @@ import { getDemoSession } from './lib/demoAccounts.js';
 import { signOut, syncSessionFromApi } from './lib/authClient.js';
 import { loginPathForRole } from './lib/sessionRoutes.js';
 import { flushQueuedToast, queueToast } from './lib/toast.js';
+import { AsyncState } from './lib/AsyncUI.jsx';
 
 const HomePage = React.lazy(() => import('../realmindx-site/assets/app.jsx'));
 const AboutPage = React.lazy(() => import('../realmindx-site/pages/AboutPage.jsx'));
@@ -41,8 +42,8 @@ const BookshopApp = React.lazy(() => import('../realmindx-bookshop/BookshopApp.j
 const DonatePage = React.lazy(() => import('../realmindx-site/pages/DonatePage.jsx'));
 
 const RouteLoading = () => (
-  <main className="route-page" aria-busy="true" aria-live="polite">
-    <div className="container" style={{ padding: '96px 20px', textAlign: 'center' }}>Loading…</div>
+  <main className="route-page route-loading-shell" aria-busy="true">
+    <AsyncState loading loadingLabel="Opening this page…" skeleton="cards" skeletonCount={3} />
   </main>
 );
 
@@ -89,6 +90,8 @@ const SiteInfoPage = ({ activePage = '', eyebrow = 'RealMindX', title, body, act
 const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
   const content = useManagedContent();
   const [apiItems, setApiItems] = React.useState(null);
+  const [apiError, setApiError] = React.useState('');
+  const [reloadToken, setReloadToken] = React.useState(0);
   const managedNews = usePublicNewsState(40);
   const managedGallery = usePublicGalleryState(40);
 
@@ -100,11 +103,16 @@ const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
     };
     const load = loaders[collection];
     if (!load) return;
+    setApiError('');
     load()
       .then(data => { if (alive) setApiItems(data.items || []); })
-      .catch(() => { if (alive) setApiItems([]); });
+      .catch(() => {
+        if (!alive) return;
+        setApiItems([]);
+        setApiError('We could not load the latest published items.');
+      });
     return () => { alive = false; };
-  }, [collection]);
+  }, [collection, reloadToken]);
 
   const source = isApiMode() ? (apiItems ?? []) : (content[collection] || []);
   const rawItems = isApiMode() ? source : publicItems(source);
@@ -112,7 +120,12 @@ const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
     ? managedNews
     : collection === 'gallery'
       ? managedGallery
-      : { items: rawItems, loading: isApiMode() && apiItems === null };
+      : {
+          items: rawItems,
+          loading: isApiMode() && apiItems === null,
+          failed: Boolean(apiError),
+          refresh: () => { setApiItems(null); setReloadToken(token => token + 1); },
+        };
   const items = itemsState.items;
   const emptyTitle = collection === 'news'
     ? 'No Published News Yet'
@@ -146,17 +159,18 @@ const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
         </section>
         <section className="managed-public-section">
           <div className="container">
-            {itemsState.loading ? (
-              <div className="managed-empty">
-                <h2>Loading Published Content</h2>
-                <p>Checking the latest RealMindX updates.</p>
-              </div>
-            ) : items.length === 0 ? (
-              <div className="managed-empty">
-                <h2>{emptyTitle}</h2>
-                <p>{emptyBody}</p>
-              </div>
-            ) : (
+            <AsyncState
+              loading={itemsState.loading}
+              error={itemsState.failed ? 'We could not load the latest published content.' : ''}
+              errorTitle="Published content is unavailable"
+              onRetry={itemsState.refresh}
+              empty={!itemsState.loading && !itemsState.failed && items.length === 0}
+              emptyTitle={emptyTitle}
+              emptyMessage={emptyBody}
+              loadingLabel={`Loading ${collection}…`}
+              skeleton="cards"
+              skeletonCount={3}
+            >
               <div className="managed-card-grid">
                 {items.map(item => {
                   const anchorId = collection === 'news'
@@ -175,7 +189,7 @@ const SiteCollectionPage = ({ activePage = '', collection, title, body }) => {
                   );
                 })}
               </div>
-            )}
+            </AsyncState>
           </div>
         </section>
       </main>

@@ -11,6 +11,7 @@ import { setBookshopAuthReturn } from './authReturn.js';
 import globalToast from '../src/lib/toast.js';
 import { bookshopPathForRoute, productHref, productMatchesSegment, productPathSegment } from './urls.js';
 import { BOOKSHOP_BASE_URL } from '../src/lib/seoRoutes.js';
+import { AsyncButtonContent } from '../src/lib/AsyncUI.jsx';
 const isLoggedIn = () => Boolean(getDemoSession()?.role);
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
@@ -169,8 +170,8 @@ const ReviewForm = ({ productId }) => {
 
       {apiError && <div className="bs-field-error" role="alert" style={{ marginBottom: 12 }}>{apiError}</div>}
 
-      <button type="submit" className="bs-btn bs-btn-gold" disabled={busy}>
-        {busy ? 'Submitting...' : 'Submit Review'}
+      <button type="submit" className="bs-btn bs-btn-gold" disabled={busy} aria-busy={busy}>
+        <AsyncButtonContent pending={busy} pendingLabel="Submitting review…">Submit Review</AsyncButtonContent>
       </button>
       <div className="bs-review-form-hint" style={{ marginTop: 10 }}>
         Your email is never shown publicly.
@@ -686,9 +687,10 @@ const CartPage = ({ navigate }) => {
             type="button"
             className="bs-cart-invoice-btn"
             disabled={selectedCount === 0 || generatingInvoice}
+            aria-busy={generatingInvoice}
             onClick={generateCartInvoice}
           >
-            <Icon name="files" size={14} /> {generatingInvoice ? 'Working...' : 'Invoice'}
+            <Icon name="files" size={14} /> <AsyncButtonContent pending={generatingInvoice} pendingLabel="Preparing…">Invoice</AsyncButtonContent>
           </button>
           <button type="button" className="bs-cart-clear-btn" onClick={clear}>
             <Icon name="trash" size={14} /> Clear cart
@@ -939,8 +941,8 @@ const CartPage = ({ navigate }) => {
                 {sentInvoice ? 'Close' : 'Cancel'}
               </button>
               {!sentInvoice && (
-                <button type="submit" className="bs-btn bs-btn-gold" disabled={generatingInvoice}>
-                  <Icon name="mail" size={15} /> {generatingInvoice ? 'Sending...' : 'Send Invoice'}
+                <button type="submit" className="bs-btn bs-btn-gold" disabled={generatingInvoice} aria-busy={generatingInvoice}>
+                  <Icon name="mail" size={15} /> <AsyncButtonContent pending={generatingInvoice} pendingLabel="Generating and sending…">Send Invoice</AsyncButtonContent>
                 </button>
               )}
             </div>

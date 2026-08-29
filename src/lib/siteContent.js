@@ -426,7 +426,7 @@ export const useDonationSlides = () => {
 export const usePublicNewsState = (limit = 3) => {
   const localContent = useManagedContent();
   const initialNews = Array.isArray(INITIAL_ROUTE_DATA.news) ? INITIAL_ROUTE_DATA.news : null;
-  const { items: apiNews, failed } = useApiItems(api.fetchNews, initialNews);
+  const { items: apiNews, failed, loading, refresh } = useApiItems(api.fetchNews, initialNews);
 
   const localNews = localContent.news?.length ? localContent.news : [];
   const source = isApiMode()
@@ -439,8 +439,9 @@ export const usePublicNewsState = (limit = 3) => {
     .slice(0, limit);
   return {
     items,
-    loading: isApiMode() && apiNews === null && !failed,
+    loading: isApiMode() && (apiNews === null || loading) && !failed,
     failed,
+    refresh,
   };
 };
 
@@ -450,7 +451,7 @@ export const usePublicNews = (limit = 3) => {
 
 export const usePublicGalleryState = (limit = 6) => {
   const localContent = useManagedContent();
-  const { items: apiGallery, failed } = useApiItems(api.fetchGallery);
+  const { items: apiGallery, failed, loading, refresh } = useApiItems(api.fetchGallery);
 
   const localGallery = localContent.gallery?.length ? localContent.gallery : [];
   const source = isApiMode()
@@ -463,7 +464,9 @@ export const usePublicGalleryState = (limit = 6) => {
     .slice(0, limit);
   return {
     items,
-    loading: isApiMode() && apiGallery === null && !failed,
+    loading: isApiMode() && (apiGallery === null || loading) && !failed,
+    failed,
+    refresh,
   };
 };
 

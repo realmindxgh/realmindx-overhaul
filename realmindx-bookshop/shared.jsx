@@ -1,5 +1,6 @@
 import React from 'react';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
+import { ContentSkeleton, InlineStatus, useDelayedPending } from '../src/lib/AsyncUI.jsx';
 const bookshopLogo = '/bookshop-logo.png';
 
 // ---------- Icons (24x24 stroke) ----------
@@ -93,26 +94,21 @@ const LoadingState = ({
   body = 'Please wait while we fetch the latest bookshop data.',
   minimal = false,
 }) => {
-  const [visible, setVisible] = React.useState(false);
+  const visible = useDelayedPending(true, 240);
 
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setVisible(true), 180);
-    return () => window.clearTimeout(timer);
-  }, []);
+  if (!visible) return <div className="bs-loading-reserve" aria-busy="true" aria-label={title} />;
 
-  if (!visible) return null;
+  if (minimal) {
+    return <InlineStatus busy className="bs-loading-inline">Loading bookshop content…</InlineStatus>;
+  }
 
   return (
-    <div className={`bs-empty-state bs-loading-state${minimal ? ' is-minimal' : ''}`} role="status" aria-live="polite">
-      <div className="bs-empty-icon bs-loading-icon" aria-hidden="true">
-        <div className="bs-loading-dots">
-          <span />
-          <span />
-          <span />
-        </div>
+    <div className="bs-loading-state" aria-busy="true">
+      <div className="bs-loading-state-copy" aria-hidden="true">
+        <h2 className="bs-h2">{title}</h2>
+        {body ? <p>{body}</p> : null}
       </div>
-      <h2 className="bs-h2">{minimal ? 'Loading' : title}</h2>
-      {!minimal && body ? <p>{body}</p> : null}
+      <ContentSkeleton variant="list" count={3} label={title} />
     </div>
   );
 };

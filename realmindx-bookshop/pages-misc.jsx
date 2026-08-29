@@ -23,6 +23,7 @@ import { normalizeOrderStatus, orderStatusLabel } from '../src/lib/orderStatus.j
 import VerifiedContactField from '../src/lib/VerifiedContactField.jsx';
 import { bookshopPathForRoute } from './urls.js';
 import AuthLoadingScreen from '../src/lib/AuthLoadingScreen.jsx';
+import { AsyncButtonContent } from '../src/lib/AsyncUI.jsx';
 const bookshopHeroImage = '/bookshop-og.png';
 
 const ON_SUBDOMAIN = typeof window !== 'undefined' && window.location.hostname.startsWith('bookshop.');
@@ -421,8 +422,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
                   autoComplete="one-time-code"
                 />
               </div>
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
-                {loading ? 'Checking...' : 'Complete Sign In'}
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading} aria-busy={loading}>
+                <AsyncButtonContent pending={loading} pendingLabel="Checking code…">Complete Sign In</AsyncButtonContent>
               </button>
               <div className="bs-auth-alt">
                 Code expired? <button type="button" className="bs-link-button" onClick={() => { setPendingTwoFactorEmail(''); setOtp(''); }} disabled={loading}>Sign in again</button>
@@ -442,8 +443,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
                   required
                 />
               </div>
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
-                {loading ? 'Verifying...' : 'Verify Email'}
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading} aria-busy={loading}>
+                <AsyncButtonContent pending={loading} pendingLabel="Verifying email…">Verify Email</AsyncButtonContent>
               </button>
               <div className="bs-auth-alt">
                 Did not receive it? <button type="button" className="bs-link-button" onClick={resendOtp} disabled={loading}>Send a fresh code</button>
@@ -466,8 +467,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
                   <input type="email" placeholder="you@email.com" value={form.email} onChange={set('email')} autoComplete="email" required />
                 </div>
                 {error && <p className="bs-auth-error" role="alert">{error}</p>}
-                <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
-                  {loading ? 'Sending...' : 'Send Reset Link'}
+                <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading} aria-busy={loading}>
+                  <AsyncButtonContent pending={loading} pendingLabel="Sending reset link…">Send Reset Link</AsyncButtonContent>
                 </button>
                 <div className="bs-auth-alt">
                   <button type="button" className="bs-link-button bs-link-gold" onClick={() => setForgotMode(false)}>Back to Sign In</button>
@@ -542,8 +543,8 @@ const AuthPage = ({ navigate, mode = 'login' }) => {
 
           {error && <p className="bs-auth-error" role="alert">{error}</p>}
 
-          <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
-            {loading ? (isLogin ? 'Signing in...' : 'Creating account...') : isLogin ? 'Sign In' : 'Create Account'}
+          <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading} aria-busy={loading}>
+            <AsyncButtonContent pending={loading} pendingLabel={isLogin ? 'Signing in…' : 'Creating account…'}>{isLogin ? 'Sign In' : 'Create Account'}</AsyncButtonContent>
           </button>
 
           <div className="bs-auth-alt">
@@ -624,8 +625,8 @@ const BookshopResetPasswordPage = ({ navigate }) => {
               <BookshopPasswordField label="New Password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" placeholder="Minimum 8 characters" required />
               <BookshopPasswordField label="Confirm New Password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" placeholder="Repeat your new password" required />
               {error && <p className="bs-auth-error" role="alert">{error}</p>}
-              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading}>
-                {loading ? 'Updating...' : 'Update Password'}
+              <button className="bs-btn bs-btn-gold bs-btn-lg bs-btn-block" type="submit" disabled={loading} aria-busy={loading}>
+                <AsyncButtonContent pending={loading} pendingLabel="Updating password…">Update Password</AsyncButtonContent>
               </button>
               <div className="bs-auth-alt"><button type="button" className="bs-link-button bs-link-gold" onClick={() => navigate('login')}>Back to Sign In</button></div>
             </form>
@@ -1401,7 +1402,7 @@ const LegacyAccountPage = ({ navigate }) => {
                     </div>
                     {nameError && <p className="verified-contact-feedback is-error">{nameError}</p>}
                     <div className="bs-profile-form-actions">
-                      <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving}>{nameSaving ? 'Saving...' : 'Save name'}</button>
+                      <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving} aria-busy={nameSaving}><AsyncButtonContent pending={nameSaving} pendingLabel="Saving name…">Save name</AsyncButtonContent></button>
                       <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingName(false)}>Cancel</button>
                     </div>
                   </form>
@@ -1667,7 +1668,7 @@ const ExperimentalAccountPage = ({ navigate }) => {
                       </div>
                       {nameError && <p className="verified-contact-feedback is-error">{nameError}</p>}
                       <div className="bs-profile-form-actions">
-                        <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving}>{nameSaving ? 'Saving...' : 'Save name'}</button>
+                        <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving} aria-busy={nameSaving}><AsyncButtonContent pending={nameSaving} pendingLabel="Saving name…">Save name</AsyncButtonContent></button>
                         <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingName(false)}>Cancel</button>
                       </div>
                     </form>
@@ -2259,7 +2260,7 @@ const AccountPage = ({ navigate }) => {
             </div>
             <div className="bs-modal-foot">
               <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingName(false)}>Cancel</button>
-              <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving}>{nameSaving ? 'Saving...' : 'Save changes'}</button>
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={nameSaving} aria-busy={nameSaving}><AsyncButtonContent pending={nameSaving} pendingLabel="Saving account name…">Save changes</AsyncButtonContent></button>
             </div>
           </form>
         </div>
@@ -2281,7 +2282,7 @@ const AccountPage = ({ navigate }) => {
             </div>
             <div className="bs-modal-foot">
               <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setSecurityModal('')}>Cancel</button>
-              <button className="bs-btn bs-btn-navy" type="submit" disabled={passwordSaving}>{passwordSaving ? 'Updating...' : 'Update password'}</button>
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={passwordSaving} aria-busy={passwordSaving}><AsyncButtonContent pending={passwordSaving} pendingLabel="Updating password…">Update password</AsyncButtonContent></button>
             </div>
           </form>
         </div>
@@ -2322,9 +2323,14 @@ const AccountPage = ({ navigate }) => {
               {twoFactorState.error && <p className="verified-contact-feedback is-error">{twoFactorState.error}</p>}
             </div>
             <div className="bs-modal-foot">
-              <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setSecurityModal('')}>Cancel</button>
-              <button className={`bs-btn ${twoFactorState.enabled ? 'bs-account-security-danger' : 'bs-btn-navy'}`} type="submit" disabled={twoFactorState.saving}>
-                {twoFactorState.saving ? 'Please wait...' : twoFactorState.step === 'code' ? 'Confirm security code' : twoFactorState.enabled ? 'Disable 2FA' : 'Continue'}
+              <button className="bs-btn bs-btn-outline-navy" type="button" disabled={twoFactorState.saving} onClick={() => setSecurityModal('')}>Cancel</button>
+              <button className={`bs-btn ${twoFactorState.enabled ? 'bs-account-security-danger' : 'bs-btn-navy'}`} type="submit" disabled={twoFactorState.saving} aria-busy={twoFactorState.saving}>
+                <AsyncButtonContent
+                  pending={twoFactorState.saving}
+                  pendingLabel={twoFactorState.step === 'code' ? 'Verifying security code…' : 'Sending security code…'}
+                >
+                  {twoFactorState.step === 'code' ? 'Confirm security code' : twoFactorState.enabled ? 'Disable 2FA' : 'Continue'}
+                </AsyncButtonContent>
               </button>
             </div>
           </form>
@@ -2357,7 +2363,7 @@ const AccountPage = ({ navigate }) => {
             </div>
             <div className="bs-modal-foot">
               <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => setEditingDetail(null)}>Cancel</button>
-              <button className="bs-btn bs-btn-navy" type="submit" disabled={detailSaving}>{detailSaving ? 'Saving...' : editingDetail.isNew ? 'Save details' : 'Save changes'}</button>
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={detailSaving} aria-busy={detailSaving}><AsyncButtonContent pending={detailSaving} pendingLabel="Saving checkout details…">{editingDetail.isNew ? 'Save details' : 'Save changes'}</AsyncButtonContent></button>
             </div>
           </form>
         </div>
@@ -2882,8 +2888,8 @@ const OrderReviewPage = ({ navigate }) => {
             {error ? <p className="verified-contact-feedback is-error" style={{ marginTop: 14 }}>{error}</p> : null}
 
             <div style={{ display: 'flex', gap: 12, marginTop: 18, flexWrap: 'wrap' }}>
-              <button className="bs-btn bs-btn-navy" type="submit" disabled={submitting}>
-                {submitting ? 'Submitting...' : 'Submit feedback'}
+              <button className="bs-btn bs-btn-navy" type="submit" disabled={submitting} aria-busy={submitting}>
+                <AsyncButtonContent pending={submitting} pendingLabel="Submitting feedback…">Submit feedback</AsyncButtonContent>
               </button>
               <button className="bs-btn bs-btn-outline-navy" type="button" onClick={() => navigate('track')}>
                 Track your order

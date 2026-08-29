@@ -13,6 +13,7 @@ import {
 import { dashboardPathForRole, loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import { TurnstileField } from '../../src/lib/TurnstileField.jsx';
 import toast from '../../src/lib/toast.js';
+import { AsyncButtonContent } from '../../src/lib/AsyncUI.jsx';
 
 const GoogleLogo = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
@@ -191,9 +192,12 @@ const InternalLoginPage = ({ role = 'admin' }) => {
               type="submit"
               className="btn btn-navy btn-lg"
               disabled={loading}
+              aria-busy={loading}
               style={{ width: '100%', justifyContent: 'center', marginTop: 8, opacity: loading ? 0.7 : 1 }}
             >
-              {loading ? 'Signing in...' : isStaff ? 'Sign In to Staff Portal' : 'Sign In to Admin Portal'}
+              <AsyncButtonContent pending={loading} pendingLabel="Signing in…">
+                {isStaff ? 'Sign In to Staff Portal' : 'Sign In to Admin Portal'}
+              </AsyncButtonContent>
             </button>
           </form>
 
@@ -551,9 +555,10 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   type="submit"
                   className="btn btn-primary btn-lg"
                   disabled={loading}
+                  aria-busy={loading}
                   style={{ width: '100%', justifyContent: 'center', opacity: loading ? 0.7 : 1 }}
                 >
-                  {loading ? 'Verifying...' : 'Verify Email'}
+                  <AsyncButtonContent pending={loading} pendingLabel="Verifying email…">Verify Email</AsyncButtonContent>
                 </button>
               </form>
               <p className="auth-switch-copy">
@@ -638,9 +643,10 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   type="submit"
                   className="btn btn-primary btn-lg"
                   disabled={loading}
+                  aria-busy={loading}
                   style={{ width: '100%', justifyContent: 'center', opacity: loading ? 0.7 : 1 }}
                 >
-                  {loading ? 'Signing in...' : 'Sign In'}
+                  <AsyncButtonContent pending={loading} pendingLabel="Signing in…">Sign In</AsyncButtonContent>
                 </button>
               </form>
               <p className="auth-switch-copy">
@@ -747,9 +753,10 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   type="submit"
                   className="btn btn-primary btn-lg"
                   disabled={loading}
+                  aria-busy={loading}
                   style={{ width: '100%', justifyContent: 'center', opacity: loading ? 0.7 : 1 }}
                 >
-                  {loading ? 'Creating account...' : 'Create Account'}
+                  <AsyncButtonContent pending={loading} pendingLabel="Creating account…">Create Account</AsyncButtonContent>
                 </button>
               </form>
 
@@ -799,9 +806,9 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   <input className="form-input" type="email" placeholder="you@example.com"
                     value={email} onChange={e => setEmail(e.target.value)} />
                 </div>
-                <button type="submit" className="btn btn-primary btn-lg" disabled={loading}
+                <button type="submit" className="btn btn-primary btn-lg" disabled={loading} aria-busy={loading}
                   style={{ width: '100%', justifyContent: 'center', opacity: loading ? 0.7 : 1 }}>
-                  {loading ? 'Sending...' : 'Send Reset Link'}
+                  <AsyncButtonContent pending={loading} pendingLabel="Sending reset link…">Send Reset Link</AsyncButtonContent>
                 </button>
               </form>
             </>
@@ -853,9 +860,10 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                     className="btn btn-primary btn-sm auth-choice-action"
                     onClick={sendPasswordSetupLink}
                     disabled={passwordLinkLoading || socialLoginHelp.sent}
+                    aria-busy={passwordLinkLoading}
                   >
                     <Icon name={socialLoginHelp.sent ? 'check' : 'mail'} size={16} stroke={2.2} />
-                    {passwordLinkLoading ? 'Sending...' : socialLoginHelp.sent ? 'Link sent' : 'Send secure link'}
+                    <AsyncButtonContent pending={passwordLinkLoading} pendingLabel="Sending link…" complete={socialLoginHelp.sent} completeLabel="Link sent">Send secure link</AsyncButtonContent>
                   </button>
                 </div>
               </div>
@@ -971,8 +979,8 @@ export const PasswordResetPage = () => {
                   </div>
                 </div>
                 {error && <p className="form-error form-error-inline" role="alert">{error}</p>}
-                <button type="submit" className="btn btn-primary btn-lg" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-                  {loading ? 'Updating password...' : 'Update Password'}
+                <button type="submit" className="btn btn-primary btn-lg" disabled={loading} aria-busy={loading} style={{ width: '100%', justifyContent: 'center' }}>
+                  <AsyncButtonContent pending={loading} pendingLabel="Updating password…">Update Password</AsyncButtonContent>
                 </button>
                 <p className="auth-switch-copy"><a href="/login">Back to Sign In</a></p>
               </form>
