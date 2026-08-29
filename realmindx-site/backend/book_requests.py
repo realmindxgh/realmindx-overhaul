@@ -66,6 +66,8 @@ def request_json(row, include_private=False):
             "resolved_by": row.resolved_by.full_name if row.resolved_by else None,
             "acknowledgement": {"email": row.acknowledgement_email_status, "sms": row.acknowledgement_sms_status, "sent_at": row.acknowledgement_sent_at.isoformat() if row.acknowledgement_sent_at else None},
             "availability_notification": {"email": row.available_email_status, "sms": row.available_sms_status, "sent_at": row.available_notified_at.isoformat() if row.available_notified_at else None},
+            "addressed_at": row.addressed_at.isoformat() if row.addressed_at else None,
+            "addressed_note": row.addressed_note,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         })
     return payload
@@ -295,3 +297,13 @@ def mark_available(row, product_url, actor_id):
     row.available_at = datetime.now(timezone.utc)
     audit("book_request_marked_available", "book_request", row.id, {"product_id": product.id, "product_url": canonical_url})
     return send_available_notification(row)
+
+
+def mark_addressed(row, actor_id, note=None):
+    if row.status in ("available", "addressed"):
+        raise BookRequestError("This request has already been resolved.", 409, "already_resolved")
+    row.status = "addressed"
+    row.resolved_by_id = actor_id
+    row.addressed_at = datetime.now(timezone.utc)
+    row.addressed_note = _clean(note, 2000) or None
+    audit("book_request_marked_addressed", "book_request", row.id, {"addressed_note": row.addressed_note})

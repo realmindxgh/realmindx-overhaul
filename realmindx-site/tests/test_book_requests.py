@@ -181,6 +181,37 @@ class BookRequestTests(unittest.TestCase):
         self.assertEqual(email_mock.call_count, email_calls_before_retry, "A successful email must not be sent twice")
         self.assertTrue(AuditLog.query.filter_by(action="book_request_notification_retried").first())
 
+    @patch("backend.book_requests.send_sms", return_value=Mock(status="accepted"))
+    @patch("backend.book_requests.send_email", return_value=Mock(status="accepted"))
+    def test_mark_addressed(self, email_mock, _sms_mock):
+        created = self.client.post("/api/bookshop/book-requests", json=self._payload())
+        request_id = created.get_json()["request"]["id"]
+        admin = self._account("admin", "addr-admin@example.com")
+        self._login(admin)
+        email_calls_before = email_mock.call_count
+
+        response = self.client.post(f"/api/admin/book-requests/{request_id}/addressed", json={"note": "Sourced privately via supplier"})
+        self.assertEqual(response.status_code, 200)
+        row = db.session.get(BookRequest, request_id)
+        self.assertEqual(row.status, "addressed")
+        self.assertIsNotNone(row.addressed_at)
+        self.assertEqual(row.addressed_note, "Sourced privately via supplier")
+        self.assertEqual(row.resolved_by_id, admin.id)
+        self.assertEqual(email_mock.call_count, email_calls_before, "Marking addressed must not email the client")
+
+        detail = self.client.get(f"/api/admin/book-requests/{request_id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.get_json()["request"]["addressed_note"], "Sourced privately via supplier")
+
+        filtered = self.client.get("/api/admin/book-requests?status=addressed")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(filtered.get_json()["total"], 1)
+
+        duplicate = self.client.post(f"/api/admin/book-requests/{request_id}/addressed", json={"note": "again"})
+        self.assertEqual(duplicate.status_code, 409, "An addressed request must not be resolved twice")
+
+        self.assertTrue(AuditLog.query.filter_by(action="book_request_marked_addressed").first())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3969,6 +3969,8 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [confirmAvailable, setConfirmAvailable] = React.useState(false);
+  const [addressedNote, setAddressedNote] = React.useState('');
+  const [confirmAddressed, setConfirmAddressed] = React.useState(false);
   const [error, setError] = React.useState('');
 
   const load = React.useCallback(async () => {
@@ -3991,12 +3993,12 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
 
   React.useEffect(() => { const timer = setTimeout(load, query ? 250 : 0); return () => clearTimeout(timer); }, [load, query]);
   React.useEffect(() => { setPage(1); }, [query, status, pageSize]);
-  React.useEffect(() => { if (!open) { setSelected(null); setProductUrl(''); setError(''); setConfirmAvailable(false); } }, [open]);
+  React.useEffect(() => { if (!open) { setSelected(null); setProductUrl(''); setError(''); setConfirmAvailable(false); setAddressedNote(''); setConfirmAddressed(false); } }, [open]);
   if (!open) return null;
 
   const openDetail = async row => {
     setLoading(true); setError('');
-    try { setSelected((await api.adminBookRequest(row.id)).request); setProductUrl(row.product_url || ''); setConfirmAvailable(false); }
+    try { setSelected((await api.adminBookRequest(row.id)).request); setProductUrl(row.product_url || ''); setConfirmAvailable(false); setAddressedNote(row.addressed_note || ''); setConfirmAddressed(false); }
     catch (err) { setError(err?.message || 'Could not open this request.'); }
     finally { setLoading(false); }
   };
@@ -4021,6 +4023,17 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
     } catch (err) { setError(err?.message || 'Could not retry the notification.'); }
     finally { setBusy(false); }
   };
+  const markAddressed = async () => {
+    setBusy(true); setError('');
+    try {
+      const response = await api.adminMarkBookRequestAddressed(selected.id, { note: addressedNote.trim() || undefined });
+      setSelected((await api.adminBookRequest(response.request.id)).request);
+      setConfirmAddressed(false);
+      await load();
+      onToast({ type: 'success', message: `${response.request.reference} was marked addressed.` });
+    } catch (err) { setError(err?.message || 'Could not mark this request addressed.'); }
+    finally { setBusy(false); }
+  };
   const channelLabel = value => ({ sent: 'Sent', failed: 'Failed', unavailable: 'Not supplied' }[value] || 'Pending');
 
   return ReactDOM.createPortal(
@@ -4036,7 +4049,7 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
           <div className="book-request-detail">
             <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => { setSelected(null); setProductUrl(''); }}>Back to requests</button>
             <div className="book-request-facts">
-              {[['Status', selected.status], ['Client', selected.customer_name], ['Email', selected.email || 'Not supplied'], ['Phone', selected.phone || 'Not supplied'], ['Author', selected.author || 'Not supplied'], ['Publisher', selected.publisher || 'Not supplied'], ['Level / class', selected.level || 'Not supplied'], ['Requested', selected.created_at ? new Date(selected.created_at).toLocaleString() : '-']].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+              {[['Status', { pending: 'Pending', available: 'Available', addressed: 'Addressed' }[selected.status] || selected.status], ['Client', selected.customer_name], ['Email', selected.email || 'Not supplied'], ['Phone', selected.phone || 'Not supplied'], ['Author', selected.author || 'Not supplied'], ['Publisher', selected.publisher || 'Not supplied'], ['Level / class', selected.level || 'Not supplied'], ['Requested', selected.created_at ? new Date(selected.created_at).toLocaleString() : '-']].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
             </div>
             {selected.notes && <div className="book-request-note"><span>Client notes</span><p>{selected.notes}</p></div>}
             <div className="book-request-notifications">
@@ -4048,13 +4061,15 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
             </div>
             {selected.history?.length > 0 && <div className="book-request-history"><h3>Request history</h3>{selected.history.map(event => <div key={event.id}><span>{event.action}</span><time>{new Date(event.created_at).toLocaleString()}</time></div>)}</div>}
             {selected.status === 'pending' && canManage && <div className="book-request-available"><label><span>Published product link</span><input value={productUrl} onChange={event => { setProductUrl(event.target.value); setConfirmAvailable(false); }} placeholder="https://bookshop.realmindxgh.com/products/..." /></label>{confirmAvailable ? <div className="book-request-confirm"><strong>Notify this client now?</strong><span>Email and SMS will use this product link.</span><div><button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={markAvailable}>{busy ? 'Notifying...' : 'Confirm and notify'}</button><button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setConfirmAvailable(false)}>Cancel</button></div></div> : <button className="btn btn-primary" type="button" onClick={() => { if (!productUrl.trim()) setError('Paste the published RealMindX Bookshop product link.'); else { setError(''); setConfirmAvailable(true); } }}>Available Now</button>}</div>}
+            {selected.status === 'pending' && canManage && <div className="book-request-addressed"><label><span>Addressed note (optional)</span><textarea value={addressedNote} onChange={event => { setAddressedNote(event.target.value); setConfirmAddressed(false); }} placeholder="How was this request handled? (e.g. sourced privately, client declined, out of print)"></textarea></label>{confirmAddressed ? <div className="book-request-confirm"><strong>Mark this request addressed?</strong><span>It will be removed from the pending queue and the daily stale digest.</span><div><button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={markAddressed}>{busy ? 'Saving...' : 'Mark addressed'}</button><button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setConfirmAddressed(false)}>Cancel</button></div></div> : <button className="btn btn-outline-navy" type="button" onClick={() => { setConfirmAddressed(true); setError(''); }}>Mark addressed</button>}</div>}
+            {selected.status === 'addressed' && selected.addressed_note && <div className="book-request-note"><span>Addressed note</span><p>{selected.addressed_note}</p></div>}
             {selected.status === 'available' && canManage && ['failed'].some(value => [selected.availability_notification?.email, selected.availability_notification?.sms].includes(value)) && <button className="btn btn-primary" type="button" disabled={busy} onClick={retryNotification}>{busy ? 'Retrying...' : 'Retry failed notification'}</button>}
           </div>
         ) : (
           <>
-            <div className="book-request-tools"><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search reference, title, or client" /><select value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option><option value="pending">Pending</option><option value="available">Available</option></select><label>Rows <select value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[5, 10, 20, 50, 100].map(value => <option key={value}>{value}</option>)}</select></label></div>
+            <div className="book-request-tools"><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search reference, title, or client" /><select value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option><option value="pending">Pending</option><option value="available">Available</option><option value="addressed">Addressed</option></select><label>Rows <select value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[5, 10, 20, 50, 100].map(value => <option key={value}>{value}</option>)}</select></label></div>
             <div className="book-request-list" aria-busy={loading}>
-              {loading && items.length === 0 ? <p className="book-request-empty">Loading requests...</p> : items.map(row => <button type="button" className="book-request-row" key={row.id} onClick={() => openDetail(row)}><span><strong>{row.requested_title}</strong><small>{row.reference} · {row.customer_name}</small></span><span><strong>{row.status === 'available' ? 'Available' : 'Pending'}</strong><small>{row.created_at ? new Date(row.created_at).toLocaleDateString() : ''}</small></span></button>)}
+              {loading && items.length === 0 ? <p className="book-request-empty">Loading requests...</p> : items.map(row => <button type="button" className="book-request-row" key={row.id} onClick={() => openDetail(row)}><span><strong>{row.requested_title}</strong><small>{row.reference} · {row.customer_name}</small></span><span><strong>{({ pending: 'Pending', available: 'Available', addressed: 'Addressed' })[row.status] || 'Pending'}</strong><small>{row.created_at ? new Date(row.created_at).toLocaleDateString() : ''}</small></span></button>)}
               {!loading && items.length === 0 && <p className="book-request-empty">No book requests match this view.</p>}
             </div>
             <div className="book-request-pagination"><span>{total} request{total === 1 ? '' : 's'}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</button><strong>Page {page} of {pages}</strong><button type="button" disabled={page >= pages} onClick={() => setPage(value => value + 1)}>Next</button></div></div>

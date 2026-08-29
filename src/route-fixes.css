@@ -287,7 +287,7 @@ html {
 .book-requests-heading p { margin: 0; color: var(--gray-600); }
 .book-request-count { padding: 8px 12px; background: #fff0b8; color: #1c2538; font-weight: 800; white-space: nowrap; }
 .book-request-tools { display: grid; grid-template-columns: minmax(260px, 1fr) 180px auto; gap: 10px; align-items: center; margin-bottom: 16px; }
-.book-request-tools input, .book-request-tools select, .book-request-available input { min-height: 44px; border: 1px solid #cbd8e8; background: #fff; padding: 9px 12px; color: #14233b; font: inherit; }
+.book-request-tools input, .book-request-tools select, .book-request-available input, .book-request-addressed textarea { min-height: 44px; border: 1px solid #cbd8e8; background: #fff; padding: 9px 12px; color: #14233b; font: inherit; }
 .book-request-tools label { display: flex; align-items: center; gap: 7px; color: var(--navy); font-weight: 700; }
 .book-request-list { border: 1px solid #dae3ef; min-height: 180px; }
 .book-request-row { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 16px 18px; border: 0; border-bottom: 1px solid #e3eaf3; background: #fff; color: var(--navy); text-align: left; cursor: pointer; }
@@ -304,7 +304,7 @@ html {
 .book-request-detail { display: grid; gap: 18px; }
 .book-request-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .book-request-facts > div { display: grid; gap: 7px; min-height: 92px; padding: 14px; border: 1px solid #d9e3ef; background: #f8fafc; }
-.book-request-facts span, .book-request-note > span, .book-request-available label > span { color: #687992; text-transform: uppercase; font-size: 11px; font-weight: 800; }
+.book-request-facts span, .book-request-note > span, .book-request-available label > span, .book-request-addressed label > span { color: #687992; text-transform: uppercase; font-size: 11px; font-weight: 800; }
 .book-request-facts strong { overflow-wrap: anywhere; color: var(--navy); }
 .book-request-note, .book-request-notifications { border-left: 4px solid var(--gold); background: #f8fafc; padding: 15px 18px; }
 .book-request-note p { margin-bottom: 0; }
@@ -317,11 +317,14 @@ html {
 .book-request-history time { color: var(--gray-600); font-size: 13px; }
 .book-request-available { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; padding: 18px; border: 1px solid #d9e3ef; }
 .book-request-available label { display: grid; gap: 7px; }
+.book-request-addressed { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; padding: 18px; border: 1px solid #d9e3ef; background: #f6f8fb; }
+.book-request-addressed label { display: grid; gap: 7px; }
+.book-request-addressed textarea { min-height: 72px; resize: vertical; }
 .book-request-confirm { display: grid; gap: 5px; padding: 12px 14px; background: #fff8dc; border-left: 3px solid var(--gold); }
 .book-request-confirm > span { color: var(--gray-600); font-size: 12px; }
 .book-request-confirm > div { display: flex; gap: 7px; margin-top: 4px; flex-wrap: wrap; }
 .book-request-admin-error { margin-bottom: 16px; }
-@media (max-width: 760px) { .book-requests-modal { padding: 22px 16px; } .book-requests-heading { padding-right: 52px; flex-direction: column; } .book-request-tools { grid-template-columns: 1fr; } .book-request-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .book-request-notifications { grid-template-columns: 1fr; } .book-request-notifications h3 { grid-column: auto; } .book-request-available { grid-template-columns: 1fr; } .book-request-pagination { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 760px) { .book-requests-modal { padding: 22px 16px; } .book-requests-heading { padding-right: 52px; flex-direction: column; } .book-request-tools { grid-template-columns: 1fr; } .book-request-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .book-request-notifications { grid-template-columns: 1fr; } .book-request-notifications h3 { grid-column: auto; } .book-request-available, .book-request-addressed { grid-template-columns: 1fr; } .book-request-pagination { align-items: flex-start; flex-direction: column; } }
 
 /* Compact dispatch cards keep list scanning fast; full controls live in the modal. */
 .delivery-grid {

@@ -223,6 +223,7 @@ export const api = {
   adminBookRequests: (params = '') => apiFetch(`/admin/book-requests${params ? `?${params}` : ''}`),
   adminBookRequest: (requestId) => apiFetch(`/admin/book-requests/${requestId}`),
   adminMarkBookRequestAvailable: (requestId, payload) => apiFetch(`/admin/book-requests/${requestId}/available`, { method: 'POST', body: payload }),
+  adminMarkBookRequestAddressed: (requestId, payload) => apiFetch(`/admin/book-requests/${requestId}/addressed`, { method: 'POST', body: payload }),
   adminRetryBookRequestNotification: (requestId) => apiFetch(`/admin/book-requests/${requestId}/retry-notification`, { method: 'POST' }),
   adminAnalyticsDashboard: (params = {}) => {
     const sp = new URLSearchParams();

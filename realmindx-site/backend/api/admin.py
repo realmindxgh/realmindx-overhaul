@@ -30,6 +30,7 @@ from ..communications import (
 from ..profile_completion import account_status as canonical_account_status
 from ..book_requests import (
     BookRequestError,
+    mark_addressed,
     mark_available,
     request_json,
     send_available_notification,
@@ -205,7 +206,7 @@ def list_book_requests():
     status = (request.args.get("status") or "").strip().lower()
     search = (request.args.get("q") or "").strip()
     query = BookRequest.query
-    if status in {"pending", "available"}:
+    if status in {"pending", "available", "addressed"}:
         query = query.filter(BookRequest.status == status)
     if search:
         needle = f"%{search}%"
@@ -238,6 +239,7 @@ def get_book_request(request_id):
         "book_request_duplicate_reused": "Existing request reused",
         "book_request_acknowledgement": "Acknowledgement sent",
         "book_request_marked_available": "Book marked available",
+        "book_request_marked_addressed": "Request marked addressed",
         "book_request_availability_notification": "Availability notice sent",
         "book_request_notification_retried": "Availability notice retried",
     }
@@ -285,6 +287,20 @@ def retry_book_request_notification(request_id):
     except BookRequestError as exc:
         return _book_request_error(exc)
     return jsonify(request=request_json(row, include_private=True), notification=notification)
+
+
+@admin_bp.post("/book-requests/<int:request_id>/addressed")
+@login_required
+@permission_required("bookRequests.manage")
+def mark_book_request_addressed(request_id):
+    payload = request.get_json(silent=True) or {}
+    row = db.get_or_404(BookRequest, request_id)
+    try:
+        mark_addressed(row, current_user.id, payload.get("note"))
+        db.session.commit()
+    except BookRequestError as exc:
+        return _book_request_error(exc)
+    return jsonify(request=request_json(row, include_private=True))
 
 
 def slugify(value):

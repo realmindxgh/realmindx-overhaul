@@ -366,6 +366,8 @@ class BookRequest(TimestampMixin, db.Model):
     available_sms_status = db.Column(db.String(30), nullable=True)
     available_notified_at = db.Column(db.DateTime(timezone=True), nullable=True)
     available_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    addressed_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    addressed_note = db.Column(db.Text, nullable=True)
     resolved_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
 
     product = db.relationship("Product")
