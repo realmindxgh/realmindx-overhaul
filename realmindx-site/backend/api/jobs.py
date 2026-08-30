@@ -68,7 +68,7 @@ def apply_for_job(job_id):
 
     admin_url = f"{current_app.config['BASE_URL'].rstrip('/')}/admin/dashboard"
     send_admin_alert(
-        subject=f"New job application: {job.title} — {current_user.full_name or current_user.email}",
+        subject=f"New job application: {job.title} - {current_user.full_name or current_user.email}",
         html=app_email_shell(
             "New job application",
             (

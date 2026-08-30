@@ -1106,7 +1106,7 @@ def dispatch_job_alerts(job):
                     from_email=current_app.config["JOBS_FROM_EMAIL"],
                     subject=f"A teaching opportunity matches your preferences: {job.title}",
                     html=app_email_shell(
-                        "Good news — a teaching opportunity matches you",
+                        "Good news: a teaching opportunity matches you",
                         f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
                         "<p>We found a teaching opportunity that matches all of your saved preferences.</p>"
                         f"<p><strong>{escape(job.title)}</strong><br>{escape(job.location)}</p>"
@@ -1810,7 +1810,7 @@ def _send_teacher_profile_reminder(user, *, template_name=None, enforce_cooldown
     template_name = template_name or f"profile_{reminder_kind}_reminder_manual"
 
     if reminder_kind == "submission":
-        subject = "Your RealMindX profile is complete — submit it for review"
+        subject = "Your RealMindX profile is complete: submit it for review"
         title = "Your completed profile is ready for review"
         body_html = (
             f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
@@ -1864,7 +1864,7 @@ def _send_teacher_profile_reminder(user, *, template_name=None, enforce_cooldown
         title = "Complete your profile and unlock better job matches"
         body_html = (
             f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-            f"<p>You are almost there — your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
+            f"<p>You are almost there: your RealMindX teaching profile is <strong>{completion}% complete</strong>.</p>"
             "<p>Add the remaining information so we can confidently send opportunities that fit your qualifications and preferences.</p>"
             f"<p><strong>Just a little more to add:</strong></p><ul>{missing_html}</ul>"
             "<p>Finishing these items only takes a moment and gives you a better chance of seeing the right roles.</p>"
@@ -1872,7 +1872,7 @@ def _send_teacher_profile_reminder(user, *, template_name=None, enforce_cooldown
             "After it reaches 100%, select <strong>Submit Profile for Review</strong> so the RealMindX team can review it.</p>"
         )
         cta_label = "Sign In to Finish My Profile"
-        preheader = f"Your teaching profile is {completion}% complete — finish it, then submit it for review."
+        preheader = f"Your teaching profile is {completion}% complete. Finish it, then submit it for review."
         text_body = (
             "Complete your RealMindX teaching profile to receive tailored jobs.\n\n"
             f"Remaining items:\n{missing_text}\n\n"
@@ -2792,7 +2792,7 @@ def _send_verification_email(user):
         f"<p><strong>Application ID:</strong> {escape(user.application_id or 'N/A')}</p>"
         f"<p><strong>Teacher ID:</strong> {escape(user.teacher_id or 'N/A')}</p>"
         "<p>Congratulations! Your RealMindX teacher profile has been visually verified by our team. Your documents and teaching details have been reviewed and confirmed.</p>"
-        f"<p>Your permanent Teacher ID is <strong>{escape(user.teacher_id or 'N/A')}</strong>. Please keep this ID safe — it is your official RealMindX teacher reference and should be used in all future communications and placement records.</p>"
+        f"<p>Your permanent Teacher ID is <strong>{escape(user.teacher_id or 'N/A')}</strong>. Please keep this ID safe: it is your official RealMindX teacher reference and should be used in all future communications and placement records.</p>"
         "<p>You can now access features available to verified teachers on the RealMindX platform.</p>"
     )
     try:

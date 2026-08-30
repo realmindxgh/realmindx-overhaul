@@ -2185,8 +2185,8 @@ const AccountPage = ({ navigate }) => {
                           </div>
                           <div><strong>{detail.phone}</strong><span>Phone</span></div>
                           <div><strong>{detail.email}</strong><span>Email</span></div>
-                          <div><strong>{detail.city || detail.delivery_zone_name || '—'}</strong><span>Town/Area</span></div>
-                          <div><strong>{detail.region || '—'}</strong><span>Region</span></div>
+                          <div><strong>{detail.city || detail.delivery_zone_name || '-'}</strong><span>Town/Area</span></div>
+                          <div><strong>{detail.region || '-'}</strong><span>Region</span></div>
                           <div className="bs-account-ref-detail-actions">
                             {detail.can_delete ? (
                               <>

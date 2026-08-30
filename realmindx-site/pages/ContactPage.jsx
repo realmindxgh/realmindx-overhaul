@@ -66,7 +66,7 @@ const ContactPage = () => {
       firstName: nameParts[0] || '',
       lastName: nameParts.slice(1).join(' ') || '',
       message: applicationId
-        ? `Re: Teacher Application ${applicationId} — Reconsideration Request`
+        ? `Re: Teacher Application ${applicationId} - Reconsideration Request`
         : '',
     };
   });

@@ -2670,7 +2670,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
         {importMode === 'images' && (
           <p className="product-import-helper" style={{ marginTop: 8, fontSize: '0.86rem', color: 'var(--gray-600)' }}>
             Upload a ZIP of product images. Each image is matched to the product whose current cover uses the same
-            original filename — for example <code>978-1-2345-6789-0.jpg</code>. Matching ignores case, converts spaces
+            original filename, for example <code>978-1-2345-6789-0.jpg</code>. Matching ignores case, converts spaces
             and encoded characters (e.g. <code>%20</code>) to the stored filename, and ignores folders inside the ZIP,
             so the product export ZIP can be re-uploaded as-is to replace covers. Only existing products with an image
             are updated; no new products are created and no catalogue fields change.
@@ -2844,7 +2844,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
             </div>
           </div>
           <p className="product-import-helper">
-            Select the matched images to replace. Only the selected products&apos; images change —
+            Select the matched images to replace. Only the selected products&apos; images change:
             product names, categories, prices, stock and other catalogue fields stay untouched.
           </p>
 
@@ -2932,7 +2932,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
               </div>
               <ul className="product-import-file-notes">
                 {imagesPreview.unmatched.map(item => (
-                  <li key={item.filename}>{item.filename} — {item.reason}</li>
+                  <li key={item.filename}>{item.filename} - {item.reason}</li>
                 ))}
               </ul>
             </div>
@@ -2946,7 +2946,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
               </div>
               <ul className="product-import-file-notes">
                 {imagesPreview.invalid_files.map(item => (
-                  <li key={item.filename}>{item.filename} — {item.reason}</li>
+                  <li key={item.filename}>{item.filename} - {item.reason}</li>
                 ))}
               </ul>
             </div>
@@ -2960,7 +2960,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
               </div>
               <ul className="product-import-file-notes">
                 {imagesPreview.duplicate_matches.map((item, index) => (
-                  <li key={`${item.filename}-${index}`}>{item.filename} — {item.reason}</li>
+                  <li key={`${item.filename}-${index}`}>{item.filename} - {item.reason}</li>
                 ))}
               </ul>
             </div>
@@ -3090,7 +3090,7 @@ const ContactsView = ({ session }) => {
     </div>
     {notice && <p className="admin-image-help">{notice}</p>}
     <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>Contact</th><th>Phone</th><th>Sources</th><th>Last activity</th></tr></thead><tbody>
-      {loading ? <tr><td colSpan="4">Loading contacts…</td></tr> : data.items.map(row => <tr key={row.id} onClick={() => openContact(row.id)} style={{ cursor: 'pointer' }}><td><strong>{row.full_name || 'Unnamed contact'}</strong><br/><small>{row.email}</small></td><td>{row.phone || '—'}</td><td>{row.sources.map(x => x.source).join(', ')}</td><td>{row.last_activity_at ? new Date(row.last_activity_at).toLocaleDateString() : '—'}</td></tr>)}
+      {loading ? <tr><td colSpan="4">Loading contacts…</td></tr> : data.items.map(row => <tr key={row.id} onClick={() => openContact(row.id)} style={{ cursor: 'pointer' }}><td><strong>{row.full_name || 'Unnamed contact'}</strong><br/><small>{row.email}</small></td><td>{row.phone || '-'}</td><td>{row.sources.map(x => x.source).join(', ')}</td><td>{row.last_activity_at ? new Date(row.last_activity_at).toLocaleDateString() : '-'}</td></tr>)}
     </tbody></table></div>
     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}><button className="btn btn-outline-navy btn-sm" disabled={!data.pagination?.has_prev} onClick={() => setFilters(p => ({ ...p, page: p.page - 1 }))}>Previous</button><span>Page {data.pagination?.page || 1} of {data.pagination?.pages || 1}</span><button className="btn btn-outline-navy btn-sm" disabled={!data.pagination?.has_next} onClick={() => setFilters(p => ({ ...p, page: p.page + 1 }))}>Next</button></div>
     {canCampaign && <NewsletterComposer onSent={load} />}
@@ -3101,7 +3101,7 @@ const ContactsView = ({ session }) => {
       {(!selected.id || canEdit) && <button className="btn btn-primary btn-sm">Save</button>}
     </form>{selected.id && <><p><strong>Sources:</strong> {(selected.sources || []).map(x => x.source).join(', ') || 'None'}</p>
       {canEmail && <form className="admin-reply-panel" onSubmit={send}><h3>Send an official RealMindX email</h3><p>This operational message uses the platform's branded letterhead.</p><input className="form-input" required placeholder="Subject" value={emailDraft.subject} onChange={e => setEmailDraft(p => ({ ...p, subject: e.target.value }))}/><textarea className="form-textarea" required rows="5" placeholder="Message" value={emailDraft.message} onChange={e => setEmailDraft(p => ({ ...p, message: e.target.value }))}/><button className="btn btn-primary btn-sm">Send email</button></form>}
-      <h3>Email history</h3>{(selected.emails || []).map(item => <p key={item.id}><strong>{item.subject}</strong> — {item.status}<br/><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</small></p>)}</>}
+      <h3>Email history</h3>{(selected.emails || []).map(item => <p key={item.id}><strong>{item.subject}</strong> - {item.status}<br/><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</small></p>)}</>}
     </div></div>, document.body)}
   </div>;
 };
@@ -3496,7 +3496,7 @@ const NewsletterWorkspace = ({ onSent }) => {
       }
     } catch (err) {
       const message = err.status === 504
-        ? 'The request timed out. The campaign may still be processing — refresh the history before resending.'
+        ? 'The request timed out. The campaign may still be processing. Refresh the history before resending.'
         : (err.message || `${form.channel === 'sms' ? 'SMS campaign' : 'Newsletter'} could not be sent.`);
       setError(message); globalToast.error(message);
     }
@@ -4962,7 +4962,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               <tbody>{paginatedRows.map(row => <tr key={row.id}>
                 <td className="product-check-cell"><input type="checkbox" checked={selectedProductIds.has(row.id)} onChange={() => toggleProductSelection(row.id)} aria-label={`Select ${row.name}`} /></td>
                 <td><div className="product-name-cell">{rowImageUrl(row) ? <img src={rowImageUrl(row)} alt="" loading="lazy" decoding="async" /> : <span className="product-cover-placeholder"><Icon name="book" size={20} /></span>}<span><strong>{row.name}</strong><small>{row.author ? `Author: ${row.author}` : row.short_description || `Product ID: ${row.id}`}</small></span></div></td>
-                <td>{row.category || 'Uncategorised'}</td><td>{row.curriculum || '—'}</td><td>{row.publisher || '—'}</td><td className="product-price-cell">GH₵{Number(row.price || 0).toFixed(2)}</td>
+                <td>{row.category || 'Uncategorised'}</td><td>{row.curriculum || '-'}</td><td>{row.publisher || '-'}</td><td className="product-price-cell">GH₵{Number(row.price || 0).toFixed(2)}</td>
                 <td><span className={`product-stock-badge is-${row.stock_status || 'out_of_stock'}`}>{statusLabel(row.stock_status || 'out_of_stock')}</span></td><td className="admin-activity-date">{formatActivityDate(row.updated_at || row.created_at)}</td>
                 <td className="admin-actions-column"><div className="product-row-actions">{canUpdate && <button type="button" onClick={() => { setEditing(row); setCreating(false); }}><Icon name="edit" size={15} stroke={2} /> Edit</button>}<div className="product-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${row.name}`} onClick={() => setProductMenuId(current => current === row.id ? null : row.id)}><Icon name="more" size={18} /></button>{productMenuId === row.id && <div className="product-row-menu">{canPublish && <button type="button" onClick={() => { togglePublish(row); setProductMenuId(null); }}>{row.status === 'published' ? 'Unpublish' : 'Publish'}</button>}{canDelete && <button className="danger" type="button" onClick={() => { handleDelete(row); setProductMenuId(null); }}>Delete</button>}</div>}</div></div></td>
               </tr>)}</tbody>
@@ -7476,14 +7476,14 @@ const TeacherReviewView = ({ session }) => {
         </td>
         <td><span className={`badge ${statusBadgeClass(item.profile_status)}`}>{STATUS_LABELS[item.profile_status] || item.profile_status}</span></td>
         <td style={{ fontSize: '0.78rem', color: 'var(--gray-500)', whiteSpace: 'nowrap' }}>
-          {item.submitted_at ? new Date(item.submitted_at).toLocaleDateString() : '—'}
+          {item.submitted_at ? new Date(item.submitted_at).toLocaleDateString() : '-'}
         </td>
         <td style={{ whiteSpace: 'nowrap' }}>
           <span style={{ color: item.cv_present ? 'var(--green)' : 'var(--gray-400)', marginRight: 8 }} title={item.cv_present ? 'CV present' : 'No CV'}>
-            {item.cv_present ? 'CV' : '—'}
+            {item.cv_present ? 'CV' : '-'}
           </span>
           <span style={{ color: item.certificate_present ? 'var(--green)' : 'var(--gray-400)' }} title={item.certificate_present ? 'Certificate present' : 'No certificate'}>
-            {item.certificate_present ? 'Cert' : '—'}
+            {item.certificate_present ? 'Cert' : '-'}
           </span>
         </td>
         <td className="admin-actions-column">
@@ -7624,12 +7624,12 @@ const TeacherReviewView = ({ session }) => {
                       <h4>Review Status</h4>
                       <div className="teacher-detail-grid">
                         <DetailField label="Profile status" value={STATUS_LABELS[profileStatus] || profileStatus} />
-                        <DetailField label="Completion" value={detail.profile_completion != null ? `${detail.profile_completion}%` : '—'} />
+                        <DetailField label="Completion" value={detail.profile_completion != null ? `${detail.profile_completion}%` : '-'} />
                         {detail.profile_missing_fields?.length ? (
                           <DetailField label="Missing fields" value={detail.profile_missing_fields.join(', ')} wide />
                         ) : null}
-                        <DetailField label="Submitted" value={detail.submitted_at ? new Date(detail.submitted_at).toLocaleDateString() : '—'} />
-                        <DetailField label="Reviewed" value={detail.reviewed_at ? new Date(detail.reviewed_at).toLocaleDateString() : '—'} />
+                        <DetailField label="Submitted" value={detail.submitted_at ? new Date(detail.submitted_at).toLocaleDateString() : '-'} />
+                        <DetailField label="Reviewed" value={detail.reviewed_at ? new Date(detail.reviewed_at).toLocaleDateString() : '-'} />
                         {detail.review_notes ? (
                           <div className="teacher-detail-field is-wide">
                             <div>Review notes</div>
@@ -7669,7 +7669,7 @@ const TeacherReviewView = ({ session }) => {
                         <h4>Job Applications</h4>
                         <div className="teacher-detail-grid">
                           {detail.applications.map(app => (
-                            <DetailField key={app.id} label={app.job_title || `Application #${app.id}`} value={`${app.organisation || ''} — ${app.status}`} wide />
+                            <DetailField key={app.id} label={app.job_title || `Application #${app.id}`} value={`${app.organisation || ''} - ${app.status}`} wide />
                           ))}
                         </div>
                       </div>
@@ -7680,7 +7680,7 @@ const TeacherReviewView = ({ session }) => {
                         <h4>Placements</h4>
                         <div className="teacher-detail-grid">
                           {detail.placements.map(pl => (
-                            <DetailField key={pl.id} label={pl.job_title || 'Placement'} value={`${pl.school_name} — ${pl.status}`} wide />
+                            <DetailField key={pl.id} label={pl.job_title || 'Placement'} value={`${pl.school_name} - ${pl.status}`} wide />
                           ))}
                         </div>
                       </div>

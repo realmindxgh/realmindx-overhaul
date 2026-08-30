@@ -1175,7 +1175,7 @@ def main_public_page(path=""):
     link_heading = "Explore RealMindX"
     if clean_path == "jobs":
         jobs = Job.query.filter_by(status="published").order_by(Job.created_at.desc()).limit(30).all()
-        links = [(job_path(job), f"{job.title} — {job.location}") for job in jobs]
+        links = [(job_path(job), f"{job.title} - {job.location}") for job in jobs]
         link_heading = "Current teaching vacancies"
     elif clean_path == "services":
         services = public_rows(setting_collection("services", DEFAULT_SERVICES))

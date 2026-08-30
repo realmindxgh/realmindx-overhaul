@@ -88,7 +88,7 @@ const guardProductionFallback = () => {
   if (typeof window === 'undefined') return;
   if (LOCAL_HOSTNAMES.has(window.location.hostname)) return;
   throw new Error(
-    'Authentication is unavailable — the server configuration is incomplete. '
+    'Authentication is unavailable. The server configuration is incomplete. '
     + 'Please contact RealMindX support.'
   );
 };

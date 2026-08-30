@@ -303,7 +303,7 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
     const url = `${BOOKSHOP_BASE_URL}${productHref(book)}`;
     const shareData = {
       title: `${book.title} | RealMindX Bookshop`,
-      text: `${book.title} — ${cedis(book.price)} at RealMindX Bookshop`,
+      text: `${book.title} - ${cedis(book.price)} at RealMindX Bookshop`,
       url,
     };
     try {
@@ -480,7 +480,7 @@ const ProductPage = ({ navigate, bookId, bookSlug = '', initialBook = null }) =>
                 </div>
                 {(r.title || r.comment) && (
                   <p className="bs-review-body">
-                    {r.title && <strong>{r.title}{r.comment ? ' — ' : ''}</strong>}
+                    {r.title && <strong>{r.title}{r.comment ? ' - ' : ''}</strong>}
                     {r.comment}
                   </p>
                 )}

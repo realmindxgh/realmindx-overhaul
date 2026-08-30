@@ -253,7 +253,7 @@ def _send_teacher_account_created_email(user):
                     cta_label="Complete Your Profile",
                     cta_url=dashboard_url,
                     eyebrow="RealMindX Teacher Registration",
-                    preheader=f"Your Application ID is {user.application_id or 'N/A'} — save it for future reference.",
+                    preheader=f"Your Application ID is {user.application_id or 'N/A'}. Save it for future reference.",
                 ),
             ),
             purpose="transactional",

@@ -1024,7 +1024,7 @@ const ProfileEditModal = ({ section, form, setForm, onCancel, onSave, saving, er
               </div>
               {filteredSubjects.length === 0 && (
                 <p style={{ color: 'var(--gray-600)', fontSize: '0.85rem', marginTop: 8 }}>
-                  No subjects match "{subjectFilter}" — type it below to add it as a custom entry.
+                  No subjects match "{subjectFilter}". Type it below to add it as a custom entry.
                 </p>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
