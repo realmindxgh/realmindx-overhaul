@@ -6,6 +6,7 @@ import { signInWithPhone, signOut } from '../../src/lib/authClient.js';
 import { clearDemoSession } from '../../src/lib/demoAccounts.js';
 import { dashboardPathForRole, loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
+import { AsyncButtonContent, ContentSkeleton, ErrorState } from '../../src/lib/AsyncUI.jsx';
 import { copyTextToClipboard } from '../../src/lib/clipboard.js';
 import toast from '../../src/lib/toast.js';
 import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
@@ -32,19 +33,31 @@ const deliveryTone = status => {
   return 'progress';
 };
 
-const PortalShell = ({ title, subtitle, children, onLogout }) => (
-  <main className="delivery-portal">
-    <header className="delivery-portal-top">
-      <div>
-        <span>RealMindX Bookshop</span>
-        <h1>{title}</h1>
-        {subtitle ? <p>{subtitle}</p> : null}
-      </div>
-      {onLogout ? <button className="btn btn-outline-navy" type="button" onClick={onLogout}>Sign Out</button> : null}
-    </header>
-    {children}
-  </main>
-);
+const PortalShell = ({ title, subtitle, children, onLogout }) => {
+  const [loggingOut, setLoggingOut] = React.useState(false);
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await onLogout();
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+  return (
+    <main className="delivery-portal">
+      <header className="delivery-portal-top">
+        <div>
+          <span>RealMindX Bookshop</span>
+          <h1>{title}</h1>
+          {subtitle ? <p>{subtitle}</p> : null}
+        </div>
+        {onLogout ? <button className="btn btn-outline-navy" type="button" disabled={loggingOut} onClick={handleLogout}><AsyncButtonContent pending={loggingOut} pendingLabel="Signing out">Sign Out</AsyncButtonContent></button> : null}
+      </header>
+      {children}
+    </main>
+  );
+};
 
 const Field = ({ label, children }) => (
   <label className="delivery-field">
@@ -120,7 +133,7 @@ const DeliveryLogin = ({ role }) => {
           <input type="checkbox" checked={form.remember} onChange={set('remember')} />
           <span>Keep me signed in</span>
         </label>
-        <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Signing in...' : 'Sign In'}</button>
+        <button className="btn btn-primary" type="submit" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Signing in">Sign In</AsyncButtonContent></button>
         <p className="delivery-login-terms">
           By signing in to use the {isCompany ? 'RealMindX Delivery Company Platform' : 'RealMindX Rider Platform'}, you agree to the{' '}
           <button type="button" onClick={() => setShowTerms(true)}>{isCompany ? 'RealMindX Delivery Company Platform Terms' : 'RealMindX Rider Platform Terms'}</button>.
@@ -132,11 +145,18 @@ const DeliveryLogin = ({ role }) => {
 };
 
 const useVisiblePolling = (enabled, callback, delay = ACTIVE_POLL_MS) => {
+  const inFlightRef = React.useRef(false);
   React.useEffect(() => {
     if (!enabled) return undefined;
     let timer = null;
-    const run = () => {
-      if (document.visibilityState === 'visible') callback();
+    const run = async () => {
+      if (document.visibilityState !== 'visible' || inFlightRef.current) return;
+      inFlightRef.current = true;
+      try {
+        await callback();
+      } finally {
+        inFlightRef.current = false;
+      }
     };
     timer = window.setInterval(run, delay);
     document.addEventListener('visibilitychange', run);
@@ -200,7 +220,7 @@ const RiderEditModal = ({ rider, onClose, onSaved }) => {
         <Field label="Phone number"><input value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} required /></Field>
         <div className="delivery-modal-actions">
           <button className="btn btn-outline-navy" type="button" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Saving...' : 'Save Changes'}</button>
+          <button className="btn btn-primary" type="submit" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Saving changes">Save Changes</AsyncButtonContent></button>
         </div>
       </form>
     </div>
@@ -289,7 +309,7 @@ const ForcedDeliveryPasswordModal = ({ accountLabel, onChanged, onSignOut }) => 
             <DeliveryPasswordInput value={form.confirm_password} onChange={set('confirm_password')} autoComplete="new-password" required />
           </Field>
           {error ? <p className="form-error">{error}</p> : null}
-          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Updating...' : 'Change Password and Continue'}</button>
+          <button className="btn btn-primary" type="submit" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Updating password">Change Password and Continue</AsyncButtonContent></button>
         </form>
       </section>
     </div>
@@ -303,13 +323,15 @@ const DeliveryTermsModal = ({ role, required = false, onClose, onAccepted, onSig
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
 
-  React.useEffect(() => {
+  const loadTerms = React.useCallback(() => {
     let alive = true;
+    setError('');
     (isCompany ? api.deliveryCompanyTerms() : api.deliveryRiderTerms())
       .then(result => { if (alive) setTerms(result.terms); })
       .catch(err => { if (alive) setError(err?.message || 'Could not load the platform terms.'); });
     return () => { alive = false; };
   }, [isCompany]);
+  React.useEffect(() => loadTerms(), [loadTerms]);
 
   const accept = async () => {
     if (!terms || !agreed) return;
@@ -330,8 +352,8 @@ const DeliveryTermsModal = ({ role, required = false, onClose, onAccepted, onSig
           <div><span>Platform Terms</span><h2>{terms?.title || 'Loading terms...'}</h2>{terms ? <p>Effective {terms.effective_date} | Version {terms.version}</p> : null}</div>
           {!required ? <button className="delivery-icon-button" type="button" onClick={onClose} aria-label="Close"><Icon name="x" size={20} /></button> : null}
         </div>
-        {error ? <p className="form-error">{error}</p> : null}
-        {!terms && !error ? <EmptyState title="Loading Terms" body="Preparing the current legal terms." /> : null}
+        {error ? <ErrorState compact message={error} onRetry={loadTerms} /> : null}
+        {!terms && !error ? <ContentSkeleton variant="list" count={6} /> : null}
         {terms ? <div className="delivery-terms-content" tabIndex="0">
           {(terms.intro || []).map((paragraph, index) => <p key={`intro-${index}`}>{paragraph}</p>)}
           {(terms.sections || []).map(section => <section key={section.heading}><h3>{section.heading}</h3>{section.paragraphs.map((paragraph, index) => <p key={`${section.heading}-${index}`}>{paragraph}</p>)}</section>)}
@@ -341,7 +363,7 @@ const DeliveryTermsModal = ({ role, required = false, onClose, onAccepted, onSig
           {required ? <label className="delivery-check delivery-terms-check"><input type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} /><span>{terms.checkbox_wording}</span></label> : null}
           <div className="delivery-modal-actions">
             {required ? <button className="btn btn-outline-navy" type="button" onClick={onSignOut}>Sign Out</button> : <button className="btn btn-outline-navy" type="button" onClick={onClose}>Close</button>}
-            {required ? <button className="btn btn-primary" type="button" disabled={!agreed || busy} onClick={accept}>{busy ? 'Recording Acceptance...' : 'I Agree and Continue'}</button> : null}
+            {required ? <button className="btn btn-primary" type="button" disabled={!agreed || busy} onClick={accept}><AsyncButtonContent pending={busy} pendingLabel="Recording acceptance">I Agree and Continue</AsyncButtonContent></button> : null}
           </div>
         </div> : null}
       </section>
@@ -370,6 +392,17 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
   const [rejectReason, setRejectReason] = React.useState('');
   const [issueReason, setIssueReason] = React.useState('customer_unavailable');
   const [issueNote, setIssueNote] = React.useState('');
+  const [pendingAction, setPendingAction] = React.useState('');
+
+  const runAction = async (key, action) => {
+    if (pendingAction) return;
+    setPendingAction(key);
+    try {
+      await onAction(action);
+    } finally {
+      setPendingAction('');
+    }
+  };
 
   const needsReassignReason = delivery.status === 'picked_up' && riderId && Number(riderId) !== Number(delivery.rider_id);
 
@@ -380,9 +413,9 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
         <span>{delivery.delivery_location || 'Location unavailable'}</span>
         <small>{statusLabel(delivery.status)}</small>
       </button>
-      {open ? <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
-    <article className={`delivery-card delivery-detail-modal tone-${deliveryTone(delivery.status)}`} role="dialog" aria-modal="true">
-      <button className="delivery-icon-button delivery-detail-close" type="button" onClick={() => setOpen(false)} aria-label="Close"><Icon name="x" size={20} /></button>
+      {open ? <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !pendingAction) setOpen(false); }}>
+    <article className={`delivery-card delivery-detail-modal tone-${deliveryTone(delivery.status)}`} role="dialog" aria-modal="true" aria-busy={Boolean(pendingAction)}>
+      <button className="delivery-icon-button delivery-detail-close" type="button" disabled={Boolean(pendingAction)} onClick={() => setOpen(false)} aria-label="Close"><Icon name="x" size={20} /></button>
       <div className="delivery-card-head">
         <div>
           <h2>{delivery.order_reference}</h2>
@@ -394,9 +427,9 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
       <div className="delivery-actions">
         {delivery.status === 'assigned_to_company' ? (
           <>
-            <button className="btn btn-primary btn-sm" type="button" onClick={() => onAction(() => api.deliveryCompanyAccept(delivery.id))}>Accept</button>
-            <input value={rejectReason} onChange={event => setRejectReason(event.target.value)} placeholder="Rejection reason" />
-            <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryCompanyReject(delivery.id, { reason: rejectReason }))}>Reject</button>
+            <button className="btn btn-primary btn-sm" type="button" disabled={Boolean(pendingAction)} onClick={() => runAction('accept', () => api.deliveryCompanyAccept(delivery.id))}><AsyncButtonContent pending={pendingAction === 'accept'} pendingLabel="Accepting">Accept</AsyncButtonContent></button>
+            <input value={rejectReason} disabled={Boolean(pendingAction)} onChange={event => setRejectReason(event.target.value)} placeholder="Rejection reason" />
+            <button className="btn btn-outline-navy btn-sm" type="button" disabled={Boolean(pendingAction)} onClick={() => runAction('reject', () => api.deliveryCompanyReject(delivery.id, { reason: rejectReason }))}><AsyncButtonContent pending={pendingAction === 'reject'} pendingLabel="Rejecting">Reject</AsyncButtonContent></button>
           </>
         ) : null}
         {!['delivered', 'cancelled', 'returned', 'failed', 'rejected_by_company'].includes(delivery.status) ? (
@@ -411,14 +444,14 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
             <button
               className="btn btn-primary btn-sm"
               type="button"
-              disabled={!riderId}
-              onClick={() => onAction(() => api.deliveryCompanyAssignRider(delivery.id, { rider_id: Number(riderId), reason }))}
+              disabled={!riderId || Boolean(pendingAction)}
+              onClick={() => runAction('assign', () => api.deliveryCompanyAssignRider(delivery.id, { rider_id: Number(riderId), reason }))}
             >
-              {delivery.rider_id ? 'Reassign Rider' : 'Assign Rider'}
+              <AsyncButtonContent pending={pendingAction === 'assign'} pendingLabel={delivery.rider_id ? 'Reassigning rider' : 'Assigning rider'}>{delivery.rider_id ? 'Reassign Rider' : 'Assign Rider'}</AsyncButtonContent>
             </button>
           </>
         ) : null}
-        {delivery.status === 'picked_up' ? <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryCompanyResendOtp(delivery.id))}>Resend Customer OTP</button> : null}
+        {delivery.status === 'picked_up' ? <button className="btn btn-outline-navy btn-sm" type="button" disabled={Boolean(pendingAction)} onClick={() => runAction('resend', () => api.deliveryCompanyResendOtp(delivery.id))}><AsyncButtonContent pending={pendingAction === 'resend'} pendingLabel="Resending OTP">Resend Customer OTP</AsyncButtonContent></button> : null}
       </div>
       {!['delivered', 'cancelled', 'returned', 'failed'].includes(delivery.status) ? (
         <div className="delivery-issue-row">
@@ -426,7 +459,7 @@ const CompanyDeliveryCard = ({ delivery, riders, onAction }) => {
             {ISSUE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <input value={issueNote} onChange={event => setIssueNote(event.target.value)} placeholder="Optional note" />
-          <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryCompanyReportIssue(delivery.id, { reason: issueReason, note: issueNote }))}>Report Issue</button>
+          <button className="btn btn-outline-navy btn-sm" type="button" disabled={Boolean(pendingAction)} onClick={() => runAction('issue', () => api.deliveryCompanyReportIssue(delivery.id, { reason: issueReason, note: issueNote }))}><AsyncButtonContent pending={pendingAction === 'issue'} pendingLabel="Reporting issue">Report Issue</AsyncButtonContent></button>
         </div>
       ) : null}
     </article></div> : null}
@@ -458,16 +491,17 @@ const RiderForm = ({ onCreated, onError, onNotice }) => {
     <form className="delivery-rider-form" onSubmit={submit}>
       <input value={form.name} onChange={set('name')} placeholder="Rider name" required />
       <input value={form.phone} onChange={set('phone')} placeholder="Phone number" required />
-      <button className="btn btn-primary btn-sm" type="submit" disabled={busy}>{busy ? 'Creating...' : 'Create Rider'}</button>
+      <button className="btn btn-primary btn-sm" type="submit" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Creating rider">Create Rider</AsyncButtonContent></button>
     </form>
   );
 };
 
 const RiderManagementRow = ({ rider, onChanged, onEdit, onSelect }) => {
-  const [busy, setBusy] = React.useState(false);
+  const [pendingAction, setPendingAction] = React.useState('');
 
   const toggleActive = async () => {
-    setBusy(true);
+    if (pendingAction) return;
+    setPendingAction('status');
     try {
       await api.deliveryCompanyUpdateRider(rider.id, { is_active: !rider.is_active });
       toast.success(rider.is_active ? 'Rider deactivated.' : 'Rider activated.');
@@ -475,12 +509,13 @@ const RiderManagementRow = ({ rider, onChanged, onEdit, onSelect }) => {
     } catch (err) {
       toast.error(err?.message || 'Could not update rider status.');
     } finally {
-      setBusy(false);
+      setPendingAction('');
     }
   };
 
   const resetPassword = async () => {
-    setBusy(true);
+    if (pendingAction) return;
+    setPendingAction('password');
     try {
       const result = await api.deliveryCompanyResetRiderPassword(rider.id);
       const temporaryPassword = result?.temporary_password || '';
@@ -490,7 +525,7 @@ const RiderManagementRow = ({ rider, onChanged, onEdit, onSelect }) => {
     } catch (err) {
       toast.error(err?.message || 'Could not reset rider password.');
     } finally {
-      setBusy(false);
+      setPendingAction('');
     }
   };
 
@@ -506,9 +541,9 @@ const RiderManagementRow = ({ rider, onChanged, onEdit, onSelect }) => {
       <span className="delivery-rider-count"><strong>{rider.completed_deliveries || 0}</strong> delivered</span>
       <div className="delivery-row-actions">
         <button className="delivery-icon-text-button" type="button" onClick={() => onSelect(rider)}><Icon name="clock" size={16} /> History</button>
-        <button className="delivery-icon-text-button" type="button" disabled={busy} onClick={() => onEdit(rider)}><Icon name="settings" size={16} /> Edit</button>
-        <button className="delivery-icon-text-button" type="button" disabled={busy} onClick={toggleActive}>{rider.is_active ? 'Deactivate' : 'Activate'}</button>
-        <button className="delivery-icon-text-button" type="button" disabled={busy} onClick={resetPassword}><Icon name="lock" size={16} /> Reset</button>
+        <button className="delivery-icon-text-button" type="button" disabled={Boolean(pendingAction)} onClick={() => onEdit(rider)}><Icon name="settings" size={16} /> Edit</button>
+        <button className="delivery-icon-text-button" type="button" disabled={Boolean(pendingAction)} onClick={toggleActive}><AsyncButtonContent pending={pendingAction === 'status'} pendingLabel={rider.is_active ? 'Deactivating' : 'Activating'}>{rider.is_active ? 'Deactivate' : 'Activate'}</AsyncButtonContent></button>
+        <button className="delivery-icon-text-button" type="button" disabled={Boolean(pendingAction)} onClick={resetPassword}><Icon name="lock" size={16} /><AsyncButtonContent pending={pendingAction === 'password'} pendingLabel="Resetting password">Reset</AsyncButtonContent></button>
       </div>
     </div>
   );
@@ -521,24 +556,34 @@ const CompanySettlements = () => {
   const [selected, setSelected] = React.useState(null);
   const [note, setNote] = React.useState('');
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState('');
+  const [openingId, setOpeningId] = React.useState(null);
+  const [disputing, setDisputing] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
   const load = React.useCallback(async () => {
+    setLoadError('');
     try { setItems((await api.deliveryCompanySettlements()).items || []); }
-    catch (err) { toast.error(err?.message || 'Could not load settlements.'); }
+    catch (err) { setLoadError(err?.message || 'Could not load settlements.'); }
     finally { setLoading(false); }
   }, []);
   React.useEffect(() => { load(); }, [load]);
   const open = async item => {
+    if (openingId) return;
+    setOpeningId(item.id);
     try { setSelected((await api.deliveryCompanySettlement(item.id)).settlement); }
     catch (err) { toast.error(err?.message || 'Could not open settlement.'); }
+    finally { setOpeningId(null); }
   };
   const dispute = async () => {
+    if (disputing) return;
+    setDisputing(true);
     try {
       const result = await api.deliveryCompanyDisputeSettlement(selected.id, { note });
       setSelected(result.settlement); setNote(''); await load(); toast.success('Settlement dispute submitted.');
     } catch (err) { toast.error(err?.message || 'Could not submit dispute.'); }
+    finally { setDisputing(false); }
   };
   const filtered = React.useMemo(
     () => rankByFuzzyMatch(items, search, item => [item.reference, item.settlement_date, item.status, item.company_name]),
@@ -547,12 +592,14 @@ const CompanySettlements = () => {
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
   React.useEffect(() => setPage(1), [search, pageSize]);
   React.useEffect(() => setPage(current => Math.min(current, Math.max(1, Math.ceil(filtered.length / pageSize)))), [filtered.length, pageSize]);
-  if (loading) return <EmptyState title="Loading settlements" body="Preparing the daily accounting view." />;
+  if (loading) return <ContentSkeleton variant="cards" count={6} />;
+  if (loadError && items.length === 0) return <ErrorState message={loadError} onRetry={load} />;
   return <section className="delivery-section">
     <div className="delivery-section-head"><div><h2>Settlements</h2><p>Daily delivery collections and balances with RealMindX.</p></div></div>
     <div className="delivery-list-toolbar"><label className="delivery-search-field"><Icon name="search" size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search settlements" /></label></div>
     <div className="settlement-card-grid">
-      {paged.map(item => <button key={item.id} className="settlement-summary-card" type="button" onClick={() => open(item)}>
+      {loadError ? <ErrorState compact message={loadError} onRetry={load} /> : null}
+      {paged.map(item => <button key={item.id} className="settlement-summary-card" type="button" disabled={Boolean(openingId)} aria-busy={openingId === item.id} onClick={() => open(item)}>
         <span>{item.settlement_date}</span><strong>{item.reference}</strong><small>{item.delivery_count} deliveries</small>
         <b className={item.net_balance >= 0 ? 'due-rmx' : 'due-company'}>{item.balance_direction === 'company_owes_realmindx' ? `Company owes ${moneyLabel(item.net_balance)}` : item.balance_direction === 'realmindx_owes_company' ? `RealMindX owes ${moneyLabel(Math.abs(item.net_balance))}` : 'Balanced'}</b>
       </button>)}
@@ -565,7 +612,7 @@ const CompanySettlements = () => {
         <div className="delivery-kpi-strip"><div><span>Book value</span><strong>{moneyLabel(selected.book_subtotal)}</strong></div><div><span>Company payable</span><strong>{moneyLabel(selected.company_payable)}</strong></div><div><span>Net balance</span><strong>{moneyLabel(selected.net_balance)}</strong></div></div>
         <div className="settlement-line-list">{(selected.lines || []).map(line => <div key={line.id}><strong>{line.order_reference}</strong><span>{line.rider_name || '-'}</span><span>{line.delivery_location || '-'}</span><span>{statusLabel(line.payment_method)}</span><b>{moneyLabel(line.net_balance)}</b></div>)}</div>
         <div className="delivery-modal-actions">{['csv', 'xlsx', 'pdf'].map(format => <a key={format} className="btn btn-outline-navy" href={api.deliveryCompanySettlementExportUrl(selected.id, format)}>{format.toUpperCase()}</a>)}</div>
-        {selected.dispute_status !== 'open' ? <div className="delivery-issue-row"><input value={note} onChange={event => setNote(event.target.value)} placeholder="Explain the settlement concern" /><button className="btn btn-outline-navy" type="button" disabled={!note.trim()} onClick={dispute}>Raise Dispute</button></div> : <p className="form-error">Dispute open: {selected.dispute_notes}</p>}
+        {selected.dispute_status !== 'open' ? <div className="delivery-issue-row"><input value={note} disabled={disputing} onChange={event => setNote(event.target.value)} placeholder="Explain the settlement concern" /><button className="btn btn-outline-navy" type="button" disabled={!note.trim() || disputing} onClick={dispute}><AsyncButtonContent pending={disputing} pendingLabel="Raising dispute">Raise Dispute</AsyncButtonContent></button></div> : <p className="form-error">Dispute open: {selected.dispute_notes}</p>}
       </section>
     </div> : null}
   </section>;
@@ -684,7 +731,7 @@ const CompanyPortal = () => {
 
   return (
     <PortalShell title="Delivery Company Portal" subtitle={profile?.company_name} onLogout={logout}>
-      {error ? <div className="form-error delivery-alert">{error}</div> : null}
+      {error ? <ErrorState compact message={error} onRetry={load} /> : null}
       <section className="delivery-kpi-strip" aria-label="Delivery company summary">
         <div><span>Active deliveries</span><strong>{deliveries.filter(item => !['delivered', 'failed', 'returned', 'cancelled'].includes(item.status)).length}</strong></div>
         <div><span>Available riders</span><strong>{riders.filter(item => item.is_active).length}</strong></div>
@@ -707,7 +754,7 @@ const CompanyPortal = () => {
             <label className="delivery-search-field"><Icon name="search" size={18} /><input value={deliverySearch} onChange={event => setDeliverySearch(event.target.value)} placeholder="Search deliveries" /></label>
           </section>
           <section className="delivery-grid">
-            {loading ? <EmptyState title="Loading deliveries" body="Fetching assigned orders." /> : null}
+            {loading ? <ContentSkeleton variant="cards" count={6} /> : null}
             {!loading && filteredDeliveries.length === 0 ? <EmptyState title={deliverySearch ? 'No matching deliveries' : 'No deliveries here'} body={deliverySearch ? 'Try a different order reference, location, rider, or status.' : 'Assigned orders will appear here.'} /> : null}
             {pagedDeliveries.map(delivery => (
               <CompanyDeliveryCard key={delivery.id} delivery={delivery} riders={riders} onAction={onAction} />
@@ -742,7 +789,7 @@ const CompanyPortal = () => {
                 {['all', 'active', 'completed'].map(value => <button key={value} type="button" className={riderScope === value ? 'active' : ''} onClick={() => setRiderScope(value)}>{statusLabel(value)}</button>)}
               </div>
               <div className="delivery-rider-history-list">
-                {riderDetailBusy ? <p>Loading rider history...</p> : null}
+                {riderDetailBusy ? <ContentSkeleton variant="list" count={4} /> : null}
                 {!riderDetailBusy && (selectedRider.deliveries || []).length === 0 ? <p>No deliveries in this view.</p> : null}
                 {pagedHistory.map(delivery => (
                   <div key={delivery.id}>
@@ -783,6 +830,16 @@ const RiderDeliveryCard = ({ delivery, onAction }) => {
   const [otp, setOtp] = React.useState('');
   const [issueReason, setIssueReason] = React.useState('customer_unavailable');
   const [issueNote, setIssueNote] = React.useState('');
+  const [pendingAction, setPendingAction] = React.useState('');
+  const runAction = async (key, action) => {
+    if (pendingAction) return;
+    setPendingAction(key);
+    try {
+      await onAction(action);
+    } finally {
+      setPendingAction('');
+    }
+  };
   return (
     <>
       <button className={`delivery-compact-card tone-${deliveryTone(delivery.status)}`} type="button" onClick={() => setOpen(true)}>
@@ -790,9 +847,9 @@ const RiderDeliveryCard = ({ delivery, onAction }) => {
         <span>{delivery.delivery_location || 'Location unavailable'}</span>
         <small>{statusLabel(delivery.status)}</small>
       </button>
-      {open ? <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false); }}>
-    <article className={`delivery-card delivery-detail-modal tone-${deliveryTone(delivery.status)}`} role="dialog" aria-modal="true">
-      <button className="delivery-icon-button delivery-detail-close" type="button" onClick={() => setOpen(false)} aria-label="Close"><Icon name="x" size={20} /></button>
+      {open ? <div className="delivery-password-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !pendingAction) setOpen(false); }}>
+    <article className={`delivery-card delivery-detail-modal tone-${deliveryTone(delivery.status)}`} role="dialog" aria-modal="true" aria-busy={Boolean(pendingAction)}>
+      <button className="delivery-icon-button delivery-detail-close" type="button" disabled={Boolean(pendingAction)} onClick={() => setOpen(false)} aria-label="Close"><Icon name="x" size={20} /></button>
       <div className="delivery-card-head">
         <div>
           <h2>{delivery.order_reference}</h2>
@@ -803,14 +860,14 @@ const RiderDeliveryCard = ({ delivery, onAction }) => {
       <DeliveryMeta delivery={delivery} riderSafe />
       <div className="delivery-actions">
         {delivery.status === 'assigned_to_rider' ? (
-          <button className="btn btn-primary btn-sm" type="button" onClick={() => onAction(() => api.deliveryRiderPickup(delivery.id))}>Picked Up</button>
+          <button className="btn btn-primary btn-sm" type="button" disabled={Boolean(pendingAction)} onClick={() => runAction('pickup', () => api.deliveryRiderPickup(delivery.id))}><AsyncButtonContent pending={pendingAction === 'pickup'} pendingLabel="Marking picked up">Picked Up</AsyncButtonContent></button>
         ) : null}
         {delivery.status === 'picked_up' ? (
           <>
             <p className="delivery-otp-warning">Enter the OTP only when you are physically delivering the package to the customer or an authorised receiver.</p>
-            <input value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Customer OTP" inputMode="numeric" />
-            <button className="btn btn-primary btn-sm" type="button" onClick={() => onAction(() => api.deliveryRiderDeliver(delivery.id, otp))}>Mark Delivered</button>
-            <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryRiderResendOtp(delivery.id))}>Resend OTP</button>
+            <input value={otp} disabled={Boolean(pendingAction)} onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Customer OTP" inputMode="numeric" />
+            <button className="btn btn-primary btn-sm" type="button" disabled={Boolean(pendingAction) || otp.length !== 6} onClick={() => runAction('deliver', () => api.deliveryRiderDeliver(delivery.id, otp))}><AsyncButtonContent pending={pendingAction === 'deliver'} pendingLabel="Marking delivered">Mark Delivered</AsyncButtonContent></button>
+            <button className="btn btn-outline-navy btn-sm" type="button" disabled={Boolean(pendingAction)} onClick={() => runAction('resend', () => api.deliveryRiderResendOtp(delivery.id))}><AsyncButtonContent pending={pendingAction === 'resend'} pendingLabel="Resending OTP">Resend OTP</AsyncButtonContent></button>
           </>
         ) : null}
       </div>
@@ -820,7 +877,7 @@ const RiderDeliveryCard = ({ delivery, onAction }) => {
             {ISSUE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <input value={issueNote} onChange={event => setIssueNote(event.target.value)} placeholder="Optional note" />
-          <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => onAction(() => api.deliveryRiderReportIssue(delivery.id, { reason: issueReason, note: issueNote }))}>Report Issue</button>
+          <button className="btn btn-outline-navy btn-sm" type="button" disabled={Boolean(pendingAction)} onClick={() => runAction('issue', () => api.deliveryRiderReportIssue(delivery.id, { reason: issueReason, note: issueNote }))}><AsyncButtonContent pending={pendingAction === 'issue'} pendingLabel="Reporting issue">Report Issue</AsyncButtonContent></button>
         </div>
       ) : null}
     </article></div> : null}
@@ -895,7 +952,7 @@ const RiderPortal = () => {
 
   return (
     <PortalShell title="Rider Portal" subtitle={rider?.name} onLogout={logout}>
-      {error ? <div className="form-error delivery-alert">{error}</div> : null}
+      {error ? <ErrorState compact message={error} onRetry={load} /> : null}
       <section className="delivery-kpi-strip delivery-rider-kpis" aria-label="Rider delivery summary">
         <div><span>Active</span><strong>{deliveries.filter(item => ['assigned_to_rider', 'picked_up', 'issue_reported'].includes(item.status)).length}</strong></div>
         <div><span>Out for delivery</span><strong>{deliveries.filter(item => item.status === 'picked_up').length}</strong></div>
@@ -909,7 +966,7 @@ const RiderPortal = () => {
         <label className="delivery-search-field"><Icon name="search" size={18} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search deliveries" /></label>
       </section>
       <section className="delivery-grid">
-        {loading ? <EmptyState title="Loading deliveries" body="Fetching your assigned orders." /> : null}
+        {loading ? <ContentSkeleton variant="cards" count={6} /> : null}
         {!loading && filteredDeliveries.length === 0 ? <EmptyState title={search ? 'No matching deliveries' : 'No deliveries here'} body={search ? 'Try another order reference, customer, or location.' : 'Assigned orders will appear here.'} /> : null}
         {pagedDeliveries.map(delivery => (
           <RiderDeliveryCard key={delivery.id} delivery={delivery} onAction={onAction} />

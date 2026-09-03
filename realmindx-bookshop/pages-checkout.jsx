@@ -1260,18 +1260,19 @@ const TrackPage = ({ navigate }) => {
 const InvoiceDocumentPreview = ({ invoice, documentLabel, documentId }) => {
   if (!invoice) return null;
   const isReceipt = invoice.document_type === 'receipt';
+  const isSalesInvoice = invoice.invoice_type === 'sales';
   return (
     <div className="bs-invoice-paper" aria-label={`${documentLabel} preview`}>
       <div className="bs-invoice-paper-head">
         <img src="/bookshop-logo.png" alt="RealMindX Bookshop" />
         <div>
-          <h2>{isReceipt ? 'ORDER RECEIPT' : 'CART INVOICE'}</h2>
+          <h2>{isReceipt ? 'ORDER RECEIPT' : (isSalesInvoice ? 'SALES INVOICE' : 'CART INVOICE')}</h2>
           <strong>{documentId}</strong>
           <span>{isReceipt ? 'Issued' : 'Generated'}: {formatOrderDate(invoice.issued_at || invoice.created_at)}</span>
         </div>
       </div>
       <div className="bs-invoice-paper-metadata">
-        <div><span>Customer</span><strong>{invoice.customer_name || 'Cart invoice'}</strong></div>
+        <div><span>{isReceipt ? 'Customer' : 'Receiving individual'}</span><strong>{invoice.customer_name || 'Not provided'}</strong></div>
         <div><span>Status</span><strong>{normalizeOrderStatus(invoice.status).replace('_', ' ')}</strong></div>
         <div><span>Payment</span><strong>{String(invoice.payment_status || 'not paid').replace('_', ' ')}</strong></div>
       </div>
@@ -1292,10 +1293,10 @@ const InvoiceDocumentPreview = ({ invoice, documentLabel, documentId }) => {
         <div><span>Subtotal</span><strong>{cedis(invoice.subtotal_amount || 0)}</strong></div>
         {(invoice.bulk_discount_amount || 0) > 0 && <div><span>Bulk purchase discount</span><strong>-{cedis(invoice.bulk_discount_amount)}</strong></div>}
         {(invoice.promo_discount_amount || 0) > 0 && <div><span>Promo {invoice.promo_code || ''}</span><strong>-{cedis(invoice.promo_discount_amount)}</strong></div>}
-        <div><span>Delivery</span><strong>{Number(invoice.delivery_fee || 0) > 0 ? cedis(invoice.delivery_fee) : 'Calculated at checkout'}</strong></div>
-        <div className="grand"><span>{isReceipt ? 'Total' : 'Total before delivery'}</span><strong>{cedis(invoice.total_amount || 0)}</strong></div>
+        <div><span>Delivery</span><strong>{Number(invoice.delivery_fee || 0) > 0 ? cedis(invoice.delivery_fee) : (isSalesInvoice ? 'No charge' : 'Calculated at checkout')}</strong></div>
+        <div className="grand"><span>{isReceipt || isSalesInvoice ? 'Total' : 'Total before delivery'}</span><strong>{cedis(invoice.total_amount || 0)}</strong></div>
       </div>
-      <p className="bs-invoice-bulk-note">Buy 10+ copies of the same text book and enjoy 10% off.</p>
+      {!isSalesInvoice && <p className="bs-invoice-bulk-note">Buy 10+ copies of the same text book and enjoy 10% off.</p>}
     </div>
   );
 };
@@ -1311,6 +1312,7 @@ const InvoicePage = ({ navigate }) => {
   const [invoice, setInvoice] = React.useState(null);
   const [searched, setSearched] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [paying, setPaying] = React.useState(false);
   const [error, setError] = React.useState('');
   const inputRef = React.useRef(null);
 
@@ -1360,6 +1362,7 @@ const InvoicePage = ({ navigate }) => {
   const pdfUrl = pdfLookupId ? api.invoicePdfUrl(pdfLookupId, pdfOptions) : '';
   const downloadUrl = pdfLookupId ? api.invoicePdfUrl(pdfLookupId, { ...pdfOptions, download: true }) : '';
   const documentLabel = isReceipt ? 'Receipt' : 'Invoice';
+  const isSalesInvoice = invoice?.invoice_type === 'sales';
   const actionableItems = React.useMemo(
     () => (invoice?.items || []).filter(item => item.product_id),
     [invoice],
@@ -1379,6 +1382,22 @@ const InvoicePage = ({ navigate }) => {
       navigate('checkout');
     }
   }, [actionableItems, cart, documentId, isReceipt, navigate]);
+  const payInvoice = React.useCallback(async () => {
+    if (!documentId || !invoice?.can_pay_online || paying) return;
+    setPaying(true);
+    setError('');
+    try {
+      const result = await api.initInvoicePayment(documentId);
+      const paymentUrl = result?.payment?.authorization_url;
+      if (!paymentUrl) throw new Error('Paystack did not return a payment page.');
+      window.location.assign(paymentUrl);
+    } catch (err) {
+      const message = err?.message || 'Could not start invoice payment.';
+      setError(message);
+      globalToast.error(message);
+      setPaying(false);
+    }
+  }, [documentId, invoice?.can_pay_online, paying]);
 
   return (
     <div className="bs-container bs-fade-page">
@@ -1419,10 +1438,11 @@ const InvoicePage = ({ navigate }) => {
               </div>
               <div className="bs-divider" />
               <div className="bs-invoice-meta-grid">
-                <div><span>Customer</span><strong>{invoice.customer_name}</strong></div>
+                <div><span>{isReceipt ? 'Customer' : 'Receiving individual'}</span><strong>{invoice.customer_name || 'Not provided'}</strong></div>
                 <div><span>{isReceipt ? 'Receipt issued' : 'Generated'}</span><strong>{formatOrderDate(invoice.issued_at || invoice.created_at)}</strong></div>
                 <div><span>{isReceipt ? 'Order placed' : 'Created'}</span><strong>{formatOrderDate(invoice.created_at)}</strong></div>
                 <div><span>Status</span><strong>{normalizeOrderStatus(invoice.status).replace('_', ' ')}</strong></div>
+                <div><span>Payment</span><strong>{String(invoice.payment_status || 'not recorded').replaceAll('_', ' ')}</strong></div>
                 <div><span>Total</span><strong>{cedis(invoice.total_amount || 0)}</strong></div>
               </div>
               <div className="bs-divider" />
@@ -1438,7 +1458,7 @@ const InvoicePage = ({ navigate }) => {
               <div className="bs-summary-row"><span>Subtotal</span><span>{cedis(invoice.subtotal_amount || 0)}</span></div>
               {(invoice.bulk_discount_amount || 0) > 0 && <div className="bs-summary-row bs-discount"><span>Bulk purchase discount</span><span>-{cedis(invoice.bulk_discount_amount)}</span></div>}
               {(invoice.promo_discount_amount || 0) > 0 && <div className="bs-summary-row bs-discount"><span>Promo {invoice.promo_code || ''}</span><span>-{cedis(invoice.promo_discount_amount)}</span></div>}
-              <div className="bs-summary-row"><span>Delivery</span><span>{Number(invoice.delivery_fee || 0) > 0 ? cedis(invoice.delivery_fee) : 'Calculated at checkout'}</span></div>
+              <div className="bs-summary-row"><span>Delivery</span><span>{Number(invoice.delivery_fee || 0) > 0 ? cedis(invoice.delivery_fee) : (isSalesInvoice ? 'No charge' : 'Calculated at checkout')}</span></div>
               <div className="bs-summary-row bs-total"><span>Total</span><span>{cedis(invoice.total_amount || 0)}</span></div>
               <div className="bs-invoice-download-action">
                 <a className="bs-btn bs-btn-gold bs-btn-lg" href={downloadUrl}>
@@ -1446,12 +1466,21 @@ const InvoicePage = ({ navigate }) => {
                 </a>
               </div>
               <div className="bs-invoice-actions">
-                <button className="bs-btn bs-btn-gold bs-btn-lg" type="button" onClick={() => addInvoiceItemsToCart(true)} disabled={!actionableItems.length}>
-                  Buy Now
-                </button>
-                <button className="bs-btn bs-btn-outline-navy bs-btn-lg" type="button" onClick={() => addInvoiceItemsToCart(false)} disabled={!actionableItems.length}>
-                  Add to Cart
-                </button>
+                {invoice.can_pay_online && (
+                  <button className="bs-btn bs-btn-gold bs-btn-lg" type="button" onClick={payInvoice} disabled={paying} aria-busy={paying}>
+                    <AsyncButtonContent pending={paying} pendingLabel="Opening secure payment…">Pay Invoice Online</AsyncButtonContent>
+                  </button>
+                )}
+                {!isSalesInvoice && (
+                  <button className="bs-btn bs-btn-gold bs-btn-lg" type="button" onClick={() => addInvoiceItemsToCart(true)} disabled={!actionableItems.length}>
+                    Buy Now
+                  </button>
+                )}
+                {!isSalesInvoice && (
+                  <button className="bs-btn bs-btn-outline-navy bs-btn-lg" type="button" onClick={() => addInvoiceItemsToCart(false)} disabled={!actionableItems.length}>
+                    Add to Cart
+                  </button>
+                )}
                 <button className="bs-btn bs-btn-navy bs-btn-lg" type="button" onClick={() => navigate('home')}>
                   Bookshop Home
                 </button>

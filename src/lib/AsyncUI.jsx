@@ -4,7 +4,7 @@ import React from 'react';
  * Shared feedback primitives for asynchronous UI.
  *
  * Keep the operation itself immediate. `useDelayedPending` only delays the
- * animated indicator so quick responses do not flash a spinner or skeleton.
+ * animated indicator so quick responses do not flash a spinner.
  */
 export const useDelayedPending = (pending, delay = 260) => {
   const [visible, setVisible] = React.useState(false);
@@ -75,59 +75,34 @@ export const InlineStatus = ({
   </span>
 );
 
-export const RefreshingIndicator = ({ active, label = 'Refreshing data…', delay = 260 }) => {
+export const RefreshingIndicator = ({ active = true, label = 'Refreshing data…', delay = 260 }) => {
   const visible = useDelayedPending(active, delay);
   if (!visible) return null;
   return <InlineStatus busy className="rmx-refreshing-indicator">{label}</InlineStatus>;
 };
 
-export const Skeleton = ({ className = '', width, height, rounded = false }) => (
-  <span
-    className={`rmx-skeleton${rounded ? ' is-rounded' : ''}${className ? ` ${className}` : ''}`}
-    style={{ width, height }}
-    aria-hidden="true"
-  />
-);
-
-export const ContentSkeleton = ({
-  variant = 'cards',
-  count = 3,
+export const LoadingNotice = ({
   label = 'Loading content…',
   className = '',
 }) => {
-  const items = Array.from({ length: Math.max(1, count) }, (_, index) => index);
+  const visible = useDelayedPending(true, 260);
+
   return (
     <div
-      className={`rmx-content-skeleton is-${variant}${className ? ` ${className}` : ''}`}
+      className={`rmx-loading-notice${className ? ` ${className}` : ''}`}
       role="status"
       aria-live="polite"
       aria-label={label}
       aria-busy="true"
     >
-      {items.map(index => variant === 'table' ? (
-        <div className="rmx-skeleton-row" key={index} aria-hidden="true">
-          <Skeleton rounded />
-          <span><Skeleton /><Skeleton width="68%" /></span>
-          <Skeleton width="42%" />
-          <Skeleton width="56%" />
-        </div>
-      ) : variant === 'list' ? (
-        <div className="rmx-skeleton-list-item" key={index} aria-hidden="true">
-          <Skeleton rounded />
-          <span><Skeleton width="72%" /><Skeleton /><Skeleton width="46%" /></span>
-        </div>
-      ) : (
-        <div className="rmx-skeleton-card" key={index} aria-hidden="true">
-          <Skeleton className="rmx-skeleton-media" />
-          <Skeleton width="38%" />
-          <Skeleton width="82%" />
-          <Skeleton />
-          <Skeleton width="58%" />
-        </div>
-      ))}
+      {visible ? <><Spinner /><span>{label}</span></> : null}
     </div>
   );
 };
+
+// Kept as a compatibility export while callers migrate. It intentionally no
+// longer renders placeholder cards, rows, or shimmer animation.
+export const ContentSkeleton = LoadingNotice;
 
 export const ErrorState = ({
   title = 'Something went wrong',
@@ -174,8 +149,6 @@ export const AsyncState = ({
   errorTitle,
   emptyTitle,
   emptyMessage,
-  skeleton = 'cards',
-  skeletonCount = 3,
   delay = 260,
   preserve = false,
   children,
@@ -187,8 +160,8 @@ export const AsyncState = ({
   }
   if (loading && !preserve) {
     return showLoading
-      ? <ContentSkeleton variant={skeleton} count={skeletonCount} label={loadingLabel} />
-      : <div className={`rmx-loading-reserve is-${skeleton}`} aria-busy="true" aria-label={loadingLabel} />;
+      ? <LoadingNotice label={loadingLabel} />
+      : <div className="rmx-loading-reserve" aria-busy="true" aria-label={loadingLabel} />;
   }
   if (empty) {
     return <EmptyState title={emptyTitle} message={emptyMessage} />;

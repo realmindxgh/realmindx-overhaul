@@ -1,4 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
@@ -87,6 +88,7 @@ def invoice_json(order, document_type="invoice"):
         "issued_at": _iso(issued_at),
         "status": normalize_order_status(order.status),
         "payment_status": order.payment_status,
+        "payment_option": getattr(order, "payment_option", None),
         "payment_method": order.payment_method,
         "customer_name": order.customer_name,
         "email": order.email,
@@ -101,6 +103,8 @@ def invoice_json(order, document_type="invoice"):
         "promo_discount_amount": float(promo_discount),
         "delivery_fee": float(delivery_fee),
         "total_amount": float(total),
+        "amount_paid": float(money(getattr(order, "amount_paid", 0))),
+        "balance_due": float(money(getattr(order, "balance_due", 0))),
         "pdf_url": pdf_url if document_id else None,
         "items": [
             {
@@ -116,29 +120,54 @@ def invoice_json(order, document_type="invoice"):
 
 
 def cart_invoice_json(cart_invoice):
+    source = getattr(cart_invoice, "source", None) or "cart"
+    is_sales_invoice = source == "admin"
     subtotal = money(cart_invoice.subtotal_amount)
     bulk_discount = money(cart_invoice.bulk_discount_amount)
     promo_discount = money(cart_invoice.promo_discount_amount)
     delivery_fee = money(cart_invoice.delivery_fee)
     total = money(cart_invoice.total_amount)
+    expires_at = getattr(cart_invoice, "expires_at", None)
+    comparable_expiry = expires_at
+    if comparable_expiry and comparable_expiry.tzinfo is None:
+        comparable_expiry = comparable_expiry.replace(tzinfo=timezone.utc)
+    is_expired = bool(comparable_expiry and comparable_expiry <= datetime.now(timezone.utc))
+    payment_status = getattr(cart_invoice, "payment_status", None) or ("unpaid" if is_sales_invoice else "not_applicable")
+    status = cart_invoice.status or "generated"
+    can_pay_online = bool(
+        is_sales_invoice
+        and payment_status == "unpaid"
+        and status not in {"voided", "converted", "expired"}
+        and not cart_invoice.converted_at
+        and not cart_invoice.converted_order_id
+        and not is_expired
+        and total > 0
+    )
+    converted_order = getattr(cart_invoice, "converted_order", None)
     return {
         "invoice_id": cart_invoice.invoice_id,
         "document_id": cart_invoice.invoice_id,
         "document_type": "invoice",
-        "invoice_type": "cart",
-        "order_reference": None,
+        "invoice_type": "sales" if is_sales_invoice else "cart",
+        "source": source,
+        "order_reference": converted_order.order_reference if converted_order else None,
         "created_at": _iso(cart_invoice.created_at),
         "updated_at": _iso(getattr(cart_invoice, "updated_at", None)),
-        "issued_at": _iso(cart_invoice.created_at),
-        "status": cart_invoice.status or "generated",
-        "payment_status": "not_applicable",
-        "payment_method": "not_applicable",
-        "customer_name": "Cart invoice",
-        "email": "",
-        "phone": "",
-        "delivery_method": "not selected",
-        "delivery_zone_name": "",
-        "location": "",
+        "issued_at": _iso(getattr(cart_invoice, "issued_at", None) or cart_invoice.created_at),
+        "expires_at": _iso(expires_at),
+        "status": "expired" if is_expired and status not in {"voided", "converted"} else status,
+        "payment_status": payment_status,
+        "payment_method": getattr(cart_invoice, "payment_method", None) or ("not selected" if is_sales_invoice else "not_applicable"),
+        "payment_reference": getattr(cart_invoice, "payment_reference", None),
+        "paid_at": _iso(getattr(cart_invoice, "paid_at", None)),
+        "customer_name": getattr(cart_invoice, "customer_name", None) or "Cart invoice",
+        "email": getattr(cart_invoice, "customer_email", None) or "",
+        "phone": getattr(cart_invoice, "customer_phone", None) or "",
+        "delivery_method": getattr(cart_invoice, "delivery_method", None) or "not selected",
+        "delivery_zone_name": getattr(cart_invoice, "delivery_zone_name", None) or "",
+        "location": getattr(cart_invoice, "location", None) or "",
+        "delivery_region": getattr(cart_invoice, "delivery_region", None) or "",
+        "notes": getattr(cart_invoice, "notes", None) or "",
         "subtotal_amount": float(subtotal),
         "bulk_discount_amount": float(bulk_discount),
         "promo_code": cart_invoice.promo_code,
@@ -146,11 +175,15 @@ def cart_invoice_json(cart_invoice):
         "promo_discount_amount": float(promo_discount),
         "delivery_fee": float(delivery_fee),
         "total_amount": float(total),
+        "can_pay_online": can_pay_online,
+        "converted_order_reference": converted_order.order_reference if converted_order else None,
+        "converted_order_invoice_id": converted_order.invoice_id if converted_order else None,
         "pdf_url": f"/api/invoices/{quote(cart_invoice.invoice_id or '')}/pdf",
         "items": [
             {
                 "product_id": item.product_id,
                 "product_name": item.product_name,
+                "description": getattr(item, "description", None),
                 "unit_price": float(money(item.unit_price)),
                 "quantity": item.quantity,
                 "line_total": float(_line_total(item)),
@@ -548,7 +581,12 @@ def _order_totals(order, include_delivery=True, cart_invoice=False):
         return rows
     if include_delivery:
         rows.append(["Delivery", money_label(order.delivery_fee), False])
-    rows.append(["Total", money_label(order.total_amount), True])
+    if hasattr(order, "amount_paid") and hasattr(order, "balance_due"):
+        rows.append(["Total", money_label(order.total_amount), False])
+        rows.append(["Amount paid", money_label(getattr(order, "amount_paid", 0)), False])
+        rows.append(["Balance due", money_label(getattr(order, "balance_due", 0)), True])
+    else:
+        rows.append(["Total", money_label(order.total_amount), True])
     return rows
 
 
@@ -595,6 +633,35 @@ def build_receipt_pdf(order):
 
 def build_cart_invoice_pdf(cart_invoice):
     assign_cart_invoice_id(cart_invoice)
+    is_sales_invoice = (getattr(cart_invoice, "source", None) or "cart") == "admin"
+    if is_sales_invoice:
+        return _build_bookshop_pdf({
+            "title": "Sales Invoice",
+            "document_id": cart_invoice.invoice_id,
+            "order_reference": None,
+            "issued_label": "Issued",
+            "issued_at": _date_time_label(getattr(cart_invoice, "issued_at", None) or cart_invoice.created_at),
+            "verify_label": "View and verify this invoice",
+            "verify_lookup_id": cart_invoice.invoice_id,
+            "cards": [
+                ("Receiving Individual", [
+                    getattr(cart_invoice, "customer_name", None) or "Customer",
+                    getattr(cart_invoice, "customer_email", None) or "",
+                    getattr(cart_invoice, "customer_phone", None) or "",
+                ]),
+                ("Fulfilment", [
+                    "Pickup" if getattr(cart_invoice, "delivery_method", None) == "pickup" else "Delivery",
+                    _delivery_label(cart_invoice),
+                ]),
+                ("Payment", [
+                    _payment_label(getattr(cart_invoice, "payment_status", None) or "unpaid"),
+                    _payment_label(getattr(cart_invoice, "payment_method", None) or "online or recorded offline"),
+                ]),
+            ],
+            "items": _order_items(cart_invoice),
+            "totals": _order_totals(cart_invoice),
+            "footer": "This invoice may contain special-order books that are not listed in the public catalogue. Payment is confirmed only when the invoice shows as paid and an order receipt has been issued.",
+        })
     return _build_bookshop_pdf({
         "title": "Cart Invoice",
         "document_id": cart_invoice.invoice_id,
@@ -604,6 +671,10 @@ def build_cart_invoice_pdf(cart_invoice):
         "verify_label": "Verify this invoice",
         "verify_lookup_id": cart_invoice.invoice_id,
         "cards": [
+            ("Receiving Individual", [
+                getattr(cart_invoice, "customer_name", None) or "Customer",
+                getattr(cart_invoice, "customer_email", None) or "",
+            ]),
             ("Delivery", ["Calculated at checkout"]),
             ("Payment", ["Not paid yet"]),
         ],

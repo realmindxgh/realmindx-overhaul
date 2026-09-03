@@ -1,6 +1,7 @@
 import React from 'react';
 import { api, isApiMode } from './apiClient.js';
 import { syncSessionFromApi } from './authClient.js';
+import { AsyncButtonContent } from './AsyncUI.jsx';
 
 const labels = {
   email: {
@@ -112,6 +113,7 @@ export default function VerifiedContactField({
   const [error, setError] = React.useState('');
   const [message, setMessage] = React.useState('');
   const [success, setSuccess] = React.useState(null);
+  const statusCheckInFlightRef = React.useRef(false);
   const isWhatsAppInbound = Boolean(challenge && (
     challenge.verification_mode === 'whatsapp_inbound'
     || challenge.delivery_channel === 'whatsapp_inbound'
@@ -229,7 +231,8 @@ export default function VerifiedContactField({
   }, [field, meta.title, onUpdated]);
 
   const checkWhatsAppStatus = React.useCallback(async ({ silent = false } = {}) => {
-    if (!challenge?.challenge_id || !isApiMode()) return;
+    if (!challenge?.challenge_id || !isApiMode() || statusCheckInFlightRef.current) return;
+    statusCheckInFlightRef.current = true;
     if (!silent) {
       setChecking(true);
       setError('');
@@ -250,6 +253,7 @@ export default function VerifiedContactField({
     } catch (statusError) {
       if (!silent) setError(statusError.message || 'Could not check the WhatsApp challenge yet.');
     } finally {
+      statusCheckInFlightRef.current = false;
       if (!silent) setChecking(false);
     }
   }, [challenge?.challenge_id, finishVerified]);
@@ -404,7 +408,7 @@ export default function VerifiedContactField({
           )}
           <div className="verified-contact-form-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
-              {busy ? 'Sending...' : channel === 'whatsapp' ? 'Verify with WhatsApp' : 'Send SMS code'}
+              <AsyncButtonContent pending={busy} pendingLabel="Sending verification">{channel === 'whatsapp' ? 'Verify with WhatsApp' : 'Send SMS code'}</AsyncButtonContent>
             </button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={reset}>Cancel</button>
           </div>
@@ -416,7 +420,7 @@ export default function VerifiedContactField({
           {whatsAppChallenge}
           <div className="verified-contact-form-actions">
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={() => checkWhatsAppStatus()} disabled={checking}>
-              {checking ? 'Checking...' : 'Check now'}
+              <AsyncButtonContent pending={checking} pendingLabel="Checking status">Check now</AsyncButtonContent>
             </button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={changeNumber}>Change number</button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={reset}>Cancel</button>
@@ -443,7 +447,7 @@ export default function VerifiedContactField({
           </label>
           <div className="verified-contact-form-actions">
             <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
-              {busy ? 'Verifying...' : 'Verify and update'}
+              <AsyncButtonContent pending={busy} pendingLabel="Verifying contact">Verify and update</AsyncButtonContent>
             </button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={reset}>Cancel</button>
             <button type="button" className="btn btn-outline-navy btn-sm" onClick={resendCode} disabled={busy || waitSeconds > 0}>
@@ -524,7 +528,7 @@ export default function VerifiedContactField({
               </div></fieldset>
               {error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}
               {message && <p className="verified-contact-feedback">{message}</p>}
-              <footer className="phone-verification-actions"><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}>{busy ? 'Sending…' : <><VerificationMiniGlyph type="lock" /> Send code</>}</button></footer>
+              <footer className="phone-verification-actions"><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Sending code"><VerificationMiniGlyph type="lock" /> Send code</AsyncButtonContent></button></footer>
               <p className="phone-verification-footnote"><VerificationMiniGlyph type="lock" /> {isChangingPhone ? 'Your current number will remain active until you verify the new one.' : 'Your phone number will be added to your account after verification.'}</p>
             </main>
             <VerificationAside changing={isChangingPhone} />
@@ -537,7 +541,7 @@ export default function VerifiedContactField({
             <button className="verified-contact-modal-close phone-verification-close" type="button" onClick={reset} aria-label="Close"><span aria-hidden="true">×</span></button>
             <header className="whatsapp-verification-head"><div><span className="verified-contact-modal-kicker">Contact details</span><h2 id="whatsapp-verification-title">Verify phone number</h2><p>We'll help you verify your number with WhatsApp. Just follow the steps below. RealMindX will check automatically after you send the message.</p></div><span className="phone-verification-step">Step 2 of 2</span></header>
             <div className="whatsapp-verification-grid"><div>{whatsAppChallenge}{error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}</div><VerificationAside whatsapp /></div>
-            <footer className="whatsapp-verification-actions"><div><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button>{waitSeconds > 0 && <span className="verified-contact-countdown">{waitSeconds}s</span>}</div><button type="submit" className="verified-contact-modal-btn is-primary" disabled={checking}>{checking ? 'Checking…' : 'Check now'}</button></footer>
+            <footer className="whatsapp-verification-actions"><div><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button>{waitSeconds > 0 && <span className="verified-contact-countdown">{waitSeconds}s</span>}</div><button type="submit" className="verified-contact-modal-btn is-primary" disabled={checking}><AsyncButtonContent pending={checking} pendingLabel="Checking status">Check now</AsyncButtonContent></button></footer>
           </form>
         </div>
       )}
@@ -560,7 +564,7 @@ export default function VerifiedContactField({
                 {message && <p className="verified-contact-feedback">{message}</p>}
                 <button className="sms-verification-resend" type="button" onClick={resendCode} disabled={busy || waitSeconds > 0}>{waitSeconds > 0 ? `Send another code in ${waitSeconds}s` : 'Send another code'}</button>
               </section>
-              <footer className="phone-verification-actions sms-verification-actions"><div><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button></div><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}>{busy ? 'Verifying…' : 'Verify number'}</button></footer>
+              <footer className="phone-verification-actions sms-verification-actions"><div><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="button" className="verified-contact-modal-btn is-outline" onClick={changeNumber}>Change number</button></div><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Verifying number">Verify number</AsyncButtonContent></button></footer>
               <p className="phone-verification-footnote"><VerificationMiniGlyph type="lock" /> Your phone number changes only after this code is confirmed.</p>
             </main>
             <VerificationAside changing={isChangingPhone} />
@@ -649,15 +653,18 @@ export default function VerifiedContactField({
                   </button>
                 )}
                 {challenge && waitSeconds > 0 && (
-                  <span className="verified-contact-countdown" aria-live="polite">
+                  <span className="verified-contact-countdown" aria-label={`Retry available in ${waitSeconds} seconds`}>
                     {waitSeconds}s
                   </span>
                 )}
               </div>
               <button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy || checking}>
-                {isWhatsAppInbound
-                  ? (checking ? 'Checking...' : 'Check now')
-                  : busy ? (challenge ? 'Verifying...' : 'Sending...') : (challenge ? 'Verify and update' : channel === 'whatsapp' ? 'Verify with WhatsApp' : 'Send code')}
+                <AsyncButtonContent
+                  pending={busy || checking}
+                  pendingLabel={isWhatsAppInbound ? 'Checking status' : challenge ? 'Verifying contact' : 'Sending code'}
+                >
+                  {isWhatsAppInbound ? 'Check now' : challenge ? 'Verify and update' : channel === 'whatsapp' ? 'Verify with WhatsApp' : 'Send code'}
+                </AsyncButtonContent>
               </button>
             </div>
           </form>

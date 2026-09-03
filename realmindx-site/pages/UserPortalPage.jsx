@@ -1318,8 +1318,11 @@ const DocumentsView = ({ user, onUploadDocument, uploadingKind, uploadError, upl
     {uploadMeta && uploadMeta.kind !== 'profile_picture' ? (
       <ProgressStatus
         label={uploadMeta.status === 'complete' ? `${uploadMeta.name} uploaded` : `Uploading ${uploadMeta.name}`}
-        detail={formatUploadSize(uploadMeta.size)}
-        stage={uploadMeta.status === 'uploading' ? 'Uploading document securely' : ''}
+        detail={uploadMeta.total ? `${formatUploadSize(uploadMeta.loaded)} of ${formatUploadSize(uploadMeta.total)}` : formatUploadSize(uploadMeta.size)}
+        stage={uploadMeta.status === 'uploading'
+          ? uploadMeta.stage === 'processing' ? 'Upload finished. Saving the document securely' : 'Uploading document securely'
+          : ''}
+        percent={uploadMeta.status === 'uploading' && uploadMeta.stage === 'uploading' ? uploadMeta.percent : undefined}
         complete={uploadMeta.status === 'complete'}
         error={uploadMeta.error}
         onRetry={uploadMeta.error ? () => onUploadDocument?.(uploadMeta.kind, uploadMeta.file, uploadMeta.reason || '') : undefined}
@@ -1632,7 +1635,7 @@ const AlertsView = ({ initialAlerts = [], user, onSaved }) => {
               </div>
               <div className="portal-alert-actions">
                 <button className="btn btn-sm btn-outline-navy" onClick={() => openForm(alert)}>Edit</button>
-                {!alert.isDefault && <button className="portal-alert-delete" type="button" disabled={deletingId === alert.id} aria-busy={deletingId === alert.id} onClick={() => deleteAlert(alert)}><AsyncButtonContent pending={deletingId === alert.id} pendingLabel="Deleting…">Delete</AsyncButtonContent></button>}
+                {!alert.isDefault && <button className="portal-alert-delete" type="button" disabled={deletingId === alert.id} aria-busy={deletingId === alert.id} onClick={() => deleteAlert(alert)}><AsyncButtonContent pending={deletingId === alert.id} pendingLabel="Deleting alert">Delete</AsyncButtonContent></button>}
               </div>
             </div>
           ))}
@@ -2152,7 +2155,7 @@ const UserPortalPage = () => {
   const handleFileUpload = async (kind, file, suppliedReason = '') => {
     if (!file) return;
     setUploadError('');
-    setUploadMeta({ kind, file, reason: suppliedReason, name: file.name, size: file.size, status: 'uploading', error: '' });
+    setUploadMeta({ kind, file, reason: suppliedReason, name: file.name, size: file.size, status: 'uploading', stage: 'preparing', error: '' });
     if (kind === 'profile_picture') setAvatarUploading(true);
     else setUploadingKind(kind);
     try {
@@ -2161,21 +2164,31 @@ const UserPortalPage = () => {
         if (localUrl) {
           setApiProfile(prev => ({ ...(prev || {}), profile_picture_url: localUrl }));
         }
-        setUploadMeta({ kind, file, reason: suppliedReason, name: file.name, size: file.size, status: 'complete', error: '' });
+        setUploadMeta({ kind, file, reason: suppliedReason, name: file.name, size: file.size, status: 'complete', stage: 'complete', percent: 100, error: '' });
         return;
       }
       let changeReason = suppliedReason;
       if (profileStatus === 'verified' && !changeReason && kind === 'profile_picture') {
         changeReason = window.prompt('Why are you replacing this approved profile photo? This reason will be kept in our records.') || '';
       }
-      const result = await api.uploadUserFile(file, kind, changeReason);
+      const result = await api.uploadUserFile(file, kind, changeReason, {
+        onProgress: nextProgress => setUploadMeta(current => (
+          current?.kind === kind && current?.file === file
+            ? { ...current, ...nextProgress, status: 'uploading' }
+            : current
+        )),
+      });
       mergeUploadedProfile(result, kind);
       await refreshAccountStatus();
-      setUploadMeta({ kind, file, reason: changeReason, name: file.name, size: file.size, status: 'complete', error: '' });
+      setUploadMeta({ kind, file, reason: changeReason, name: file.name, size: file.size, status: 'complete', stage: 'complete', percent: 100, error: '' });
     } catch (err) {
       const message = err?.message || 'Upload failed. Please try again.';
       setUploadError(message);
-      setUploadMeta({ kind, file, reason: suppliedReason, name: file.name, size: file.size, status: 'error', error: message });
+      setUploadMeta(current => ({
+        ...(current?.kind === kind && current?.file === file ? current : { kind, file, reason: suppliedReason, name: file.name, size: file.size }),
+        status: 'error',
+        error: message,
+      }));
     } finally {
       setAvatarUploading(false);
       setUploadingKind('');
@@ -2438,7 +2451,7 @@ const UserPortalPage = () => {
               <AsyncButtonContent pending={avatarUploading} pendingLabel="Uploading photo…">{user.avatarUrl ? 'Replace Photo' : 'Upload Photo'}</AsyncButtonContent>
               <input type="file" accept="image/png,image/jpeg,image/webp" hidden disabled={avatarUploading} onChange={event => handleFileUpload('profile_picture', event.target.files?.[0])} />
             </label>
-            {uploadMeta?.kind === 'profile_picture' ? <ProgressStatus label={uploadMeta.status === 'complete' ? `${uploadMeta.name} uploaded` : `Uploading ${uploadMeta.name}`} detail={formatUploadSize(uploadMeta.size)} stage="Uploading profile photo securely" complete={uploadMeta.status === 'complete'} error={uploadMeta.error} onRetry={uploadMeta.error ? () => handleFileUpload('profile_picture', uploadMeta.file, uploadMeta.reason || '') : undefined} /> : null}
+            {uploadMeta?.kind === 'profile_picture' ? <ProgressStatus label={uploadMeta.status === 'complete' ? `${uploadMeta.name} uploaded` : `Uploading ${uploadMeta.name}`} detail={uploadMeta.total ? `${formatUploadSize(uploadMeta.loaded)} of ${formatUploadSize(uploadMeta.total)}` : formatUploadSize(uploadMeta.size)} stage={uploadMeta.stage === 'processing' ? 'Upload finished. Saving the profile photo securely' : 'Uploading profile photo securely'} percent={uploadMeta.status === 'uploading' && uploadMeta.stage === 'uploading' ? uploadMeta.percent : undefined} complete={uploadMeta.status === 'complete'} error={uploadMeta.error} onRetry={uploadMeta.error ? () => handleFileUpload('profile_picture', uploadMeta.file, uploadMeta.reason || '') : undefined} /> : null}
             {uploadError && <p className="form-error" role="alert" style={{ marginTop: 10 }}>{uploadError}</p>}
           </div>
         </div>

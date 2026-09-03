@@ -196,6 +196,12 @@ def order_json(order, include_delivery=True):
         "order_reference": order.order_reference,
         "invoice_id": getattr(order, "invoice_id", None),
         "payment_reference": order.payment_reference,
+        "source": getattr(order, "source", None) or "bookshop",
+        "created_by_id": getattr(order, "created_by_id", None),
+        "created_by": (
+            f"{order.created_by.first_name or ''} {order.created_by.last_name or ''}".strip()
+            or order.created_by.email
+        ) if getattr(order, "created_by", None) else None,
         "customer_name": order.customer_name,
         "customer_sex": order.customer_sex,
         "customer_age_range": order.customer_age_range,
@@ -210,6 +216,7 @@ def order_json(order, include_delivery=True):
         "status": status,
         "raw_status": order.status,
         "payment_status": order.payment_status,
+        "payment_option": getattr(order, "payment_option", None),
         "payment_method": order.payment_method,
         "payment_provider": order.payment_provider,
         "payment_authorization_url": order.payment_authorization_url,
@@ -219,6 +226,9 @@ def order_json(order, include_delivery=True):
         "promo_applies_to": order.promo_applies_to,
         "promo_discount_amount": float(order.promo_discount_amount or 0),
         "total_amount": float(order.total_amount) if order.total_amount else None,
+        "amount_paid": float(getattr(order, "amount_paid", 0) or 0),
+        "balance_due": float(getattr(order, "balance_due", 0) or 0),
+        "notes": order.notes,
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "updated_at": order.updated_at.isoformat() if order.updated_at else None,
         "items": [

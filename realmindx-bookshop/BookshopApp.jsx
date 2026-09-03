@@ -197,10 +197,10 @@ const PaystackReturnPage = ({ paymentRef, legacy = false, navigate, clearCart })
     let cancelled = false;
     let timer = null;
 
-    const finish = (order = null) => {
+    const finish = (order = null, { preserveCart = false } = {}) => {
       if (cancelled) return;
       if (!clearedRef.current) {
-        clearCartRef.current?.();
+        if (!preserveCart) clearCartRef.current?.();
         clearCheckoutDraft();
         clearCheckoutSuccess();
         clearedRef.current = true;
@@ -218,7 +218,7 @@ const PaystackReturnPage = ({ paymentRef, legacy = false, navigate, clearCart })
         try {
           const verified = await api.verifyPaystackPayment(paymentRef, { legacy });
           if (isPaidOrder(verified?.order)) {
-            finish(verified.order);
+            finish(verified.order, { preserveCart: Boolean(verified?.payment_intent?.invoice_payment) });
             return;
           }
         } catch {

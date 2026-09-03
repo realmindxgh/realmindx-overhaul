@@ -6,6 +6,7 @@ import re
 import secrets
 import zipfile
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from html import escape
 from pathlib import Path
 from threading import Thread
@@ -108,6 +109,7 @@ from ..models import (
     ContactSource,
     ContactMessage,
     CartInvoice,
+    CartInvoiceItem,
     BookshopPaymentIntent,
     DeliveryCompany,
     DeliveryCompanyUser,
@@ -146,6 +148,7 @@ from ..models import (
     SiteSetting,
     UploadedFile,
 )
+from ..invoices import assign_cart_invoice_id, build_cart_invoice_pdf, cart_invoice_json
 from ..promo_affiliates import (
     record_completed_order_promo_usage,
     send_promo_usage_notification,
@@ -3603,6 +3606,10 @@ def delete_product(product_id):
         {OrderItem.product_id: None},
         synchronize_session=False,
     )
+    CartInvoiceItem.query.filter_by(product_id=product.id).update(
+        {CartInvoiceItem.product_id: None},
+        synchronize_session=False,
+    )
     AnalyticsEvent.query.filter_by(product_id=product.id).update(
         {AnalyticsEvent.product_id: None},
         synchronize_session=False,
@@ -5199,7 +5206,7 @@ def admin_export_delivery_settlement(batch_id, export_format):
 @login_required
 @permission_required("orders.view")
 def orders():
-    rows = placed_order_query().order_by(Order.created_at.desc()).all()
+    rows = placed_order_query().options(joinedload(Order.created_by)).order_by(Order.created_at.desc()).all()
     return jsonify(items=[order_json(order) for order in rows])
 
 
@@ -5209,6 +5216,543 @@ def _ledger_iso(value):
 
 def _ledger_amount(value):
     return float(value or 0)
+
+
+ADMIN_INVOICE_MONEY_QUANT = Decimal("0.01")
+ADMIN_INVOICE_MAX_AMOUNT = Decimal("9999999999.99")
+ADMIN_INVOICE_PAYMENT_METHODS = {"cash", "bank_transfer", "mobile_money", "pos", "other"}
+ADMIN_MANUAL_BULK_MIN_QTY = 10
+ADMIN_MANUAL_BULK_DISCOUNT_PERCENT = Decimal("10.00")
+
+
+def _admin_invoice_money(value, field_name, *, allow_zero=True):
+    try:
+        amount = Decimal(str(value if value not in {None, ""} else 0)).quantize(
+            ADMIN_INVOICE_MONEY_QUANT,
+            rounding=ROUND_HALF_UP,
+        )
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError(f"Enter a valid {field_name}.") from exc
+    if amount < 0 or (not allow_zero and amount <= 0):
+        qualifier = "greater than zero" if not allow_zero else "zero or greater"
+        raise ValueError(f"{field_name.title()} must be {qualifier}.")
+    if amount > ADMIN_INVOICE_MAX_AMOUNT:
+        raise ValueError(f"{field_name.title()} is too large.")
+    return amount
+
+
+def _admin_invoice_expiry(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        if len(text) == 10:
+            return datetime.fromisoformat(f"{text}T23:59:59+00:00")
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ValueError("Enter a valid invoice expiry date.") from exc
+
+
+def _prepare_admin_invoice(payload, *, record_label="invoice"):
+    customer_name = str(payload.get("customer_name") or "").strip()
+    if not customer_name:
+        raise ValueError("Receiving individual or organisation name is required.")
+    if len(customer_name) > 160:
+        raise ValueError("Receiving individual name must be 160 characters or fewer.")
+    customer_email = normalize_contact_email(payload.get("email") or payload.get("customer_email"))
+    customer_phone = str(payload.get("phone") or payload.get("customer_phone") or "").strip()
+    if not customer_phone:
+        raise ValueError("Customer phone is required.")
+
+    delivery_method = str(payload.get("delivery_method") or "pickup").strip().lower()
+    if delivery_method not in {"pickup", "delivery"}:
+        raise ValueError("Choose pickup or delivery.")
+    zone = None
+    zone_id = payload.get("delivery_zone_id")
+    if delivery_method == "delivery" and zone_id not in {None, ""}:
+        try:
+            zone = db.session.get(DeliveryZone, int(zone_id))
+        except (TypeError, ValueError):
+            zone = None
+        if not zone or not zone.is_active or not zone.is_delivery_area or zone.is_search_alias_only:
+            raise ValueError("Choose a valid delivery area.")
+    location = str(payload.get("location") or "").strip() or None
+    if delivery_method == "delivery" and not zone and not location:
+        raise ValueError("Choose a delivery area or enter the delivery location.")
+    delivery_fee = Decimal("0.00") if delivery_method == "pickup" else _admin_invoice_money(
+        payload.get("delivery_fee"),
+        "delivery fee",
+    )
+
+    raw_items = payload.get("items") or []
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError(f"Add at least one {record_label} item.")
+    if len(raw_items) > 100:
+        raise ValueError(f"An {record_label} can contain at most 100 line items.")
+    items = []
+    subtotal = Decimal("0.00")
+    bulk_discount = Decimal("0.00")
+    for index, raw in enumerate(raw_items, start=1):
+        product = None
+        product_id = raw.get("product_id")
+        if product_id not in {None, ""}:
+            try:
+                product = db.session.get(Product, int(product_id))
+            except (TypeError, ValueError):
+                product = None
+            if not product:
+                raise ValueError(f"{record_label.title()} item {index} references a product that no longer exists.")
+        product_name = product.name if product else str(raw.get("product_name") or raw.get("name") or "").strip()
+        if not product_name:
+            raise ValueError(f"Enter a book or item name for line {index}.")
+        if len(product_name) > 180:
+            raise ValueError(f"{record_label.title()} item {index} name is too long.")
+        try:
+            quantity = int(raw.get("quantity") or 1)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Enter a valid quantity for {product_name}.") from exc
+        if quantity < 1 or quantity > 10000:
+            raise ValueError(f"Quantity for {product_name} must be between 1 and 10,000.")
+        unit_price = _admin_invoice_money(raw.get("unit_price"), f"unit price for {product_name}", allow_zero=False)
+        description = str(raw.get("description") or "").strip() or None
+        if description and len(description) > 300:
+            raise ValueError(f"Description for {product_name} is too long.")
+        subtotal += unit_price * quantity
+        if quantity >= ADMIN_MANUAL_BULK_MIN_QTY:
+            line_subtotal = unit_price * quantity
+            bulk_discount += (
+                line_subtotal * ADMIN_MANUAL_BULK_DISCOUNT_PERCENT / Decimal("100")
+            ).quantize(ADMIN_INVOICE_MONEY_QUANT, rounding=ROUND_HALF_UP)
+        items.append({
+            "product_id": product.id if product else None,
+            "product_name": product_name,
+            "description": description,
+            "unit_price": unit_price,
+            "quantity": quantity,
+        })
+    subtotal = subtotal.quantize(ADMIN_INVOICE_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    bulk_discount = min(bulk_discount, subtotal).quantize(ADMIN_INVOICE_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    total = (subtotal - bulk_discount + delivery_fee).quantize(ADMIN_INVOICE_MONEY_QUANT, rounding=ROUND_HALF_UP)
+    if total <= 0:
+        raise ValueError("Invoice total must be greater than zero.")
+    if total > ADMIN_INVOICE_MAX_AMOUNT:
+        raise ValueError("Invoice total is too large.")
+
+    expires_at = _admin_invoice_expiry(payload.get("expires_at"))
+    if expires_at and expires_at <= datetime.now(timezone.utc):
+        raise ValueError("Invoice expiry must be in the future.")
+    return {
+        "customer_name": customer_name,
+        "customer_email": customer_email,
+        "customer_phone": customer_phone,
+        "delivery_method": delivery_method,
+        "delivery_zone_id": zone.id if zone else None,
+        "delivery_zone_name": zone.name if zone else None,
+        "delivery_region": (zone.region if zone else str(payload.get("delivery_region") or "").strip()) or None,
+        "location": location or (zone.name if zone else None),
+        "delivery_fee": delivery_fee,
+        "notes": str(payload.get("notes") or "").strip() or None,
+        "expires_at": expires_at,
+        "items": items,
+        "subtotal_amount": subtotal,
+        "bulk_discount_amount": bulk_discount,
+        "total_amount": total,
+        "send_email": bool(payload.get("send_email", True)),
+    }
+
+
+ADMIN_ORDER_PAYMENT_OPTIONS = {"partially_paid", "fully_paid", "payment_on_delivery"}
+
+
+@admin_bp.post("/orders")
+@login_required
+@permission_required("orders.create")
+def create_admin_order():
+    payload = request.get_json(silent=True) or {}
+    try:
+        prepared = _prepare_admin_invoice(payload, record_label="order")
+        payment_option = str(payload.get("payment_option") or "").strip().lower()
+        if payment_option not in ADMIN_ORDER_PAYMENT_OPTIONS:
+            raise ValueError("Choose Partially paid, Fully paid, or Payment on delivery.")
+
+        total = prepared["total_amount"]
+        payment_method = "cash_on_delivery"
+        payment_provider = "cash_on_delivery"
+        payment_reference = None
+        amount_paid = Decimal("0.00")
+        balance_due = total
+        paid_at = None
+        payment_status = "unpaid"
+        status = "new"
+
+        if payment_option in {"partially_paid", "fully_paid"}:
+            recorded_method = str(payload.get("payment_method") or "cash").strip().lower()
+            if recorded_method not in ADMIN_INVOICE_PAYMENT_METHODS:
+                raise ValueError("Choose cash, bank transfer, Mobile Money, POS, or another recorded payment method.")
+            external_reference = str(payload.get("payment_reference") or "").strip()
+            if len(external_reference) > 80:
+                raise ValueError("Payment reference must be 80 characters or fewer.")
+            if recorded_method != "cash" and not external_reference:
+                raise ValueError("Payment reference is required for non-cash payments.")
+            if external_reference and Order.query.filter_by(payment_reference=external_reference).first():
+                raise ValueError("That payment reference is already attached to another order.")
+
+            if payment_option == "partially_paid":
+                amount_paid = _admin_invoice_money(payload.get("amount_paid"), "amount paid", allow_zero=False)
+                if amount_paid >= total:
+                    raise ValueError("A partial payment must be less than the order total. Choose Fully paid when the full amount was received.")
+                payment_status = "partially_paid"
+                balance_due = (total - amount_paid).quantize(ADMIN_INVOICE_MONEY_QUANT, rounding=ROUND_HALF_UP)
+            else:
+                amount_paid = total
+                balance_due = Decimal("0.00")
+                payment_status = "paid"
+
+            payment_method = "manual"
+            payment_provider = f"manual:{recorded_method}"
+            payment_reference = external_reference or f"RMX-MAN-{uuid4().hex[:24].upper()}"
+            paid_at = datetime.now(timezone.utc)
+            status = "confirmed"
+
+        checkout = {
+            "user_id": None,
+            "customer_name": prepared["customer_name"],
+            "customer_sex": None,
+            "customer_age_range": None,
+            "email": prepared["customer_email"],
+            "phone": prepared["customer_phone"],
+            "delivery_method": prepared["delivery_method"],
+            "delivery_zone_id": prepared["delivery_zone_id"],
+            "delivery_zone_name": prepared["delivery_zone_name"],
+            "delivery_fee": prepared["delivery_fee"],
+            "delivery_address": prepared["location"] or "",
+            "delivery_city": prepared["delivery_zone_name"] or "",
+            "delivery_region": prepared["delivery_region"],
+            "location": prepared["location"],
+            "notes": prepared["notes"],
+            "payment_method": payment_method,
+            "analytics_session_key": None,
+            "analytics_visitor_key": None,
+            "order_items": [{
+                "product_id": item["product_id"],
+                "name": item["product_name"],
+                "unit_price": item["unit_price"],
+                "quantity": item["quantity"],
+                "bulk_discount_percent": ADMIN_MANUAL_BULK_DISCOUNT_PERCENT,
+                "bulk_min_qty": ADMIN_MANUAL_BULK_MIN_QTY,
+            } for item in prepared["items"]],
+            "pricing": {
+                "goods_total_amount": prepared["subtotal_amount"] - prepared["bulk_discount_amount"],
+                "subtotal_amount": prepared["subtotal_amount"],
+                "bulk_discount_amount": prepared["bulk_discount_amount"],
+                "promo_code": None,
+                "promo_applies_to": None,
+                "promo_discount_amount": Decimal("0.00"),
+                "delivery_fee_amount": prepared["delivery_fee"],
+                "total_amount": total,
+            },
+        }
+
+        from .bookshop import _create_order_from_checkout, _send_order_placed_notifications_safely
+
+        order = _create_order_from_checkout(
+            checkout,
+            status=status,
+            payment_status=payment_status,
+            payment_provider=payment_provider,
+            payment_reference=payment_reference,
+            paid_at=paid_at,
+            source="admin",
+            created_by_id=current_user.id,
+            payment_option=payment_option,
+            amount_paid=amount_paid,
+            balance_due=balance_due,
+        )
+        upsert_contact(
+            order.email,
+            full_name=order.customer_name,
+            phone=order.phone,
+            source="bookshop",
+            source_record_id=order.id,
+            metadata={
+                "interaction": "admin_manual_order",
+                "latest_order_id": order.id,
+                "latest_order_reference": order.order_reference,
+            },
+            activity_at=order.created_at or datetime.now(timezone.utc),
+        )
+        log_action("create_admin_order", "order", order.id, {
+            "order_reference": order.order_reference,
+            "payment_option": payment_option,
+            "payment_method": payment_method,
+            "amount_paid": float(amount_paid),
+            "balance_due": float(balance_due),
+            "total": float(total),
+            "items": len(prepared["items"]),
+            "off_catalogue_items": sum(1 for item in prepared["items"] if item["product_id"] is None),
+        })
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc)), 400
+
+    _send_order_placed_notifications_safely(order)
+    return jsonify(
+        order=order_json(order),
+        message="Order created. The customer email and SMS notifications have been processed.",
+    ), 201
+
+
+def _send_admin_invoice_email(invoice):
+    bookshop_url = current_app.config.get("BOOKSHOP_URL", "https://bookshop.realmindxgh.com").rstrip("/")
+    invoice_url = f"{bookshop_url}/invoice?invoice_id={invoice.invoice_id}"
+    first_name = (invoice.customer_name or "Customer").split()[0]
+    pdf_stream = build_cart_invoice_pdf(invoice)
+    body_html = f"""
+      <p style="margin:0 0 16px;">Hello {escape(first_name)},</p>
+      <p style="margin:0 0 16px;">RealMindX Bookshop has issued invoice <strong>{escape(invoice.invoice_id)}</strong> for your requested books.</p>
+      <div style="margin:18px 0;padding:16px;border:1px solid #dce5f0;border-radius:12px;background:#f7f9fc;">
+        <p style="margin:0 0 8px;color:#143670;font-weight:900;">Amount due: GH&#8373;{float(invoice.total_amount or 0):,.2f}</p>
+        <p style="margin:0;color:#1a2a40;">Fulfilment: <strong>{escape('Pickup' if invoice.delivery_method == 'pickup' else f'Delivery to {invoice.location or invoice.delivery_zone_name or "the address on file"}')}</strong></p>
+      </div>
+      {bookshop_order_summary_table(invoice)}
+      <p style="margin:18px 0 0;">Use the button below to verify the invoice, download the PDF, and pay securely online.</p>
+      <p style="margin:14px 0 0;color:#53657d;font-size:13px;">A receipt will be issued after payment is confirmed.</p>
+    """
+    return send_email(
+        OutboundEmail(
+            to=invoice.customer_email,
+            subject=f"RealMindX Bookshop invoice {invoice.invoice_id}",
+            from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
+            html=bookshop_email_shell(
+                "Your RealMindX Bookshop invoice",
+                body_html,
+                "View and Pay Invoice",
+                invoice_url,
+                eyebrow="RealMindX Bookshop Sales Invoice",
+                preheader=f"Invoice {invoice.invoice_id} for GHS {float(invoice.total_amount or 0):,.2f}.",
+            ),
+            attachments=[EmailAttachment(
+                filename=f"{invoice.invoice_id}.pdf",
+                content=pdf_stream.getvalue(),
+                content_type="application/pdf",
+            )],
+        ),
+        purpose="transactional",
+        recipient_user_id=None,
+        template_name="admin_sales_invoice",
+    )
+
+
+def _admin_invoice_has_active_payment(invoice):
+    return BookshopPaymentIntent.query.filter_by(
+        cart_invoice_id=invoice.id,
+        status="initialized",
+        order_id=None,
+    ).first() is not None
+
+
+@admin_bp.get("/invoices/options")
+@login_required
+@permission_required("orders.create")
+def admin_invoice_options():
+    products = (
+        Product.query
+        .filter(Product.is_active.is_(True))
+        .order_by(Product.name.asc())
+        .limit(500)
+        .all()
+    )
+    zones = (
+        DeliveryZone.query
+        .filter(
+            DeliveryZone.is_active.is_(True),
+            DeliveryZone.is_delivery_area.is_(True),
+            DeliveryZone.is_search_alias_only.is_(False),
+        )
+        .order_by(DeliveryZone.sort_order.asc(), DeliveryZone.name.asc())
+        .all()
+    )
+    return jsonify(
+        products=[{
+            "id": product.id,
+            "name": product.name,
+            "price": float(product.price or 0),
+            "author": product.author or "",
+            "publisher": product.publisher or "",
+        } for product in products],
+        delivery_zones=[{
+            "id": zone.id,
+            "name": zone.name,
+            "fee": float(zone.fee or 0),
+            "region": zone.region or "",
+        } for zone in zones],
+    )
+
+
+@admin_bp.post("/invoices")
+@login_required
+@permission_required("orders.create")
+def create_admin_sales_invoice():
+    payload = request.get_json(silent=True) or {}
+    try:
+        prepared = _prepare_admin_invoice(payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+
+    now = datetime.now(timezone.utc)
+    invoice = CartInvoice(
+        source="admin",
+        customer_name=prepared["customer_name"],
+        customer_email=prepared["customer_email"],
+        customer_phone=prepared["customer_phone"],
+        delivery_method=prepared["delivery_method"],
+        delivery_zone_id=prepared["delivery_zone_id"],
+        delivery_zone_name=prepared["delivery_zone_name"],
+        delivery_region=prepared["delivery_region"],
+        location=prepared["location"],
+        notes=prepared["notes"],
+        currency="GHS",
+        subtotal_amount=prepared["subtotal_amount"],
+        bulk_discount_amount=prepared["bulk_discount_amount"],
+        promo_discount_amount=Decimal("0.00"),
+        delivery_fee=prepared["delivery_fee"],
+        total_amount=prepared["total_amount"],
+        status="issued",
+        payment_status="unpaid",
+        issued_at=now,
+        expires_at=prepared["expires_at"],
+        recipients=[prepared["customer_email"]],
+        created_by_id=current_user.id,
+    )
+    assign_cart_invoice_id(invoice)
+    db.session.add(invoice)
+    db.session.flush()
+    for item in prepared["items"]:
+        db.session.add(CartInvoiceItem(cart_invoice_id=invoice.id, **item))
+    db.session.flush()
+
+    delivery = {"accepted": 0, "mocked": 0, "failed": 0}
+    if prepared["send_email"]:
+        try:
+            result = _send_admin_invoice_email(invoice)
+            if result.status == "mocked":
+                delivery["mocked"] = 1
+            elif result.status in {"queued", "accepted", "sent", "delivered"}:
+                delivery["accepted"] = 1
+                invoice.status = "emailed"
+                invoice.emailed_at = now
+            else:
+                delivery["failed"] = 1
+        except Exception:
+            delivery["failed"] = 1
+            current_app.logger.exception("Admin sales invoice email failed for %s", invoice.invoice_id)
+    upsert_contact(
+        invoice.customer_email,
+        full_name=invoice.customer_name,
+        phone=invoice.customer_phone,
+        source="bookshop",
+        source_record_id=invoice.id,
+        metadata={"interaction": "admin_sales_invoice", "invoice_id": invoice.invoice_id},
+        activity_at=now,
+    )
+    log_action("create_sales_invoice", "cart_invoice", invoice.id, {
+        "invoice_id": invoice.invoice_id,
+        "total": float(invoice.total_amount or 0),
+        "items": len(prepared["items"]),
+        "email_requested": prepared["send_email"],
+        "email_delivery": delivery,
+    })
+    db.session.commit()
+    return jsonify(
+        invoice=cart_invoice_json(invoice),
+        delivery=delivery,
+        message="Invoice created and emailed." if delivery["accepted"] else "Invoice created.",
+    ), 201
+
+
+@admin_bp.post("/invoices/<int:invoice_id>/record-payment")
+@login_required
+@permission_required("orders.edit")
+def record_admin_invoice_payment(invoice_id):
+    invoice = CartInvoice.query.filter_by(id=invoice_id).with_for_update().first_or_404()
+    if invoice.source != "admin":
+        return jsonify(error="Only admin-issued sales invoices support recorded payments."), 409
+    if invoice.payment_status == "paid" or invoice.converted_order_id:
+        return jsonify(error="This invoice has already been paid."), 409
+    if invoice.status == "voided" or invoice.voided_at:
+        return jsonify(error="A voided invoice cannot be marked paid."), 409
+    if _admin_invoice_has_active_payment(invoice):
+        return jsonify(error="An online Paystack payment is already active for this invoice. Confirm or reconcile it before recording another payment."), 409
+    payload = request.get_json(silent=True) or {}
+    payment_method = str(payload.get("payment_method") or "").strip().lower()
+    if payment_method not in ADMIN_INVOICE_PAYMENT_METHODS:
+        return jsonify(error="Choose cash, bank transfer, Mobile Money, POS, or another recorded payment method."), 400
+    external_reference = str(payload.get("payment_reference") or "").strip()
+    if payment_method != "cash" and not external_reference:
+        return jsonify(error="Payment reference is required for non-cash payments."), 400
+
+    paid_at = datetime.now(timezone.utc)
+    internal_reference = f"RMX-MAN-{uuid4().hex[:24].upper()}"
+    from .bookshop import (
+        _checkout_from_payable_invoice,
+        _create_order_from_checkout,
+        _send_order_placed_notifications_safely,
+    )
+    checkout = _checkout_from_payable_invoice(invoice, payment_method="manual")
+    order = _create_order_from_checkout(
+        checkout,
+        status="confirmed",
+        payment_status="paid",
+        payment_provider=f"manual:{payment_method}",
+        payment_reference=internal_reference,
+        paid_at=paid_at,
+    )
+    invoice.payment_status = "paid"
+    invoice.payment_method = payment_method
+    invoice.payment_provider = "manual"
+    invoice.payment_reference = external_reference or internal_reference
+    invoice.paid_at = paid_at
+    log_action("record_sales_invoice_payment", "cart_invoice", invoice.id, {
+        "invoice_id": invoice.invoice_id,
+        "order_id": order.id,
+        "order_reference": order.order_reference,
+        "payment_method": payment_method,
+        "payment_reference_present": bool(external_reference),
+        "total": float(invoice.total_amount or 0),
+    })
+    db.session.commit()
+    _send_order_placed_notifications_safely(order)
+    return jsonify(invoice=cart_invoice_json(invoice), order=order_json(order), message="Payment recorded and receipt issued.")
+
+
+@admin_bp.post("/invoices/<int:invoice_id>/void")
+@login_required
+@permission_required("orders.edit")
+def void_admin_sales_invoice(invoice_id):
+    invoice = CartInvoice.query.filter_by(id=invoice_id).with_for_update().first_or_404()
+    if invoice.source != "admin":
+        return jsonify(error="Only admin-issued sales invoices can be voided here."), 409
+    if invoice.payment_status == "paid" or invoice.converted_order_id:
+        return jsonify(error="A paid invoice cannot be voided. Use the refund or reconciliation process."), 409
+    if invoice.status == "voided":
+        return jsonify(invoice=cart_invoice_json(invoice), message="Invoice is already voided.")
+    if _admin_invoice_has_active_payment(invoice):
+        return jsonify(error="This invoice has an active online payment. Reconcile that payment before voiding the invoice."), 409
+    reason = str((request.get_json(silent=True) or {}).get("reason") or "").strip()
+    if not reason:
+        return jsonify(error="Enter a reason for voiding this invoice."), 400
+    invoice.status = "voided"
+    invoice.voided_at = datetime.now(timezone.utc)
+    invoice.voided_by_id = current_user.id
+    invoice.void_reason = reason
+    log_action("void_sales_invoice", "cart_invoice", invoice.id, {
+        "invoice_id": invoice.invoice_id,
+        "reason": reason,
+    })
+    db.session.commit()
+    return jsonify(invoice=cart_invoice_json(invoice), message="Invoice voided.")
 
 
 def _cart_invoice_status(invoice):
@@ -5221,11 +5765,12 @@ def _cart_invoice_status(invoice):
 
 def _receipt_invoice_order_row(order):
     document_id = order.invoice_id or order.order_reference
+    is_paid = (order.payment_status or "").lower() == "paid"
     return {
         "id": f"receipt-{order.id}",
         "record_id": order.id,
-        "document_type": "receipt",
-        "document_label": "Receipt",
+        "document_type": "receipt" if is_paid else "order_confirmation",
+        "document_label": "Payment Receipt" if is_paid else "Order Confirmation",
         "document_id": document_id,
         "lookup_id": document_id,
         "order_reference": order.order_reference,
@@ -5235,10 +5780,16 @@ def _receipt_invoice_order_row(order):
         "recipients": [order.email] if order.email else [],
         "status": normalize_order_status(order.status),
         "payment_status": order.payment_status or "",
-        "source": "bookshop_order",
+        "payment_option": getattr(order, "payment_option", None) or "",
+        "payment_method": order.payment_method or "",
+        "payment_reference": order.payment_reference or "",
+        "source": "admin_order" if (getattr(order, "source", None) or "bookshop") == "admin" else "bookshop_order",
         "subtotal_amount": _ledger_amount(order.subtotal_amount),
+        "bulk_discount_amount": _ledger_amount(order.bulk_discount_amount),
         "delivery_fee": _ledger_amount(order.delivery_fee),
         "total_amount": _ledger_amount(order.total_amount),
+        "amount_paid": _ledger_amount(getattr(order, "amount_paid", 0)),
+        "balance_due": _ledger_amount(getattr(order, "balance_due", 0)),
         "created_at": _ledger_iso(order.created_at),
         "issued_at": _ledger_iso(order.paid_at or order.created_at),
         "emailed_at": None,
@@ -5247,32 +5798,43 @@ def _receipt_invoice_order_row(order):
         "converted_order_id": order.id,
         "linked_cart_invoice_id": order.cart_invoice.invoice_id if order.cart_invoice else None,
         "item_count": len(order.items or []),
-        "pdf_document": "receipt",
+        "pdf_document": "receipt" if is_paid else "",
+        "can_record_payment": False,
+        "can_void": False,
+        "created_by": (
+            f"{order.created_by.first_name or ''} {order.created_by.last_name or ''}".strip()
+            or order.created_by.email
+        ) if getattr(order, "created_by", None) else "",
     }
 
 
-def _receipt_invoice_cart_row(invoice):
+def _receipt_invoice_cart_row(invoice, active_payment_invoice_ids=frozenset()):
     recipients = [str(email) for email in (invoice.recipients or []) if email]
+    is_sales_invoice = (invoice.source or "cart") == "admin"
+    has_active_online_payment = invoice.id in active_payment_invoice_ids
+    created_by = invoice.created_by
     return {
         "id": f"cart-invoice-{invoice.id}",
         "record_id": invoice.id,
-        "document_type": "cart_invoice",
-        "document_label": "Cart Invoice",
+        "document_type": "sales_invoice" if is_sales_invoice else "cart_invoice",
+        "document_label": "Sales Invoice" if is_sales_invoice else "Cart Invoice",
         "document_id": invoice.invoice_id,
         "lookup_id": invoice.invoice_id,
         "order_reference": "",
-        "customer_name": "Cart invoice",
-        "email": recipients[0] if recipients else "",
-        "phone": "",
+        "customer_name": invoice.customer_name or "Cart invoice",
+        "email": invoice.customer_email or (recipients[0] if recipients else ""),
+        "phone": invoice.customer_phone or "",
         "recipients": recipients,
         "status": _cart_invoice_status(invoice),
-        "payment_status": "not_applicable",
-        "source": "cart_invoice",
+        "payment_status": invoice.payment_status or ("unpaid" if is_sales_invoice else "not_applicable"),
+        "payment_method": invoice.payment_method or "",
+        "payment_reference": invoice.payment_reference or "",
+        "source": "admin_sales_invoice" if is_sales_invoice else "cart_invoice",
         "subtotal_amount": _ledger_amount(invoice.subtotal_amount),
         "delivery_fee": _ledger_amount(invoice.delivery_fee),
         "total_amount": _ledger_amount(invoice.total_amount),
         "created_at": _ledger_iso(invoice.created_at),
-        "issued_at": _ledger_iso(invoice.created_at),
+        "issued_at": _ledger_iso(invoice.issued_at or invoice.created_at),
         "emailed_at": _ledger_iso(invoice.emailed_at),
         "viewed_at": _ledger_iso(invoice.viewed_at),
         "converted_at": _ledger_iso(invoice.converted_at),
@@ -5280,6 +5842,25 @@ def _receipt_invoice_cart_row(invoice):
         "linked_cart_invoice_id": invoice.invoice_id,
         "item_count": len(invoice.items or []),
         "pdf_document": "",
+        "created_by": (
+            f"{created_by.first_name or ''} {created_by.last_name or ''}".strip()
+            or created_by.email
+        ) if created_by else "",
+        "has_active_online_payment": has_active_online_payment,
+        "can_record_payment": bool(
+            is_sales_invoice
+            and invoice.payment_status != "paid"
+            and not invoice.converted_order_id
+            and invoice.status != "voided"
+            and not has_active_online_payment
+        ),
+        "can_void": bool(
+            is_sales_invoice
+            and invoice.payment_status != "paid"
+            and not invoice.converted_order_id
+            and invoice.status != "voided"
+            and not has_active_online_payment
+        ),
     }
 
 
@@ -5289,7 +5870,7 @@ def _receipt_invoice_cart_row(invoice):
 def receipts_invoices():
     orders = (
         placed_order_query()
-        .options(joinedload(Order.items), joinedload(Order.cart_invoice))
+        .options(joinedload(Order.items), joinedload(Order.cart_invoice), joinedload(Order.created_by))
         .order_by(Order.created_at.desc())
         .limit(300)
         .all()
@@ -5301,8 +5882,24 @@ def receipts_invoices():
         .limit(300)
         .all()
     )
+    invoice_ids = [invoice.id for invoice in invoices]
+    active_payment_invoice_ids = set()
+    if invoice_ids:
+        active_payment_invoice_ids = {
+            row[0]
+            for row in (
+                db.session.query(BookshopPaymentIntent.cart_invoice_id)
+                .filter(
+                    BookshopPaymentIntent.cart_invoice_id.in_(invoice_ids),
+                    BookshopPaymentIntent.status == "initialized",
+                    BookshopPaymentIntent.order_id.is_(None),
+                )
+                .distinct()
+                .all()
+            )
+        }
     rows = [_receipt_invoice_order_row(order) for order in orders]
-    rows.extend(_receipt_invoice_cart_row(invoice) for invoice in invoices)
+    rows.extend(_receipt_invoice_cart_row(invoice, active_payment_invoice_ids) for invoice in invoices)
 
     query = (request.args.get("q") or "").strip().lower()
     document_type = (request.args.get("type") or "all").strip()
@@ -5330,6 +5927,8 @@ def receipts_invoices():
     summary = {
         "total": len(rows),
         "receipts": sum(1 for row in rows if row["document_type"] == "receipt"),
+        "order_confirmations": sum(1 for row in rows if row["document_type"] == "order_confirmation"),
+        "sales_invoices": sum(1 for row in rows if row["document_type"] == "sales_invoice"),
         "cart_invoices": sum(1 for row in rows if row["document_type"] == "cart_invoice"),
         "converted": sum(1 for row in rows if row["status"] == "converted"),
         "emailed": sum(1 for row in rows if row["status"] == "emailed"),
@@ -5353,6 +5952,8 @@ def export_orders():
         "phone",
         "invoice_id",
         "payment_reference",
+        "source",
+        "created_by",
         "delivery_method",
         "delivery_zone_name",
         "delivery_region",
@@ -5360,6 +5961,7 @@ def export_orders():
         "payment_method",
         "payment_provider",
         "payment_status",
+        "payment_option",
         "status",
         "subtotal_amount",
         "bulk_discount_amount",
@@ -5368,6 +5970,8 @@ def export_orders():
         "promo_discount_amount",
         "delivery_fee",
         "total_amount",
+        "amount_paid",
+        "balance_due",
         "paid_at",
         "items",
         "notes",
@@ -5385,6 +5989,11 @@ def export_orders():
             "phone": order.phone,
             "invoice_id": order.invoice_id or "",
             "payment_reference": order.payment_reference or "",
+            "source": getattr(order, "source", None) or "bookshop",
+            "created_by": (
+                f"{order.created_by.first_name or ''} {order.created_by.last_name or ''}".strip()
+                or order.created_by.email
+            ) if getattr(order, "created_by", None) else "",
             "delivery_method": order.delivery_method,
             "delivery_zone_name": order.delivery_zone_name or "",
             "delivery_region": order.delivery_region or "",
@@ -5392,6 +6001,7 @@ def export_orders():
             "payment_method": order.payment_method or "",
             "payment_provider": order.payment_provider or "",
             "payment_status": order.payment_status or "",
+            "payment_option": getattr(order, "payment_option", None) or "",
             "status": order.status,
             "subtotal_amount": float(order.subtotal_amount or 0) if order.subtotal_amount is not None else "",
             "bulk_discount_amount": float(order.bulk_discount_amount or 0),
@@ -5400,6 +6010,8 @@ def export_orders():
             "promo_discount_amount": float(order.promo_discount_amount or 0),
             "delivery_fee": float(order.delivery_fee or 0),
             "total_amount": float(order.total_amount or 0) if order.total_amount is not None else "",
+            "amount_paid": float(getattr(order, "amount_paid", 0) or 0),
+            "balance_due": float(getattr(order, "balance_due", 0) or 0),
             "paid_at": str(order.paid_at or ""),
             "items": "; ".join(
                 f"{item.product_name} x{item.quantity} @ GHS {float(item.unit_price or 0):.2f}"

@@ -409,7 +409,51 @@ Before claiming a local backend is compatible with the production schema, verify
 
 ---
 
-## 9. Source References
+## 9. Admin-Issued Sales Invoices
+
+Admin users with `orders.create` permission can issue payable sales invoices from the Receipts & Invoices area. These records use `cart_invoices` with `source='admin'`; ordinary saved-cart invoices continue to use `source='cart'`.
+
+### Line-item rules
+
+- A catalogue line stores its current `product_id`, product name, quantity, and the unit price approved by the admin.
+- An off-catalogue line stores `product_id=NULL` plus a required `product_name`, quantity, unit price, and optional description. No `products` record or image is required.
+- Every newly generated cart or admin sales invoice stores the receiving individual(s) or organisation in `customer_name`; this name appears in the online preview, email greeting, and invoice PDF.
+- Admin sales-invoice and manual-order lines automatically receive a 10% bulk discount when one line reaches 10 copies. The server calculates and freezes the gross subtotal, bulk discount, exact delivery fee, and total; the dashboard preview mirrors that calculation.
+- Public payment requests never accept replacement item prices or totals.
+- When payment is confirmed, every line is copied to an `OrderItem`; an off-catalogue line remains valid with `product_id=NULL`.
+
+### State and payment rules
+
+- New records start with `status='issued'` (or `emailed` after accepted delivery) and `payment_status='unpaid'`.
+- Online payment starts only through `POST /invoices/<invoice_id>/paystack/initialize`. The ordinary cart checkout rejects admin-issued invoice IDs.
+- A successful Paystack verification or an authorised admin-recorded offline payment creates one tracked order, marks the invoice `converted` and `paid`, and enables its receipt.
+- A paid invoice cannot be voided. Voiding an unpaid invoice keeps the record, actor, timestamp, and required reason.
+- An initialized online payment blocks offline recording and voiding until it is reconciled, preventing conflicting payment paths.
+
+### Related tables and endpoints
+
+| Area | Details |
+|---|---|
+| `cart_invoices` | Customer, fulfilment, currency, payment state, issue/expiry, creator, conversion, and void metadata |
+| `cart_invoice_items` | Snapshot name, optional description, quantity, price, and nullable catalogue `product_id` |
+| `bookshop_payment_intents` | Nullable `cart_invoice_id` links Paystack attempts to their immutable invoice snapshot |
+| Admin API | `GET /admin/invoices/options`, `POST /admin/invoices`, `POST /admin/invoices/<id>/record-payment`, `POST /admin/invoices/<id>/void` |
+| Public API | `GET /invoices/<invoice_id>`, `GET /invoices/<invoice_id>/pdf`, `POST /invoices/<invoice_id>/paystack/initialize` |
+| Migration | `realmindx-site/migrations/versions/0063_admin_sales_invoices.py` |
+
+---
+
+## 10. Admin-Created Manual Orders
+
+Admins and staff with `orders.create` permission can create a normal tracked order from the Bookshop Orders dashboard. These orders use `orders.source='admin'`, preserve the creating user in `created_by_id`, and can include catalogue or off-catalogue lines. Off-catalogue lines require only a title, unit price, and quantity and store `product_id=NULL`.
+
+The admin-only `payment_option` is one of `partially_paid`, `fully_paid`, or `payment_on_delivery`. `amount_paid` and `balance_due` are server-calculated from the frozen order total. Public checkout does not expose or accept these administrative payment options.
+
+Admin-created orders use the ordinary order tracking, delivery assignment, invoice/receipt, customer email, and customer SMS paths. The supplied email, receiving name, and phone are also upserted into the deduplicated Bookshop contact record. The schema is introduced by `realmindx-site/migrations/versions/0064_admin_manual_orders.py`.
+
+---
+
+## 11. Source References
 
 Every claim in this document traces to a source file. The key references:
 
@@ -438,7 +482,7 @@ Every claim in this document traces to a source file. The key references:
 
 ---
 
-## 10. Agent Guidance
+## 11. Agent Guidance
 
 > **AGENTS.md entry:**
 > `docs/BOOKSHOP_DATA_SCHEMA.md` documents the exact Bookshop product data model, API shapes, taxonomy values, exam-picks rules, environment differences, and seed requirements.

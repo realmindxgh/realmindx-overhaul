@@ -1438,9 +1438,7 @@ const LegacyAccountPage = ({ navigate }) => {
               </div>
 
               {loading ? (
-                <div className="bs-mini-orders-grid">
-                  {[1,2,3,4].map(i => <div key={i} className="bs-skeleton bs-skeleton-order" />)}
-                </div>
+                <LoadingState minimal title="Loading recent orders" />
               ) : orders.length === 0 ? (
                 <div className="bs-account-empty">
                   <Icon name="truck" size={28} />
@@ -1726,9 +1724,7 @@ const ExperimentalAccountPage = ({ navigate }) => {
               </div>
 
               {loading ? (
-                <div className="bs-account-v2-details-grid">
-                  {[1, 2].map(item => <div className="bs-skeleton bs-account-v2-detail-skeleton" key={item} />)}
-                </div>
+                <LoadingState minimal title="Loading saved checkout details" />
               ) : checkoutDetails.length === 0 ? (
                 <div className="bs-account-v2-empty">
                   <span><Icon name="pin" size={24} /></span>
@@ -1794,9 +1790,7 @@ const ExperimentalAccountPage = ({ navigate }) => {
                 )}
               </div>
               {loading ? (
-                <div className="bs-mini-orders-grid">
-                  {[1,2,3,4].map(i => <div key={i} className="bs-skeleton bs-skeleton-order" />)}
-                </div>
+                <LoadingState minimal title="Loading recent orders" />
               ) : orders.length === 0 ? (
                 <div className="bs-account-v2-empty">
                   <span><Icon name="truck" size={24} /></span>
@@ -2164,7 +2158,7 @@ const AccountPage = ({ navigate }) => {
                   <button type="button" onClick={beginDetailCreate}><Icon name="plus" size={15} /> Add new details</button>
                 </div>
                 {loading ? (
-                  <div className="bs-skeleton bs-account-ref-skeleton" />
+                  <LoadingState minimal title="Loading saved checkout details" />
                 ) : checkoutDetails.length === 0 ? (
                   <div className="bs-account-ref-saved-empty">
                     <Icon name="pin" size={24} />
@@ -2225,7 +2219,7 @@ const AccountPage = ({ navigate }) => {
                   {orders.length > 0 && <button type="button" className="view-all" onClick={() => navigate('orders')}>View all</button>}
                 </div>
                 {loading ? (
-                  <div className="bs-skeleton bs-account-ref-order-skeleton" />
+                  <LoadingState minimal title="Loading recent orders" />
                 ) : orders.length === 0 ? (
                   <div className="bs-account-ref-orders-empty">
                     <span><Icon name="bag" size={30} /></span>
@@ -2499,11 +2493,7 @@ const LegacyOrdersPage = ({ navigate }) => {
 
         {/* Orders grid — 2 columns of horizontal cards */}
         {loading ? (
-          <div className="bs-orders-grid">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bs-skeleton bs-skeleton-order-card" />
-            ))}
-          </div>
+          <LoadingState minimal title="Loading orders" />
         ) : orders.length === 0 ? (
           <div className="bs-empty-state" style={{ marginTop: 48 }}>
             <div className="bs-empty-icon"><Icon name="truck" size={36} /></div>
@@ -2694,11 +2684,7 @@ const OrdersPage = ({ navigate }) => {
 
             <div className="bs-account-orders-content">
               {loading ? (
-                <div className="bs-orders-grid">
-                  {Array.from({ length: 6 }).map((_, index) => (
-                    <div key={index} className="bs-skeleton bs-skeleton-order-card" />
-                  ))}
-                </div>
+                <LoadingState minimal title="Loading orders" />
               ) : orders.length === 0 ? (
                 <div className="bs-account-orders-empty">
                   <span><Icon name={hasFilters ? 'search' : 'bag'} size={32} /></span>

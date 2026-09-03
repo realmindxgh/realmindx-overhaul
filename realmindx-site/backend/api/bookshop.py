@@ -237,6 +237,11 @@ def _prepare_checkout(payload, *, payment_method=None):
         cart_invoice = CartInvoice.query.filter_by(invoice_id=invoice_id).first()
         if not cart_invoice:
             raise CheckoutValidationError("The linked cart invoice could not be found.", 404)
+        if (cart_invoice.source or "cart") == "admin":
+            raise CheckoutValidationError(
+                "Admin-issued sales invoices must be paid from their invoice page.",
+                409,
+            )
 
     return {
         "user_id": current_user.id if current_user.is_authenticated else None,
@@ -324,6 +329,54 @@ def _checkout_from_snapshot(snapshot):
     return checkout
 
 
+def _checkout_from_payable_invoice(invoice, *, payment_method="online"):
+    """Build a server-owned checkout snapshot without catalogue revalidation."""
+    return {
+        "user_id": None,
+        "order_source": "admin" if (getattr(invoice, "source", None) or "cart") == "admin" else "bookshop",
+        "created_by_id": getattr(invoice, "created_by_id", None),
+        "customer_name": invoice.customer_name,
+        "customer_sex": None,
+        "customer_age_range": None,
+        "email": invoice.customer_email,
+        "phone": invoice.customer_phone,
+        "delivery_method": invoice.delivery_method or "pickup",
+        "delivery_zone_id": invoice.delivery_zone_id,
+        "delivery_zone_name": invoice.delivery_zone_name,
+        "delivery_fee": Decimal(str(invoice.delivery_fee or 0)),
+        "delivery_address": invoice.location or "",
+        "delivery_city": invoice.delivery_zone_name or "",
+        "delivery_region": invoice.delivery_region,
+        "location": invoice.location,
+        "notes": invoice.notes,
+        "payment_method": payment_method,
+        "analytics_session_key": None,
+        "analytics_visitor_key": None,
+        "cart_invoice_id": invoice.id,
+        "order_items": [
+            {
+                "product_id": item.product_id,
+                "name": item.product_name,
+                "unit_price": Decimal(str(item.unit_price or 0)),
+                "quantity": max(int(item.quantity or 1), 1),
+                "bulk_discount_percent": Decimal("0"),
+                "bulk_min_qty": 10,
+            }
+            for item in invoice.items
+        ],
+        "pricing": {
+            "goods_total_amount": Decimal(str(invoice.subtotal_amount or 0)),
+            "subtotal_amount": Decimal(str(invoice.subtotal_amount or 0)),
+            "bulk_discount_amount": Decimal(str(invoice.bulk_discount_amount or 0)),
+            "promo_code": invoice.promo_code,
+            "promo_applies_to": invoice.promo_applies_to,
+            "promo_discount_amount": Decimal(str(invoice.promo_discount_amount or 0)),
+            "delivery_fee_amount": Decimal(str(invoice.delivery_fee or 0)),
+            "total_amount": Decimal(str(invoice.total_amount or 0)),
+        },
+    }
+
+
 def _create_order_from_checkout(
     checkout,
     *,
@@ -334,12 +387,30 @@ def _create_order_from_checkout(
     payment_access_code=None,
     payment_authorization_url=None,
     paid_at=None,
+    source=None,
+    created_by_id=None,
+    payment_option=None,
+    amount_paid=None,
+    balance_due=None,
 ):
     pricing = checkout["pricing"]
+    order_total = Decimal(str(pricing["total_amount"] or 0)).quantize(Decimal("0.01"))
+    recorded_amount = (
+        Decimal(str(amount_paid)).quantize(Decimal("0.01"))
+        if amount_paid is not None
+        else (order_total if str(payment_status or "").lower() == "paid" else Decimal("0.00"))
+    )
+    recorded_balance = (
+        Decimal(str(balance_due)).quantize(Decimal("0.01"))
+        if balance_due is not None
+        else max(order_total - recorded_amount, Decimal("0.00"))
+    )
     order = Order(
         order_reference=new_order_reference(),
         payment_reference=payment_reference,
         user_id=checkout.get("user_id"),
+        source=source or checkout.get("order_source") or "bookshop",
+        created_by_id=created_by_id if created_by_id is not None else checkout.get("created_by_id"),
         customer_name=checkout["customer_name"],
         customer_sex=checkout.get("customer_sex"),
         customer_age_range=checkout.get("customer_age_range"),
@@ -354,6 +425,7 @@ def _create_order_from_checkout(
         notes=checkout.get("notes"),
         status=status,
         payment_status=payment_status,
+        payment_option=payment_option,
         payment_method=checkout["payment_method"],
         payment_provider=payment_provider,
         payment_access_code=payment_access_code,
@@ -364,6 +436,8 @@ def _create_order_from_checkout(
         promo_applies_to=pricing.get("promo_applies_to"),
         promo_discount_amount=pricing["promo_discount_amount"],
         total_amount=pricing["total_amount"],
+        amount_paid=recorded_amount,
+        balance_due=recorded_balance,
         paid_at=paid_at,
         analytics_session_key=checkout.get("analytics_session_key"),
         analytics_visitor_key=checkout.get("analytics_visitor_key"),
@@ -414,6 +488,11 @@ def _create_order_from_checkout(
         if cart_invoice and not cart_invoice.converted_at:
             now = datetime.now(timezone.utc)
             cart_invoice.status = "converted"
+            cart_invoice.payment_status = payment_status
+            cart_invoice.payment_method = checkout.get("payment_method")
+            cart_invoice.payment_provider = payment_provider
+            cart_invoice.payment_reference = payment_reference
+            cart_invoice.paid_at = paid_at
             cart_invoice.converted_at = now
             cart_invoice.converted_order_id = order.id
             for contact_email in [order.email, *(cart_invoice.recipients or [])]:
@@ -844,10 +923,13 @@ def order_tracking_json(order, *, include_invoice_id=False):
         "status": normalize_order_status(order.status),
         "payment_status": order.payment_status,
         "payment_method": order.payment_method,
+        "payment_option": getattr(order, "payment_option", None),
         "subtotal_amount": float(order.subtotal_amount) if order.subtotal_amount is not None else None,
         "bulk_discount_amount": float(order.bulk_discount_amount or 0),
         "promo_discount_amount": float(order.promo_discount_amount or 0),
         "total_amount": float(order.total_amount) if order.total_amount is not None else None,
+        "amount_paid": float(getattr(order, "amount_paid", 0) or 0),
+        "balance_due": float(getattr(order, "balance_due", 0) or 0),
         "items": [
             {
                 "product_name": item.product_name,
@@ -970,9 +1052,21 @@ def _parse_invoice_recipients(value):
     return recipients
 
 
-def _create_cart_invoice_from_items(items):
+def _parse_invoice_customer_name(value):
+    customer_name = str(value or "").strip()
+    if not customer_name:
+        raise CheckoutValidationError("Enter the name of the receiving individual or organisation.", 400)
+    if len(customer_name) > 160:
+        raise CheckoutValidationError("Receiving individual name must be 160 characters or fewer.", 400)
+    return customer_name
+
+
+def _create_cart_invoice_from_items(items, *, customer_name, customer_email=None):
     pricing = calculate_order_pricing(items, delivery_fee=0, promo=None)
     invoice = CartInvoice(
+        source="cart",
+        customer_name=customer_name,
+        customer_email=customer_email,
         subtotal_amount=pricing["subtotal_amount"],
         bulk_discount_amount=pricing["bulk_discount_amount"],
         promo_code=pricing.get("promo_code"),
@@ -1012,8 +1106,9 @@ def _send_cart_invoice_email(invoice, recipient, *, reminder=False):
     lookup_url, checkout_url, cart_url = _invoice_action_urls(invoice)
     pdf_stream = build_cart_invoice_pdf(invoice)
     title = f"{'Reminder: ' if reminder else ''}Your RealMindX Bookshop cart invoice"
+    first_name = (invoice.customer_name or "Customer").split(",")[0].split()[0]
     body_html = f"""
-      <p style="margin:0 0 16px;">Hello,</p>
+      <p style="margin:0 0 16px;">Hello {escape(first_name)},</p>
       <p style="margin:0 0 16px;">
         {"This is a friendly reminder that your RealMindX Bookshop cart invoice is still available." if reminder else "Your RealMindX Bookshop cart invoice is attached to this email."}
       </p>
@@ -1114,11 +1209,19 @@ def send_due_cart_invoice_reminders(now=None):
 def create_cart_invoice():
     payload = request.get_json(silent=True) or {}
     try:
+        customer_name = _parse_invoice_customer_name(
+            payload.get("customer_name") or payload.get("recipient_name") or payload.get("recipient_names")
+        )
+        customer_email = clean_email(payload.get("email")) if payload.get("email") else None
         items = _prepare_cart_invoice_items(payload.get("items") or [])
-    except CheckoutValidationError as exc:
-        return jsonify(error=str(exc)), exc.status
+    except (CheckoutValidationError, ValueError) as exc:
+        return jsonify(error=str(exc)), getattr(exc, "status", 400)
 
-    invoice = _create_cart_invoice_from_items(items)
+    invoice = _create_cart_invoice_from_items(
+        items,
+        customer_name=customer_name,
+        customer_email=customer_email,
+    )
     db.session.commit()
     response = jsonify(invoice=cart_invoice_json(invoice))
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
@@ -1131,12 +1234,19 @@ def create_cart_invoice():
 def email_cart_invoice():
     payload = request.get_json(silent=True) or {}
     try:
+        customer_name = _parse_invoice_customer_name(
+            payload.get("customer_name") or payload.get("recipient_name") or payload.get("recipient_names")
+        )
         recipients = _parse_invoice_recipients(payload.get("emails") or payload.get("recipients") or payload.get("email"))
         items = _prepare_cart_invoice_items(payload.get("items") or [])
     except (CheckoutValidationError, ValueError) as exc:
         return jsonify(error=str(exc)), getattr(exc, "status", 400)
 
-    invoice = _create_cart_invoice_from_items(items)
+    invoice = _create_cart_invoice_from_items(
+        items,
+        customer_name=customer_name,
+        customer_email=recipients[0],
+    )
     now = datetime.now(timezone.utc)
     invoice.recipients = recipients
     accepted = 0
@@ -1145,6 +1255,7 @@ def email_cart_invoice():
     for recipient in recipients:
         upsert_contact(
             recipient,
+            full_name=invoice.customer_name,
             source="enquiry",
             source_record_id=invoice.id,
             metadata={"interaction": "cart_invoice", "invoice_id": invoice.invoice_id},
@@ -1317,28 +1428,42 @@ def my_orders():
 
 
 def _send_order_placed_notifications(order):
+    payment_status = (order.payment_status or "").lower()
     paid_online = (
         order.payment_method == "online"
-        and (order.payment_status or "").lower() == "paid"
+        and payment_status == "paid"
     )
+    paid_recorded = (
+        order.payment_method == "manual"
+        and payment_status == "paid"
+    )
+    partially_paid = payment_status == "partially_paid"
+    amount_paid = Decimal(str(getattr(order, "amount_paid", 0) or 0))
+    balance_due = Decimal(str(getattr(order, "balance_due", 0) or 0))
     first_name = (order.customer_name or "").split()[0] or "there"
     delivery_info = (
         "Pickup from our Dome Pillar 2 shop"
         if order.delivery_method == "pickup"
         else f"Delivery to {order.location or 'the address on file'}"
     )
-    payment_info = (
-        "Payment on delivery"
-        if order.payment_method == "cash_on_delivery"
-        else "Online payment confirmed via Paystack"
-    )
+    if order.payment_method == "cash_on_delivery":
+        payment_info = "Payment on delivery"
+    elif partially_paid:
+        payment_info = f"Partially paid: GHS {amount_paid:,.2f} received; GHS {balance_due:,.2f} remaining"
+    elif paid_recorded:
+        payment_info = f"Fully paid: GHS {amount_paid:,.2f} recorded by RealMindX Bookshop"
+    else:
+        payment_info = "Online payment confirmed via Paystack"
 
     if order.phone:
-        payment_sentence = (
-            "Your Paystack payment has been confirmed. "
-            if paid_online
-            else "Payment is due on delivery. "
-        )
+        if paid_online:
+            payment_sentence = "Your Paystack payment has been confirmed. "
+        elif paid_recorded:
+            payment_sentence = "Your full payment has been recorded. "
+        elif partially_paid:
+            payment_sentence = f"GHS {amount_paid:,.2f} received; GHS {balance_due:,.2f} remains. "
+        else:
+            payment_sentence = "Payment is due on delivery. "
         send_sms(
             order.phone,
             f"Hi {first_name}, your RealMindX Bookshop order {order.order_reference} "
@@ -1374,11 +1499,17 @@ def _send_order_placed_notifications(order):
       <p style="margin:0;font-weight:800;"><strong>Total:</strong> GH&#8373;{float(order.total_amount):,.2f}</p>
     </div>
     """
-    payment_confirmation = (
-        "<p>Your Paystack payment has been confirmed, so your order is now placed and ready for our team to process.</p>"
-        if paid_online
-        else "<p>Your order is now placed. Payment will be collected when your order is delivered or collected.</p>"
-    )
+    if paid_online:
+        payment_confirmation = "<p>Your Paystack payment has been confirmed, so your order is now placed and ready for our team to process.</p>"
+    elif paid_recorded:
+        payment_confirmation = "<p>Your payment has been recorded by RealMindX Bookshop, so your order is confirmed and ready for our team to process.</p>"
+    elif partially_paid:
+        payment_confirmation = (
+            f"<p>Your partial payment of <strong>GH&#8373;{amount_paid:,.2f}</strong> has been recorded. "
+            f"The remaining balance is <strong>GH&#8373;{balance_due:,.2f}</strong>.</p>"
+        )
+    else:
+        payment_confirmation = "<p>Your order is now placed. Payment will be collected when your order is delivered or collected.</p>"
 
     send_email(
         OutboundEmail(
@@ -1409,7 +1540,11 @@ def _send_order_placed_notifications(order):
         template_name="bookshop_order_placed",
     )
 
-    staff_subject_prefix = "Paid bookshop order" if paid_online else "New bookshop order"
+    staff_subject_prefix = (
+        "Paid bookshop order"
+        if (paid_online or paid_recorded)
+        else ("Partially paid bookshop order" if partially_paid else "New bookshop order")
+    )
     send_admin_alert(
         from_email=current_app.config["BOOKSHOP_FROM_EMAIL"],
         subject=f"{staff_subject_prefix} {order.order_reference} from {order.customer_name}",
@@ -1470,6 +1605,8 @@ def _confirm_paystack_order(order, data, source):
 
     order.payment_provider = "paystack"
     order.payment_status = "paid"
+    order.amount_paid = order.total_amount or Decimal("0.00")
+    order.balance_due = Decimal("0.00")
     order.paid_at = datetime.now(timezone.utc)
     order.status = "confirmed"
     audit("paystack_payment_confirmed", "order", order.id, {
@@ -1521,12 +1658,14 @@ def create_order():
 
 
 def _payment_intent_json(intent):
+    linked_invoice = intent.cart_invoice
     return {
         "reference": intent.reference,
         "status": intent.status,
         "amount": float(intent.amount or 0),
         "currency": intent.currency,
         "order_reference": intent.order.order_reference if intent.order else None,
+        "invoice_payment": bool(linked_invoice and linked_invoice.source == "admin"),
     }
 
 
@@ -1561,6 +1700,27 @@ def _confirm_paystack_intent(intent, data, source):
         raise ValueError(error)
 
     paid_at = datetime.now(timezone.utc)
+    if intent.cart_invoice_id:
+        linked_invoice = (
+            CartInvoice.query
+            .filter_by(id=intent.cart_invoice_id)
+            .with_for_update()
+            .first()
+        )
+        if linked_invoice and linked_invoice.converted_order_id:
+            existing_order = db.session.get(Order, linked_invoice.converted_order_id)
+            if existing_order:
+                intent.status = "duplicate_paid"
+                intent.paid_at = paid_at
+                audit("duplicate_invoice_payment_confirmed", "cart_invoice", linked_invoice.id, {
+                    "invoice_id": linked_invoice.invoice_id,
+                    "payment_intent_id": intent.id,
+                    "reference": intent.reference,
+                    "existing_order_id": existing_order.id,
+                    "source": source,
+                }, actor_email=intent.email)
+                db.session.commit()
+                return existing_order, False
     checkout = _checkout_from_snapshot(intent.checkout_data)
     checkout["payment_method"] = "online"
     order = _create_order_from_checkout(
@@ -1606,6 +1766,7 @@ def initialize_paystack_checkout():
     intent = BookshopPaymentIntent(
         reference=new_payment_reference(),
         user_id=checkout.get("user_id"),
+        cart_invoice_id=checkout.get("cart_invoice_id"),
         customer_name=checkout["customer_name"],
         customer_sex=checkout.get("customer_sex"),
         customer_age_range=checkout.get("customer_age_range"),
@@ -1658,6 +1819,119 @@ def initialize_paystack_checkout():
         "total": float(intent.amount),
         "delivery_method": checkout["delivery_method"],
         "items": len(checkout["order_items"]),
+    }, actor_email=intent.email)
+    db.session.commit()
+    return jsonify(payment_intent=_payment_intent_json(intent), payment=data), 201
+
+
+@bookshop_bp.post("/invoices/<string:invoice_id>/paystack/initialize")
+@limiter.limit("8/hour")
+def initialize_invoice_paystack_payment(invoice_id):
+    lookup_id = (invoice_id or "").strip().upper()
+    invoice = (
+        CartInvoice.query
+        .options(joinedload(CartInvoice.items))
+        .filter_by(invoice_id=lookup_id, source="admin")
+        .first()
+    )
+    if not invoice:
+        return jsonify(error="Payable invoice not found."), 404
+    if invoice.payment_status == "paid" or invoice.converted_at or invoice.converted_order_id:
+        return jsonify(error="This invoice has already been paid."), 409
+    if invoice.status == "voided" or invoice.voided_at:
+        return jsonify(error="This invoice has been voided and cannot be paid."), 409
+    if invoice.expires_at:
+        expires_at = invoice.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= datetime.now(timezone.utc):
+            return jsonify(error="This invoice has expired. Please contact RealMindX Bookshop."), 409
+    if not invoice.customer_email or not invoice.customer_phone or not invoice.items:
+        return jsonify(error="This invoice is missing customer or item details required for payment."), 409
+    if Decimal(str(invoice.total_amount or 0)) <= 0:
+        return jsonify(error="Invoice total must be greater than zero before payment."), 400
+
+    secret_key = current_app.config.get("PAYSTACK_SECRET_KEY")
+    if not secret_key:
+        return jsonify(error="Paystack is not configured for this environment."), 503
+
+    existing_intent = (
+        BookshopPaymentIntent.query
+        .filter_by(cart_invoice_id=invoice.id, status="initialized")
+        .filter(BookshopPaymentIntent.order_id.is_(None))
+        .order_by(BookshopPaymentIntent.created_at.desc())
+        .first()
+    )
+    if (
+        existing_intent
+        and existing_intent.authorization_url
+        and Decimal(str(existing_intent.amount or 0)) == Decimal(str(invoice.total_amount or 0))
+    ):
+        return jsonify(
+            payment_intent=_payment_intent_json(existing_intent),
+            payment={
+                "authorization_url": existing_intent.authorization_url,
+                "access_code": existing_intent.access_code,
+                "reference": existing_intent.reference,
+            },
+        )
+
+    checkout = _checkout_from_payable_invoice(invoice, payment_method="online")
+    intent = BookshopPaymentIntent(
+        reference=new_payment_reference(),
+        cart_invoice_id=invoice.id,
+        customer_name=invoice.customer_name,
+        email=invoice.customer_email,
+        phone=invoice.customer_phone,
+        amount=invoice.total_amount,
+        currency=invoice.currency or "GHS",
+        status="initialized",
+        provider="paystack",
+        checkout_data=_checkout_snapshot(checkout),
+    )
+    db.session.add(intent)
+    db.session.flush()
+    callback_url = (
+        f"{current_app.config['BOOKSHOP_URL'].rstrip('/')}/"
+        f"?payment_intent={intent.reference}&status=paid"
+    )
+    try:
+        response = requests.post(
+            "https://api.paystack.co/transaction/initialize",
+            headers={"Authorization": f"Bearer {secret_key}", "Content-Type": "application/json"},
+            json={
+                "email": intent.email,
+                "amount": int(Decimal(str(intent.amount)) * 100),
+                "reference": intent.reference,
+                "callback_url": callback_url,
+                "metadata": {
+                    "payment_intent_id": intent.id,
+                    "invoice_id": invoice.invoice_id,
+                    "cart_invoice_id": invoice.id,
+                    "delivery_fee": float(invoice.delivery_fee or 0),
+                },
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json().get("data") or {}
+    except (requests.RequestException, ValueError):
+        db.session.rollback()
+        current_app.logger.exception("Paystack initialization failed for invoice %s", invoice.invoice_id)
+        return jsonify(error="Payment initialization failed. Please try again or contact RealMindX Bookshop."), 502
+    if not data.get("authorization_url"):
+        db.session.rollback()
+        return jsonify(error="Paystack did not return a payment page. Please try again."), 502
+
+    intent.access_code = data.get("access_code")
+    intent.authorization_url = data.get("authorization_url")
+    invoice.payment_method = "online"
+    invoice.payment_provider = "paystack"
+    audit("invoice_payment_started", "cart_invoice", invoice.id, {
+        "invoice_id": invoice.invoice_id,
+        "payment_intent_id": intent.id,
+        "reference": intent.reference,
+        "total": float(intent.amount or 0),
     }, actor_email=intent.email)
     db.session.commit()
     return jsonify(payment_intent=_payment_intent_json(intent), payment=data), 201

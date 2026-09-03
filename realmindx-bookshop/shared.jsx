@@ -1,6 +1,6 @@
 import React from 'react';
 import logoWhite from '../realmindx-site/assets/logo-white.png';
-import { ContentSkeleton, InlineStatus, useDelayedPending } from '../src/lib/AsyncUI.jsx';
+import { InlineStatus, LoadingNotice, useDelayedPending } from '../src/lib/AsyncUI.jsx';
 const bookshopLogo = '/bookshop-logo.png';
 
 // ---------- Icons (24x24 stroke) ----------
@@ -108,7 +108,7 @@ const LoadingState = ({
         <h2 className="bs-h2">{title}</h2>
         {body ? <p>{body}</p> : null}
       </div>
-      <ContentSkeleton variant="list" count={3} label={title} />
+      <LoadingNotice label={title} />
     </div>
   );
 };

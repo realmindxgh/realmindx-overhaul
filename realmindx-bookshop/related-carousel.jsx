@@ -1,5 +1,5 @@
 import React from 'react';
-import { Icon } from './shared.jsx';
+import { Icon, LoadingState } from './shared.jsx';
 import { ProductCard } from './chrome.jsx';
 import { api, isApiMode } from '../src/lib/apiClient.js';
 import { fromApiProduct } from './catalog.jsx';
@@ -67,18 +67,6 @@ const getRelatedCatalog = () => {
   }
   return relatedCatalogPromise;
 };
-
-const RelatedSkeletonCard = () => (
-  <div className="bs-pcard bs-pcard-skeleton" aria-hidden="true">
-    <div className="bs-pcard-cover"><div className="bs-skeleton bs-skeleton-img" /></div>
-    <div className="bs-pcard-body">
-      <div className="bs-skeleton bs-skeleton-line bs-skeleton-line-sm" />
-      <div className="bs-skeleton bs-skeleton-line bs-skeleton-line-lg" />
-      <div className="bs-skeleton bs-skeleton-line bs-skeleton-line-mid" />
-      <div className="bs-skeleton bs-skeleton-line bs-skeleton-line-sm" />
-    </div>
-  </div>
-);
 
 export const RelatedCarousel = ({ books, book, navigate, loading = false }) => {
   const trackRef = React.useRef(null);
@@ -154,13 +142,7 @@ export const RelatedCarousel = ({ books, book, navigate, loading = false }) => {
             <p className="bs-related-sub">Explore more books for the same subject, class level, or curriculum.</p>
           </div>
         </div>
-        <div className="bs-related-shell">
-          <div className="bs-related-viewport">
-            <div className="bs-related-track">
-              {Array.from({ length: 5 }, (_, i) => <RelatedSkeletonCard key={i} />)}
-            </div>
-          </div>
-        </div>
+        <LoadingState minimal title="Loading related books" />
       </section>
     );
   }

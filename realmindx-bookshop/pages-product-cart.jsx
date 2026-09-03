@@ -582,6 +582,7 @@ const CartPage = ({ navigate }) => {
   const [pendingRemoval, setPendingRemoval] = React.useState(null);
   const [generatingInvoice, setGeneratingInvoice] = React.useState(false);
   const [invoiceModalOpen, setInvoiceModalOpen] = React.useState(false);
+  const [invoiceRecipientNames, setInvoiceRecipientNames] = React.useState('');
   const [invoiceEmails, setInvoiceEmails] = React.useState('');
   const [invoiceEmailError, setInvoiceEmailError] = React.useState('');
   const [sentInvoice, setSentInvoice] = React.useState(null);
@@ -614,6 +615,15 @@ const CartPage = ({ navigate }) => {
     event.preventDefault();
     setInvoiceEmailError('');
     setSentInvoice(null);
+    const recipientNames = invoiceRecipientNames.trim();
+    if (!recipientNames) {
+      setInvoiceEmailError('Enter the name of the receiving individual or organisation.');
+      return;
+    }
+    if (recipientNames.length > 160) {
+      setInvoiceEmailError('Receiving individual name must be 160 characters or fewer.');
+      return;
+    }
     const emails = invoiceEmails
       .split(/[\s,;]+/)
       .map(value => value.trim().toLowerCase())
@@ -631,6 +641,7 @@ const CartPage = ({ navigate }) => {
     setGeneratingInvoice(true);
     try {
       const response = await api.emailCartInvoice({
+        customer_name: recipientNames,
         emails: uniqueEmails,
         items: selectedDetailed.map(item => ({
           product_id: item.id,
@@ -639,7 +650,7 @@ const CartPage = ({ navigate }) => {
       });
       const invoiceId = response?.invoice?.invoice_id;
       if (!invoiceId) throw new Error('Invoice was created without an invoice ID.');
-      setSentInvoice({ invoiceId, recipients: uniqueEmails });
+      setSentInvoice({ invoiceId, recipientNames, recipients: uniqueEmails });
       globalToast.success(`Invoice ${invoiceId} emailed.`);
     } catch (err) {
       setInvoiceEmailError(err?.message || 'Could not email invoice.');
@@ -711,20 +722,7 @@ const CartPage = ({ navigate }) => {
       <div className="bs-cart-layout">
         <div className={`bs-cart-items-card${cartHydrating ? ' is-hydrating' : ''}`} aria-busy={cartHydrating}>
           {cartHydrating && (
-            <>
-              <span className="bs-sr-only" role="status">Restoring your saved cart items.</span>
-              {items.map((item) => (
-                <div className="bs-cart-item-skeleton" key={item.id} aria-hidden="true">
-                  <span className="bs-skeleton bs-cart-skeleton-select" />
-                  <span className="bs-skeleton bs-cart-skeleton-cover" />
-                  <span className="bs-cart-skeleton-copy">
-                    <span className="bs-skeleton" />
-                    <span className="bs-skeleton" />
-                    <span className="bs-skeleton" />
-                  </span>
-                </div>
-              ))}
-            </>
+            <LoadingState minimal title="Restoring your saved cart" />
           )}
           {!cartHydrating && detailed.map((b, i) => (
             <div className={`bs-cart-item${b.selected ? '' : ' is-unselected'}`} key={b.id}>
@@ -916,11 +914,22 @@ const CartPage = ({ navigate }) => {
               {sentInvoice ? (
                 <div className="bs-invoice-sent-box">
                   <strong>Invoice {sentInvoice.invoiceId} sent.</strong>
-                  <p>We emailed the PDF attachment to {sentInvoice.recipients.join(', ')}.</p>
+                  <p>Prepared for {sentInvoice.recipientNames} and emailed to {sentInvoice.recipients.join(', ')}.</p>
                 </div>
               ) : (
                 <>
-                  <p>Enter one or more email addresses. The invoice PDF will be sent as an attachment with RealMindX Bookshop branding.</p>
+                  <p>Add the receiving individual or organisation and one or more email addresses. The name will appear on the branded invoice PDF.</p>
+                  <label className="bs-field" style={{ marginTop:14 }}>
+                    <span>Receiving individual(s) or organisation</span>
+                    <input
+                      value={invoiceRecipientNames}
+                      onChange={event => setInvoiceRecipientNames(event.target.value)}
+                      maxLength={160}
+                      placeholder="Ama Mensah or Bright Future School"
+                      disabled={generatingInvoice}
+                      required
+                    />
+                  </label>
                   <label className="bs-field" style={{ marginTop:14 }}>
                     <span>Email address(es)</span>
                     <textarea

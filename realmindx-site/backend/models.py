@@ -382,6 +382,13 @@ class Order(TimestampMixin, db.Model):
     invoice_id = db.Column(db.String(40), unique=True, nullable=True, index=True)
     payment_reference = db.Column(db.String(80), unique=True, nullable=True, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    source = db.Column(db.String(30), default="bookshop", nullable=False, index=True)
+    created_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", name="fk_orders_created_by_id"),
+        nullable=True,
+        index=True,
+    )
     customer_name = db.Column(db.String(160), nullable=False)
     customer_sex = db.Column(db.String(30), nullable=True, index=True)
     customer_age_range = db.Column(db.String(30), nullable=True, index=True)
@@ -396,6 +403,7 @@ class Order(TimestampMixin, db.Model):
     notes = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(30), default="new", nullable=False, index=True)
     payment_status = db.Column(db.String(30), default="unpaid", nullable=False, index=True)
+    payment_option = db.Column(db.String(30), nullable=True)
     payment_method = db.Column(db.String(40), default="online", nullable=False, index=True)
     payment_provider = db.Column(db.String(40), nullable=True)
     payment_access_code = db.Column(db.String(120), nullable=True)
@@ -406,6 +414,8 @@ class Order(TimestampMixin, db.Model):
     promo_applies_to = db.Column(db.String(20), nullable=True)
     promo_discount_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     total_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    amount_paid = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    balance_due = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
     analytics_session_key = db.Column(db.String(80), nullable=True, index=True)
     analytics_visitor_key = db.Column(db.String(80), nullable=True, index=True)
@@ -413,6 +423,7 @@ class Order(TimestampMixin, db.Model):
 
     delivery_zone = db.relationship("DeliveryZone")
     cart_invoice = db.relationship("CartInvoice", foreign_keys=[cart_invoice_id])
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
 
 
 class BookshopPaymentIntent(TimestampMixin, db.Model):
@@ -422,6 +433,12 @@ class BookshopPaymentIntent(TimestampMixin, db.Model):
     reference = db.Column(db.String(80), unique=True, nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), unique=True, nullable=True, index=True)
+    cart_invoice_id = db.Column(
+        db.Integer,
+        db.ForeignKey("cart_invoices.id", name="fk_bookshop_payment_intents_cart_invoice_id"),
+        nullable=True,
+        index=True,
+    )
     customer_name = db.Column(db.String(160), nullable=False)
     customer_sex = db.Column(db.String(30), nullable=True, index=True)
     customer_age_range = db.Column(db.String(30), nullable=True, index=True)
@@ -435,6 +452,8 @@ class BookshopPaymentIntent(TimestampMixin, db.Model):
     authorization_url = db.Column(db.String(500), nullable=True)
     checkout_data = db.Column(db.JSON, default=dict, nullable=False)
     paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    cart_invoice = db.relationship("CartInvoice", foreign_keys=[cart_invoice_id])
 
     order = db.relationship("Order", foreign_keys=[order_id])
 
@@ -752,6 +771,22 @@ class CartInvoice(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     invoice_id = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    source = db.Column(db.String(30), default="cart", nullable=False, index=True)
+    customer_name = db.Column(db.String(160), nullable=True)
+    customer_email = db.Column(db.String(255), nullable=True, index=True)
+    customer_phone = db.Column(db.String(40), nullable=True)
+    delivery_method = db.Column(db.String(30), nullable=True)
+    delivery_zone_id = db.Column(
+        db.Integer,
+        db.ForeignKey("delivery_zones.id", name="fk_cart_invoices_delivery_zone_id"),
+        nullable=True,
+        index=True,
+    )
+    delivery_zone_name = db.Column(db.String(160), nullable=True)
+    location = db.Column(db.String(255), nullable=True)
+    delivery_region = db.Column(db.String(80), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    currency = db.Column(db.String(8), default="GHS", nullable=False)
     subtotal_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     bulk_discount_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     promo_code = db.Column(db.String(40), nullable=True)
@@ -760,6 +795,13 @@ class CartInvoice(TimestampMixin, db.Model):
     delivery_fee = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     total_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     status = db.Column(db.String(30), default="generated", nullable=False, index=True)
+    payment_status = db.Column(db.String(30), default="not_applicable", nullable=False, index=True)
+    payment_method = db.Column(db.String(40), nullable=True)
+    payment_provider = db.Column(db.String(40), nullable=True)
+    payment_reference = db.Column(db.String(120), nullable=True, index=True)
+    paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    issued_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
     emailed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     viewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     converted_at = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -767,8 +809,25 @@ class CartInvoice(TimestampMixin, db.Model):
     reminder_3d_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
     reminder_10d_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
     recipients = db.Column(db.JSON, default=list, nullable=False)
+    created_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", name="fk_cart_invoices_created_by_id"),
+        nullable=True,
+        index=True,
+    )
+    voided_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    voided_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", name="fk_cart_invoices_voided_by_id"),
+        nullable=True,
+        index=True,
+    )
+    void_reason = db.Column(db.Text, nullable=True)
 
     converted_order = db.relationship("Order", foreign_keys=[converted_order_id], post_update=True)
+    delivery_zone = db.relationship("DeliveryZone", foreign_keys=[delivery_zone_id])
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+    voided_by = db.relationship("User", foreign_keys=[voided_by_id])
 
 
 class CartInvoiceItem(TimestampMixin, db.Model):
@@ -778,6 +837,7 @@ class CartInvoiceItem(TimestampMixin, db.Model):
     cart_invoice_id = db.Column(db.Integer, db.ForeignKey("cart_invoices.id"), nullable=False, index=True)
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=True, index=True)
     product_name = db.Column(db.String(180), nullable=False)
+    description = db.Column(db.String(300), nullable=True)
     unit_price = db.Column(db.Numeric(12, 2), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
 

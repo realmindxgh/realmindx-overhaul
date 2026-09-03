@@ -17,6 +17,14 @@ import AuthLoadingScreen from '../../src/lib/AuthLoadingScreen.jsx';
 import { copyTextToClipboard } from '../../src/lib/clipboard.js';
 import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
 import globalToast from '../../src/lib/toast.js';
+import {
+  AsyncButtonContent,
+  ContentSkeleton,
+  ErrorState,
+  InlineStatus,
+  ProgressStatus,
+  RefreshingIndicator,
+} from '../../src/lib/AsyncUI.jsx';
 
 const NAV = [
   { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
@@ -658,9 +666,9 @@ const CONFIG = {
   },
   orders: {
     title: 'Bookshop Orders',
-    description: 'Bookshop order requests and order-status handling.',
+    description: 'Track storefront orders and create fully recorded customer orders from the management portal.',
     collection: 'orders',
-    createLabel: '',        // no manual order creation from admin
+    createLabel: '',
     allowCreate: false,
     allowEdit: false,       // orders are view-only; use status actions only
     statusOnly: true,       // only status changes and archiving allowed
@@ -668,10 +676,10 @@ const CONFIG = {
     statusOptions: ['new', 'confirmed', 'shipped', 'complete', 'cancelled'],
     requireCancelReason: true,
     emptyTitle: 'No Bookshop Orders Yet',
-    emptyBody: 'Customer orders from the bookshop will appear here.',
+    emptyBody: 'Customer orders from the bookshop or management portal will appear here.',
     fields: [],             // no edit form fields
-    columns: ['order_reference', 'customer_name', 'total_amount', 'status', 'delivery_company', 'delivery_rider', 'delivery_status', 'otp_status'],
-    columnLabels: { delivery_company: 'Company', delivery_rider: 'Rider', delivery_status: 'Delivery', otp_status: 'OTP' },
+    columns: ['order_reference', 'customer_name', 'total_amount', 'balance_due', 'payment_status', 'status', 'delivery_company', 'delivery_rider', 'delivery_status', 'otp_status'],
+    columnLabels: { total_amount: 'Total', balance_due: 'Balance', payment_status: 'Payment', delivery_company: 'Company', delivery_rider: 'Rider', delivery_status: 'Delivery', otp_status: 'OTP' },
   },
   orderReviews: {
     title: 'Order Reviews',
@@ -1393,7 +1401,7 @@ const WhatsAppDiagnosticsView = () => {
           </p>
         </div>
         <button type="button" className="btn btn-outline-navy btn-sm" onClick={loadEvents} disabled={loading}>
-          {loading ? 'Refreshing...' : 'Refresh'}
+          <AsyncButtonContent pending={loading} pendingLabel="Refreshing logs...">Refresh</AsyncButtonContent>
         </button>
       </div>
 
@@ -1415,7 +1423,8 @@ const WhatsAppDiagnosticsView = () => {
         </div>
       </div>
 
-      {error && <p className="admin-error" role="alert">{error}</p>}
+      {loading && events.length > 0 ? <RefreshingIndicator active label="Refreshing WhatsApp webhook events" /> : null}
+      {error && <ErrorState compact title="WhatsApp logs could not refresh" message={error} onRetry={loadEvents} />}
 
       <div className="admin-table-card">
         <div className="atc-header">
@@ -1438,7 +1447,7 @@ const WhatsAppDiagnosticsView = () => {
             </thead>
             <tbody>
               {loading && !events.length ? (
-                <tr><td colSpan={6}>Loading WhatsApp webhook events...</td></tr>
+                <tr><td colSpan={6}><ContentSkeleton variant="table" count={5} label="Loading WhatsApp webhook events" /></td></tr>
               ) : events.length ? events.map(event => {
                 const meta = whatsappEventMeta(event.status);
                 return (
@@ -1516,49 +1525,477 @@ const localReceiptRows = (orders = []) => orders.map(order => ({
   pdf_document: 'receipt',
 }));
 
-const ReceiptsInvoicesView = ({ content }) => {
+const emptyAdminInvoiceLine = () => ({
+  key: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  product_id: '',
+  product_name: '',
+  description: '',
+  quantity: 1,
+  unit_price: '',
+});
+
+const AdminSalesInvoiceModal = ({ open, onClose, onCreated }) => {
+  const [options, setOptions] = React.useState({ products: [], delivery_zones: [] });
+  const [optionsLoading, setOptionsLoading] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [form, setForm] = React.useState({
+    customer_name: '', email: '', phone: '', delivery_method: 'pickup', delivery_zone_id: '',
+    delivery_fee: '0.00', location: '', delivery_region: '', notes: '', expires_at: '', send_email: true,
+    items: [emptyAdminInvoiceLine()],
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setOptionsLoading(true);
+    setError('');
+    api.adminInvoiceOptions()
+      .then(data => { if (!cancelled) setOptions({ products: data.products || [], delivery_zones: data.delivery_zones || [] }); })
+      .catch(err => { if (!cancelled) setError(err.message || 'Could not load invoice options.'); })
+      .finally(() => { if (!cancelled) setOptionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setForm({
+        customer_name: '', email: '', phone: '', delivery_method: 'pickup', delivery_zone_id: '',
+        delivery_fee: '0.00', location: '', delivery_region: '', notes: '', expires_at: '', send_email: true,
+        items: [emptyAdminInvoiceLine()],
+      });
+      setError('');
+    }
+  }, [open]);
+
+  const setField = (name, value) => setForm(current => ({ ...current, [name]: value }));
+  const updateLine = (key, patch) => setForm(current => ({
+    ...current,
+    items: current.items.map(item => item.key === key ? { ...item, ...patch } : item),
+  }));
+  const selectProduct = (line, productId) => {
+    if (!productId) {
+      updateLine(line.key, { product_id: '', product_name: '', description: '', unit_price: '' });
+      return;
+    }
+    const product = options.products.find(item => String(item.id) === String(productId));
+    updateLine(line.key, {
+      product_id: productId,
+      product_name: product?.name || '',
+      description: [product?.author, product?.publisher].filter(Boolean).join(' · '),
+      unit_price: product?.price ?? '',
+    });
+  };
+  const selectDeliveryZone = (zoneId) => {
+    const zone = options.delivery_zones.find(item => String(item.id) === String(zoneId));
+    setForm(current => ({
+      ...current,
+      delivery_zone_id: zoneId,
+      delivery_fee: zone ? String(zone.fee ?? 0) : current.delivery_fee,
+      location: zone?.name || current.location,
+      delivery_region: zone?.region || current.delivery_region,
+    }));
+  };
+  const subtotal = React.useMemo(() => form.items.reduce(
+    (total, item) => total + (Number(item.unit_price || 0) * Math.max(1, Number(item.quantity || 1))),
+    0,
+  ), [form.items]);
+  const bulkDiscount = React.useMemo(() => form.items.reduce((total, item) => {
+    const quantity = Math.max(1, Number(item.quantity || 1));
+    if (quantity < 10) return total;
+    return total + (Number(item.unit_price || 0) * quantity * 0.1);
+  }, 0), [form.items]);
+  const deliveryFee = form.delivery_method === 'pickup' ? 0 : Number(form.delivery_fee || 0);
+  const total = Math.max(0, subtotal - bulkDiscount + deliveryFee);
+
+  const submit = async event => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const payload = {
+        ...form,
+        delivery_fee: deliveryFee,
+        items: form.items.map(({ key, ...item }) => item),
+      };
+      const result = await api.adminCreateInvoice(payload);
+      globalToast.success(result.message || 'Invoice created.');
+      onCreated?.(result.invoice);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Could not create invoice.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 820 }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="admin-sales-invoice-title" style={{ position: 'relative', background: '#fff', borderRadius: 18, width: 'min(980px, 96vw)', maxHeight: '92vh', overflowY: 'auto', padding: 28, boxShadow: '0 24px 72px rgba(0,0,0,.3)' }}>
+        <button className="admin-modal-close" type="button" onClick={onClose} disabled={saving} aria-label="Close"><Icon name="x" size={16} /></button>
+        <span style={{ color: 'var(--gold)', fontSize: 12, fontWeight: 900, letterSpacing: '.14em', textTransform: 'uppercase' }}>Admin-issued payable invoice</span>
+        <h3 id="admin-sales-invoice-title" style={{ margin: '8px 0 6px' }}>Create sales invoice</h3>
+        <p style={{ margin: '0 0 22px', color: 'var(--gray-600)' }}>Add catalogue books or type a custom book that does not exist in the product database. The issued total is frozen for secure payment.</p>
+        <form onSubmit={submit} style={{ display: 'grid', gap: 22 }}>
+          <section style={{ display: 'grid', gap: 12 }}>
+            <strong style={{ color: 'var(--navy)' }}>Receiving details</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}>Receiving individual(s) or organisation<input className="form-input" required maxLength={160} placeholder="Ama Mensah or Bright Future School" value={form.customer_name} onChange={e => setField('customer_name', e.target.value)} /></label>
+              <label style={{ display: 'grid', gap: 6 }}>Email<input className="form-input" type="email" required value={form.email} onChange={e => setField('email', e.target.value)} /></label>
+              <label style={{ display: 'grid', gap: 6 }}>Phone<input className="form-input" required value={form.phone} onChange={e => setField('phone', e.target.value)} /></label>
+            </div>
+          </section>
+
+          <section style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <strong style={{ color: 'var(--navy)' }}>Invoice items</strong>
+              <button className="btn btn-sm btn-outline-navy" type="button" onClick={() => setForm(current => ({ ...current, items: [...current.items, emptyAdminInvoiceLine()] }))}>+ Add line</button>
+            </div>
+            {optionsLoading ? <ContentSkeleton variant="list" count={2} label="Loading catalogue options" /> : null}
+            {form.items.map((line, index) => (
+              <div key={line.key} style={{ border: '1px solid var(--gray-200)', borderRadius: 14, padding: 14, display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
+                  <label style={{ display: 'grid', gap: 6 }}>Source
+                    <select className="form-input" value={line.product_id} onChange={e => selectProduct(line, e.target.value)}>
+                      <option value="">Custom / off-catalogue book</option>
+                      {options.products.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>Book or item name<input className="form-input" required value={line.product_name} readOnly={Boolean(line.product_id)} onChange={e => updateLine(line.key, { product_name: e.target.value })} /></label>
+                  <label style={{ display: 'grid', gap: 6 }}>Qty<input className="form-input" type="number" min="1" max="10000" required value={line.quantity} onChange={e => updateLine(line.key, { quantity: e.target.value })} /></label>
+                  <label style={{ display: 'grid', gap: 6 }}>Unit price<input className="form-input" type="number" min="0.01" step="0.01" required value={line.unit_price} onChange={e => updateLine(line.key, { unit_price: e.target.value })} /></label>
+                  <button className="btn btn-sm btn-outline-navy" type="button" disabled={form.items.length === 1} onClick={() => setForm(current => ({ ...current, items: current.items.filter(item => item.key !== line.key) }))}>Remove</button>
+                </div>
+                <label style={{ display: 'grid', gap: 6 }}>Description <input className="form-input" maxLength="300" placeholder="Optional author, publisher, edition, ISBN, or notes" value={line.description} onChange={e => updateLine(line.key, { description: e.target.value })} /></label>
+                <div style={{ textAlign: 'right', color: 'var(--navy)', fontWeight: 800 }}>Line {index + 1}: {ledgerMoneyValue(Number(line.unit_price || 0) * Math.max(1, Number(line.quantity || 1)))}</div>
+              </div>
+            ))}
+          </section>
+
+          <section style={{ display: 'grid', gap: 12 }}>
+            <strong style={{ color: 'var(--navy)' }}>Fulfilment and issue settings</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}>Fulfilment
+                <select className="form-input" value={form.delivery_method} onChange={e => setForm(current => ({ ...current, delivery_method: e.target.value, delivery_fee: e.target.value === 'pickup' ? '0.00' : current.delivery_fee }))}>
+                  <option value="pickup">Pickup</option><option value="delivery">Delivery</option>
+                </select>
+              </label>
+              {form.delivery_method === 'delivery' ? <label style={{ display: 'grid', gap: 6 }}>Delivery area
+                <select className="form-input" value={form.delivery_zone_id} onChange={e => selectDeliveryZone(e.target.value)}>
+                  <option value="">Custom delivery location</option>
+                  {options.delivery_zones.map(zone => <option key={zone.id} value={zone.id}>{zone.name} · {ledgerMoneyValue(zone.fee)}</option>)}
+                </select>
+              </label> : null}
+              {form.delivery_method === 'delivery' ? <label style={{ display: 'grid', gap: 6 }}>Delivery fee<input className="form-input" type="number" min="0" step="0.01" value={form.delivery_fee} onChange={e => setField('delivery_fee', e.target.value)} /></label> : null}
+              {form.delivery_method === 'delivery' ? <label style={{ display: 'grid', gap: 6 }}>Delivery location<input className="form-input" required value={form.location} onChange={e => setField('location', e.target.value)} /></label> : null}
+              <label style={{ display: 'grid', gap: 6 }}>Expiry date <input className="form-input" type="date" value={form.expires_at} onChange={e => setField('expires_at', e.target.value)} /></label>
+            </div>
+            <label style={{ display: 'grid', gap: 6 }}>Internal / customer notes<textarea className="form-textarea" rows={3} value={form.notes} onChange={e => setField('notes', e.target.value)} /></label>
+            <label style={{ display: 'flex', gap: 9, alignItems: 'center' }}><input type="checkbox" checked={form.send_email} onChange={e => setField('send_email', e.target.checked)} /> Email the invoice and secure payment link now</label>
+          </section>
+
+          <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 16, display: 'grid', gap: 6, justifyItems: 'end' }}>
+            <div>Subtotal: <strong>{ledgerMoneyValue(subtotal)}</strong></div>
+            {bulkDiscount > 0 ? <div>Bulk discount (10%): <strong>-{ledgerMoneyValue(bulkDiscount)}</strong></div> : null}
+            <div>Delivery: <strong>{ledgerMoneyValue(deliveryFee)}</strong></div>
+            <div style={{ fontSize: 20, color: 'var(--navy)' }}>Invoice total: <strong>{ledgerMoneyValue(total)}</strong></div>
+            <small style={{ color: 'var(--gray-600)' }}>10+ copies of the same line automatically receive 10% off.</small>
+          </div>
+          {error ? <ErrorState compact message={error} /> : null}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button className="btn btn-outline-navy" type="button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="btn btn-primary" type="submit" disabled={saving || total <= 0}>
+              <AsyncButtonContent pending={saving} pendingLabel="Creating invoice…">Create {form.send_email ? '& email' : ''} invoice</AsyncButtonContent>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const emptyAdminOrderForm = () => ({
+  customer_name: '', email: '', phone: '', delivery_method: 'pickup', delivery_zone_id: '',
+  delivery_fee: '0.00', location: '', delivery_region: '', notes: '',
+  payment_option: 'payment_on_delivery', payment_method: 'cash', payment_reference: '', amount_paid: '',
+  items: [emptyAdminInvoiceLine()],
+});
+
+const AdminManualOrderModal = ({ open, onClose, onCreated }) => {
+  const [options, setOptions] = React.useState({ products: [], delivery_zones: [] });
+  const [optionsLoading, setOptionsLoading] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [form, setForm] = React.useState(emptyAdminOrderForm);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    setOptionsLoading(true);
+    setError('');
+    api.adminInvoiceOptions()
+      .then(data => { if (!cancelled) setOptions({ products: data.products || [], delivery_zones: data.delivery_zones || [] }); })
+      .catch(err => { if (!cancelled) setError(err.message || 'Could not load order options.'); })
+      .finally(() => { if (!cancelled) setOptionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setForm(emptyAdminOrderForm());
+      setError('');
+    }
+  }, [open]);
+
+  const setField = (name, value) => setForm(current => ({ ...current, [name]: value }));
+  const updateLine = (key, patch) => setForm(current => ({
+    ...current,
+    items: current.items.map(item => item.key === key ? { ...item, ...patch } : item),
+  }));
+  const selectProduct = (line, productId) => {
+    if (!productId) {
+      updateLine(line.key, { product_id: '', product_name: '', description: '', unit_price: '' });
+      return;
+    }
+    const product = options.products.find(item => String(item.id) === String(productId));
+    updateLine(line.key, {
+      product_id: productId,
+      product_name: product?.name || '',
+      description: '',
+      unit_price: product?.price ?? '',
+    });
+  };
+  const selectDeliveryZone = (zoneId) => {
+    const zone = options.delivery_zones.find(item => String(item.id) === String(zoneId));
+    setForm(current => ({
+      ...current,
+      delivery_zone_id: zoneId,
+      delivery_fee: zone ? String(zone.fee ?? 0) : current.delivery_fee,
+      location: zone?.name || current.location,
+      delivery_region: zone?.region || current.delivery_region,
+    }));
+  };
+  const subtotal = React.useMemo(() => form.items.reduce(
+    (sum, item) => sum + (Number(item.unit_price || 0) * Math.max(1, Number(item.quantity || 1))),
+    0,
+  ), [form.items]);
+  const bulkDiscount = React.useMemo(() => form.items.reduce((sum, item) => {
+    const quantity = Math.max(1, Number(item.quantity || 1));
+    return quantity >= 10 ? sum + (Number(item.unit_price || 0) * quantity * 0.1) : sum;
+  }, 0), [form.items]);
+  const deliveryFee = form.delivery_method === 'pickup' ? 0 : Number(form.delivery_fee || 0);
+  const total = Math.max(0, subtotal - bulkDiscount + deliveryFee);
+  const amountPaid = form.payment_option === 'fully_paid'
+    ? total
+    : (form.payment_option === 'partially_paid' ? Number(form.amount_paid || 0) : 0);
+  const balanceDue = Math.max(0, total - amountPaid);
+  const recordsPayment = form.payment_option !== 'payment_on_delivery';
+
+  const submit = async event => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const result = await api.adminCreateOrder({
+        ...form,
+        delivery_fee: deliveryFee,
+        amount_paid: amountPaid,
+        items: form.items.map(({ key, ...item }) => item),
+      });
+      globalToast.success(result.message || 'Order created.');
+      onCreated?.(result.order);
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Could not create the order.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 840 }} onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="admin-manual-order-title" style={{ position: 'relative', background: '#fff', borderRadius: 18, width: 'min(1000px, 96vw)', maxHeight: '92vh', overflowY: 'auto', padding: 28, boxShadow: '0 24px 72px rgba(0,0,0,.3)' }}>
+        <button className="admin-modal-close" type="button" onClick={onClose} disabled={saving} aria-label="Close"><Icon name="x" size={16} /></button>
+        <span style={{ color: 'var(--gold)', fontSize: 12, fontWeight: 900, letterSpacing: '.14em', textTransform: 'uppercase' }}>Admin / staff order entry</span>
+        <h3 id="admin-manual-order-title" style={{ margin: '8px 0 6px' }}>Create customer order</h3>
+        <p style={{ margin: '0 0 22px', color: 'var(--gray-600)' }}>Create a fully tracked order with catalogue or off-catalogue books. The customer will receive the normal order email and SMS.</p>
+        <form onSubmit={submit} style={{ display: 'grid', gap: 22 }}>
+          <section style={{ display: 'grid', gap: 12 }}>
+            <strong style={{ color: 'var(--navy)' }}>Receiving individual and contact</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}>Receiving individual(s) or organisation<input className="form-input" required maxLength={160} placeholder="Ama Mensah or Bright Future School" value={form.customer_name} onChange={e => setField('customer_name', e.target.value)} /></label>
+              <label style={{ display: 'grid', gap: 6 }}>Email<input className="form-input" type="email" required value={form.email} onChange={e => setField('email', e.target.value)} /></label>
+              <label style={{ display: 'grid', gap: 6 }}>Phone<input className="form-input" required value={form.phone} onChange={e => setField('phone', e.target.value)} /></label>
+            </div>
+            <small style={{ color: 'var(--gray-600)' }}>The email is saved or updated in Contacts when the order is created.</small>
+          </section>
+
+          <section style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <strong style={{ color: 'var(--navy)' }}>Order items</strong>
+              <button className="btn btn-sm btn-outline-navy" type="button" onClick={() => setForm(current => ({ ...current, items: [...current.items, emptyAdminInvoiceLine()] }))}>+ Add line</button>
+            </div>
+            {optionsLoading ? <ContentSkeleton variant="list" count={2} label="Loading catalogue options" /> : null}
+            {form.items.map((line, index) => (
+              <div key={line.key} style={{ border: '1px solid var(--gray-200)', borderRadius: 14, padding: 14, display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
+                  <label style={{ display: 'grid', gap: 6 }}>Source
+                    <select className="form-input" value={line.product_id} onChange={e => selectProduct(line, e.target.value)}>
+                      <option value="">Custom / off-catalogue book</option>
+                      {options.products.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>Book title<input className="form-input" required maxLength={180} value={line.product_name} readOnly={Boolean(line.product_id)} onChange={e => updateLine(line.key, { product_name: e.target.value })} /></label>
+                  <label style={{ display: 'grid', gap: 6 }}>Qty<input className="form-input" type="number" min="1" max="10000" required value={line.quantity} onChange={e => updateLine(line.key, { quantity: e.target.value })} /></label>
+                  <label style={{ display: 'grid', gap: 6 }}>Unit price<input className="form-input" type="number" min="0.01" step="0.01" required value={line.unit_price} onChange={e => updateLine(line.key, { unit_price: e.target.value })} /></label>
+                  <button className="btn btn-sm btn-outline-navy" type="button" disabled={form.items.length === 1} onClick={() => setForm(current => ({ ...current, items: current.items.filter(item => item.key !== line.key) }))}>Remove</button>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: 'var(--gray-600)', fontSize: 13 }}><span>{Number(line.quantity || 0) >= 10 ? '10% bulk discount applied' : `Line ${index + 1}`}</span><strong style={{ color: 'var(--navy)' }}>{ledgerMoneyValue(Number(line.unit_price || 0) * Math.max(1, Number(line.quantity || 1)))}</strong></div>
+              </div>
+            ))}
+          </section>
+
+          <section style={{ display: 'grid', gap: 12 }}>
+            <strong style={{ color: 'var(--navy)' }}>Location and fulfilment</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}>Fulfilment
+                <select className="form-input" value={form.delivery_method} onChange={e => setForm(current => ({ ...current, delivery_method: e.target.value, delivery_fee: e.target.value === 'pickup' ? '0.00' : current.delivery_fee }))}>
+                  <option value="pickup">Pickup</option><option value="delivery">Delivery</option>
+                </select>
+              </label>
+              {form.delivery_method === 'delivery' ? <label style={{ display: 'grid', gap: 6 }}>Delivery area
+                <select className="form-input" value={form.delivery_zone_id} onChange={e => selectDeliveryZone(e.target.value)}>
+                  <option value="">Custom delivery location</option>
+                  {options.delivery_zones.map(zone => <option key={zone.id} value={zone.id}>{zone.name} - {ledgerMoneyValue(zone.fee)}</option>)}
+                </select>
+              </label> : null}
+              {form.delivery_method === 'delivery' ? <label style={{ display: 'grid', gap: 6 }}>Delivery fee<input className="form-input" type="number" min="0" step="0.01" required value={form.delivery_fee} onChange={e => setField('delivery_fee', e.target.value)} /></label> : null}
+              {form.delivery_method === 'delivery' ? <label style={{ display: 'grid', gap: 6 }}>Exact delivery location<input className="form-input" required maxLength={255} value={form.location} onChange={e => setField('location', e.target.value)} /></label> : null}
+              {form.delivery_method === 'delivery' ? <label style={{ display: 'grid', gap: 6 }}>Region<input className="form-input" maxLength={80} value={form.delivery_region} onChange={e => setField('delivery_region', e.target.value)} /></label> : null}
+            </div>
+            <label style={{ display: 'grid', gap: 6 }}>Order / delivery notes<textarea className="form-textarea" rows={3} value={form.notes} onChange={e => setField('notes', e.target.value)} /></label>
+          </section>
+
+          <section style={{ display: 'grid', gap: 12 }}>
+            <strong style={{ color: 'var(--navy)' }}>Admin-only payment option</strong>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}>Payment option
+                <select className="form-input" value={form.payment_option} onChange={e => setField('payment_option', e.target.value)}>
+                  <option value="partially_paid">Partially paid</option>
+                  <option value="fully_paid">Fully paid</option>
+                  <option value="payment_on_delivery">Payment on delivery</option>
+                </select>
+              </label>
+              {form.payment_option === 'partially_paid' ? <label style={{ display: 'grid', gap: 6 }}>Amount already paid<input className="form-input" type="number" min="0.01" max={Math.max(0, total - 0.01)} step="0.01" required value={form.amount_paid} onChange={e => setField('amount_paid', e.target.value)} /></label> : null}
+              {recordsPayment ? <label style={{ display: 'grid', gap: 6 }}>How payment was received
+                <select className="form-input" value={form.payment_method} onChange={e => setField('payment_method', e.target.value)}>
+                  <option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="mobile_money">Mobile Money</option><option value="pos">POS</option><option value="other">Other</option>
+                </select>
+              </label> : null}
+              {recordsPayment ? <label style={{ display: 'grid', gap: 6 }}>Payment reference {form.payment_method === 'cash' ? '(optional)' : ''}<input className="form-input" maxLength={80} required={form.payment_method !== 'cash'} value={form.payment_reference} onChange={e => setField('payment_reference', e.target.value)} /></label> : null}
+            </div>
+          </section>
+
+          <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: 16, display: 'grid', gap: 6, justifyItems: 'end' }}>
+            <div>Subtotal: <strong>{ledgerMoneyValue(subtotal)}</strong></div>
+            {bulkDiscount > 0 ? <div>Bulk discount (10%): <strong>-{ledgerMoneyValue(bulkDiscount)}</strong></div> : null}
+            <div>Delivery: <strong>{ledgerMoneyValue(deliveryFee)}</strong></div>
+            <div style={{ fontSize: 20, color: 'var(--navy)' }}>Order total: <strong>{ledgerMoneyValue(total)}</strong></div>
+            <div>Amount paid: <strong>{ledgerMoneyValue(amountPaid)}</strong></div>
+            <div>Balance due: <strong>{ledgerMoneyValue(balanceDue)}</strong></div>
+            <small style={{ color: 'var(--gray-600)' }}>10+ copies of the same book line automatically receive 10% off.</small>
+          </div>
+          {error ? <ErrorState compact message={error} /> : null}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button className="btn btn-outline-navy" type="button" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="btn btn-primary" type="submit" disabled={saving || total <= 0 || (form.payment_option === 'partially_paid' && (amountPaid <= 0 || amountPaid >= total))}>
+              <AsyncButtonContent pending={saving} pendingLabel="Creating order...">Create order & notify customer</AsyncButtonContent>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const ReceiptsInvoicesView = ({ content, session }) => {
   const [rows, setRows] = React.useState([]);
-  const [summary, setSummary] = React.useState({ total: 0, receipts: 0, cart_invoices: 0, converted: 0, emailed: 0 });
+  const [summary, setSummary] = React.useState({ total: 0, receipts: 0, order_confirmations: 0, sales_invoices: 0, cart_invoices: 0, converted: 0, emailed: 0 });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [query, setQuery] = React.useState('');
   const [typeFilter, setTypeFilter] = React.useState('all');
   const [statusFilter, setStatusFilter] = React.useState('all');
+  const [showCreateInvoice, setShowCreateInvoice] = React.useState(false);
+  const [paymentRow, setPaymentRow] = React.useState(null);
+  const [paymentForm, setPaymentForm] = React.useState({ payment_method: 'cash', payment_reference: '' });
+  const [voidRow, setVoidRow] = React.useState(null);
+  const [voidReason, setVoidReason] = React.useState('');
+  const [actionSaving, setActionSaving] = React.useState(false);
+  const [actionError, setActionError] = React.useState('');
+  const canCreateInvoice = isApiMode() && hasSessionPermission(session, 'orders.create');
+  const canManageInvoice = isApiMode() && hasSessionPermission(session, 'orders.edit');
 
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+  const refreshLedger = React.useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError('');
     if (!isApiMode()) {
       const localRows = localReceiptRows(content.orders || []);
-      if (!cancelled) {
-        setRows(localRows);
-        setSummary({
-          total: localRows.length,
-          receipts: localRows.length,
-          cart_invoices: 0,
-          converted: 0,
-          emailed: 0,
-        });
-        setLoading(false);
-      }
-      return () => { cancelled = true; };
+      setRows(localRows);
+      setSummary({ total: localRows.length, receipts: localRows.length, order_confirmations: 0, sales_invoices: 0, cart_invoices: 0, converted: 0, emailed: 0 });
+      setLoading(false);
+      return;
     }
-    api.adminReceiptsInvoices()
-      .then(data => {
-        if (cancelled) return;
-        setRows(data.items || []);
-        setSummary(data.summary || {});
-      })
-      .catch(err => {
-        if (cancelled) return;
-        setError(err.message || 'Could not load receipts and invoices.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
+    try {
+      const data = await api.adminReceiptsInvoices();
+      setRows(data.items || []);
+      setSummary(data.summary || {});
+    } catch (err) {
+      setError(err.message || 'Could not load receipts and invoices.');
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [content.orders]);
+
+  React.useEffect(() => { refreshLedger(); }, [refreshLedger]);
+
+  const recordPayment = async event => {
+    event.preventDefault();
+    if (!paymentRow) return;
+    setActionSaving(true);
+    setActionError('');
+    try {
+      const result = await api.adminRecordInvoicePayment(paymentRow.record_id, paymentForm);
+      globalToast.success(result.message || 'Payment recorded.');
+      setPaymentRow(null);
+      setPaymentForm({ payment_method: 'cash', payment_reference: '' });
+      await refreshLedger({ silent: true });
+    } catch (err) {
+      setActionError(err.message || 'Could not record payment.');
+    } finally {
+      setActionSaving(false);
+    }
+  };
+
+  const voidInvoice = async event => {
+    event.preventDefault();
+    if (!voidRow) return;
+    setActionSaving(true);
+    setActionError('');
+    try {
+      const result = await api.adminVoidInvoice(voidRow.record_id, { reason: voidReason });
+      globalToast.success(result.message || 'Invoice voided.');
+      setVoidRow(null);
+      setVoidReason('');
+      await refreshLedger({ silent: true });
+    } catch (err) {
+      setActionError(err.message || 'Could not void invoice.');
+    } finally {
+      setActionSaving(false);
+    }
+  };
 
   const statusOptions = React.useMemo(() => (
     [...new Set(rows.map(row => row.status).filter(Boolean))].sort()
@@ -1595,17 +2032,18 @@ const ReceiptsInvoicesView = ({ content }) => {
             <span style={{ color: 'var(--gold)', fontSize: 12, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Bookshop documents</span>
             <h3 style={{ marginTop: 8 }}>Receipts & Invoices Database</h3>
             <p style={{ margin: '8px 0 0', color: 'var(--gray-700)', maxWidth: 760 }}>
-              Track generated cart invoices, issued order receipts, recipients, conversion status, and totals from one control surface.
+              Create payable sales invoices for catalogue or off-catalogue books, track payment, and issue receipts from one control surface.
             </p>
           </div>
+          {canCreateInvoice ? <button className="btn btn-primary" type="button" onClick={() => setShowCreateInvoice(true)}><Icon name="receipt" size={16} /> Create Sales Invoice</button> : null}
         </div>
         <div className="admin-stats-row" style={{ marginTop: 20 }}>
           {[
             ['Total documents', summary.total || rows.length],
-            ['Receipts', summary.receipts || 0],
+            ['Paid receipts', summary.receipts || 0],
+            ['Sales invoices', summary.sales_invoices || 0],
+            ['Order confirmations', summary.order_confirmations || 0],
             ['Cart invoices', summary.cart_invoices || 0],
-            ['Converted', summary.converted || 0],
-            ['Emailed', summary.emailed || 0],
           ].map(([label, value]) => (
             <div className="admin-stat" key={label} style={{ cursor: 'default' }}>
               <div className="admin-stat-info">
@@ -1627,7 +2065,9 @@ const ReceiptsInvoicesView = ({ content }) => {
             <span style={{ color: 'var(--gray-700)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Type</span>
             <select className="form-input" value={typeFilter} onChange={event => setTypeFilter(event.target.value)}>
               <option value="all">All documents</option>
-              <option value="receipt">Receipts</option>
+              <option value="receipt">Paid receipts</option>
+              <option value="sales_invoice">Sales invoices</option>
+              <option value="order_confirmation">Order confirmations</option>
               <option value="cart_invoice">Cart invoices</option>
             </select>
           </label>
@@ -1641,7 +2081,7 @@ const ReceiptsInvoicesView = ({ content }) => {
         </div>
 
         {loading ? (
-          <div style={{ padding: 30, color: 'var(--navy)', fontWeight: 800 }}>Loading receipts and invoices...</div>
+          <ContentSkeleton variant="table" count={6} label="Loading receipts and invoices" />
         ) : error ? (
           <div style={{ padding: 30, color: '#b42318', fontWeight: 800 }}>{error}</div>
         ) : filteredRows.length ? (
@@ -1672,7 +2112,7 @@ const ReceiptsInvoicesView = ({ content }) => {
                         <strong>{row.customer_name || 'Cart invoice'}</strong>
                         <div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{(row.recipients || []).join(', ') || row.email || 'No recipient recorded'}</div>
                       </td>
-                      <td>{ledgerStatusLabel(row.status)}<div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{ledgerStatusLabel(row.payment_status)}</div></td>
+                      <td>{ledgerStatusLabel(row.status)}<div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{row.has_active_online_payment ? 'Online payment in progress' : ledgerStatusLabel(row.payment_status)}</div></td>
                       <td>{ledgerMoneyValue(row.total_amount)}<div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>{row.item_count || 0} item(s)</div></td>
                       <td>{ledgerDate(row.issued_at || row.created_at)}<div style={{ color: 'var(--gray-600)', fontSize: 12, marginTop: 4 }}>Created {ledgerDate(row.created_at)}</div></td>
                       <td>
@@ -1681,9 +2121,11 @@ const ReceiptsInvoicesView = ({ content }) => {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {previewUrl ? <a className="btn btn-sm btn-outline-navy" href={previewUrl} target="_blank" rel="noreferrer">View</a> : null}
-                          {downloadUrl ? <a className="btn btn-sm btn-primary" href={downloadUrl} target="_blank" rel="noreferrer">PDF</a> : null}
-                        </div>
+                           {previewUrl ? <a className="btn btn-sm btn-outline-navy" href={previewUrl} target="_blank" rel="noreferrer">View</a> : null}
+                           {downloadUrl ? <a className="btn btn-sm btn-primary" href={downloadUrl} target="_blank" rel="noreferrer">PDF</a> : null}
+                           {canManageInvoice && row.can_record_payment ? <button className="btn btn-sm btn-primary" type="button" onClick={() => { setActionError(''); setPaymentRow(row); }}>Mark Paid</button> : null}
+                           {canManageInvoice && row.can_void ? <button className="btn btn-sm btn-outline-navy" type="button" onClick={() => { setActionError(''); setVoidRow(row); }}>Void</button> : null}
+                         </div>
                       </td>
                     </tr>
                   );
@@ -1692,9 +2134,48 @@ const ReceiptsInvoicesView = ({ content }) => {
             </table>
           </AdminTableScroll>
         ) : (
-          <EmptySection title="No Receipts or Invoices Found" body="Generated cart invoices and issued order receipts will appear here once available." />
+          <EmptySection title="No Receipts or Invoices Found" body="Admin sales invoices, generated cart invoices, order confirmations, and paid receipts will appear here." />
         )}
       </section>
+
+      <AdminSalesInvoiceModal
+        open={showCreateInvoice}
+        onClose={() => setShowCreateInvoice(false)}
+        onCreated={() => refreshLedger({ silent: true })}
+      />
+
+      {paymentRow ? (
+        <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 830 }}>
+          <form role="dialog" aria-modal="true" aria-labelledby="record-invoice-payment-title" onSubmit={recordPayment} style={{ position: 'relative', background: '#fff', borderRadius: 18, padding: 28, width: 'min(500px, 94vw)', boxShadow: '0 24px 72px rgba(0,0,0,.3)', display: 'grid', gap: 16 }}>
+            <button className="admin-modal-close" type="button" onClick={() => setPaymentRow(null)} disabled={actionSaving} aria-label="Close"><Icon name="x" size={16} /></button>
+            <div><span style={{ color: 'var(--gold)', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.12em' }}>Offline payment</span><h3 id="record-invoice-payment-title" style={{ marginTop: 8 }}>Record payment and issue receipt</h3></div>
+            <div style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 12, padding: 14 }}><strong>{paymentRow.document_id}</strong><div>{paymentRow.customer_name} · {ledgerMoneyValue(paymentRow.total_amount)}</div></div>
+            <label style={{ display: 'grid', gap: 6 }}>Payment method
+              <select className="form-input" value={paymentForm.payment_method} onChange={e => setPaymentForm(current => ({ ...current, payment_method: e.target.value }))}>
+                <option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="mobile_money">Mobile Money</option><option value="pos">POS / card terminal</option><option value="other">Other</option>
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>Payment reference {paymentForm.payment_method === 'cash' ? '(optional)' : ''}<input className="form-input" required={paymentForm.payment_method !== 'cash'} value={paymentForm.payment_reference} onChange={e => setPaymentForm(current => ({ ...current, payment_reference: e.target.value }))} /></label>
+            <p style={{ margin: 0, color: 'var(--gray-600)', fontSize: 13 }}>This confirms the full invoice amount as paid, creates a tracked order, and makes a payment receipt available.</p>
+            {actionError ? <div style={{ color: '#b42318', fontWeight: 700 }}>{actionError}</div> : null}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button className="btn btn-outline-navy" type="button" onClick={() => setPaymentRow(null)} disabled={actionSaving}>Cancel</button><button className="btn btn-primary" type="submit" disabled={actionSaving}><AsyncButtonContent pending={actionSaving} pendingLabel="Recording…">Confirm Full Payment</AsyncButtonContent></button></div>
+          </form>
+        </div>
+      ) : null}
+
+      {voidRow ? (
+        <div className="admin-modal-backdrop" role="presentation" style={{ zIndex: 830 }}>
+          <form role="dialog" aria-modal="true" aria-labelledby="void-invoice-title" onSubmit={voidInvoice} style={{ position: 'relative', background: '#fff', borderRadius: 18, padding: 28, width: 'min(500px, 94vw)', boxShadow: '0 24px 72px rgba(0,0,0,.3)', display: 'grid', gap: 16 }}>
+            <button className="admin-modal-close" type="button" onClick={() => setVoidRow(null)} disabled={actionSaving} aria-label="Close"><Icon name="x" size={16} /></button>
+            <div><span style={{ color: '#b42318', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.12em' }}>Permanent financial record</span><h3 id="void-invoice-title" style={{ marginTop: 8 }}>Void this invoice?</h3></div>
+            <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 12, padding: 14 }}><strong>{voidRow.document_id}</strong><div>{voidRow.customer_name} · {ledgerMoneyValue(voidRow.total_amount)}</div></div>
+            <label style={{ display: 'grid', gap: 6 }}>Reason for voiding<textarea className="form-textarea" rows={4} required value={voidReason} onChange={e => setVoidReason(e.target.value)} /></label>
+            <p style={{ margin: 0, color: 'var(--gray-600)', fontSize: 13 }}>The record and audit history remain available. A paid invoice cannot be voided here.</p>
+            {actionError ? <div style={{ color: '#b42318', fontWeight: 700 }}>{actionError}</div> : null}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button className="btn btn-outline-navy" type="button" onClick={() => setVoidRow(null)} disabled={actionSaving}>Cancel</button><button className="btn btn-primary" style={{ background: '#b42318', borderColor: '#b42318' }} type="submit" disabled={actionSaving || !voidReason.trim()}><AsyncButtonContent pending={actionSaving} pendingLabel="Voiding…">Void Invoice</AsyncButtonContent></button></div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -1706,12 +2187,14 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
   const [cropSrc, setCropSrc]     = React.useState(null);
   const [error, setError]         = React.useState('');
   const [staged, setStaged]       = React.useState(false);
+  const [uploadProgress, setUploadProgress] = React.useState(null);
   const inputRef = React.useRef(null);
 
   React.useEffect(() => {
     setPreview(currentUrl || null);
     setStaged(false);
     setError('');
+    setUploadProgress(null);
   }, [currentFileId, currentUrl]);
 
   // Step 1: file selected → open crop modal
@@ -1728,10 +2211,10 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
   const handleCrop = async (croppedFile, dataUrl) => {
     setCropSrc(null);
     const previousPreview = preview;
-    setUploading(true); setError('');
+    setUploading(true); setError(''); setUploadProgress({ stage: 'preparing' });
     try {
       const { api } = await import('../../src/lib/apiClient.js');
-      const uploaded = await api.uploadFile(croppedFile, 'images');
+      const uploaded = await api.uploadFile(croppedFile, 'images', { onProgress: setUploadProgress });
       setPreview(uploaded.url);
       setStaged(true);
       onChange(uploaded.id, uploaded.url);
@@ -1762,8 +2245,8 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
         )}
         <div>
           <button type="button" className="btn btn-outline-navy btn-sm"
-            onClick={() => inputRef.current?.click()} disabled={uploading}>
-            {uploading ? 'Uploading...' : preview ? 'Replace image' : 'Upload image'}
+            onClick={() => inputRef.current?.click()} disabled={uploading} aria-busy={uploading}>
+            <AsyncButtonContent pending={uploading} pendingLabel="Uploading image...">{preview ? 'Replace image' : 'Upload image'}</AsyncButtonContent>
           </button>
           {(preview || currentFileId) && (
             <button
@@ -1785,6 +2268,14 @@ const ImageUploadField = ({ fieldName, currentFileId, currentUrl, onChange, aspe
         </div>
         <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleSelect} />
       </div>
+      {uploading && uploadProgress ? (
+        <ProgressStatus
+          label="Uploading image"
+          stage={uploadProgress.stage === 'processing' ? 'Upload finished. Saving the image securely' : 'Uploading image securely'}
+          detail={uploadProgress.total ? `${formatImportBytes(uploadProgress.loaded)} of ${formatImportBytes(uploadProgress.total)}` : ''}
+          percent={uploadProgress.stage === 'uploading' ? uploadProgress.percent : undefined}
+        />
+      ) : null}
       {staged && (
         <p style={{ color: 'var(--gray-600)', fontSize: '0.75rem', marginTop: 4 }}>
           Image uploaded. Save changes to apply it to this record.
@@ -1811,6 +2302,7 @@ const FileUploadField = ({ currentFileId, currentUrl, currentName, onChange, acc
   const [fileUrl, setFileUrl] = React.useState(currentUrl || '');
   const [error, setError] = React.useState('');
   const [staged, setStaged] = React.useState(false);
+  const [uploadProgress, setUploadProgress] = React.useState(null);
   const inputRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -1818,6 +2310,7 @@ const FileUploadField = ({ currentFileId, currentUrl, currentName, onChange, acc
     setFileUrl(currentUrl || '');
     setError('');
     setStaged(false);
+    setUploadProgress(null);
   }, [currentFileId, currentName, currentUrl]);
 
   const handleSelect = async event => {
@@ -1826,9 +2319,10 @@ const FileUploadField = ({ currentFileId, currentUrl, currentName, onChange, acc
     event.target.value = '';
     setUploading(true);
     setError('');
+    setUploadProgress({ stage: 'preparing' });
     try {
       const { api } = await import('../../src/lib/apiClient.js');
-      const uploaded = await api.uploadFile(file, category, { visibility });
+      const uploaded = await api.uploadFile(file, category, { visibility, onProgress: setUploadProgress });
       setFileName(uploaded.original_filename || file.name);
       setFileUrl(uploaded.url || '');
       setStaged(true);
@@ -1850,11 +2344,19 @@ const FileUploadField = ({ currentFileId, currentUrl, currentName, onChange, acc
           {fileUrl ? <a href={fileUrl} target="_blank" rel="noreferrer">Open uploaded file</a> : null}
           {help ? <p>{help}</p> : null}
         </div>
-        <button type="button" className="btn btn-outline-navy btn-sm" onClick={() => inputRef.current?.click()} disabled={uploading}>
-          {uploading ? 'Uploading...' : fileName || currentFileId ? 'Replace file' : 'Upload file'}
+        <button type="button" className="btn btn-outline-navy btn-sm" onClick={() => inputRef.current?.click()} disabled={uploading} aria-busy={uploading}>
+          <AsyncButtonContent pending={uploading} pendingLabel="Uploading file...">{fileName || currentFileId ? 'Replace file' : 'Upload file'}</AsyncButtonContent>
         </button>
       </div>
       <input ref={inputRef} type="file" accept={accept} style={{ display: 'none' }} onChange={handleSelect} />
+      {uploading && uploadProgress ? (
+        <ProgressStatus
+          label={`Uploading ${fileName || 'file'}`}
+          stage={uploadProgress.stage === 'processing' ? 'Upload finished. Saving the file securely' : 'Uploading file securely'}
+          detail={uploadProgress.total ? `${formatImportBytes(uploadProgress.loaded)} of ${formatImportBytes(uploadProgress.total)}` : ''}
+          percent={uploadProgress.stage === 'uploading' ? uploadProgress.percent : undefined}
+        />
+      ) : null}
       {staged && <p className="admin-image-help">File uploaded. Save changes to attach it to this resource.</p>}
       {error && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: 4 }}>{error}</p>}
     </div>
@@ -2335,7 +2837,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate, onAuto
         ))}
       </div>
       <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 12, alignItems: 'center' }}>
-        <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving...' : (initialItem ? 'Save Changes' : config.createLabel)}</button>
+        <button className="btn btn-primary" type="submit" disabled={saving} aria-busy={saving}><AsyncButtonContent pending={saving} pendingLabel={initialItem ? 'Saving changes...' : 'Creating record...'}>{initialItem ? 'Save Changes' : config.createLabel}</AsyncButtonContent></button>
         <button className="btn btn-outline-navy" type="button" onClick={onCancel}>Cancel</button>
         {onAutoSave && <span className="managed-form-autosave-indicator" aria-live="polite">
           {autoSaveStatus === 'saving' && <span>Saving draft…</span>}
@@ -2986,14 +3488,14 @@ const ProductImportPanel = ({ onImported, onClose }) => {
             aria-label="Product import progress"
             aria-valuemin="0"
             aria-valuemax="100"
-            aria-valuenow={progress.percent || 0}
+            aria-valuenow={progress.stage === 'uploading' ? (progress.percent || 0) : undefined}
           >
             <span style={{ width: `${progress.percent || 0}%` }} />
           </div>
         </div>
       ) : null}
 
-      {status ? <p className="product-import-status" data-type={status.type}>{status.message}</p> : null}
+      {status ? <p className="product-import-status" data-type={status.type} role={status.type === 'error' ? 'alert' : 'status'} aria-live="polite">{status.message}</p> : null}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {importMode === 'images' ? (
           imagesPreview ? (
@@ -3001,11 +3503,11 @@ const ProductImportPanel = ({ onImported, onClose }) => {
               className="btn btn-primary btn-sm"
               disabled={importing || imagesPreviewing || selectedImageMatchCount === 0}
             >
-              {importing
-                ? (progress?.stage === 'processing' ? 'Processing...' : `Uploading ${progress?.percent || 0}%`)
-                : (selectedImageMatchCount > 0
+              <AsyncButtonContent pending={importing} pendingLabel={progress?.stage === 'processing' ? 'Processing images' : `Uploading images ${progress?.percent || 0}%`}>
+                {selectedImageMatchCount > 0
                   ? `Replace ${selectedImageMatchCount} Product ${selectedImageMatchCount === 1 ? 'Image' : 'Images'}`
-                  : 'Update Product Images')}
+                  : 'Update Product Images'}
+              </AsyncButtonContent>
             </button>
           ) : (
             <button
@@ -3014,7 +3516,7 @@ const ProductImportPanel = ({ onImported, onClose }) => {
               disabled={importing || imagesPreviewing || !imagesZip}
               onClick={() => reviewImages(imagesZip)}
             >
-              Review Image Updates
+              <AsyncButtonContent pending={imagesPreviewing} pendingLabel="Reviewing image updates">Review Image Updates</AsyncButtonContent>
             </button>
           )
         ) : (
@@ -3022,7 +3524,9 @@ const ProductImportPanel = ({ onImported, onClose }) => {
             className="btn btn-primary btn-sm"
             disabled={importing || previewing || !preview || !mapping.name || (preview.conflicts?.length > 0 && selectedConflictCount === 0)}
           >
-            {importing ? (progress?.stage === 'processing' ? 'Processing...' : `Uploading ${progress?.percent || 0}%`) : (selectedConflictCount > 0 ? `Overwrite ${selectedConflictCount} Products` : 'Import Products')}
+            <AsyncButtonContent pending={importing} pendingLabel={progress?.stage === 'processing' ? 'Processing products' : `Uploading products ${progress?.percent || 0}%`}>
+              {selectedConflictCount > 0 ? `Overwrite ${selectedConflictCount} Products` : 'Import Products'}
+            </AsyncButtonContent>
           </button>
         )}
         <button className="btn btn-outline-navy btn-sm" type="button" disabled={importing} onClick={onClose}>Close</button>
@@ -3033,49 +3537,91 @@ const ProductImportPanel = ({ onImported, onClose }) => {
 
 const ContactsView = ({ session }) => {
   const [filters, setFilters] = React.useState({ q: '', source: '', page: 1, page_size: 25 });
+  const [debouncedQuery, setDebouncedQuery] = React.useState('');
   const [data, setData] = React.useState({ items: [], summary: {}, pagination: {} });
   const [selected, setSelected] = React.useState(null);
   const [draft, setDraft] = React.useState({ full_name: '', email: '', phone: '' });
   const [emailDraft, setEmailDraft] = React.useState({ subject: '', message: '' });
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(isApiMode());
+  const [loadError, setLoadError] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
+  const [openingContactId, setOpeningContactId] = React.useState(null);
   const [notice, setNotice] = React.useState('');
+  const requestIdRef = React.useRef(0);
   const canCreate = hasSessionPermission(session, 'contacts.create');
   const canEdit = hasSessionPermission(session, 'contacts.edit');
   const canEmail = hasSessionPermission(session, 'contacts.email');
   const canCampaign = hasSessionPermission(session, 'newsletters.create');
 
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedQuery(filters.q.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [filters.q]);
+
+  const appliedFilters = React.useMemo(
+    () => ({ ...filters, q: debouncedQuery }),
+    [debouncedQuery, filters.page, filters.page_size, filters.source]
+  );
+
   const load = React.useCallback(async () => {
     if (!isApiMode()) return;
+    const requestId = ++requestIdRef.current;
     setLoading(true);
-    try { setData(await api.adminContacts(filters)); }
-    catch (err) { setNotice(err.message || 'Could not load contacts.'); }
-    finally { setLoading(false); }
-  }, [filters]);
+    setLoadError('');
+    try {
+      const result = await api.adminContacts(appliedFilters);
+      if (requestId === requestIdRef.current) setData(result);
+    } catch (err) {
+      if (requestId === requestIdRef.current) setLoadError(err.message || 'Could not load contacts.');
+    } finally {
+      if (requestId === requestIdRef.current) setLoading(false);
+    }
+  }, [appliedFilters]);
   React.useEffect(() => { load(); }, [load]);
 
   const openContact = async id => {
+    if (openingContactId) return;
+    setOpeningContactId(id);
     try {
       const result = await api.adminContact(id);
       setSelected(result.item);
       setDraft({ full_name: result.item.full_name || '', email: result.item.email, phone: result.item.phone || '' });
-    } catch (err) { setNotice(err.message || 'Could not load this contact.'); }
+    } catch (err) {
+      setNotice(err.message || 'Could not load this contact.');
+    } finally {
+      setOpeningContactId(null);
+    }
   };
   const save = async event => {
     event.preventDefault();
+    if (saving) return;
+    setSaving(true);
     try {
       if (selected?.id) await api.adminUpdateContact(selected.id, draft);
       else await api.adminCreateContact(draft);
       setSelected(null); setNotice('Contact saved.'); await load();
-    } catch (err) { setNotice(err.message || 'Could not save the contact.'); }
+    } catch (err) {
+      setNotice(err.message || 'Could not save the contact.');
+    } finally {
+      setSaving(false);
+    }
   };
   const send = async event => {
     event.preventDefault();
+    if (sending) return;
+    setSending(true);
     try {
       await api.adminSendContactEmail(selected.id, { ...emailDraft, idempotency_key: crypto.randomUUID() });
       setEmailDraft({ subject: '', message: '' }); setNotice('Email accepted for delivery.'); await openContact(selected.id);
-    } catch (err) { setNotice(err.message || 'Could not send the email.'); }
+    } catch (err) {
+      setNotice(err.message || 'Could not send the email.');
+    } finally {
+      setSending(false);
+    }
   };
   const summary = data.summary || {};
+  const initialLoading = loading && data.items.length === 0;
   return <div className="admin-view">
     <div className="admin-page-header">
       <div><p className="overline">Audience directory</p><h1>Contacts</h1><p>One deduplicated view of teachers, customers, subscribers, schools, and enquiries.</p></div>
@@ -3088,19 +3634,21 @@ const ContactsView = ({ session }) => {
       <input className="form-input" value={filters.q} onChange={e => setFilters(p => ({ ...p, q: e.target.value, page: 1 }))} placeholder="Search name, email, or phone" />
       <select className="form-select" value={filters.source} onChange={e => setFilters(p => ({ ...p, source: e.target.value, page: 1 }))}><option value="">All sources</option>{['teacher','bookshop','newsletter','school','enquiry','client','admin_added'].map(x => <option key={x}>{x}</option>)}</select>
     </div>
-    {notice && <p className="admin-image-help">{notice}</p>}
+    {notice && <InlineStatus>{notice}</InlineStatus>}
+    {loading && data.items.length > 0 && <RefreshingIndicator label="Updating contacts" />}
+    {loadError && data.items.length > 0 && <ErrorState compact message={loadError} onRetry={load} />}
     <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>Contact</th><th>Phone</th><th>Sources</th><th>Last activity</th></tr></thead><tbody>
-      {loading ? <tr><td colSpan="4">Loading contacts…</td></tr> : data.items.map(row => <tr key={row.id} onClick={() => openContact(row.id)} style={{ cursor: 'pointer' }}><td><strong>{row.full_name || 'Unnamed contact'}</strong><br/><small>{row.email}</small></td><td>{row.phone || '-'}</td><td>{row.sources.map(x => x.source).join(', ')}</td><td>{row.last_activity_at ? new Date(row.last_activity_at).toLocaleDateString() : '-'}</td></tr>)}
+      {initialLoading ? <tr><td colSpan="4"><ContentSkeleton variant="table" count={5} /></td></tr> : loadError && data.items.length === 0 ? <tr><td colSpan="4"><ErrorState compact message={loadError} onRetry={load} /></td></tr> : data.items.map(row => <tr key={row.id} onClick={() => openContact(row.id)} aria-busy={openingContactId === row.id} style={{ cursor: openingContactId ? 'wait' : 'pointer' }}><td><strong>{row.full_name || 'Unnamed contact'}</strong>{openingContactId === row.id && <RefreshingIndicator label="Opening" />}<br/><small>{row.email}</small></td><td>{row.phone || '-'}</td><td>{row.sources.map(x => x.source).join(', ')}</td><td>{row.last_activity_at ? new Date(row.last_activity_at).toLocaleDateString() : '-'}</td></tr>)}
     </tbody></table></div>
     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}><button className="btn btn-outline-navy btn-sm" disabled={!data.pagination?.has_prev} onClick={() => setFilters(p => ({ ...p, page: p.page - 1 }))}>Previous</button><span>Page {data.pagination?.page || 1} of {data.pagination?.pages || 1}</span><button className="btn btn-outline-navy btn-sm" disabled={!data.pagination?.has_next} onClick={() => setFilters(p => ({ ...p, page: p.page + 1 }))}>Next</button></div>
-    {canCampaign && <NewsletterComposer onSent={load} />}
-    {selected && ReactDOM.createPortal(<div className="admin-modal-backdrop" onMouseDown={e => e.target === e.currentTarget && setSelected(null)}><div className="admin-modal"><div className="admin-modal-header"><h2>{selected.id ? 'Contact details' : 'Add contact'}</h2><button onClick={() => setSelected(null)}>×</button></div><form className="admin-form-grid" onSubmit={save}>
+    {canCampaign && <LegacyNewsletterComposer onSent={load} />}
+    {selected && ReactDOM.createPortal(<div className="admin-modal-backdrop" onMouseDown={e => e.target === e.currentTarget && !saving && !sending && setSelected(null)}><div className="admin-modal"><div className="admin-modal-header"><h2>{selected.id ? 'Contact details' : 'Add contact'}</h2><button disabled={saving || sending} onClick={() => setSelected(null)}>×</button></div><form className="admin-form-grid" onSubmit={save} aria-busy={saving}>
       <label className="form-group"><span className="form-label">Name</span><input className="form-input" value={draft.full_name} disabled={selected.id && !canEdit} onChange={e => setDraft(p => ({ ...p, full_name: e.target.value }))}/></label>
       <label className="form-group"><span className="form-label">Email</span><input className="form-input" type="email" value={draft.email} disabled={Boolean(selected.id)} onChange={e => setDraft(p => ({ ...p, email: e.target.value }))}/></label>
       <label className="form-group"><span className="form-label">Phone</span><input className="form-input" value={draft.phone} disabled={selected.id && !canEdit} onChange={e => setDraft(p => ({ ...p, phone: e.target.value }))}/></label>
-      {(!selected.id || canEdit) && <button className="btn btn-primary btn-sm">Save</button>}
+      {(!selected.id || canEdit) && <button className="btn btn-primary btn-sm" disabled={saving || sending}><AsyncButtonContent pending={saving} pendingLabel="Saving contact">Save</AsyncButtonContent></button>}
     </form>{selected.id && <><p><strong>Sources:</strong> {(selected.sources || []).map(x => x.source).join(', ') || 'None'}</p>
-      {canEmail && <form className="admin-reply-panel" onSubmit={send}><h3>Send an official RealMindX email</h3><p>This operational message uses the platform's branded letterhead.</p><input className="form-input" required placeholder="Subject" value={emailDraft.subject} onChange={e => setEmailDraft(p => ({ ...p, subject: e.target.value }))}/><textarea className="form-textarea" required rows="5" placeholder="Message" value={emailDraft.message} onChange={e => setEmailDraft(p => ({ ...p, message: e.target.value }))}/><button className="btn btn-primary btn-sm">Send email</button></form>}
+      {canEmail && <form className="admin-reply-panel" onSubmit={send} aria-busy={sending}><h3>Send an official RealMindX email</h3><p>This operational message uses the platform's branded letterhead.</p><input className="form-input" required placeholder="Subject" value={emailDraft.subject} disabled={sending} onChange={e => setEmailDraft(p => ({ ...p, subject: e.target.value }))}/><textarea className="form-textarea" required rows="5" placeholder="Message" value={emailDraft.message} disabled={sending} onChange={e => setEmailDraft(p => ({ ...p, message: e.target.value }))}/><button className="btn btn-primary btn-sm" disabled={sending || saving}><AsyncButtonContent pending={sending} pendingLabel="Sending email">Send email</AsyncButtonContent></button></form>}
       <h3>Email history</h3>{(selected.emails || []).map(item => <p key={item.id}><strong>{item.subject}</strong> - {item.status}<br/><small>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</small></p>)}</>}
     </div></div>, document.body)}
   </div>;
@@ -3147,8 +3695,10 @@ const NewsletterWorkspace = ({ onSent }) => {
   const [contacts, setContacts] = React.useState([]);
   const [selected, setSelected] = React.useState(new Set());
   const [filters, setFilters] = React.useState({ q: '', source: '' });
+  const [debouncedAudienceQuery, setDebouncedAudienceQuery] = React.useState('');
   const [history, setHistory] = React.useState([]);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(isApiMode());
+  const [audienceError, setAudienceError] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [previewing, setPreviewing] = React.useState(false);
   const [preview, setPreview] = React.useState(null);
@@ -3172,6 +3722,7 @@ const NewsletterWorkspace = ({ onSent }) => {
   const draftVersion = React.useRef(0);
   const latestFormRef = React.useRef(form);
   const latestSelectedRef = React.useRef(selected);
+  const audienceRequestIdRef = React.useRef(0);
   const DRAFT_STORAGE_KEY = 'realmindx_newsletter_draft';
 
   React.useEffect(() => { latestFormRef.current = form; }, [form]);
@@ -3295,12 +3846,31 @@ const NewsletterWorkspace = ({ onSent }) => {
     return () => { if (draftTimer.current) clearTimeout(draftTimer.current); };
   }, [form, selected]);
 
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedAudienceQuery(filters.q.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [filters.q]);
+
+  const appliedAudienceFilters = React.useMemo(
+    () => ({ ...filters, q: debouncedAudienceQuery }),
+    [debouncedAudienceQuery, filters.source]
+  );
+
   const loadAudience = React.useCallback(async () => {
     if (!isApiMode()) return;
-    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString();
-    try { setContacts((await api.adminListWithQuery('newsletters/audience', query)).items || []); }
-    catch (err) { setError(err.message || 'Could not load contacts.'); }
-  }, [filters]);
+    const requestId = ++audienceRequestIdRef.current;
+    const query = new URLSearchParams(Object.entries(appliedAudienceFilters).filter(([, value]) => value)).toString();
+    setLoading(true);
+    setAudienceError('');
+    try {
+      const nextContacts = (await api.adminListWithQuery('newsletters/audience', query)).items || [];
+      if (requestId === audienceRequestIdRef.current) setContacts(nextContacts);
+    } catch (err) {
+      if (requestId === audienceRequestIdRef.current) setAudienceError(err.message || 'Could not load contacts.');
+    } finally {
+      if (requestId === audienceRequestIdRef.current) setLoading(false);
+    }
+  }, [appliedAudienceFilters]);
   const loadHistory = React.useCallback(async () => {
     if (!isApiMode()) return;
     try { setHistory((await api.adminList('newsletters/campaigns')).items || []); }
@@ -3318,13 +3888,17 @@ const NewsletterWorkspace = ({ onSent }) => {
   React.useEffect(() => {
     if (!sendingCampaign || sendingCampaign.status !== 'sending') return;
     let active = true;
+    let pollInFlight = false;
     const poll = async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       try {
         const data = await api.adminNewsletterCampaignRecipients(sendingCampaign.id);
         if (!active) return;
         if (data.campaign) setSendingCampaign(prev => prev ? { ...prev, ...data.campaign } : prev);
         setSendingProgress(data.recipients || []);
       } catch { /* retry next tick */ }
+      finally { pollInFlight = false; }
     };
     poll();
     const timer = setInterval(poll, 3000);
@@ -3543,7 +4117,7 @@ const NewsletterWorkspace = ({ onSent }) => {
     )}
     {error && <div className="newsletter-error">{error}</div>}
 
-    {sendingCampaign ? <div className="newsletter-sending-progress">
+    {sendingCampaign ? <div className="newsletter-sending-progress" role="status" aria-live="polite" aria-busy={sendingCampaign.status === 'sending'}>
       <div className="newsletter-sending-head">
         <div>
           {sendingCampaign.status === 'sending' && <span className="newsletter-sending-spinner" aria-hidden="true" />}
@@ -3603,10 +4177,12 @@ const NewsletterWorkspace = ({ onSent }) => {
       </div>
       <div className="newsletter-groups-bar">
         <div className="newsletter-group-load"><span className="form-label">Groups</span><select className="form-select" value="" onChange={event => { const val = event.target.value; if (val) loadGroupIntoSelection(Number(val)); }}><option value="">Load a saved group…</option>{contactGroups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.member_count})</option>)}</select></div>
-        {selected.size > 0 && <div className="newsletter-group-save"><input className="form-input" value={groupName} onChange={event => setGroupName(event.target.value)} placeholder="Group name" onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveSelectionAsGroup(); } }} /><button type="button" className="btn btn-outline-navy btn-sm" disabled={savingGroup || !groupName.trim()} onClick={saveSelectionAsGroup}>{savingGroup ? 'Saving…' : `Save ${selected.size} as group`}</button></div>}
+        {selected.size > 0 && <div className="newsletter-group-save"><input className="form-input" value={groupName} onChange={event => setGroupName(event.target.value)} placeholder="Group name" onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveSelectionAsGroup(); } }} /><button type="button" className="btn btn-outline-navy btn-sm" disabled={savingGroup || !groupName.trim()} onClick={saveSelectionAsGroup}><AsyncButtonContent pending={savingGroup} pendingLabel="Saving group">Save {selected.size} as group</AsyncButtonContent></button></div>}
       </div>
       <div className="newsletter-audience-meta"><span><strong>{contacts.length}</strong> contacts shown · <strong>{eligibleContacts.length}</strong> {isSms ? 'with valid phone numbers' : 'eligible'}</span><span className={selected.size ? 'has-selection' : ''}><strong>{selected.size}</strong> selected</span></div>
-      <div className="newsletter-contact-grid">{contacts.map(contact => {
+      {loading && contacts.length > 0 ? <RefreshingIndicator label="Updating audience" /> : null}
+      {audienceError ? <ErrorState compact message={audienceError} onRetry={loadAudience} /> : null}
+      <div className="newsletter-contact-grid">{loading && contacts.length === 0 ? <ContentSkeleton variant="list" count={6} /> : null}{!loading && !audienceError && contacts.length === 0 ? <div className="newsletter-empty"><h3>No matching contacts</h3><p>Try a different search or contact source.</p></div> : null}{contacts.map(contact => {
         const source = (contact.sources || [])[0]?.source || 'contact';
         const name = contact.full_name || contact.email;
         const initials = name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
@@ -3641,18 +4217,18 @@ const NewsletterWorkspace = ({ onSent }) => {
             <Icon name="search" size={16}/>
             <input type="search" value={recipientSearch} onChange={event => setRecipientSearch(event.target.value)} placeholder={recipientCampaign.channel === 'sms' ? 'Search recipient phone' : 'Search recipient email'} aria-label={recipientCampaign.channel === 'sms' ? 'Search recipient phone' : 'Search recipient email'} autoComplete="off" />
           </label>}
-          {loadingRecipients ? <div className="newsletter-recipients-loading">Loading recipient results…</div> : !recipientDetails?.details_available ? <div className="newsletter-recipients-unavailable"><h3>Recipient-level results unavailable</h3><p>This historical campaign predates recipient-level tracking, and its aggregate outcome cannot be mapped safely to individual addresses.</p></div> : <div className="newsletter-recipient-columns">
+          {loadingRecipients ? <div className="newsletter-recipients-loading"><ContentSkeleton variant="table" count={7} label="Loading recipient results" /></div> : !recipientDetails?.details_available ? <div className="newsletter-recipients-unavailable"><h3>Recipient-level results unavailable</h3><p>This historical campaign predates recipient-level tracking, and its aggregate outcome cannot be mapped safely to individual addresses.</p></div> : <div className="newsletter-recipient-columns">
             <section className="newsletter-recipient-column is-success">
               <div className="newsletter-recipient-column-head"><div><h3>Successful</h3><span>{normalizedRecipientSearch ? `${successfulRecipients.length}/${successfulRecipientTotal}` : successfulRecipientTotal}</span></div></div>
               <div className="newsletter-recipient-table" role="table" aria-label="Successful campaign recipients">{successfulRecipients.length ? successfulRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id}><div role="cell"><strong>{recipient.destination || recipient.email || recipient.phone}</strong><small>{statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div></div>) : <p className="newsletter-recipient-empty">{normalizedRecipientSearch ? 'No successful recipients match your search.' : 'No successful recipients.'}</p>}</div>
             </section>
             {uncertainRecipientTotal > 0 && <section className="newsletter-recipient-column is-uncertain">
-              <div className="newsletter-recipient-column-head"><div><h3>Uncertain</h3><span>{normalizedRecipientSearch ? `${uncertainRecipients.length}/${uncertainRecipientTotal}` : uncertainRecipientTotal}</span></div><button type="button" className="btn btn-sm newsletter-resend-all" disabled={Boolean(resendingRecipient)} onClick={resendAllFailed}>{resendingRecipient === 'all' ? 'Resending…' : 'Resend all'}</button></div>
-              <div className="newsletter-recipient-table" role="table" aria-label="Uncertain campaign recipients">{uncertainRecipients.length ? uncertainRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id}><div role="cell"><strong>{recipient.destination || recipient.email || recipient.phone}</strong><small>{recipient.error_message || statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div><button type="button" className="btn btn-outline-navy btn-sm" disabled={Boolean(resendingRecipient)} onClick={() => resendRecipient(recipient.id)}>{resendingRecipient === recipient.id ? 'Resending…' : 'Resend'}</button></div>) : <p className="newsletter-recipient-empty">{normalizedRecipientSearch ? 'No uncertain recipients match your search.' : 'No uncertain recipients.'}</p>}</div>
+              <div className="newsletter-recipient-column-head"><div><h3>Uncertain</h3><span>{normalizedRecipientSearch ? `${uncertainRecipients.length}/${uncertainRecipientTotal}` : uncertainRecipientTotal}</span></div><button type="button" className="btn btn-sm newsletter-resend-all" disabled={Boolean(resendingRecipient)} onClick={resendAllFailed}><AsyncButtonContent pending={resendingRecipient === 'all'} pendingLabel="Resending recipients">Resend all</AsyncButtonContent></button></div>
+              <div className="newsletter-recipient-table" role="table" aria-label="Uncertain campaign recipients">{uncertainRecipients.length ? uncertainRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id} aria-busy={resendingRecipient === recipient.id}><div role="cell"><strong>{recipient.destination || recipient.email || recipient.phone}</strong><small>{recipient.error_message || statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div><button type="button" className="btn btn-outline-navy btn-sm" disabled={Boolean(resendingRecipient)} onClick={() => resendRecipient(recipient.id)}><AsyncButtonContent pending={resendingRecipient === recipient.id} pendingLabel="Resending">Resend</AsyncButtonContent></button></div>) : <p className="newsletter-recipient-empty">{normalizedRecipientSearch ? 'No uncertain recipients match your search.' : 'No uncertain recipients.'}</p>}</div>
             </section>}
             <section className="newsletter-recipient-column is-failed">
-              <div className="newsletter-recipient-column-head"><div><h3>Failed</h3><span>{normalizedRecipientSearch ? `${failedRecipients.length}/${failedRecipientTotal}` : failedRecipientTotal}</span></div>{uncertainRecipientTotal === 0 && <button type="button" className="btn btn-sm newsletter-resend-all" disabled={!recipientRows.some(recipient => !recipient.successful && ['disabled','failed','rejected','expired'].includes(recipient.status)) || Boolean(resendingRecipient)} onClick={resendAllFailed}>{resendingRecipient === 'all' ? 'Resending…' : 'Resend all'}</button>}</div>
-              <div className="newsletter-recipient-table" role="table" aria-label="Failed campaign recipients">{failedRecipients.length ? failedRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id}><div role="cell"><strong>{recipient.destination || recipient.email || recipient.phone}</strong><small>{recipient.error_message || statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div><button type="button" className="btn btn-outline-navy btn-sm" disabled={!['disabled','failed','rejected','expired'].includes(recipient.status) || Boolean(resendingRecipient)} onClick={() => resendRecipient(recipient.id)}>{resendingRecipient === recipient.id ? 'Resending…' : 'Resend'}</button></div>) : <p className="newsletter-recipient-empty">{normalizedRecipientSearch ? 'No failed recipients match your search.' : 'No failed recipients.'}</p>}</div>
+              <div className="newsletter-recipient-column-head"><div><h3>Failed</h3><span>{normalizedRecipientSearch ? `${failedRecipients.length}/${failedRecipientTotal}` : failedRecipientTotal}</span></div>{uncertainRecipientTotal === 0 && <button type="button" className="btn btn-sm newsletter-resend-all" disabled={!recipientRows.some(recipient => !recipient.successful && ['disabled','failed','rejected','expired'].includes(recipient.status)) || Boolean(resendingRecipient)} onClick={resendAllFailed}><AsyncButtonContent pending={resendingRecipient === 'all'} pendingLabel="Resending recipients">Resend all</AsyncButtonContent></button>}</div>
+              <div className="newsletter-recipient-table" role="table" aria-label="Failed campaign recipients">{failedRecipients.length ? failedRecipients.map(recipient => <div className="newsletter-recipient-row" role="row" key={recipient.id} aria-busy={resendingRecipient === recipient.id}><div role="cell"><strong>{recipient.destination || recipient.email || recipient.phone}</strong><small>{recipient.error_message || statusLabel(recipient.status)} · {recipient.attempt_count} attempt{recipient.attempt_count === 1 ? '' : 's'}</small></div><button type="button" className="btn btn-outline-navy btn-sm" disabled={!['disabled','failed','rejected','expired'].includes(recipient.status) || Boolean(resendingRecipient)} onClick={() => resendRecipient(recipient.id)}><AsyncButtonContent pending={resendingRecipient === recipient.id} pendingLabel="Resending">Resend</AsyncButtonContent></button></div>) : <p className="newsletter-recipient-empty">{normalizedRecipientSearch ? 'No failed recipients match your search.' : 'No failed recipients.'}</p>}</div>
             </section>
           </div>}
         </section>
@@ -3662,8 +4238,8 @@ const NewsletterWorkspace = ({ onSent }) => {
     </>}
     {preview && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-preview-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPreview(null); }}><section className={`admin-modal-panel newsletter-preview-modal is-${preview.device}`} role="dialog" aria-modal="true" aria-label={`${preview.device} newsletter preview`}><button className="admin-modal-close" type="button" onClick={() => setPreview(null)} aria-label="Close"><Icon name="x" size={16}/></button><header className="newsletter-preview-head"><div><p className="overline">{preview.device} preview</p><h2>{preview.subject || 'Newsletter preview'}</h2><p>{preview.brand === 'bookshop' ? 'RealMindX Bookshop letterhead' : 'RealMindX Education letterhead'}</p></div><div className="newsletter-preview-switch"><button type="button" className={preview.device === 'mobile' ? 'active' : ''} onClick={() => setPreview(p => ({ ...p, device: 'mobile' }))}><Icon name="mobile" size={17}/> Phone</button><button type="button" className={preview.device === 'desktop' ? 'active' : ''} onClick={() => setPreview(p => ({ ...p, device: 'desktop' }))}><Icon name="monitor" size={17}/> Desktop</button></div></header><div className="newsletter-preview-stage"><iframe title="Newsletter email preview" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={preview.html}/></div></section></div>, document.body)}
     {smsPreview && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-preview-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSmsPreview(null); }}><section className="admin-modal-panel newsletter-sms-preview-modal" role="dialog" aria-modal="true" aria-label="SMS campaign preview"><button className="admin-modal-close" type="button" onClick={() => setSmsPreview(null)} aria-label="Close"><Icon name="x" size={16}/></button><p className="overline">SMS campaign</p><h2>{smsPreview.subject}</h2><div className="newsletter-sms-phone-preview"><div className="newsletter-sms-phone-head"><span>{smsPreview.sender}</span><small>{smsCharacterMetrics(smsPreview.content?.message || '').segments} SMS part{smsCharacterMetrics(smsPreview.content?.message || '').segments === 1 ? '' : 's'}</small></div><p>{smsPreview.content?.message}</p></div><div className="newsletter-sms-preview-meta"><span>{smsCharacterMetrics(smsPreview.content?.message || '').characters} characters</span><span>{smsCharacterMetrics(smsPreview.content?.message || '').encoding}</span><span>{smsPreview.recipient_count} recipients</span></div></section></div>, document.body)}
-    {deletingCampaign && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-delete-backdrop" role="presentation" onMouseDown={event => { if (!deleting && event.target === event.currentTarget) setDeletingCampaign(null); }}><section className="admin-modal-panel newsletter-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="newsletter-delete-title"><div className="newsletter-delete-icon"><Icon name="trash" size={22}/></div><p className="overline">Delete history record</p><h2 id="newsletter-delete-title">Delete this campaign?</h2><p><strong>{deletingCampaign.subject}</strong> will be removed from campaign history. Contacts, subscribers, communication attempts, uploaded images, and audit records will not be deleted.</p><div className="newsletter-delete-actions"><button type="button" className="btn btn-outline-navy" disabled={deleting} onClick={() => setDeletingCampaign(null)}>Keep campaign</button><button type="button" className="btn newsletter-delete-confirm" disabled={deleting} onClick={deleteCampaign}>{deleting ? 'Deleting…' : 'Delete campaign'}</button></div></section></div>, document.body)}
-    {!sendingCampaign && tab === 'audience' && <div className="newsletter-sendbar"><div><strong>{isSms ? selected.size + manualSmsRecipientCount : selected.size || 'No'} recipient{(isSms ? selected.size + manualSmsRecipientCount : selected.size) === 1 ? '' : 's'} selected</strong><small>{isSms ? `${smsMetrics.segments || 0} SMS part${smsMetrics.segments === 1 ? '' : 's'} per recipient · provider acceptance will be tracked` : 'Review this audience before sending.'}</small></div><button className="btn btn-primary" disabled={sending}>{sending ? 'Sending…' : isSms ? 'Send SMS campaign' : 'Send newsletter'}</button></div>}
+    {deletingCampaign && ReactDOM.createPortal(<div className="admin-modal-backdrop newsletter-delete-backdrop" role="presentation" onMouseDown={event => { if (!deleting && event.target === event.currentTarget) setDeletingCampaign(null); }}><section className="admin-modal-panel newsletter-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="newsletter-delete-title"><div className="newsletter-delete-icon"><Icon name="trash" size={22}/></div><p className="overline">Delete history record</p><h2 id="newsletter-delete-title">Delete this campaign?</h2><p><strong>{deletingCampaign.subject}</strong> will be removed from campaign history. Contacts, subscribers, communication attempts, uploaded images, and audit records will not be deleted.</p><div className="newsletter-delete-actions"><button type="button" className="btn btn-outline-navy" disabled={deleting} onClick={() => setDeletingCampaign(null)}>Keep campaign</button><button type="button" className="btn newsletter-delete-confirm" disabled={deleting} onClick={deleteCampaign}><AsyncButtonContent pending={deleting} pendingLabel="Deleting campaign">Delete campaign</AsyncButtonContent></button></div></section></div>, document.body)}
+    {!sendingCampaign && tab === 'audience' && <div className="newsletter-sendbar"><div><strong>{isSms ? selected.size + manualSmsRecipientCount : selected.size || 'No'} recipient{(isSms ? selected.size + manualSmsRecipientCount : selected.size) === 1 ? '' : 's'} selected</strong><small>{isSms ? `${smsMetrics.segments || 0} SMS part${smsMetrics.segments === 1 ? '' : 's'} per recipient · provider acceptance will be tracked` : 'Review this audience before sending.'}</small></div><button className="btn btn-primary" disabled={sending}><AsyncButtonContent pending={sending} pendingLabel={isSms ? 'Starting SMS campaign' : 'Sending newsletter'}>{isSms ? 'Send SMS campaign' : 'Send newsletter'}</AsyncButtonContent></button></div>}
   </form>;
 };
 
@@ -3681,31 +4257,43 @@ const LegacyNewsletterComposer = ({ onSent }) => {
     manual_recipients: '',
   });
   const [audienceFilters, setAudienceFilters] = React.useState({ q: '', source: '' });
+  const [debouncedAudienceQuery, setDebouncedAudienceQuery] = React.useState('');
   const [contacts, setContacts] = React.useState([]);
   const [selectedContacts, setSelectedContacts] = React.useState(new Set());
-  const [loadingAudience, setLoadingAudience] = React.useState(false);
+  const [loadingAudience, setLoadingAudience] = React.useState(isApiMode());
   const [imageUrl, setImageUrl] = React.useState('');
   const [status, setStatus] = React.useState('');
   const [sending, setSending] = React.useState(false);
+  const audienceRequestIdRef = React.useRef(0);
   const set = key => event => setForm(prev => ({ ...prev, [key]: event.target.value }));
   const setFilter = key => event => setAudienceFilters(prev => ({ ...prev, [key]: event.target.value }));
 
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedAudienceQuery(audienceFilters.q.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [audienceFilters.q]);
+  const appliedAudienceFilters = React.useMemo(
+    () => ({ ...audienceFilters, q: debouncedAudienceQuery }),
+    [audienceFilters.source, debouncedAudienceQuery]
+  );
+
   const fetchAudience = React.useCallback(async () => {
     if (!isApiMode()) return;
+    const requestId = ++audienceRequestIdRef.current;
     setLoadingAudience(true);
     try {
       const sp = new URLSearchParams();
-      Object.entries(audienceFilters).forEach(([key, value]) => {
+      Object.entries(appliedAudienceFilters).forEach(([key, value]) => {
         if (value) sp.set(key, value);
       });
       const data = await api.adminListWithQuery('newsletters/audience', sp.toString());
-      setContacts(data.items || []);
+      if (requestId === audienceRequestIdRef.current) setContacts(data.items || []);
     } catch (err) {
-      setStatus(err.message || 'Could not load contacts.');
+      if (requestId === audienceRequestIdRef.current) setStatus(err.message || 'Could not load contacts.');
     } finally {
-      setLoadingAudience(false);
+      if (requestId === audienceRequestIdRef.current) setLoadingAudience(false);
     }
-  }, [audienceFilters]);
+  }, [appliedAudienceFilters]);
 
   React.useEffect(() => {
     fetchAudience();
@@ -3848,7 +4436,9 @@ const LegacyNewsletterComposer = ({ onSent }) => {
               <button type="button" className="btn btn-outline-navy btn-sm" onClick={selectVisible}>Select visible</button>
             </div>
             <div className="newsletter-contact-list">
-              {loadingAudience ? <p>Loading contacts...</p> : contacts.slice(0, 80).map(contact => (
+              {loadingAudience && contacts.length === 0 ? <ContentSkeleton variant="list" count={5} /> : null}
+              {loadingAudience && contacts.length > 0 ? <RefreshingIndicator label="Updating contacts" /> : null}
+              {!loadingAudience && contacts.length === 0 ? <p>No contacts match these filters.</p> : contacts.slice(0, 80).map(contact => (
                 <label key={contact.id} className="newsletter-contact-row">
                   <input
                     type="checkbox"
@@ -3871,8 +4461,8 @@ const LegacyNewsletterComposer = ({ onSent }) => {
           </div>
         </div>
       </div>
-      {status && <p style={{ color: status.includes('could not') || status.includes('Add ') ? 'var(--danger)' : 'var(--navy)', fontWeight: 700 }}>{status}</p>}
-      <button className="btn btn-primary btn-sm" disabled={sending}>{sending ? 'Sending...' : 'Send Newsletter'}</button>
+      {status && <InlineStatus tone={status.includes('could not') || status.includes('Add ') ? 'error' : 'info'}>{status}</InlineStatus>}
+      <button className="btn btn-primary btn-sm" disabled={sending}><AsyncButtonContent pending={sending} pendingLabel="Sending newsletter">Send Newsletter</AsyncButtonContent></button>
     </form>
   );
 };
@@ -3936,7 +4526,7 @@ const OrderStatusSelector = ({ row, options, requireCancelReason, onSave }) => {
         </select>
         {dirty && (
           <button className="btn btn-primary btn-sm" style={{ padding:'3px 10px', fontSize:'0.75rem', height:30 }} disabled={saving} onClick={save}>
-            {saving ? '…' : 'Save'}
+            <AsyncButtonContent pending={saving} pendingLabel="Saving status">Save</AsyncButtonContent>
           </button>
         )}
       </div>
@@ -3968,13 +4558,17 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
   const [productUrl, setProductUrl] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [pendingAction, setPendingAction] = React.useState('');
+  const [openingId, setOpeningId] = React.useState(null);
   const [confirmAvailable, setConfirmAvailable] = React.useState(false);
   const [addressedNote, setAddressedNote] = React.useState('');
   const [confirmAddressed, setConfirmAddressed] = React.useState(false);
   const [error, setError] = React.useState('');
+  const requestIdRef = React.useRef(0);
 
   const load = React.useCallback(async () => {
     if (!open) return;
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setError('');
     try {
@@ -3982,13 +4576,17 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
       if (status) params.set('status', status);
       if (query.trim()) params.set('q', query.trim());
       const response = await api.adminBookRequests(params.toString());
+      if (requestId !== requestIdRef.current) return;
       setItems(response.items || []);
       setPages(Math.max(1, response.pages || 1));
       setTotal(response.total || 0);
       setPendingCount(response.pending_count || 0);
       onPendingCount?.(response.pending_count || 0);
-    } catch (err) { setError(err?.message || 'Could not load book requests.'); }
-    finally { setLoading(false); }
+    } catch (err) {
+      if (requestId === requestIdRef.current) setError(err?.message || 'Could not load book requests.');
+    } finally {
+      if (requestId === requestIdRef.current) setLoading(false);
+    }
   }, [open, onPendingCount, page, pageSize, query, status]);
 
   React.useEffect(() => { const timer = setTimeout(load, query ? 250 : 0); return () => clearTimeout(timer); }, [load, query]);
@@ -3997,14 +4595,16 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
   if (!open) return null;
 
   const openDetail = async row => {
-    setLoading(true); setError('');
+    if (openingId) return;
+    setOpeningId(row.id); setError('');
     try { setSelected((await api.adminBookRequest(row.id)).request); setProductUrl(row.product_url || ''); setConfirmAvailable(false); setAddressedNote(row.addressed_note || ''); setConfirmAddressed(false); }
     catch (err) { setError(err?.message || 'Could not open this request.'); }
-    finally { setLoading(false); }
+    finally { setOpeningId(null); }
   };
   const markAvailable = async () => {
     if (!productUrl.trim()) { setError('Paste the published RealMindX Bookshop product link.'); return; }
-    setBusy(true); setError('');
+    if (busy) return;
+    setBusy(true); setPendingAction('notify'); setError('');
     try {
       const response = await api.adminMarkBookRequestAvailable(selected.id, { product_url: productUrl.trim() });
       setSelected((await api.adminBookRequest(response.request.id)).request);
@@ -4012,19 +4612,21 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
       await load();
       onToast({ type: 'success', message: `The client for ${response.request.reference} was notified that the book is available.` });
     } catch (err) { setError(err?.message || 'Could not mark this request available.'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setPendingAction(''); }
   };
   const retryNotification = async () => {
-    setBusy(true); setError('');
+    if (busy) return;
+    setBusy(true); setPendingAction('retry'); setError('');
     try {
       const response = await api.adminRetryBookRequestNotification(selected.id);
       setSelected((await api.adminBookRequest(response.request.id)).request);
       onToast({ type: 'success', message: 'The failed notification channel was retried.' });
     } catch (err) { setError(err?.message || 'Could not retry the notification.'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setPendingAction(''); }
   };
   const markAddressed = async () => {
-    setBusy(true); setError('');
+    if (busy) return;
+    setBusy(true); setPendingAction('address'); setError('');
     try {
       const response = await api.adminMarkBookRequestAddressed(selected.id, { note: addressedNote.trim() || undefined });
       setSelected((await api.adminBookRequest(response.request.id)).request);
@@ -4032,19 +4634,19 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
       await load();
       onToast({ type: 'success', message: `${response.request.reference} was marked addressed.` });
     } catch (err) { setError(err?.message || 'Could not mark this request addressed.'); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setPendingAction(''); }
   };
   const channelLabel = value => ({ sent: 'Sent', failed: 'Failed', unavailable: 'Not supplied' }[value] || 'Pending');
 
   return ReactDOM.createPortal(
-    <div className="admin-modal-backdrop book-requests-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="admin-modal-backdrop book-requests-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
       <section className="admin-modal-panel book-requests-modal" role="dialog" aria-modal="true" aria-label="Book requests">
-        <button className="admin-modal-close" type="button" onClick={onClose}><Icon name="x" size={16} /><span>Close</span></button>
+        <button className="admin-modal-close" type="button" disabled={busy} onClick={onClose}><Icon name="x" size={16} /><span>Close</span></button>
         <div className="book-requests-heading">
           <div><p className="overline">Bookshop sourcing</p><h2>{selected ? selected.reference : 'Book Requests'}</h2><p>{selected ? selected.requested_title : 'Requests from clients who could not find a book.'}</p></div>
           {!selected && <span className="book-request-count">{pendingCount} pending</span>}
         </div>
-        {error && <p className="form-error book-request-admin-error">{error}</p>}
+        {error && <ErrorState compact message={error} onRetry={!selected ? load : undefined} />}
         {selected ? (
           <div className="book-request-detail">
             <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => { setSelected(null); setProductUrl(''); }}>Back to requests</button>
@@ -4060,16 +4662,18 @@ const BookRequestsModal = ({ open, onClose, session, onToast, onPendingCount }) 
               <span>Availability SMS: <strong>{channelLabel(selected.availability_notification?.sms)}</strong></span>
             </div>
             {selected.history?.length > 0 && <div className="book-request-history"><h3>Request history</h3>{selected.history.map(event => <div key={event.id}><span>{event.action}</span><time>{new Date(event.created_at).toLocaleString()}</time></div>)}</div>}
-            {selected.status === 'pending' && canManage && <div className="book-request-available"><label><span>Published product link</span><input value={productUrl} onChange={event => { setProductUrl(event.target.value); setConfirmAvailable(false); }} placeholder="https://bookshop.realmindxgh.com/products/..." /></label>{confirmAvailable ? <div className="book-request-confirm"><strong>Notify this client now?</strong><span>Email and SMS will use this product link.</span><div><button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={markAvailable}>{busy ? 'Notifying...' : 'Confirm and notify'}</button><button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setConfirmAvailable(false)}>Cancel</button></div></div> : <button className="btn btn-primary" type="button" onClick={() => { if (!productUrl.trim()) setError('Paste the published RealMindX Bookshop product link.'); else { setError(''); setConfirmAvailable(true); } }}>Available Now</button>}</div>}
-            {selected.status === 'pending' && canManage && <div className="book-request-addressed"><label><span>Addressed note (optional)</span><textarea value={addressedNote} onChange={event => { setAddressedNote(event.target.value); setConfirmAddressed(false); }} placeholder="How was this request handled? (e.g. sourced privately, client declined, out of print)"></textarea></label>{confirmAddressed ? <div className="book-request-confirm"><strong>Mark this request addressed?</strong><span>It will be removed from the pending queue and the daily stale digest.</span><div><button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={markAddressed}>{busy ? 'Saving...' : 'Mark addressed'}</button><button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setConfirmAddressed(false)}>Cancel</button></div></div> : <button className="btn btn-outline-navy" type="button" onClick={() => { setConfirmAddressed(true); setError(''); }}>Mark addressed</button>}</div>}
+            {selected.status === 'pending' && canManage && <div className="book-request-available"><label><span>Published product link</span><input value={productUrl} disabled={busy} onChange={event => { setProductUrl(event.target.value); setConfirmAvailable(false); }} placeholder="https://bookshop.realmindxgh.com/products/..." /></label>{confirmAvailable ? <div className="book-request-confirm"><strong>Notify this client now?</strong><span>Email and SMS will use this product link.</span><div><button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={markAvailable}><AsyncButtonContent pending={pendingAction === 'notify'} pendingLabel="Notifying client">Confirm and notify</AsyncButtonContent></button><button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={() => setConfirmAvailable(false)}>Cancel</button></div></div> : <button className="btn btn-primary" type="button" onClick={() => { if (!productUrl.trim()) setError('Paste the published RealMindX Bookshop product link.'); else { setError(''); setConfirmAvailable(true); } }}>Available Now</button>}</div>}
+            {selected.status === 'pending' && canManage && <div className="book-request-addressed"><label><span>Addressed note (optional)</span><textarea value={addressedNote} disabled={busy} onChange={event => { setAddressedNote(event.target.value); setConfirmAddressed(false); }} placeholder="How was this request handled? (e.g. sourced privately, client declined, out of print)"></textarea></label>{confirmAddressed ? <div className="book-request-confirm"><strong>Mark this request addressed?</strong><span>It will be removed from the pending queue and the daily stale digest.</span><div><button className="btn btn-primary btn-sm" type="button" disabled={busy} onClick={markAddressed}><AsyncButtonContent pending={pendingAction === 'address'} pendingLabel="Marking addressed">Mark addressed</AsyncButtonContent></button><button className="btn btn-outline-navy btn-sm" type="button" disabled={busy} onClick={() => setConfirmAddressed(false)}>Cancel</button></div></div> : <button className="btn btn-outline-navy" type="button" onClick={() => { setConfirmAddressed(true); setError(''); }}>Mark addressed</button>}</div>}
             {selected.status === 'addressed' && selected.addressed_note && <div className="book-request-note"><span>Addressed note</span><p>{selected.addressed_note}</p></div>}
-            {selected.status === 'available' && canManage && ['failed'].some(value => [selected.availability_notification?.email, selected.availability_notification?.sms].includes(value)) && <button className="btn btn-primary" type="button" disabled={busy} onClick={retryNotification}>{busy ? 'Retrying...' : 'Retry failed notification'}</button>}
+            {selected.status === 'available' && canManage && ['failed'].some(value => [selected.availability_notification?.email, selected.availability_notification?.sms].includes(value)) && <button className="btn btn-primary" type="button" disabled={busy} onClick={retryNotification}><AsyncButtonContent pending={pendingAction === 'retry'} pendingLabel="Retrying notification">Retry failed notification</AsyncButtonContent></button>}
           </div>
         ) : (
           <>
             <div className="book-request-tools"><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search reference, title, or client" /><select value={status} onChange={event => setStatus(event.target.value)}><option value="">All statuses</option><option value="pending">Pending</option><option value="available">Available</option><option value="addressed">Addressed</option></select><label>Rows <select value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[5, 10, 20, 50, 100].map(value => <option key={value}>{value}</option>)}</select></label></div>
             <div className="book-request-list" aria-busy={loading}>
-              {loading && items.length === 0 ? <p className="book-request-empty">Loading requests...</p> : items.map(row => <button type="button" className="book-request-row" key={row.id} onClick={() => openDetail(row)}><span><strong>{row.requested_title}</strong><small>{row.reference} · {row.customer_name}</small></span><span><strong>{({ pending: 'Pending', available: 'Available', addressed: 'Addressed' })[row.status] || 'Pending'}</strong><small>{row.created_at ? new Date(row.created_at).toLocaleDateString() : ''}</small></span></button>)}
+              {loading && items.length === 0 ? <ContentSkeleton variant="list" count={6} /> : null}
+              {loading && items.length > 0 ? <RefreshingIndicator label="Updating book requests" /> : null}
+              {items.map(row => <button type="button" className="book-request-row" key={row.id} disabled={Boolean(openingId)} aria-busy={openingId === row.id} onClick={() => openDetail(row)}><span><strong>{row.requested_title}</strong><small>{row.reference} · {row.customer_name}</small></span><span><strong>{openingId === row.id ? 'Opening request' : (({ pending: 'Pending', available: 'Available', addressed: 'Addressed' })[row.status] || 'Pending')}</strong><small>{row.created_at ? new Date(row.created_at).toLocaleDateString() : ''}</small></span></button>)}
               {!loading && items.length === 0 && <p className="book-request-empty">No book requests match this view.</p>}
             </div>
             <div className="book-request-pagination"><span>{total} request{total === 1 ? '' : 's'}</span><div><button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</button><strong>Page {page} of {pages}</strong><button type="button" disabled={page >= pages} onClick={() => setPage(value => value + 1)}>Next</button></div></div>
@@ -4087,6 +4691,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [replying, setReplying] = React.useState(null);
   const [replyText, setReplyText] = React.useState('');
   const [replyError, setReplyError] = React.useState('');
+  const [replySending, setReplySending] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [filterStatus, setFilterStatus] = React.useState('');
   const [productCategory, setProductCategory] = React.useState('');
@@ -4107,6 +4712,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [showProductImport, setShowProductImport] = React.useState(false);
   const [showProductActions, setShowProductActions] = React.useState(false);
   const [showBookRequests, setShowBookRequests] = React.useState(false);
+  const [showCreateOrder, setShowCreateOrder] = React.useState(false);
   const [showNewsletterSubscribers, setShowNewsletterSubscribers] = React.useState(false);
   const [pendingBookRequests, setPendingBookRequests] = React.useState(0);
   const [actionStatus, setActionStatus] = React.useState(null);
@@ -4130,10 +4736,27 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [companyDetail, setCompanyDetail] = React.useState(null);
   const [companyDetailError, setCompanyDetailError] = React.useState('');
   const [companyDetailBusy, setCompanyDetailBusy] = React.useState(false);
+  const [companyDetailAction, setCompanyDetailAction] = React.useState('');
   const [companyManagerForm, setCompanyManagerForm] = React.useState({ name: '', phone: '' });
   const [companyDetailTab, setCompanyDetailTab] = React.useState('overview');
   const [companyRiderDetail, setCompanyRiderDetail] = React.useState(null);
   const [companyRiderDetailBusy, setCompanyRiderDetailBusy] = React.useState(false);
+  const [pendingActionKeys, setPendingActionKeys] = React.useState(() => new Set());
+  const pendingActionKeysRef = React.useRef(new Set());
+
+  const rowActionKey = (action, row) => `${action}:${config.idField ? row?.[config.idField] : row?.id}`;
+  const isRowActionPending = (action, row) => pendingActionKeys.has(rowActionKey(action, row));
+  const runRowAction = async (key, operation) => {
+    if (pendingActionKeysRef.current.has(key)) return undefined;
+    pendingActionKeysRef.current.add(key);
+    setPendingActionKeys(new Set(pendingActionKeysRef.current));
+    try {
+      return await operation();
+    } finally {
+      pendingActionKeysRef.current.delete(key);
+      setPendingActionKeys(new Set(pendingActionKeysRef.current));
+    }
+  };
 
   // In API mode: fetch on mount; in local mode: use rowsProp from parent.
   React.useEffect(() => {
@@ -4240,19 +4863,21 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   };
 
   const resetInternalAccountPassword = async (row) => {
-    setActionStatus(null);
-    try {
-      const result = await api.adminResetInternalPassword(config.collection, getItemId(row));
-      const temporaryPassword = result?.temporary_password || '';
-      const copied = await copyTextToClipboard(temporaryPassword);
-      await fetchCollection(config.collection, { force: true });
-      setActionStatus({
-        type: 'success',
-        message: `Temporary password ${temporaryPassword}${copied ? ' was copied to the clipboard' : ' is ready to share'}. The account must change it on next sign-in.`,
-      });
-    } catch (err) {
-      setActionStatus({ type: 'error', message: err?.message || 'Could not reset the account password.' });
-    }
+    return runRowAction(rowActionKey('reset-password', row), async () => {
+      setActionStatus(null);
+      try {
+        const result = await api.adminResetInternalPassword(config.collection, getItemId(row));
+        const temporaryPassword = result?.temporary_password || '';
+        const copied = await copyTextToClipboard(temporaryPassword);
+        await fetchCollection(config.collection, { force: true });
+        setActionStatus({
+          type: 'success',
+          message: `Temporary password ${temporaryPassword}${copied ? ' was copied to the clipboard' : ' is ready to share'}. The account must change it on next sign-in.`,
+        });
+      } catch (err) {
+        setActionStatus({ type: 'error', message: err?.message || 'Could not reset the account password.' });
+      }
+    });
   };
 
   const getItemId = (row) => config.idField ? row[config.idField] : row.id;
@@ -4289,6 +4914,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   }, [actionStatus]);
 
   const [confirmModal, setConfirmModal] = React.useState(null); // { row, onConfirm }
+  const [deletePending, setDeletePending] = React.useState(false);
 
   const handleDelete = (row, onConfirm) => {
     setConfirmModal({ row, onConfirm });
@@ -4298,7 +4924,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     if (!confirmModal) return;
     const { row, onConfirm } = confirmModal;
     const label = labelForRow(row);
-    setConfirmModal(null);
+    setDeletePending(true);
     setActionStatus(null);
     try {
       if (onConfirm) {
@@ -4306,14 +4932,26 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       } else {
         await deleteItem(config.collection, getItemId(row));
       }
+      setConfirmModal(null);
       setActionStatus({ type: 'success', message: `Deleted ${label}.` });
     } catch (err) {
       setActionStatus({ type: 'error', message: err?.message || `Could not delete ${label}.` });
+    } finally {
+      setDeletePending(false);
     }
   };
 
-  const togglePublish = (row) => {
-    apiToggle(config.collection, row);
+  const togglePublish = async (row) => {
+    const nextLabel = row.status === 'published' || row.status === 'active' ? 'Unpublished' : 'Published';
+    return runRowAction(rowActionKey('publish', row), async () => {
+      setActionStatus(null);
+      try {
+        await apiToggle(config.collection, row);
+        setActionStatus({ type: 'success', message: `${nextLabel} ${labelForRow(row)}.` });
+      } catch (err) {
+        setActionStatus({ type: 'error', message: err?.message || `Could not update ${labelForRow(row)}.` });
+      }
+    });
   };
 
   const handleReply = async () => {
@@ -4322,26 +4960,32 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       return;
     }
     setReplyError('');
-    if (isApiMode()) {
-      await api.adminReplyMessage(replying.id, replyText.trim());
-      await fetchCollection(config.collection);
-    } else {
-      await updateItem(config.collection, getItemId(replying), { status: 'replied', reply: replyText.trim() });
+    setReplySending(true);
+    try {
+      if (isApiMode()) {
+        await api.adminReplyMessage(replying.id, replyText.trim());
+        await fetchCollection(config.collection, { force: true });
+      } else {
+        await updateItem(config.collection, getItemId(replying), { status: 'replied', reply: replyText.trim() });
+      }
+      setActionStatus({ type: 'success', message: `Reply sent to ${replying.email}.` });
+      setReplying(null);
+      setReplyText('');
+    } catch (err) {
+      setReplyError(err?.message || 'Could not send this reply. Your message is still here so you can try again.');
+    } finally {
+      setReplySending(false);
     }
-    setReplying(null);
-    setReplyText('');
   };
 
   const isLoading = isApiMode() && loading[config.collection];
   const loadError = isApiMode() && errors?.[config.collection];
-  const reloginPath = typeof window !== 'undefined' && window.location.pathname.startsWith('/staff')
-    ? loginPathForRole('staff')
-    : loginPathForRole('admin');
   const permissionKey = config.permissionKey || config.collection;
   const isDeliveryCompanies = config.collection === 'deliveryCompanies';
   const canManageDeliveryCompanies = hasSessionPermission(session, 'delivery.companies.manage');
   const canViewDeliveryCompanies = isDeliveryCompanies && (hasSessionPermission(session, 'delivery.view') || canManageDeliveryCompanies);
   const canCreate = config.allowCreate !== false && Boolean(config.createLabel) && (isDeliveryCompanies ? canManageDeliveryCompanies : hasSessionPermission(session, `${permissionKey}.create`));
+  const canCreateManualOrder = config.collection === 'orders' && isApiMode() && hasSessionPermission(session, 'orders.create');
   const canUpdate = config.allowEdit !== false && config.allowUpdate !== false && !config.readOnly && !config.statusOnly && !config.moderationOnly && (isDeliveryCompanies ? canManageDeliveryCompanies : hasSessionPermission(session, `${permissionKey}.edit`));
   const canDelete = config.allowDelete !== false && !config.readOnly && hasSessionPermission(session, `${permissionKey}.delete`);
   const canReply = config.collection === 'messages' && !config.readOnly && hasSessionPermission(session, `${permissionKey}.edit`);
@@ -4407,14 +5051,18 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [statusChoice, setStatusChoice] = React.useState('');
   const [cancelReason, setCancelReason] = React.useState('');
   const [statusError, setStatusError] = React.useState('');
+  const [statusSaving, setStatusSaving] = React.useState(false);
   const [settlementDetail, setSettlementDetail] = React.useState(null);
   const [settlementForm, setSettlementForm] = React.useState({ adjustment_amount: '', adjustment_reason: '', payment_reference: '', payment_date: '', payment_proof_url: '', resolution_note: '' });
+  const [settlementAction, setSettlementAction] = React.useState('');
 
   const openSettlementDetail = async row => {
     try { setSettlementDetail((await api.adminDeliverySettlement(row.id)).settlement); }
     catch (err) { setActionStatus({ type: 'error', message: err?.message || 'Could not open settlement.' }); }
   };
   const updateSettlementAction = async action => {
+    if (settlementAction) return;
+    setSettlementAction(action);
     try {
       let result;
       if (action === 'adjust') result = await api.adminAdjustDeliverySettlement(settlementDetail.id, { amount: settlementForm.adjustment_amount, reason: settlementForm.adjustment_reason });
@@ -4424,6 +5072,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       await fetchCollection('deliverySettlements', { force: true, silent: true });
       setActionStatus({ type: 'success', message: 'Settlement updated.' });
     } catch (err) { setActionStatus({ type: 'error', message: err?.message || 'Could not update settlement.' }); }
+    finally { setSettlementAction(''); }
   };
 
   const openStatusModal = (row) => {
@@ -4438,29 +5087,42 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     if (statusChoice === 'cancelled' && config.requireCancelReason && !cancelReason.trim()) {
       setStatusError('A reason is required for cancellation.'); return;
     }
-    const patch = { status: statusChoice };
-    if (statusChoice === 'cancelled' && cancelReason.trim()) patch.cancel_reason = cancelReason.trim();
-    await updateItem(config.collection, getItemId(statusModal.row), patch);
-    setStatusModal(null);
+    setStatusSaving(true);
+    setStatusError('');
+    try {
+      const patch = { status: statusChoice };
+      if (statusChoice === 'cancelled' && cancelReason.trim()) patch.cancel_reason = cancelReason.trim();
+      await updateItem(config.collection, getItemId(statusModal.row), patch);
+      setActionStatus({ type: 'success', message: `Updated ${labelForRow(statusModal.row)}.` });
+      setStatusModal(null);
+    } catch (err) {
+      setStatusError(err?.message || 'Could not update this status.');
+    } finally {
+      setStatusSaving(false);
+    }
   };
 
   const handleArchive = async (row) => {
-    try {
-      await updateItem(config.collection, getItemId(row), { archived: true, status: 'archived' });
-      setActionStatus({ type: 'success', message: `Archived ${labelForRow(row)}.` });
-    } catch (err) {
-      setActionStatus({ type: 'error', message: err?.message || `Could not archive ${labelForRow(row)}.` });
-    }
+    return runRowAction(rowActionKey('archive', row), async () => {
+      try {
+        await updateItem(config.collection, getItemId(row), { archived: true, status: 'archived' });
+        setActionStatus({ type: 'success', message: `Archived ${labelForRow(row)}.` });
+      } catch (err) {
+        setActionStatus({ type: 'error', message: err?.message || `Could not archive ${labelForRow(row)}.` });
+      }
+    });
   };
 
   // Moderation shortcut for reviews
   const handleModerate = async (row, decision) => {
-    try {
-      await updateItem(config.collection, getItemId(row), { status: decision });
-      setActionStatus({ type: 'success', message: `${decision === 'approved' ? 'Approved' : 'Rejected'} ${labelForRow(row)}.` });
-    } catch (err) {
-      setActionStatus({ type: 'error', message: err?.message || `Could not update ${labelForRow(row)}.` });
-    }
+    return runRowAction(rowActionKey(decision, row), async () => {
+      try {
+        await updateItem(config.collection, getItemId(row), { status: decision });
+        setActionStatus({ type: 'success', message: `${decision === 'approved' ? 'Approved' : 'Rejected'} ${labelForRow(row)}.` });
+      } catch (err) {
+        setActionStatus({ type: 'error', message: err?.message || `Could not update ${labelForRow(row)}.` });
+      }
+    });
   };
 
   const openDeliveryAssign = (row) => {
@@ -4617,6 +5279,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       return;
     }
     setCompanyDetailBusy(true);
+    setCompanyDetailAction('create-manager');
     setCompanyDetailError('');
     try {
       const result = await api.adminCreateDeliveryCompanyManager(companyDetail.company.id, companyManagerForm);
@@ -4629,11 +5292,13 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       setCompanyDetailError(err?.message || 'Could not create company manager.');
     } finally {
       setCompanyDetailBusy(false);
+      setCompanyDetailAction('');
     }
   };
 
   const resetCompanyManagerPassword = async (managerId) => {
     setCompanyDetailBusy(true);
+    setCompanyDetailAction(`reset-manager:${managerId}`);
     setCompanyDetailError('');
     try {
       const result = await api.adminResetCompanyUserPassword(managerId);
@@ -4645,6 +5310,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       setCompanyDetailError(err?.message || 'Could not reset company manager password.');
     } finally {
       setCompanyDetailBusy(false);
+      setCompanyDetailAction('');
     }
   };
 
@@ -4730,6 +5396,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
     if (config.collection === 'orders') {
       if (column === 'order_reference') return <button className="admin-order-reference" type="button" onClick={() => setOrderDetail(row)}>{row.order_reference}</button>;
+      if (['total_amount', 'amount_paid', 'balance_due'].includes(column)) return <span className={isPrimary ? 'td-primary' : ''}>{ledgerMoneyValue(row[column])}</span>;
+      if (column === 'payment_status') return <span className={`badge ${row.payment_status === 'paid' ? 'badge-success' : 'badge-warning'}`}>{statusLabel(row.payment_status || 'unpaid')}</span>;
       if (column === 'delivery_company') return <span>{row.delivery?.company_name || 'Unassigned'}</span>;
       if (column === 'delivery_rider') return <span>{row.delivery?.rider_name || '-'}</span>;
       if (column === 'delivery_status') {
@@ -4814,6 +5482,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           {config.collection === 'products' && hasSessionPermission(session, 'bookRequests.view') && (
             <button className="btn btn-primary btn-sm book-requests-button" type="button" onClick={() => setShowBookRequests(true)}>Book Requests{pendingBookRequests ? ` (${pendingBookRequests})` : ''}</button>
           )}
+          {canCreateManualOrder && (
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => setShowCreateOrder(true)}>Create Order</button>
+          )}
           {EXPORTABLE_PERMISSION_KEYS.has(config.collection) && isApiMode() && (
             <>
               {config.collection === 'products' && (
@@ -4868,13 +5539,21 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         </div>
       )}
       <BookRequestsModal open={config.collection === 'products' && showBookRequests} onClose={() => setShowBookRequests(false)} session={session} onToast={setActionStatus} onPendingCount={setPendingBookRequests} />
+      <AdminManualOrderModal
+        open={config.collection === 'orders' && showCreateOrder}
+        onClose={() => setShowCreateOrder(false)}
+        onCreated={async order => {
+          await fetchCollection('orders', { force: true });
+          setActionStatus({ type: 'success', message: `Created ${order?.order_reference || 'the order'} and processed customer notifications.` });
+        }}
+      />
 
       {config.collection === 'newsletters' && (
         <NewsletterWorkspace onSent={() => fetchCollection(config.collection)} />
       )}
 
       {actionStatus && ReactDOM.createPortal(
-        <div className="admin-toast" data-type={actionStatus.type}>
+        <div className="admin-toast" data-type={actionStatus.type} role={actionStatus.type === 'error' ? 'alert' : 'status'} aria-live={actionStatus.type === 'error' ? 'assertive' : 'polite'}>
           <span className="admin-toast-icon">{actionStatus.type === 'error' ? '✕' : '✓'}</span>
           <span className="admin-toast-msg">{actionStatus.message}</span>
           <button className="admin-toast-close" type="button" onClick={() => setActionStatus(null)} aria-label="Dismiss">✕</button>
@@ -4923,8 +5602,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           />
           {replyError && <p className="form-error">{replyError}</p>}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary btn-sm" type="button" onClick={handleReply}>Send Reply</button>
-            <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => { setReplying(null); setReplyText(''); setReplyError(''); }}>Cancel</button>
+            <button className="btn btn-primary btn-sm" type="button" onClick={handleReply} disabled={replySending} aria-busy={replySending}><AsyncButtonContent pending={replySending} pendingLabel="Sending reply...">Send Reply</AsyncButtonContent></button>
+            <button className="btn btn-outline-navy btn-sm" type="button" disabled={replySending} onClick={() => { setReplying(null); setReplyText(''); setReplyError(''); }}>Cancel</button>
           </div>
         </div>
       )}
@@ -4951,8 +5630,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             <button type="button" onClick={() => setProductCategory('')}>Category: {productCategory || 'All'} <Icon name="x" size={12} stroke={2} /></button>
             {(filterStatus || productCategory || search) && <button className="is-clear" type="button" onClick={() => { setFilterStatus(''); setProductCategory(''); setSearch(''); }}><Icon name="clock" size={13} stroke={2} /> Clear all</button>}
           </div>}
-          {loadError ? <EmptySection title="This section could not load" body="Please sign in again with the correct internal account." action="Open Sign In" onAction={() => { window.location.href = reloginPath; }} />
-            : isLoading ? <EmptySection title="Loading Bookshop Products" body="One moment while the latest catalogue loads." />
+          {loadError ? <ErrorState title="Bookshop products could not load" message={loadError} onRetry={() => fetchCollection(config.collection, { force: true })} />
+            : isLoading ? <ContentSkeleton variant="table" count={8} label="Loading Bookshop products" />
             : sorted.length === 0 ? <EmptySection title="No Bookshop Products Yet" body="Use Add Product to create the first catalogue item." action={createAction} onAction={canCreate ? () => setCreating(true) : undefined} />
             : <AdminTableScroll><table className="admin-table product-redesign-table">
               <thead><tr>
@@ -4964,7 +5643,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                 <td><div className="product-name-cell">{rowImageUrl(row) ? <img src={rowImageUrl(row)} alt="" loading="lazy" decoding="async" /> : <span className="product-cover-placeholder"><Icon name="book" size={20} /></span>}<span><strong>{row.name}</strong><small>{row.author ? `Author: ${row.author}` : row.short_description || `Product ID: ${row.id}`}</small></span></div></td>
                 <td>{row.category || 'Uncategorised'}</td><td>{row.curriculum || '-'}</td><td>{row.publisher || '-'}</td><td className="product-price-cell">GH₵{Number(row.price || 0).toFixed(2)}</td>
                 <td><span className={`product-stock-badge is-${row.stock_status || 'out_of_stock'}`}>{statusLabel(row.stock_status || 'out_of_stock')}</span></td><td className="admin-activity-date">{formatActivityDate(row.updated_at || row.created_at)}</td>
-                <td className="admin-actions-column"><div className="product-row-actions">{canUpdate && <button type="button" onClick={() => { setEditing(row); setCreating(false); }}><Icon name="edit" size={15} stroke={2} /> Edit</button>}<div className="product-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${row.name}`} onClick={() => setProductMenuId(current => current === row.id ? null : row.id)}><Icon name="more" size={18} /></button>{productMenuId === row.id && <div className="product-row-menu">{canPublish && <button type="button" onClick={() => { togglePublish(row); setProductMenuId(null); }}>{row.status === 'published' ? 'Unpublish' : 'Publish'}</button>}{canDelete && <button className="danger" type="button" onClick={() => { handleDelete(row); setProductMenuId(null); }}>Delete</button>}</div>}</div></div></td>
+                <td className="admin-actions-column"><div className="product-row-actions">{canUpdate && <button type="button" onClick={() => { setEditing(row); setCreating(false); }}><Icon name="edit" size={15} stroke={2} /> Edit</button>}<div className="product-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${row.name}`} onClick={() => setProductMenuId(current => current === row.id ? null : row.id)}><Icon name="more" size={18} /></button>{productMenuId === row.id && <div className="product-row-menu">{canPublish && <button type="button" disabled={isRowActionPending('publish', row)} onClick={async () => { await togglePublish(row); setProductMenuId(null); }}><AsyncButtonContent pending={isRowActionPending('publish', row)} pendingLabel={row.status === 'published' ? 'Unpublishing...' : 'Publishing...'}>{row.status === 'published' ? 'Unpublish' : 'Publish'}</AsyncButtonContent></button>}{canDelete && <button className="danger" type="button" onClick={() => { handleDelete(row); setProductMenuId(null); }}>Delete</button>}</div>}</div></div></td>
               </tr>)}</tbody>
             </table></AdminTableScroll>}
           {sorted.length > 0 && <footer className="product-table-footer"><span>Showing {(tablePage - 1) * tablePageSize + 1} to {Math.min(tablePage * tablePageSize, sorted.length)} of {sorted.length} results</span><div className="product-pagination"><button type="button" disabled={tablePage === 1} onClick={() => setTablePage(page => page - 1)}><Icon name="chevL" size={15} /></button>{Array.from({ length: totalTablePages }, (_, index) => index + 1).filter(page => totalTablePages <= 6 || page <= 4 || page === totalTablePages).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 ? <span>…</span> : null}<button className={page === tablePage ? 'is-active' : ''} type="button" onClick={() => setTablePage(page)}>{page}</button></React.Fragment>)}<button type="button" disabled={tablePage === totalTablePages} onClick={() => setTablePage(page => page + 1)}><Icon name="chevR" size={15} /></button></div></footer>}
@@ -5015,14 +5694,13 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
           </div>
         </div>
         {loadError ? (
-          <EmptySection
-            title="This section could not load"
-            body="Please sign in again with the correct internal account. If it still fails, the account may not have permission for this section."
-            action="Open Sign In"
-            onAction={() => { window.location.href = reloginPath; }}
+          <ErrorState
+            title={`${config.title} could not load`}
+            message={loadError}
+            onRetry={() => fetchCollection(config.collection, { force: true })}
           />
         ) : isLoading ? (
-          <EmptySection title={`Loading ${config.title}`} body="One moment while the latest records load." />
+          <ContentSkeleton variant="table" count={7} label={`Loading ${config.title}`} />
         ) : filtered.length === 0 ? (
           <EmptySection
             title={config.emptyTitle || `No ${config.title} Yet`}
@@ -5080,10 +5758,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                         )}
                         {canViewSettlements && <button className="table-action-btn" onClick={() => openSettlementDetail(row)}>View Settlement</button>}
                         {['admins', 'staff'].includes(config.collection) && canUpdate && (
-                          <button className="table-action-btn" onClick={() => resetInternalAccountPassword(row)}>Reset Password</button>
+                          <button className="table-action-btn" disabled={isRowActionPending('reset-password', row)} aria-busy={isRowActionPending('reset-password', row)} onClick={() => resetInternalAccountPassword(row)}><AsyncButtonContent pending={isRowActionPending('reset-password', row)} pendingLabel="Resetting...">Reset Password</AsyncButtonContent></button>
                         )}
                         {canReply && <button className="table-action-btn" onClick={() => { setReplying(row); setReplyText(''); setReplyError(''); setEditing(null); setCreating(false); }}>Reply</button>}
-                        {'status' in row && canPublish && <button className="table-action-btn" onClick={() => togglePublish(row)}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</button>}
+                        {'status' in row && canPublish && <button className="table-action-btn" disabled={isRowActionPending('publish', row)} aria-busy={isRowActionPending('publish', row)} onClick={() => togglePublish(row)}><AsyncButtonContent pending={isRowActionPending('publish', row)} pendingLabel={row.status === 'published' || row.status === 'active' ? 'Unpublishing...' : 'Publishing...'}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</AsyncButtonContent></button>}
 
                         {/* Status-only tables: inline status selector, with archive where enabled */}
                         {canStatusEdit && !row.delivery?.company_id && row.status !== 'archived' && (
@@ -5095,7 +5773,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                           />
                         )}
                         {canStatusEdit && allowArchive && row.status !== 'archived' && (
-                          <button className="table-action-btn" onClick={() => handleArchive(row)}>Archive</button>
+                          <button className="table-action-btn" disabled={isRowActionPending('archive', row)} aria-busy={isRowActionPending('archive', row)} onClick={() => handleArchive(row)}><AsyncButtonContent pending={isRowActionPending('archive', row)} pendingLabel="Archiving...">Archive</AsyncButtonContent></button>
                         )}
                         {canAssignDelivery && !['complete', 'cancelled', 'archived'].includes(row.status) && (
                           <button className="table-action-btn" onClick={() => openDeliveryAssign(row)}>
@@ -5108,10 +5786,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
                         {/* Product reviews: moderation only */}
                         {canModerate && row.status !== 'approved' && (
-                          <button className="table-action-btn" style={{ background:'#e6f4ea', color:'#1a6e33' }} onClick={() => handleModerate(row, 'approved')}>Approve</button>
+                          <button className="table-action-btn" style={{ background:'#e6f4ea', color:'#1a6e33' }} disabled={isRowActionPending('approved', row)} aria-busy={isRowActionPending('approved', row)} onClick={() => handleModerate(row, 'approved')}><AsyncButtonContent pending={isRowActionPending('approved', row)} pendingLabel="Approving...">Approve</AsyncButtonContent></button>
                         )}
                         {canModerate && row.status !== 'rejected' && (
-                          <button className="table-action-btn" style={{ background:'#fdf0f0', color:'#a63030' }} onClick={() => handleModerate(row, 'rejected')}>Reject</button>
+                          <button className="table-action-btn" style={{ background:'#fdf0f0', color:'#a63030' }} disabled={isRowActionPending('rejected', row)} aria-busy={isRowActionPending('rejected', row)} onClick={() => handleModerate(row, 'rejected')}><AsyncButtonContent pending={isRowActionPending('rejected', row)} pendingLabel="Rejecting...">Reject</AsyncButtonContent></button>
                         )}
 
                         {canDelete && <button className="table-action-btn danger" onClick={() => handleDelete(row)}>Delete</button>}
@@ -5136,18 +5814,19 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
       {orderDetail && (
         <div className="admin-receipt-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setOrderDetail(null)}>
-          <article className="admin-order-receipt" role="dialog" aria-modal="true" aria-label={`Order receipt ${orderDetail.order_reference}`}>
+          <article className="admin-order-receipt" role="dialog" aria-modal="true" aria-label={`Order ${orderDetail.order_reference}`}>
             <button className="admin-modal-close" type="button" onClick={() => setOrderDetail(null)} aria-label="Close"><Icon name="x" size={17} /></button>
-            <header><div className="admin-order-receipt-brand"><Icon name="receipt" size={26} /><div><span>RealMindX Bookshop</span><h2>Order Receipt</h2></div></div><div><strong>{orderDetail.order_reference}</strong><span>{orderDetail.created_at ? new Date(orderDetail.created_at).toLocaleString() : '-'}</span></div></header>
+            <header><div className="admin-order-receipt-brand"><Icon name="receipt" size={26} /><div><span>RealMindX Bookshop</span><h2>{orderDetail.payment_status === 'paid' ? 'Order Receipt' : 'Order Confirmation'}</h2></div></div><div><strong>{orderDetail.order_reference}</strong><span>{orderDetail.created_at ? new Date(orderDetail.created_at).toLocaleString() : '-'}</span></div></header>
             <section className="admin-order-receipt-summary">
               <div><span>Order status</span><strong>{statusLabel(orderDetail.status)}</strong></div>
               <div><span>Payment</span><strong>{statusLabel(orderDetail.payment_status || 'unknown')}</strong></div>
               <div><span>Fulfilment</span><strong>{statusLabel(orderDetail.delivery_method || 'pickup')}</strong></div>
-              <div><span>Total</span><strong>GHS {Number(orderDetail.total_amount || 0).toFixed(2)}</strong></div>
+              <div><span>Balance due</span><strong>GHS {Number(orderDetail.balance_due || 0).toFixed(2)}</strong></div>
             </section>
             <section className="admin-order-receipt-parties"><div><h3>Customer</h3><p><strong>{orderDetail.customer_name || '-'}</strong></p>{orderDetail.phone ? <p>{orderDetail.phone}</p> : null}{orderDetail.email ? <p>{orderDetail.email}</p> : null}{orderDetail.customer_sex ? <p>{statusLabel(orderDetail.customer_sex)} | {statusLabel(orderDetail.customer_age_range)}</p> : null}</div><div><h3>Fulfilment Details</h3><p><strong>{statusLabel(orderDetail.delivery_method || 'pickup')}</strong></p>{orderDetail.delivery_zone_name ? <p>{orderDetail.delivery_zone_name}</p> : null}{orderDetail.location ? <p>{orderDetail.location}</p> : null}{orderDetail.delivery_region ? <p>{orderDetail.delivery_region}</p> : null}{orderDetail.delivery?.company_name ? <p>{orderDetail.delivery.company_name}{orderDetail.delivery.rider_name ? ` | ${orderDetail.delivery.rider_name}` : ''}</p> : null}</div></section>
             <section><h3>Items</h3><div className="admin-order-receipt-items"><div className="head"><span>Item</span><span>Qty</span><span>Price</span><span>Amount</span></div>{(orderDetail.items || []).map((item, index) => <div key={`${item.product_id || index}-${item.product_name}`}><span>{item.product_name}</span><span>{item.quantity}</span><span>GHS {Number(item.unit_price || 0).toFixed(2)}</span><strong>GHS {(Number(item.unit_price || 0) * Number(item.quantity || 0)).toFixed(2)}</strong></div>)}</div></section>
-            <section className="admin-order-receipt-bottom"><div><h3>Payment Details</h3><p>Method: <strong>{statusLabel(orderDetail.payment_method || 'unknown')}</strong></p>{orderDetail.payment_provider ? <p>Provider: <strong>{statusLabel(orderDetail.payment_provider)}</strong></p> : null}{orderDetail.payment_reference ? <p>Reference: <strong>{orderDetail.payment_reference}</strong></p> : null}{orderDetail.invoice_id ? <p>Invoice: <strong>{orderDetail.invoice_id}</strong></p> : null}</div><dl><div><dt>Subtotal</dt><dd>GHS {Number(orderDetail.subtotal_amount != null ? orderDetail.subtotal_amount : Number(orderDetail.total_amount || 0) - Number(orderDetail.delivery_fee || 0)).toFixed(2)}</dd></div>{Number(orderDetail.bulk_discount_amount || 0) ? <div><dt>Bulk discount</dt><dd>- GHS {Number(orderDetail.bulk_discount_amount).toFixed(2)}</dd></div> : null}{Number(orderDetail.promo_discount_amount || 0) ? <div><dt>Promo {orderDetail.promo_code ? `(${orderDetail.promo_code})` : ''}</dt><dd>- GHS {Number(orderDetail.promo_discount_amount).toFixed(2)}</dd></div> : null}<div><dt>Delivery</dt><dd>GHS {Number(orderDetail.delivery_fee || 0).toFixed(2)}</dd></div><div className="total"><dt>Total</dt><dd>GHS {Number(orderDetail.total_amount || 0).toFixed(2)}</dd></div></dl></section>
+            <section className="admin-order-receipt-bottom"><div><h3>Payment Details</h3>{orderDetail.payment_option ? <p>Option: <strong>{statusLabel(orderDetail.payment_option)}</strong></p> : null}<p>Method: <strong>{statusLabel(orderDetail.payment_method || 'unknown')}</strong></p>{orderDetail.payment_provider ? <p>Provider: <strong>{statusLabel(orderDetail.payment_provider)}</strong></p> : null}{orderDetail.payment_reference ? <p>Reference: <strong>{orderDetail.payment_reference}</strong></p> : null}{orderDetail.invoice_id ? <p>Invoice: <strong>{orderDetail.invoice_id}</strong></p> : null}{orderDetail.created_by ? <p>Created by: <strong>{orderDetail.created_by}</strong></p> : null}</div><dl><div><dt>Subtotal</dt><dd>GHS {Number(orderDetail.subtotal_amount != null ? orderDetail.subtotal_amount : Number(orderDetail.total_amount || 0) - Number(orderDetail.delivery_fee || 0)).toFixed(2)}</dd></div>{Number(orderDetail.bulk_discount_amount || 0) ? <div><dt>Bulk discount</dt><dd>- GHS {Number(orderDetail.bulk_discount_amount).toFixed(2)}</dd></div> : null}{Number(orderDetail.promo_discount_amount || 0) ? <div><dt>Promo {orderDetail.promo_code ? `(${orderDetail.promo_code})` : ''}</dt><dd>- GHS {Number(orderDetail.promo_discount_amount).toFixed(2)}</dd></div> : null}<div><dt>Delivery</dt><dd>GHS {Number(orderDetail.delivery_fee || 0).toFixed(2)}</dd></div><div><dt>Total</dt><dd>GHS {Number(orderDetail.total_amount || 0).toFixed(2)}</dd></div><div><dt>Amount paid</dt><dd>GHS {Number(orderDetail.amount_paid || 0).toFixed(2)}</dd></div><div className="total"><dt>Balance due</dt><dd>GHS {Number(orderDetail.balance_due || 0).toFixed(2)}</dd></div></dl></section>
+            {orderDetail.notes ? <section><h3>Notes</h3><p>{orderDetail.notes}</p></section> : null}
             <p className="admin-order-bulk-notice">Buy 10+ copies of the same text book and enjoy 10% off.</p>
             <footer><span>Last activity: {orderDetail.updated_at ? new Date(orderDetail.updated_at).toLocaleString() : '-'}</span><button className="btn btn-outline-navy" type="button" onClick={() => setOrderDetail(null)}>Close</button></footer>
           </article>
@@ -5184,8 +5863,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             )}
             {statusError && <p style={{ color:'var(--danger)', fontSize:'0.8rem', marginBottom:12 }}>{statusError}</p>}
             <div style={{ display:'flex', gap:10 }}>
-              <button className="btn btn-primary" onClick={submitStatusChange}>Save Status</button>
-              <button className="btn btn-outline-navy" onClick={() => setStatusModal(null)}>Cancel</button>
+              <button className="btn btn-primary" disabled={statusSaving} aria-busy={statusSaving} onClick={submitStatusChange}><AsyncButtonContent pending={statusSaving} pendingLabel="Saving status...">Save Status</AsyncButtonContent></button>
+              <button className="btn btn-outline-navy" disabled={statusSaving} onClick={() => setStatusModal(null)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -5200,9 +5879,9 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             <div className="delivery-kpi-strip"><div><span>Book value</span><strong>GHS {Number(settlementDetail.book_subtotal || 0).toFixed(2)}</strong></div><div><span>Company payable</span><strong>GHS {Number(settlementDetail.company_payable || 0).toFixed(2)}</strong></div><div><span>Net</span><strong>GHS {Number(settlementDetail.net_balance || 0).toFixed(2)}</strong></div></div>
             <div className="settlement-line-list">{(settlementDetail.lines || []).map(line => <div key={line.id}><strong>{line.order_reference}</strong><span>{line.rider_name || '-'}</span><span>{line.delivery_location || '-'}</span><span>{statusLabel(line.payment_method)}</span><b>GHS {Number(line.net_balance || 0).toFixed(2)}</b></div>)}</div>
             <div className="delivery-modal-actions">{['csv','xlsx','pdf'].map(format => <a key={format} className="btn btn-outline-navy" href={api.adminDeliverySettlementExportUrl(settlementDetail.id, format)}>{format.toUpperCase()}</a>)}</div>
-            {hasSessionPermission(session, 'delivery.settlements.adjust') && settlementDetail.status !== 'settled' ? <div className="delivery-company-create-row"><input className="form-input" type="number" step="0.01" placeholder="Adjustment amount" value={settlementForm.adjustment_amount} onChange={event => setSettlementForm(current => ({ ...current, adjustment_amount: event.target.value }))} /><input className="form-input" placeholder="Required adjustment reason" value={settlementForm.adjustment_reason} onChange={event => setSettlementForm(current => ({ ...current, adjustment_reason: event.target.value }))} /><button className="btn btn-outline-navy" type="button" onClick={() => updateSettlementAction('adjust')}>Apply Adjustment</button></div> : null}
-            {hasSessionPermission(session, 'delivery.settlements.mark_paid') && settlementDetail.status !== 'settled' ? <div className="delivery-company-create-row"><input className="form-input" placeholder="Payment reference" value={settlementForm.payment_reference} onChange={event => setSettlementForm(current => ({ ...current, payment_reference: event.target.value }))} /><input className="form-input" type="date" value={settlementForm.payment_date} onChange={event => setSettlementForm(current => ({ ...current, payment_date: event.target.value }))} /><input className="form-input" type="url" placeholder="Payment proof link (optional)" value={settlementForm.payment_proof_url} onChange={event => setSettlementForm(current => ({ ...current, payment_proof_url: event.target.value }))} /><button className="btn btn-primary" type="button" onClick={() => updateSettlementAction('paid')}>Mark Settled</button></div> : null}
-            {settlementDetail.dispute_status === 'open' && hasSessionPermission(session, 'delivery.settlements.dispute_resolve') ? <div className="delivery-company-create-row"><input className="form-input" placeholder="Resolution notes" value={settlementForm.resolution_note} onChange={event => setSettlementForm(current => ({ ...current, resolution_note: event.target.value }))} /><button className="btn btn-primary" type="button" onClick={() => updateSettlementAction('resolve')}>Resolve Dispute</button></div> : null}
+            {hasSessionPermission(session, 'delivery.settlements.adjust') && settlementDetail.status !== 'settled' ? <div className="delivery-company-create-row"><input className="form-input" type="number" step="0.01" placeholder="Adjustment amount" value={settlementForm.adjustment_amount} onChange={event => setSettlementForm(current => ({ ...current, adjustment_amount: event.target.value }))} /><input className="form-input" placeholder="Required adjustment reason" value={settlementForm.adjustment_reason} onChange={event => setSettlementForm(current => ({ ...current, adjustment_reason: event.target.value }))} /><button className="btn btn-outline-navy" type="button" disabled={Boolean(settlementAction)} aria-busy={settlementAction === 'adjust'} onClick={() => updateSettlementAction('adjust')}><AsyncButtonContent pending={settlementAction === 'adjust'} pendingLabel="Applying adjustment...">Apply Adjustment</AsyncButtonContent></button></div> : null}
+            {hasSessionPermission(session, 'delivery.settlements.mark_paid') && settlementDetail.status !== 'settled' ? <div className="delivery-company-create-row"><input className="form-input" placeholder="Payment reference" value={settlementForm.payment_reference} onChange={event => setSettlementForm(current => ({ ...current, payment_reference: event.target.value }))} /><input className="form-input" type="date" value={settlementForm.payment_date} onChange={event => setSettlementForm(current => ({ ...current, payment_date: event.target.value }))} /><input className="form-input" type="url" placeholder="Payment proof link (optional)" value={settlementForm.payment_proof_url} onChange={event => setSettlementForm(current => ({ ...current, payment_proof_url: event.target.value }))} /><button className="btn btn-primary" type="button" disabled={Boolean(settlementAction)} aria-busy={settlementAction === 'paid'} onClick={() => updateSettlementAction('paid')}><AsyncButtonContent pending={settlementAction === 'paid'} pendingLabel="Recording settlement...">Mark Settled</AsyncButtonContent></button></div> : null}
+            {settlementDetail.dispute_status === 'open' && hasSessionPermission(session, 'delivery.settlements.dispute_resolve') ? <div className="delivery-company-create-row"><input className="form-input" placeholder="Resolution notes" value={settlementForm.resolution_note} onChange={event => setSettlementForm(current => ({ ...current, resolution_note: event.target.value }))} /><button className="btn btn-primary" type="button" disabled={Boolean(settlementAction)} aria-busy={settlementAction === 'resolve'} onClick={() => updateSettlementAction('resolve')}><AsyncButtonContent pending={settlementAction === 'resolve'} pendingLabel="Resolving dispute...">Resolve Dispute</AsyncButtonContent></button></div> : null}
           </section>
         </div>
       )}
@@ -5215,7 +5894,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             </button>
             <h3 style={{ fontFamily:"'Montserrat',sans-serif", color:'var(--navy)', marginBottom:8 }}>Delivery Company Details</h3>
             <p style={{ fontSize:'0.82rem', color:'var(--gray-600)', marginBottom:16 }}>{companyDetail.company?.name}</p>
-            {companyDetailError ? <p className="form-error">{companyDetailError}</p> : null}
+            {companyDetailError ? <ErrorState compact message={companyDetailError} /> : null}
+            {companyDetailBusy && !companyDetailAction ? <RefreshingIndicator label="Loading company details" /> : null}
             <div className="delivery-company-summary-grid">
               {[
                 ['Status', companyDetail.company?.is_active ? 'Active' : 'Inactive'],
@@ -5257,7 +5937,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                     <div><h4>Create Company Manager</h4><p>A unique temporary password is copied after creation and must be changed on first login.</p></div>
                     <input className="form-input" placeholder="Manager name" value={companyManagerForm.name} onChange={e => setCompanyManagerForm(prev => ({ ...prev, name: e.target.value }))} />
                     <input className="form-input" placeholder="Phone number" value={companyManagerForm.phone} onChange={e => setCompanyManagerForm(prev => ({ ...prev, phone: e.target.value }))} />
-                    <button className="btn btn-primary btn-sm" type="button" disabled={companyDetailBusy} onClick={createCompanyManager}>Create Manager</button>
+                    <button className="btn btn-primary btn-sm" type="button" disabled={companyDetailBusy} onClick={createCompanyManager}><AsyncButtonContent pending={companyDetailAction === 'create-manager'} pendingLabel="Creating manager">Create Manager</AsyncButtonContent></button>
                   </div>
                 )}
                 <div className="delivery-company-list">
@@ -5265,7 +5945,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                   {(companyDetail.managers || []).map(manager => (
                     <div className="delivery-company-person-row" key={manager.id}>
                       <div><strong>{manager.name}</strong><span>{manager.phone} | {manager.is_active ? 'Active' : 'Inactive'}{manager.must_change_password ? ' | Password change required' : ''} | Terms {manager.terms?.accepted ? `accepted ${manager.terms.accepted_at ? new Date(manager.terms.accepted_at).toLocaleString() : ''}` : 'pending'}</span></div>
-                      {canManageDeliveryCompanies && <button className="btn btn-outline-navy btn-sm" type="button" disabled={companyDetailBusy} onClick={() => resetCompanyManagerPassword(manager.id)}>Reset password</button>}
+                      {canManageDeliveryCompanies && <button className="btn btn-outline-navy btn-sm" type="button" disabled={companyDetailBusy} onClick={() => resetCompanyManagerPassword(manager.id)}><AsyncButtonContent pending={companyDetailAction === `reset-manager:${manager.id}`} pendingLabel="Resetting password">Reset password</AsyncButtonContent></button>}
                     </div>
                   ))}
                 </div>
@@ -5306,7 +5986,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                   <div><span>Rider Details</span><h4>{companyRiderDetail.rider?.name}</h4><p>{companyRiderDetail.rider?.phone} | {companyRiderDetail.rider?.is_active ? 'Active' : 'Inactive'} | Terms {companyRiderDetail.rider?.terms?.accepted ? `accepted (${companyRiderDetail.rider.terms.version})${companyRiderDetail.rider.terms.accepted_at ? ` on ${new Date(companyRiderDetail.rider.terms.accepted_at).toLocaleString()}` : ''}` : 'pending'}</p></div>
                   <button className="btn btn-outline-navy btn-sm" type="button" onClick={() => setCompanyRiderDetail(null)}>Back to Riders</button>
                 </div>
-                {companyRiderDetailBusy ? <p>Loading rider history...</p> : (
+                {companyRiderDetailBusy ? <ContentSkeleton variant="table" count={5} label="Loading rider history" /> : (
                   <div className="delivery-company-deliveries">
                     {(companyRiderDetail.deliveries || []).length === 0 ? <p>No deliveries have been assigned to this rider.</p> : null}
                     {(companyRiderDetail.deliveries || []).map(delivery => (
@@ -5362,10 +6042,10 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             </div>
             {deliveryAssignError && <p style={{ color:'var(--danger)', fontSize:'0.8rem', marginBottom:12 }}>{deliveryAssignError}</p>}
             <div style={{ display:'flex', gap:10 }}>
-              <button className="btn btn-primary" disabled={deliveryAssignBusy} onClick={submitDeliveryAssign}>
-                {deliveryAssignBusy ? 'Saving...' : deliveryAssign.delivery?.company_id ? 'Reassign Company' : 'Assign Company'}
+              <button className="btn btn-primary" disabled={deliveryAssignBusy} aria-busy={deliveryAssignBusy} onClick={submitDeliveryAssign}>
+                <AsyncButtonContent pending={deliveryAssignBusy} pendingLabel={deliveryAssign.delivery?.company_id ? 'Reassigning company...' : 'Assigning company...'}>{deliveryAssign.delivery?.company_id ? 'Reassign Company' : 'Assign Company'}</AsyncButtonContent>
               </button>
-              <button className="btn btn-outline-navy" onClick={() => setDeliveryAssign(null)}>Cancel</button>
+              <button className="btn btn-outline-navy" disabled={deliveryAssignBusy} onClick={() => setDeliveryAssign(null)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -5382,6 +6062,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               Order: <strong>{deliveryDetail.order?.order_reference}</strong> for {deliveryDetail.order?.customer_name}
             </p>
             {deliveryDetailError ? <p className="form-error">{deliveryDetailError}</p> : null}
+            {deliveryDetailBusy ? <InlineStatus busy>Updating delivery details...</InlineStatus> : null}
             {deliveryDetail.contact_warning ? <p className="form-error">{deliveryDetail.contact_warning}</p> : null}
             {deliveryDetail.delivery ? (
               <>
@@ -5463,7 +6144,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       {confirmModal && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
           <div role="dialog" aria-modal="true" aria-label="Confirm permanent deletion" style={{ position:'relative', background:'#fff', borderRadius:16, padding:'36px 32px', width:'100%', maxWidth:420, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
-            <button className="admin-modal-close" type="button" onClick={() => setConfirmModal(null)} aria-label="Close">
+            <button className="admin-modal-close" type="button" disabled={deletePending} onClick={() => setConfirmModal(null)} aria-label="Close">
               <Icon name="x" size={16} />
             </button>
             <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2', border:'2px solid #fca5a5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', fontSize:26, color:'#dc2626' }}>⚠</div>
@@ -5474,8 +6155,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               <strong style={{ color:'var(--navy)' }}>{labelForRow(confirmModal.row)}</strong> will be removed and cannot be recovered.
             </p>
             <div style={{ display:'flex', gap:12 }}>
-              <button className="btn btn-outline-navy" style={{ flex:1 }} onClick={() => setConfirmModal(null)}>Cancel</button>
-              <button className="btn btn-primary" style={{ flex:1, background:'#dc2626', borderColor:'#dc2626' }} onClick={executeDelete}>Delete</button>
+              <button className="btn btn-outline-navy" style={{ flex:1 }} disabled={deletePending} onClick={() => setConfirmModal(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex:1, background:'#dc2626', borderColor:'#dc2626' }} disabled={deletePending} aria-busy={deletePending} onClick={executeDelete}><AsyncButtonContent pending={deletePending} pendingLabel="Deleting record...">Delete</AsyncButtonContent></button>
             </div>
           </div>
         </div>
@@ -5498,8 +6179,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
             </p>
             <div style={{ display:'flex', gap:12 }}>
               <button className="btn btn-outline-navy" style={{ flex:1 }} disabled={bulkUnpublishing} onClick={() => setShowMissingImageConfirm(false)}>Cancel</button>
-              <button className="btn btn-primary" style={{ flex:1 }} disabled={bulkUnpublishing} onClick={executeBulkMissingImageUnpublish}>
-                {bulkUnpublishing ? 'Unpublishing...' : 'Unpublish'}
+              <button className="btn btn-primary" style={{ flex:1 }} disabled={bulkUnpublishing} aria-busy={bulkUnpublishing} onClick={executeBulkMissingImageUnpublish}>
+                <AsyncButtonContent pending={bulkUnpublishing} pendingLabel="Unpublishing products...">Unpublish</AsyncButtonContent>
               </button>
             </div>
           </div>
@@ -5539,7 +6220,7 @@ const AlertsView = () => {
   const [loading, setLoading] = React.useState(isApiMode());
   const [error, setError] = React.useState('');
 
-  React.useEffect(() => {
+  const loadAlerts = React.useCallback(() => {
     if (!isApiMode()) return;
     let alive = true;
     setLoading(true);
@@ -5558,6 +6239,7 @@ const AlertsView = () => {
       });
     return () => { alive = false; };
   }, []);
+  React.useEffect(() => loadAlerts(), [loadAlerts]);
 
   const formatWhen = value => {
     if (!value) return 'Not sent yet';
@@ -5569,9 +6251,9 @@ const AlertsView = () => {
     <div>
       <h2 className="admin-page-title" style={{ marginBottom: 24 }}>Job Alerts</h2>
       {loading ? (
-        <div className="admin-table-card" style={{ padding: 28, color: 'var(--navy)', fontWeight: 800 }}>Loading saved job alerts...</div>
+        <div className="admin-table-card" style={{ padding: 28 }}><ContentSkeleton variant="table" count={7} label="Loading saved job alerts" /></div>
       ) : error ? (
-        <p className="form-error">{error}</p>
+        <ErrorState message={error} onRetry={loadAlerts} />
       ) : alerts.length === 0 ? (
         <EmptySection
           title="No Job Alerts to Review Yet"
@@ -5744,14 +6426,19 @@ const VerifiedContactValue = ({ value, verified, type }) => {
 const BookshopCustomersView = () => {
   const [customers, setCustomers] = React.useState(null);
   const [search, setSearch] = React.useState('');
+  const [error, setError] = React.useState('');
 
-  React.useEffect(() => {
+  const loadCustomers = React.useCallback(async () => {
     if (!isApiMode()) return;
-    fetch('/api/admin/bookshop-accounts', { credentials: 'include' })
-      .then(response => response.ok ? response.json() : { items: [] })
-      .then(data => setCustomers(data.items || []))
-      .catch(() => setCustomers([]));
+    setError('');
+    try {
+      const data = await api.adminList('bookshop-accounts');
+      setCustomers(data.items || []);
+    } catch (err) {
+      setError(err?.message || 'Could not load bookshop customers.');
+    }
   }, []);
+  React.useEffect(() => { loadCustomers(); }, [loadCustomers]);
 
   const ranked = rankByFuzzyMatch(customers || [], search, customer =>
     `${customer.first_name || ''} ${customer.last_name || ''} ${customer.email || ''} ${customer.phone || ''}`
@@ -5774,8 +6461,10 @@ const BookshopCustomersView = () => {
         </div>
         {!isApiMode() ? (
           <EmptySection title="API mode required" body="Connect the Flask backend to see bookshop customers." />
+        ) : error ? (
+          <ErrorState message={error} onRetry={loadCustomers} />
         ) : customers === null ? (
-          <EmptySection title="Loading…" body="" />
+          <ContentSkeleton variant="table" count={7} label="Loading bookshop customers" />
         ) : ranked.length === 0 ? (
           <EmptySection title="No Bookshop Customers Yet" body="Customers appear here after registering through or signing into the bookshop." />
         ) : (
@@ -5859,11 +6548,15 @@ const TeacherAccountManageModal = ({ detail, onClose, canManageAccount, canManag
     certificate: null,
   }));
   const [manageSaving, setManageSaving] = React.useState(false);
+  const [manageStage, setManageStage] = React.useState('Saving teacher account');
+  const [manageProgress, setManageProgress] = React.useState(null);
 
   const saveManagedAccount = async event => {
     event.preventDefault();
     if (!detail?.id || manageSaving) return;
     setManageSaving(true);
+    setManageStage('Saving teacher account');
+    setManageProgress(null);
     try {
       const accountChanged = canManageAccount && (
         manageForm.first_name !== (detail.first_name || '') || manageForm.last_name !== (detail.last_name || '') ||
@@ -5883,16 +6576,28 @@ const TeacherAccountManageModal = ({ detail, onClose, canManageAccount, canManag
       }
       const verificationChanged = canManageVerification && (manageForm.email_verified !== Boolean(detail.is_verified) || manageForm.phone_verified !== Boolean(detail.phone_verified));
       if (verificationChanged) await api.adminUpdateTeacherVerification(detail.id, { email_verified: manageForm.email_verified, phone_verified: manageForm.phone_verified, reason: manageForm.reason });
-      if (manageForm.cv && canManageDocuments) await api.adminUploadTeacherDocument(detail.id, manageForm.cv, 'cv', manageForm.reason);
-      if (manageForm.certificate && canManageDocuments) await api.adminUploadTeacherDocument(detail.id, manageForm.certificate, 'certificate', manageForm.reason);
+      if (manageForm.cv && canManageDocuments) {
+        setManageStage('Uploading CV');
+        await api.adminUploadTeacherDocument(detail.id, manageForm.cv, 'cv', manageForm.reason, { onProgress: setManageProgress });
+      }
+      if (manageForm.certificate && canManageDocuments) {
+        setManageStage('Uploading certificate');
+        setManageProgress(null);
+        await api.adminUploadTeacherDocument(detail.id, manageForm.certificate, 'certificate', manageForm.reason, { onProgress: setManageProgress });
+      }
       if (!accountChanged && !verificationChanged && !manageForm.cv && !manageForm.certificate) throw new Error('Make at least one change before saving.');
       globalToast.success('Teacher account changes saved in company records.');
-      if (onSaved) await onSaved();
+      if (onSaved) {
+        setManageStage('Refreshing teacher record');
+        setManageProgress(null);
+        await onSaved();
+      }
       onClose();
     } catch (err) {
       globalToast.error(err?.message || 'Could not save teacher account changes.');
     } finally {
       setManageSaving(false);
+      setManageProgress(null);
     }
   };
 
@@ -5915,7 +6620,8 @@ const TeacherAccountManageModal = ({ detail, onClose, canManageAccount, canManag
           <label className="form-group"><span className="form-label">Replace certificate</span><input type="file" className="form-input" accept=".pdf,.docx" onChange={event => setManageForm(prev => ({ ...prev, certificate: event.target.files?.[0] || null }))} /></label>
         </div> : null}
         <label className="form-group" style={{ marginTop: 18 }}><span className="form-label">Reason for this authorised change</span><textarea className="form-textarea" rows={3} required minLength={8} value={manageForm.reason || ''} onChange={event => setManageForm(prev => ({ ...prev, reason: event.target.value }))} placeholder="Explain the request and why this staff-assisted change is authorised." /></label>
-        <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}><button className="btn btn-primary" disabled={manageSaving}>{manageSaving ? 'Saving...' : 'Save and audit changes'}</button><button type="button" className="btn btn-outline-navy" onClick={onClose}>Cancel</button></div>
+        {manageSaving ? <ProgressStatus label={manageStage} stage={manageProgress?.stage === 'processing' ? `${manageStage} finished. Updating the teacher record` : manageStage} value={manageProgress?.stage === 'uploading' ? manageProgress.percent : undefined} detail={manageProgress?.total ? `${formatImportBytes(manageProgress.loaded)} of ${formatImportBytes(manageProgress.total)}` : ''} /> : null}
+        <div className="admin-modal-actions-sticky" style={{ display: 'flex', gap: 10, marginTop: 16 }}><button className="btn btn-primary" disabled={manageSaving}><AsyncButtonContent pending={manageSaving} pendingLabel={manageStage}>Save and audit changes</AsyncButtonContent></button><button type="button" className="btn btn-outline-navy" disabled={manageSaving} onClick={onClose}>Cancel</button></div>
       </form>
     </div>
   );
@@ -6028,6 +6734,8 @@ const TeacherFilterChips = ({ subjects, curricula, location, onSubjectsChange, o
 const TeachersView = ({ session }) => {
   const [teachers, setTeachers] = React.useState(null);
   const [teacherSummary, setTeacherSummary] = React.useState(null);
+  const [teacherError, setTeacherError] = React.useState('');
+  const [teacherRefreshing, setTeacherRefreshing] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState('active');
   const [profileFilter, setProfileFilter] = React.useState('');
@@ -6059,6 +6767,7 @@ const TeachersView = ({ session }) => {
   const [deleting, setDeleting] = React.useState(null);
   const [reminding, setReminding] = React.useState(null);
   const [batchReminding, setBatchReminding] = React.useState(false);
+  const [batchAction, setBatchAction] = React.useState('');
   const [batchReminderConfirm, setBatchReminderConfirm] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState(null);
   const canEditTeachers = hasSessionPermission(session, 'teachers.edit');
@@ -6068,12 +6777,19 @@ const TeachersView = ({ session }) => {
   const canManageDocuments = hasSessionPermission(session, 'teachers.documents.manage');
   const canManageVerification = hasSessionPermission(session, 'teachers.verification.manage');
 
-  const reload = React.useCallback(() => {
+  const reload = React.useCallback(async () => {
     if (!isApiMode()) return;
-    fetch('/api/admin/users', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : { items: [] })
-      .then(data => { setTeachers(data.items || []); setTeacherSummary(data.summary || null); })
-      .catch(() => { setTeachers([]); setTeacherSummary(null); });
+    setTeacherRefreshing(true);
+    setTeacherError('');
+    try {
+      const data = await api.adminList('users');
+      setTeachers(data.items || []);
+      setTeacherSummary(data.summary || null);
+    } catch (err) {
+      setTeacherError(err?.message || 'Could not load teacher accounts.');
+    } finally {
+      setTeacherRefreshing(false);
+    }
   }, []);
 
   React.useEffect(() => { reload(); }, [reload]);
@@ -6146,13 +6862,16 @@ const TeachersView = ({ session }) => {
   };
 
   const openDetail = async (t) => {
+    if (detailLoading) return;
     setDetailLoading(true);
     setDetail({ ...t, _loading: true });
     try {
-      const r = await fetch(`/api/admin/users/${t.id}`, { credentials: 'include' });
-      const data = r.ok ? await r.json() : t;
+      const data = await api.adminList(`users/${t.id}`);
       setDetail(data);
-    } catch { setDetail(t); }
+    } catch (err) {
+      setDetail(null);
+      globalToast.error(err?.message || 'Could not load this teacher profile.');
+    }
     finally { setDetailLoading(false); }
   };
 
@@ -6164,7 +6883,9 @@ const TeachersView = ({ session }) => {
       setTeachers(prev => prev.map(u => u.id === t.id ? { ...u, is_active: !t.is_active } : u));
       if (detail && detail.id === t.id) setDetail(d => ({ ...d, is_active: !t.is_active }));
       reload();
-    } catch { /* noop */ }
+    } catch (err) {
+      globalToast.error(err?.message || 'Could not update the teacher account.');
+    }
     finally { setToggling(null); }
   };
 
@@ -6175,13 +6896,13 @@ const TeachersView = ({ session }) => {
   const executeDeleteTeacher = async () => {
     if (!deleteConfirm) return;
     const { teacher: t } = deleteConfirm;
-    setDeleteConfirm(null);
     setDeleting(t.id);
     try {
       await api.adminDelete('users', t.id);
       setTeachers(prev => prev.filter(u => u.id !== t.id));
       if (detail?.id === t.id) setDetail(null);
-      reload();
+      setDeleteConfirm(null);
+      await reload();
     } catch (err) {
       console.error(err);
       globalToast.error(err?.message || 'Could not delete teacher account.');
@@ -6211,8 +6932,9 @@ const TeachersView = ({ session }) => {
   };
 
   const sendBatchProfileReminders = async () => {
-    setBatchReminderConfirm(false);
+    if (batchReminding) return;
     setBatchReminding(true);
+    setBatchAction('remind-incomplete');
     try {
       const result = await api.adminCreate('users/profile-reminders', {});
       const failed = Number(result?.failed_count || 0);
@@ -6221,46 +6943,63 @@ const TeachersView = ({ session }) => {
       } else {
         globalToast.success(result?.message || 'Profile reminders sent.');
       }
+      setBatchReminderConfirm(false);
     } catch (err) {
       globalToast.error(err?.message || 'Could not send batch profile reminders.');
     } finally {
       setBatchReminding(false);
+      setBatchAction('');
     }
   };
 
   const sendSelectedProfileReminders = async () => {
-    if (!selectedTeachers.length) return;
+    if (!selectedTeachers.length || batchReminding) return;
     setBatchReminding(true);
-    const results = await Promise.allSettled(selectedTeachers.map(t => api.adminCreate(`users/${t.id}/profile-reminder`, {})));
-    const sent = results.filter(result => result.status === 'fulfilled').length;
-    const failed = results.length - sent;
-    if (sent) globalToast.success(`Sent ${sent} profile reminder${sent === 1 ? '' : 's'}.`);
-    if (failed) globalToast.warning(`${failed} selected reminder${failed === 1 ? '' : 's'} could not be sent.`);
-    setBatchReminding(false);
+    setBatchAction('remind-selected');
+    try {
+      const results = await Promise.allSettled(selectedTeachers.map(t => api.adminCreate(`users/${t.id}/profile-reminder`, {})));
+      const sent = results.filter(result => result.status === 'fulfilled').length;
+      const failed = results.length - sent;
+      if (sent) globalToast.success(`Sent ${sent} profile reminder${sent === 1 ? '' : 's'}.`);
+      if (failed) globalToast.warning(`${failed} selected reminder${failed === 1 ? '' : 's'} could not be sent.`);
+    } finally {
+      setBatchReminding(false);
+      setBatchAction('');
+    }
   };
 
   const disableSelectedTeachers = async () => {
-    if (!selectedTeachers.length) return;
+    if (!selectedTeachers.length || batchReminding) return;
     setBatchReminding(true);
-    const activeSelected = selectedTeachers.filter(t => t.is_active !== false);
-    const results = await Promise.allSettled(activeSelected.map(t => api.adminPatch('users', t.id, { status: 'inactive' })));
-    const disabledIds = new Set(activeSelected.filter((_, index) => results[index]?.status === 'fulfilled').map(t => t.id));
-    setTeachers(current => (current || []).map(t => disabledIds.has(t.id) ? { ...t, is_active: false } : t));
-    setSelectedTeacherIds(new Set());
-    reload();
-    setBatchReminding(false);
+    setBatchAction('disable-selected');
+    try {
+      const activeSelected = selectedTeachers.filter(t => t.is_active !== false);
+      const results = await Promise.allSettled(activeSelected.map(t => api.adminPatch('users', t.id, { status: 'inactive' })));
+      const disabledIds = new Set(activeSelected.filter((_, index) => results[index]?.status === 'fulfilled').map(t => t.id));
+      setTeachers(current => (current || []).map(t => disabledIds.has(t.id) ? { ...t, is_active: false } : t));
+      setSelectedTeacherIds(new Set());
+      await reload();
+    } finally {
+      setBatchReminding(false);
+      setBatchAction('');
+    }
   };
 
   const deleteSelectedTeachers = async () => {
-    setBulkDeleteConfirm(false);
-    if (!selectedTeachers.length) return;
+    if (!selectedTeachers.length || batchReminding) return;
     setBatchReminding(true);
-    const results = await Promise.allSettled(selectedTeachers.map(t => api.adminDelete('users', t.id)));
-    const deletedIds = new Set(selectedTeachers.filter((_, index) => results[index]?.status === 'fulfilled').map(t => t.id));
-    setTeachers(current => (current || []).filter(t => !deletedIds.has(t.id)));
-    setSelectedTeacherIds(new Set());
-    reload();
-    setBatchReminding(false);
+    setBatchAction('delete-selected');
+    try {
+      const results = await Promise.allSettled(selectedTeachers.map(t => api.adminDelete('users', t.id)));
+      const deletedIds = new Set(selectedTeachers.filter((_, index) => results[index]?.status === 'fulfilled').map(t => t.id));
+      setTeachers(current => (current || []).filter(t => !deletedIds.has(t.id)));
+      setSelectedTeacherIds(new Set());
+      setBulkDeleteConfirm(false);
+      await reload();
+    } finally {
+      setBatchReminding(false);
+      setBatchAction('');
+    }
   };
 
   const updatePayoutField = (fieldName) => (event) => {
@@ -6301,7 +7040,7 @@ const TeachersView = ({ session }) => {
         <div><h2 className="admin-page-title">Active Teachers</h2><p>Manage verified teacher accounts. Use filters and bulk actions to keep your data clean and accurate.</p></div>
         <div className="teachers-heading-actions">
           {isApiMode() && canExportTeachers && <><a href={api.adminExportUrl('users','csv')}><Icon name="file" size={18} /> Export CSV</a><a href={api.adminExportUrl('users','xlsx')}><Icon name="file" size={18} /> Export Excel</a></>}
-          {canEditTeachers && <button type="button" onClick={openBatchProfileReminderConfirm} disabled={batchReminding || reminderEligibleCount === 0}><Icon name="send" size={18} /> {batchReminding ? 'Sending…' : 'Remind Incomplete'}</button>}
+          {canEditTeachers && <button type="button" onClick={openBatchProfileReminderConfirm} disabled={batchReminding || reminderEligibleCount === 0}><Icon name="send" size={18} /><AsyncButtonContent pending={batchAction === 'remind-incomplete'} pendingLabel="Sending reminders">Remind Incomplete</AsyncButtonContent></button>}
         </div>
       </div>
 
@@ -6329,10 +7068,14 @@ const TeachersView = ({ session }) => {
 
         <TeacherFilterChips subjects={subjectFilters} curricula={curriculumFilters} location={locationFilter.trim()} onSubjectsChange={setSubjectFilters} onCurriculaChange={setCurriculumFilters} onLocationChange={setLocationFilter} resultCount={rankedTeachers.length} />
 
-        {selectedTeachers.length > 0 && <div className="teacher-bulk-bar"><strong><button type="button" onClick={() => setSelectedTeacherIds(new Set())}>×</button>{selectedTeachers.length} teacher{selectedTeachers.length === 1 ? '' : 's'} selected</strong><div>{canEditTeachers && <><button type="button" onClick={sendSelectedProfileReminders}><Icon name="send" size={15} /> Send Reminder</button><button type="button" onClick={disableSelectedTeachers}><Icon name="ban" size={15} /> Disable</button></>}<button type="button" onClick={exportSelectedTeachers}><Icon name="download" size={15} /> Export Selected</button>{canDeleteTeachers && <button className="danger" type="button" onClick={() => setBulkDeleteConfirm(true)}><Icon name="trash" size={15} /> Delete</button>}</div></div>}
+        {selectedTeachers.length > 0 && <div className="teacher-bulk-bar"><strong><button type="button" disabled={batchReminding} onClick={() => setSelectedTeacherIds(new Set())}>×</button>{selectedTeachers.length} teacher{selectedTeachers.length === 1 ? '' : 's'} selected</strong><div>{canEditTeachers && <><button type="button" disabled={batchReminding} onClick={sendSelectedProfileReminders}><Icon name="send" size={15} /><AsyncButtonContent pending={batchAction === 'remind-selected'} pendingLabel="Sending reminders">Send Reminder</AsyncButtonContent></button><button type="button" disabled={batchReminding} onClick={disableSelectedTeachers}><Icon name="ban" size={15} /><AsyncButtonContent pending={batchAction === 'disable-selected'} pendingLabel="Disabling teachers">Disable</AsyncButtonContent></button></>}<button type="button" disabled={batchReminding} onClick={exportSelectedTeachers}><Icon name="download" size={15} /> Export Selected</button>{canDeleteTeachers && <button className="danger" type="button" disabled={batchReminding} onClick={() => setBulkDeleteConfirm(true)}><Icon name="trash" size={15} /> Delete</button>}</div></div>}
+
+        {teacherRefreshing && teachers !== null ? <RefreshingIndicator label="Refreshing teachers" /> : null}
+        {teacherError && teachers !== null ? <ErrorState compact message={teacherError} onRetry={reload} /> : null}
 
         {!isApiMode() ? <EmptySection title="API mode required" body="Connect the Flask backend to see registered teachers." />
-          : teachers === null ? <EmptySection title="Loading…" body="" />
+          : teacherError && teachers === null ? <ErrorState message={teacherError} onRetry={reload} />
+          : teachers === null ? <ContentSkeleton variant="table" count={8} label="Loading teacher accounts" />
           : rankedTeachers.length === 0 ? <EmptySection title="No matching teachers" body="Try changing the filters or search term." />
           : <AdminTableScroll><table className="admin-table teacher-redesign-table">
             <thead><tr><th className="teacher-check-cell"><input type="checkbox" checked={allVisibleTeachersSelected} onChange={toggleVisibleTeachers} aria-label="Select all teachers on this page" /></th><th>Teacher <span>⌃</span></th><th>Email <span>⌃</span></th><th>Phone <span>⌃</span></th><th>Profile completion <span>⌃</span></th><th>Status <span>⌃</span></th><th>Registered <span>⌃</span></th><th>Actions</th></tr></thead>
@@ -6340,11 +7083,12 @@ const TeachersView = ({ session }) => {
               const name = [t.first_name, t.last_name].filter(Boolean).join(' ') || 'Unknown';
               const initials = [t.first_name, t.last_name].filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'T';
               const completion = Math.max(0, Math.min(100, t.profile_completion ?? 0));
-              return <tr key={t.id} className={selectedTeacherIds.has(t.id) ? 'is-selected' : ''}><td className="teacher-check-cell"><input type="checkbox" checked={selectedTeacherIds.has(t.id)} onChange={() => toggleTeacherSelection(t.id)} aria-label={`Select ${name}`} /></td>
+              const rowBusy = toggling === t.id || reminding === t.id || deleting === t.id;
+              return <tr key={t.id} className={selectedTeacherIds.has(t.id) ? 'is-selected' : ''} aria-busy={rowBusy}><td className="teacher-check-cell"><input type="checkbox" checked={selectedTeacherIds.has(t.id)} disabled={rowBusy} onChange={() => toggleTeacherSelection(t.id)} aria-label={`Select ${name}`} /></td>
                 <td><div className="teacher-name-cell"><span className={`teacher-avatar tone-${(t.id || index) % 5}`}>{initials}</span><strong>{name}</strong></div></td>
                 <td><VerifiedContactValue value={t.email} verified={t.is_verified} type="Email" /></td><td><VerifiedContactValue value={t.phone} verified={t.phone_verified} type="Phone" /></td>
                 <td><span className={`teacher-completion-ring ${completion >= 100 ? 'is-complete' : ''}`} style={{ '--completion': `${completion * 3.6}deg` }}><b>{completion}%</b></span></td>
-                <td><span className={`teacher-status-pill ${t.is_active === false ? 'is-disabled' : ''}`}>{t.is_active === false ? 'Disabled' : 'Active'}</span></td>
+                <td><span className={`teacher-status-pill ${t.is_active === false ? 'is-disabled' : ''}`}>{rowBusy ? (toggling === t.id ? 'Updating' : reminding === t.id ? 'Sending reminder' : 'Deleting') : t.is_active === false ? 'Disabled' : 'Active'}</span></td>
                 <td>{t.created_at ? new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}</td>
                 <td><div className="teacher-row-actions"><button type="button" onClick={() => openDetail(t)}>View Profile</button><div className="teacher-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${name}`} onClick={() => setTeacherMenuId(current => current === t.id ? null : t.id)}><Icon name="more" size={18} /></button>{teacherMenuId === t.id && <div className="teacher-row-menu">{canEditTeachers && <><button type="button" onClick={() => { sendProfileReminder(t); setTeacherMenuId(null); }}>Send Profile Reminder</button><button type="button" onClick={() => { toggleActive(t); setTeacherMenuId(null); }}>{t.is_active === false ? 'Enable' : 'Disable'}</button></>}{canDeleteTeachers && <button className="danger" type="button" onClick={() => { deleteTeacher(t); setTeacherMenuId(null); }}>Delete</button>}</div>}</div></div></td>
               </tr>;
@@ -6357,7 +7101,7 @@ const TeachersView = ({ session }) => {
       {batchReminderConfirm && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
           <div role="dialog" aria-modal="true" aria-labelledby="batch-profile-reminder-title" style={{ position:'relative', background:'#fff', borderRadius:18, padding:'34px 32px 30px', width:'100%', maxWidth:520, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
-            <button className="admin-modal-close" type="button" onClick={() => setBatchReminderConfirm(false)} aria-label="Close">
+            <button className="admin-modal-close" type="button" disabled={batchReminding} onClick={() => setBatchReminderConfirm(false)} aria-label="Close">
               <Icon name="x" size={16} />
             </button>
             <div style={{ width:58, height:58, borderRadius:'50%', background:'#eff6ff', border:'2px solid #bfdbfe', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', color:'var(--navy)' }}>
@@ -6376,9 +7120,9 @@ const TeachersView = ({ session }) => {
               The email will include the missing profile sections and phone-number verification when it is still outstanding.
             </div>
             <div style={{ display:'flex', gap:12 }}>
-              <button className="btn btn-outline-navy" style={{ flex:1 }} type="button" onClick={() => setBatchReminderConfirm(false)}>Cancel</button>
+              <button className="btn btn-outline-navy" style={{ flex:1 }} type="button" disabled={batchReminding} onClick={() => setBatchReminderConfirm(false)}>Cancel</button>
               <button className="btn btn-primary" style={{ flex:1 }} type="button" onClick={sendBatchProfileReminders} disabled={batchReminding}>
-                {batchReminding ? 'Sending...' : 'Send reminders'}
+                <AsyncButtonContent pending={batchAction === 'remind-incomplete'} pendingLabel="Sending reminders">Send reminders</AsyncButtonContent>
               </button>
             </div>
           </div>
@@ -6388,11 +7132,11 @@ const TeachersView = ({ session }) => {
       {bulkDeleteConfirm && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
           <div role="dialog" aria-modal="true" aria-labelledby="bulk-teacher-delete-title" style={{ position:'relative', background:'#fff', borderRadius:18, padding:'34px 32px 30px', width:'100%', maxWidth:500, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
-            <button className="admin-modal-close" type="button" onClick={() => setBulkDeleteConfirm(false)} aria-label="Close"><Icon name="x" size={16} /></button>
+            <button className="admin-modal-close" type="button" disabled={batchReminding} onClick={() => setBulkDeleteConfirm(false)} aria-label="Close"><Icon name="x" size={16} /></button>
             <div style={{ width:58, height:58, borderRadius:'50%', background:'#fff0f2', display:'grid', placeItems:'center', margin:'0 auto 20px', color:'#d62f43' }}><Icon name="trash" size={24} /></div>
             <h3 id="bulk-teacher-delete-title" style={{ color:'var(--navy)', textAlign:'center', marginBottom:10 }}>Delete selected teachers?</h3>
             <p style={{ color:'var(--gray-600)', textAlign:'center', lineHeight:1.6, marginBottom:24 }}>This permanently deletes {selectedTeachers.length} selected teacher account{selectedTeachers.length === 1 ? '' : 's'}. Accounts with placement history will be safely rejected by the server.</p>
-            <div style={{ display:'flex', gap:12 }}><button className="btn btn-outline-navy" style={{ flex:1 }} type="button" onClick={() => setBulkDeleteConfirm(false)}>Cancel</button><button className="btn btn-primary" style={{ flex:1, background:'#d62f43', borderColor:'#d62f43' }} type="button" onClick={deleteSelectedTeachers}>Delete</button></div>
+            <div style={{ display:'flex', gap:12 }}><button className="btn btn-outline-navy" style={{ flex:1 }} type="button" disabled={batchReminding} onClick={() => setBulkDeleteConfirm(false)}>Cancel</button><button className="btn btn-primary" style={{ flex:1, background:'#d62f43', borderColor:'#d62f43' }} type="button" disabled={batchReminding} onClick={deleteSelectedTeachers}><AsyncButtonContent pending={batchAction === 'delete-selected'} pendingLabel="Deleting teachers">Delete</AsyncButtonContent></button></div>
           </div>
         </div>
       )}
@@ -6400,7 +7144,7 @@ const TeachersView = ({ session }) => {
       {deleteConfirm && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 20px' }}>
           <div role="dialog" aria-modal="true" aria-label="Confirm permanent deletion" style={{ position:'relative', background:'#fff', borderRadius:16, padding:'36px 32px', width:'100%', maxWidth:420, boxShadow:'0 24px 72px rgba(0,0,0,0.28)' }}>
-            <button className="admin-modal-close" type="button" onClick={() => setDeleteConfirm(null)} aria-label="Close">
+            <button className="admin-modal-close" type="button" disabled={deleting === deleteConfirm.teacher.id} onClick={() => setDeleteConfirm(null)} aria-label="Close">
               <Icon name="x" size={16} />
             </button>
             <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2', border:'2px solid #fca5a5', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', fontSize:26, color:'#dc2626' }}>⚠</div>
@@ -6411,9 +7155,9 @@ const TeachersView = ({ session }) => {
               <strong style={{ color:'var(--navy)' }}>{deleteConfirm.teacher.email || 'This teacher account'}</strong> will be removed and cannot be recovered.
             </p>
             <div style={{ display:'flex', gap:12 }}>
-              <button className="btn btn-outline-navy" style={{ flex:1 }} onClick={() => setDeleteConfirm(null)}>Cancel</button>
-              <button className="btn btn-primary" style={{ flex:1, background:'#dc2626', borderColor:'#dc2626' }} onClick={executeDeleteTeacher}>
-                {deleting === deleteConfirm.teacher.id ? 'Deleting…' : 'Delete'}
+              <button className="btn btn-outline-navy" style={{ flex:1 }} disabled={deleting === deleteConfirm.teacher.id} onClick={() => setDeleteConfirm(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ flex:1, background:'#dc2626', borderColor:'#dc2626' }} disabled={deleting === deleteConfirm.teacher.id} onClick={executeDeleteTeacher}>
+                <AsyncButtonContent pending={deleting === deleteConfirm.teacher.id} pendingLabel="Deleting teacher">Delete</AsyncButtonContent>
               </button>
             </div>
           </div>
@@ -6454,7 +7198,7 @@ const TeachersView = ({ session }) => {
             {/* Modal body */}
             <div className="teacher-detail-modal-body">
               {detailLoading ? (
-                <p style={{ color:'var(--gray-600)', textAlign:'center', padding:'20px 0' }}>Loading profile…</p>
+                <ContentSkeleton variant="list" count={8} label="Loading teacher profile" />
               ) : (
                 <>
                   <DetailSection title="Account Snapshot">
@@ -6634,9 +7378,9 @@ const TeachersView = ({ session }) => {
                           <label className="form-label">Payout Notes</label>
                           <textarea className="form-textarea" rows={3} value={payoutForm.payout_notes} onChange={updatePayoutField('payout_notes')} placeholder="Manual payment notes, verification notes, or payout preferences." />
                         </div>
-                        {payoutError && <p style={{ color:'var(--danger)', fontSize:'0.8rem', margin:'8px 0 0' }}>{payoutError}</p>}
+                        {payoutError && <ErrorState compact message={payoutError} />}
                         <button className="btn btn-outline-navy btn-sm" style={{ marginTop:12 }} type="button" disabled={payoutSaving} onClick={savePayout}>
-                          {payoutSaving ? 'Saving...' : 'Save Payout Details'}
+                          <AsyncButtonContent pending={payoutSaving} pendingLabel="Saving payout details">Save Payout Details</AsyncButtonContent>
                         </button>
                       </>
                     ) : (
@@ -6706,7 +7450,7 @@ const TeachersView = ({ session }) => {
                   title={deleting === detail.id ? 'Deleting account' : 'Delete account'}
                 >
                   <Icon name="trash" size={16} />
-                  <span>{deleting === detail.id ? 'Deleting…' : 'Delete Account'}</span>
+                  <AsyncButtonContent pending={deleting === detail.id} pendingLabel="Deleting account">Delete Account</AsyncButtonContent>
                 </button>
               ) : null}
               {canEditTeachers ? (
@@ -6719,7 +7463,7 @@ const TeachersView = ({ session }) => {
                   title={toggling === detail.id ? 'Saving account status' : detail.is_active !== false ? 'Disable account' : 'Enable account'}
                 >
                   <Icon name={detail.is_active !== false ? 'lock' : 'check'} size={16} />
-                  <span>{toggling === detail.id ? 'Saving…' : detail.is_active !== false ? 'Disable Account' : 'Enable Account'}</span>
+                  <AsyncButtonContent pending={toggling === detail.id} pendingLabel="Saving account status">{detail.is_active !== false ? 'Disable Account' : 'Enable Account'}</AsyncButtonContent>
                 </button>
               ) : null}
               <button className="btn btn-outline-navy btn-sm teacher-detail-footer-action is-close" type="button" onClick={() => setDetail(null)} aria-label="Close teacher details" title="Close teacher details">
@@ -6908,10 +7652,10 @@ const AccountView = ({ session, onPasswordChanged, onTwoFactorChanged }) => {
             Confirm New Password
             <PasswordRevealInput name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
           </label>
-          {status?.error && <p style={{ color: '#c0392b', fontSize: '0.85rem', margin: 0 }}>{status.error}</p>}
-          {status?.success && <p style={{ color: '#1a7f4a', fontSize: '0.85rem', margin: 0 }}>{status.success}</p>}
+          {status?.error && <InlineStatus tone="error">{status.error}</InlineStatus>}
+          {status?.success && <InlineStatus tone="success">{status.success}</InlineStatus>}
           <button type="submit" className="btn btn-primary" disabled={saving} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
-            {saving ? 'Saving…' : 'Update Password'}
+            <AsyncButtonContent pending={saving} pendingLabel="Updating password">Update Password</AsyncButtonContent>
           </button>
         </form>
       </div>
@@ -6926,7 +7670,7 @@ const AccountView = ({ session, onPasswordChanged, onTwoFactorChanged }) => {
               <div>
                 <h4 style={{ margin: 0, fontSize: '0.98rem', color: 'var(--navy)' }}>Email two-factor authentication</h4>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: security.enabled ? '#027a48' : '#b54708' }}>
-                  {security.loading ? 'Checking status...' : security.enabled ? 'On' : 'Recommended for internal accounts'}
+                  {security.loading ? 'Checking security status' : security.enabled ? 'On' : 'Recommended for internal accounts'}
                 </span>
               </div>
             </div>
@@ -6935,10 +7679,10 @@ const AccountView = ({ session, onPasswordChanged, onTwoFactorChanged }) => {
                 ? 'Each sign-in requires a short-lived code sent to your verified email after your password.'
                 : 'Add a second sign-in step to protect administrative access if a password is exposed. Setup takes about a minute and does not sign you out.'}
             </p>
-            {security.error ? <p style={{ color: '#b42318', fontSize: '0.82rem', margin: '10px 0 0' }}>{security.error}</p> : null}
+            {security.error ? <ErrorState compact message={security.error} onRetry={loadSecurity} /> : null}
           </div>
           <button type="button" className={security.enabled ? 'btn btn-outline-navy' : 'btn btn-primary'} onClick={openTwoFactorModal} disabled={security.loading}>
-            {security.enabled ? 'Manage 2FA' : 'Turn on 2FA'}
+            <AsyncButtonContent pending={security.loading} pendingLabel="Checking security status">{security.enabled ? 'Manage 2FA' : 'Turn on 2FA'}</AsyncButtonContent>
           </button>
         </div>
       </div>
@@ -7001,7 +7745,7 @@ const AccountView = ({ session, onPasswordChanged, onTwoFactorChanged }) => {
                 <button type="button" className="btn btn-outline-navy" disabled={twoFactorForm.saving} onClick={() => setSecurityModal(false)}>Cancel</button>
               )}
               <button type="submit" className={security.enabled && twoFactorForm.step === 'password' ? 'btn btn-outline-navy' : 'btn btn-primary'} disabled={twoFactorForm.saving}>
-                {twoFactorForm.saving ? 'Please wait...' : twoFactorForm.step === 'code' ? 'Confirm code' : security.enabled ? 'Continue to disable' : 'Send security code'}
+                <AsyncButtonContent pending={twoFactorForm.saving} pendingLabel={twoFactorForm.step === 'code' ? 'Confirming security code' : security.enabled ? 'Preparing to disable 2FA' : 'Sending security code'}>{twoFactorForm.step === 'code' ? 'Confirm code' : security.enabled ? 'Continue to disable' : 'Send security code'}</AsyncButtonContent>
               </button>
             </div>
           </form>
@@ -7116,6 +7860,7 @@ const TeacherReviewView = ({ session }) => {
   const [locationFilter, setLocationFilter] = React.useState('');
   const [debouncedLocationFilter, setDebouncedLocationFilter] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [queueError, setQueueError] = React.useState('');
   const [detail, setDetail] = React.useState(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const queueReqRef = React.useRef(0);
@@ -7176,6 +7921,7 @@ const TeacherReviewView = ({ session }) => {
   const fetchQueue = React.useCallback(async (p = page, s = statusFilter, q = debouncedSearch, location = debouncedLocationFilter) => {
     const seq = ++queueReqRef.current;
     setLoading(true);
+    setQueueError('');
     try {
       const params = { page: p, per_page: perPage };
       if (s) params.status = s;
@@ -7189,10 +7935,10 @@ const TeacherReviewView = ({ session }) => {
       setTotal(data.total || 0);
       setPages(data.pages || 1);
       setPage(data.page || 1);
+      setQueueError('');
     } catch (err) {
       if (seq !== queueReqRef.current) return;
-      globalToast.error(err?.message || 'Could not load review queue.');
-      setQueue([]);
+      setQueueError(err?.message || 'Could not load review queue.');
     } finally {
       if (seq === queueReqRef.current) setLoading(false);
     }
@@ -7241,7 +7987,7 @@ const TeacherReviewView = ({ session }) => {
       setDetail(data);
     } catch (err) {
       if (seq !== detailReqRef.current) return;
-      globalToast.error(err?.message || 'Could not load review detail.');
+      setDetail({ ...item, _loading: false, _error: err?.message || 'Could not load review detail.' });
     } finally {
       if (seq === detailReqRef.current) setDetailLoading(false);
     }
@@ -7426,8 +8172,8 @@ const TeacherReviewView = ({ session }) => {
     if (!canEdit) return null;
     if (profileStatus === 'submitted') {
       return (
-        <button className="btn btn-primary" onClick={startReview} disabled={startingReview}>
-          {startingReview ? 'Starting...' : 'Start Review'}
+                <button className="btn btn-primary" onClick={startReview} disabled={startingReview}>
+                  <AsyncButtonContent pending={startingReview} pendingLabel="Starting review">Start Review</AsyncButtonContent>
         </button>
       );
     }
@@ -7460,8 +8206,9 @@ const TeacherReviewView = ({ session }) => {
   const queueColumns = (item) => {
     const idDisplay = item.teacher_id || item.application_id || 'RMX ID pending';
     const secondaryId = item.teacher_id ? item.application_id : null;
+    const rowOpening = detailLoading && detail?.id === item.id;
     return (
-      <tr key={item.id}>
+      <tr key={item.id} aria-busy={rowOpening}>
         <td className="td-primary" style={{ whiteSpace: 'nowrap' }}>
           <div>{idDisplay}</div>
           {secondaryId ? <div style={{ fontSize: '0.72rem', color: 'var(--gray-500)' }}>{secondaryId}</div> : null}
@@ -7487,8 +8234,8 @@ const TeacherReviewView = ({ session }) => {
           </span>
         </td>
         <td className="admin-actions-column">
-          <button className="table-action-btn" onClick={() => openDetail(item)} disabled={detailLoading}>
-            Review
+          <button className="table-action-btn" onClick={() => openDetail(item)} disabled={rowOpening}>
+            <AsyncButtonContent pending={rowOpening} pendingLabel="Opening review">Review</AsyncButtonContent>
           </button>
         </td>
       </tr>
@@ -7537,10 +8284,15 @@ const TeacherReviewView = ({ session }) => {
 
         <TeacherFilterChips subjects={subjectFilters} curricula={curriculumFilters} location={locationFilter.trim()} onSubjectsChange={setSubjectFilters} onCurriculaChange={setCurriculumFilters} onLocationChange={setLocationFilter} resultCount={total} noun="application" />
 
+        {loading && queue !== null ? <RefreshingIndicator label="Refreshing teacher reviews" /> : null}
+        {queueError && queue !== null ? <ErrorState compact message={queueError} onRetry={() => fetchQueue()} /> : null}
+
         {!isApiMode() ? (
           <EmptySection title="API mode required" body="Connect the Flask backend to access the review queue." />
+        ) : queueError && queue === null ? (
+          <ErrorState message={queueError} onRetry={() => fetchQueue()} />
         ) : loading && queue === null ? (
-          <EmptySection title="Loading…" body="" />
+          <ContentSkeleton variant="table" count={8} label="Loading teacher review queue" />
         ) : queue && queue.length === 0 ? (
           <EmptySection
             title={search ? 'No matching records' : statusFilter ? `No ${STATUS_LABELS[statusFilter]?.toLowerCase() || statusFilter} records` : 'No review records'}
@@ -7594,7 +8346,9 @@ const TeacherReviewView = ({ session }) => {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <div style={{ padding: '24px 32px 30px' }}>
                 {detail._loading ? (
-                  <div style={{ textAlign: 'center', padding: '40px 0' }}><p>Loading detail...</p></div>
+                  <ContentSkeleton variant="list" count={8} label="Loading teacher review detail" />
+                ) : detail._error ? (
+                  <ErrorState message={detail._error} onRetry={() => openDetail(detail)} />
                 ) : (
                   <>
                     <div className="teacher-detail-section">
@@ -7751,7 +8505,7 @@ const TeacherReviewView = ({ session }) => {
             <div style={{ display: 'flex', gap: 12 }}>
               <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={cancelRevision} disabled={revisionSaving}>Cancel</button>
               <button className="btn btn-primary" style={{ flex: 1 }} type="button" disabled={!revisionNote.trim() || revisionSaving} onClick={submitRevision}>
-                {revisionSaving ? 'Saving...' : 'Request Revision'}
+                <AsyncButtonContent pending={revisionSaving} pendingLabel="Requesting revision">Request Revision</AsyncButtonContent>
               </button>
             </div>
           </div>
@@ -7783,7 +8537,7 @@ const TeacherReviewView = ({ session }) => {
             <div style={{ display: 'flex', gap: 12 }}>
               <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={cancelReject} disabled={rejectSaving}>Cancel</button>
               <button className="btn btn-primary" style={{ flex: 1, background: '#dc2626', borderColor: '#dc2626' }} type="button" disabled={!rejectReason.trim() || rejectSaving} onClick={submitReject}>
-                {rejectSaving ? 'Rejecting...' : 'Reject Application'}
+                <AsyncButtonContent pending={rejectSaving} pendingLabel="Rejecting application">Reject Application</AsyncButtonContent>
               </button>
             </div>
           </div>
@@ -7852,8 +8606,8 @@ const TeacherReviewView = ({ session }) => {
                 </div>
                 <div style={{ display: 'flex', gap: 12 }}>
                   <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={() => setShowVerifyConfirm(false)} disabled={verifySaving}>Back</button>
-                  <button className="btn btn-primary" style={{ flex: 1 }} type="button" disabled={verifySaving} onClick={submitVerify}>
-                    {verifySaving ? 'Verifying...' : 'Confirm & Issue Teacher ID'}
+              <button className="btn btn-primary" style={{ flex: 1 }} type="button" disabled={verifySaving} onClick={submitVerify}>
+                <AsyncButtonContent pending={verifySaving} pendingLabel="Verifying teacher">Confirm & Issue Teacher ID</AsyncButtonContent>
                   </button>
                 </div>
               </div>
@@ -7893,7 +8647,7 @@ const TeacherReviewView = ({ session }) => {
             <div style={{ display: 'flex', gap: 12 }}>
               <button className="btn btn-outline-navy" style={{ flex: 1 }} type="button" onClick={cancelReopen} disabled={reopenSaving}>Cancel</button>
               <button className="btn btn-primary" style={{ flex: 1 }} type="button" disabled={!reopenNote.trim() || reopenSaving} onClick={submitReopen}>
-                {reopenSaving ? 'Reopening...' : 'Reopen for Review'}
+                <AsyncButtonContent pending={reopenSaving} pendingLabel="Reopening review">Reopen for Review</AsyncButtonContent>
               </button>
             </div>
           </div>
@@ -8024,7 +8778,7 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
     : activeView === 'analytics'
       ? <AnalyticsView session={session} />
     : activeView === 'receiptsInvoices'
-      ? <ReceiptsInvoicesView content={content} />
+      ? <ReceiptsInvoicesView content={content} session={session} />
     : activeView === 'applications'
       ? <ApplicationsView content={content} session={session} />
       : activeView === 'alerts'

@@ -2,6 +2,7 @@ import React from 'react';
 
 import { DatePickerField, Icon } from '../../realmindx-site/assets/components.jsx';
 import { api, isApiMode } from '../lib/apiClient.js';
+import { AsyncButtonContent, ContentSkeleton, ErrorState, RefreshingIndicator } from '../lib/AsyncUI.jsx';
 import toast from '../lib/toast.js';
 import { rankByFuzzyMatch } from '../lib/fuzzySearch.js';
 import './analytics.css';
@@ -651,7 +652,7 @@ const ComparisonStrip = ({ products, onRemove }) => {
   );
 };
 
-const ProductDetailDrawer = ({ open, detail, onClose, exportHref, canExport }) => {
+const ProductDetailDrawer = ({ open, detail, error, onRetry, onClose, exportHref, canExport }) => {
   if (!open) return null;
   const trafficRows = detail?.breakdowns?.traffic_sources || [];
   const deviceRows = detail?.breakdowns?.devices || [];
@@ -674,7 +675,9 @@ const ProductDetailDrawer = ({ open, detail, onClose, exportHref, canExport }) =
         </div>
 
         {!detail ? (
-          <div className="analytics-drawer-loading">Loading product analytics...</div>
+          <div className="analytics-drawer-loading">
+            {error ? <ErrorState compact message={error} onRetry={onRetry} /> : <ContentSkeleton variant="list" count={6} />}
+          </div>
         ) : (
           <div className="analytics-drawer-body">
             <div className="analytics-stat-grid compact">
@@ -789,6 +792,7 @@ const AnalyticsView = ({ session }) => {
   const [payload, setPayload] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [reloadToken, setReloadToken] = React.useState(0);
   const [lens, setLens] = React.useState('all');
   const [sortKey, setSortKey] = React.useState('views');
   const [productSearch, setProductSearch] = React.useState('');
@@ -797,6 +801,8 @@ const AnalyticsView = ({ session }) => {
   const [selectedProductId, setSelectedProductId] = React.useState(null);
   const [detailCache, setDetailCache] = React.useState({});
   const [detailLoadingId, setDetailLoadingId] = React.useState(null);
+  const [detailError, setDetailError] = React.useState('');
+  const [detailReloadToken, setDetailReloadToken] = React.useState(0);
   const [showLocationReset, setShowLocationReset] = React.useState(false);
   const [clearingLocations, setClearingLocations] = React.useState(false);
   const [isPending, startTransition] = React.useTransition();
@@ -832,7 +838,7 @@ const AnalyticsView = ({ session }) => {
     return () => {
       alive = false;
     };
-  }, [rangeParams]);
+  }, [rangeParams, reloadToken]);
 
   const products = payload?.products?.items || [];
   const filteredProducts = React.useMemo(() => {
@@ -855,6 +861,7 @@ const AnalyticsView = ({ session }) => {
   React.useEffect(() => {
     if (!selectedProductId || !isApiMode() || detailCache[selectedProductId]) return undefined;
     let alive = true;
+    setDetailError('');
     setDetailLoadingId(selectedProductId);
     api.adminAnalyticsProduct(selectedProductId, rangeParams)
       .then((data) => {
@@ -862,15 +869,18 @@ const AnalyticsView = ({ session }) => {
         setDetailCache(prev => ({ ...prev, [selectedProductId]: data }));
         setDetailLoadingId(null);
       })
-      .catch(() => {
-        if (alive) setDetailLoadingId(null);
+      .catch((err) => {
+        if (!alive) return;
+        setDetailError(err.message || 'Could not load this product drilldown.');
+        setDetailLoadingId(null);
       });
     return () => {
       alive = false;
     };
-  }, [detailCache, rangeParams, selectedProductId]);
+  }, [detailCache, detailReloadToken, rangeParams, selectedProductId]);
 
   const openProductDetail = (productId) => {
+    setDetailError('');
     startTransition(() => setSelectedProductId(productId));
   };
 
@@ -901,12 +911,12 @@ const AnalyticsView = ({ session }) => {
     return <div className="analytics-empty-state">Analytics require API mode and a running Flask backend.</div>;
   }
 
-  if (loading) {
-    return <div className="analytics-empty-state">Loading analytics dashboard...</div>;
+  if (loading && !payload) {
+    return <div className="analytics-empty-state" aria-busy="true"><ContentSkeleton variant="cards" count={8} /></div>;
   }
 
-  if (error) {
-    return <div className="analytics-empty-state">{error}</div>;
+  if (error && !payload) {
+    return <div className="analytics-empty-state"><ErrorState message={error} onRetry={() => setReloadToken(value => value + 1)} /></div>;
   }
 
   const topViewed = payload?.bookshop?.top_products?.viewed?.[0];
@@ -977,7 +987,9 @@ const AnalyticsView = ({ session }) => {
   ];
 
   return (
-    <div className="analytics-shell">
+    <div className="analytics-shell" aria-busy={loading}>
+      {loading ? <RefreshingIndicator label="Updating analytics" /> : null}
+      {error ? <ErrorState compact message={error} onRetry={() => setReloadToken(value => value + 1)} /> : null}
       <header className="analytics-hero">
         <div className="analytics-hero-head">
           <div className="analytics-hero-copy">
@@ -1569,7 +1581,7 @@ const AnalyticsView = ({ session }) => {
             <p>Country, region, city, and network-prefix history will be removed from existing analytics events. Visits, orders, searches, devices, and all other reporting will remain intact.</p>
             <div className="analytics-confirm-actions">
               <button className="analytics-danger-btn solid" type="button" onClick={clearLocationHistory} disabled={clearingLocations}>
-                {clearingLocations ? 'Clearing...' : 'Clear location history'}
+                <AsyncButtonContent pending={clearingLocations} pendingLabel="Clearing location history">Clear location history</AsyncButtonContent>
               </button>
               <button className="analytics-export-btn" type="button" onClick={() => setShowLocationReset(false)} disabled={clearingLocations}>Cancel</button>
             </div>
@@ -1580,12 +1592,14 @@ const AnalyticsView = ({ session }) => {
       <ProductDetailDrawer
         open={Boolean(selectedProductId)}
         detail={detailLoadingId === selectedProductId ? null : detail}
+        error={detailError}
+        onRetry={() => setDetailReloadToken(value => value + 1)}
         onClose={() => setSelectedProductId(null)}
         exportHref={detailExportHref}
         canExport={canExport}
       />
 
-      {isPending ? <div className="analytics-pending">Loading product drilldown...</div> : null}
+      {isPending ? <div className="analytics-pending"><RefreshingIndicator label="Opening product drilldown" /></div> : null}
     </div>
   );
 };

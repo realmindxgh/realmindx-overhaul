@@ -12,6 +12,9 @@
 // ============================================================
 
 const configuredApiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+const configuredDevLatency = import.meta.env.DEV
+  ? Math.max(0, Math.min(15000, Number(import.meta.env.VITE_DEV_API_DELAY_MS) || 0))
+  : 0;
 
 const resolveApiBase = (base) => {
   if (!base || typeof window === 'undefined') return base;
@@ -34,6 +37,25 @@ const url = (path) => `${API_BASE}${path}`;
 
 let csrfToken = null;
 
+const waitForDevLatency = signal => {
+  if (!configuredDevLatency) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let timer;
+    const finish = () => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    };
+    const abort = () => {
+      window.clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      reject(new DOMException('Request cancelled.', 'AbortError'));
+    };
+    timer = window.setTimeout(finish, configuredDevLatency);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+  });
+};
+
 async function getCsrf({ force = false } = {}) {
   if (force) csrfToken = null;
   if (csrfToken) return csrfToken;
@@ -54,8 +76,9 @@ const handleUnauthorized = () => {
   }
 };
 
-async function apiFetch(path, { method = 'GET', body, freshCsrf = false } = {}) {
+async function apiFetch(path, { method = 'GET', body, freshCsrf = false, signal } = {}) {
   const useCsrf = method !== 'GET';
+  await waitForDevLatency(signal);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const headers = { 'Content-Type': 'application/json' };
     if (useCsrf) headers['X-CSRFToken'] = await getCsrf({ force: freshCsrf || attempt > 0 });
@@ -65,6 +88,7 @@ async function apiFetch(path, { method = 'GET', body, freshCsrf = false } = {}) 
       credentials: 'include',
       cache: method === 'GET' ? 'no-store' : 'default',
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) return data;
@@ -83,11 +107,83 @@ async function apiFetch(path, { method = 'GET', body, freshCsrf = false } = {}) 
   throw new Error('Request failed.');
 }
 
+const parseXhrJson = xhr => {
+  try {
+    return xhr.responseText ? JSON.parse(xhr.responseText) : {};
+  } catch {
+    return {};
+  }
+};
+
+const sendMultipart = async (path, makeFormData, {
+  onProgress,
+  failureLabel = 'Upload failed',
+} = {}) => {
+  await waitForDevLatency();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const csrf = await getCsrf({ force: attempt > 0 });
+    const response = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let latestProgress = 0;
+      xhr.open('POST', url(path));
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('X-CSRFToken', csrf);
+      xhr.upload.addEventListener('loadstart', () => {
+        onProgress?.({ stage: 'uploading', percent: 0, loaded: 0, total: 0 });
+      });
+      xhr.upload.addEventListener('progress', event => {
+        if (event.lengthComputable && event.total > 0) {
+          latestProgress = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        }
+        onProgress?.({
+          stage: 'uploading',
+          percent: latestProgress,
+          loaded: event.loaded,
+          total: event.lengthComputable ? event.total : 0,
+        });
+      });
+      xhr.upload.addEventListener('load', () => {
+        latestProgress = 100;
+        onProgress?.({ stage: 'processing', percent: 100 });
+      });
+      xhr.addEventListener('load', () => {
+        resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, data: parseXhrJson(xhr) });
+      });
+      xhr.addEventListener('error', () => {
+        const suffix = latestProgress > 0 && latestProgress < 100
+          ? ` The connection stopped at ${latestProgress}%.`
+          : '';
+        reject(new Error(`${failureLabel}.${suffix} Check your connection and try again.`));
+      });
+      xhr.addEventListener('abort', () => reject(new DOMException('Upload cancelled.', 'AbortError')));
+      xhr.send(makeFormData());
+    });
+
+    if (response.ok) {
+      onProgress?.({ stage: 'complete', percent: 100 });
+      return response.data;
+    }
+    if (response.status === 401) handleUnauthorized();
+    if (attempt === 0 && isCsrfFailure(response, response.data)) {
+      csrfToken = null;
+      continue;
+    }
+    const err = new Error(response.data.error || (response.status === 413
+      ? 'The file exceeds the server upload limit.'
+      : `${failureLabel} (${response.status || 'network error'}).`));
+    err.status = response.status;
+    err.data = response.data;
+    throw err;
+  }
+  throw new Error(`${failureLabel}.`);
+};
+
 export const api = {
   // public + bookshop
   createOrder: (payload) => apiFetch('/orders', { method: 'POST', body: payload }),
   trackOrders: (query) => apiFetch(`/orders/track?q=${encodeURIComponent(query)}`),
   lookupInvoice: (invoiceId) => apiFetch(`/invoices/${encodeURIComponent(invoiceId)}`),
+  initInvoicePayment: (invoiceId) => apiFetch(`/invoices/${encodeURIComponent(invoiceId)}/paystack/initialize`, { method: 'POST', body: {} }),
   createCartInvoice: (payload) => apiFetch('/cart-invoices', { method: 'POST', body: payload }),
   emailCartInvoice: (payload) => apiFetch('/cart-invoices/email', { method: 'POST', body: payload }),
   invoicePdfUrl: (invoiceId, { download = false, document = '' } = {}) => {
@@ -106,7 +202,7 @@ export const api = {
   fetchProductSuggestions: (q) => apiFetch(`/products/suggestions?q=${encodeURIComponent(q)}`),
   fetchProductFilters: () => apiFetch('/products/filters'),
   fetchProductBatch: (ids) => apiFetch('/products/batch', { method: 'POST', body: { ids } }),
-  fetchProductSearch: (qs = '') => apiFetch(`/products${qs}`),
+  fetchProductSearch: (qs = '', options = {}) => apiFetch(`/products${qs}`, options),
   createBookRequest: (payload) => apiFetch('/bookshop/book-requests', { method: 'POST', body: payload }),
   fetchCategories: () => apiFetch('/products/categories'),
   fetchFlyers: () => apiFetch('/flyers'),
@@ -137,34 +233,15 @@ export const api = {
   fetchProductReviewEligibility: (productId) => apiFetch(`/products/${productId}/review-eligibility`),
   createOrderReview: (payload) => apiFetch('/orders/reviews', { method: 'POST', body: payload }),
 
-  uploadUserFile: async (file, kind = 'document', changeReason = '') => {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const csrf = await getCsrf({ force: attempt > 0 });
+  uploadUserFile: async (file, kind = 'document', changeReason = '', options = {}) => {
+    const data = await sendMultipart('/me/uploads', () => {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('kind', kind);
       if (changeReason) fd.append('change_reason', changeReason);
-      const res = await fetch(url('/me/uploads'), {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrf },
-        credentials: 'include',
-        body: fd,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) return data;
-      if (res.status === 401) {
-        handleUnauthorized();
-      }
-      if (attempt === 0 && isCsrfFailure(res, data)) {
-        csrfToken = null;
-        continue;
-      }
-      const err = new Error(data.error || `Upload failed (${res.status}).`);
-      err.status = res.status;
-      err.data = data;
-      throw err;
-    }
-    throw new Error('Upload failed.');
+      return fd;
+    }, { ...options, failureLabel: 'Upload failed' });
+    return data;
   },
 
   updateProfile: (payload) => apiFetch('/me/profile', { method: 'PUT', body: payload }),
@@ -188,33 +265,14 @@ export const api = {
 
   // admin - file upload (multipart, no JSON content-type)
   uploadFile: async (file, category = 'images', options = {}) => {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const csrf = await getCsrf({ force: attempt > 0 });
+    const data = await sendMultipart('/admin/uploads', () => {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('category', category);
       fd.append('visibility', options.visibility || 'public');
-      const res = await fetch(url('/admin/uploads'), {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrf },
-        credentials: 'include',
-        body: fd,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) return data.file; // { id, url, original_filename, category, visibility }
-      if (res.status === 401) {
-        handleUnauthorized();
-      }
-      if (attempt === 0 && isCsrfFailure(res, data)) {
-        csrfToken = null;
-        continue;
-      }
-      const err = new Error(data.error || `Upload failed (${res.status})`);
-      err.status = res.status;
-      err.data = data;
-      throw err;
-    }
-    throw new Error('Upload failed.');
+      return fd;
+    }, { onProgress: options.onProgress, failureLabel: 'Upload failed' });
+    return data.file; // { id, url, original_filename, category, visibility }
   },
 
   // admin - read
@@ -257,6 +315,11 @@ export const api = {
     const suffix = sp.toString() ? `?${sp.toString()}` : '';
     return apiFetch(`/admin/receipts-invoices${suffix}`);
   },
+  adminInvoiceOptions: () => apiFetch('/admin/invoices/options'),
+  adminCreateInvoice: (payload) => apiFetch('/admin/invoices', { method: 'POST', body: payload }),
+  adminCreateOrder: (payload) => apiFetch('/admin/orders', { method: 'POST', body: payload }),
+  adminRecordInvoicePayment: (invoiceId, payload) => apiFetch(`/admin/invoices/${invoiceId}/record-payment`, { method: 'POST', body: payload }),
+  adminVoidInvoice: (invoiceId, payload) => apiFetch(`/admin/invoices/${invoiceId}/void`, { method: 'POST', body: payload }),
   adminProductMissingImages: () => apiFetch('/admin/products/missing-images'),
   adminUnpublishProductsMissingImages: () => apiFetch('/admin/products/missing-images/unpublish', { method: 'POST' }),
   adminList: (collection) => apiFetch(`/admin/${collection}`),
@@ -532,22 +595,14 @@ export const api = {
   teacherFileDownloadUrl: (fileId) => url(`/files/${fileId}/download`),
   adminUpdateTeacherAccount: (userId, payload) => apiFetch(`/admin/teachers/${userId}/account`, { method: 'PATCH', body: payload }),
   adminUpdateTeacherVerification: (userId, payload) => apiFetch(`/admin/teachers/${userId}/verification`, { method: 'PATCH', body: payload }),
-  adminUploadTeacherDocument: async (userId, file, kind, reason) => {
-    const csrf = await getCsrf();
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('kind', kind);
-    fd.append('reason', reason);
-    const res = await fetch(url(`/admin/teachers/${userId}/documents`), {
-      method: 'POST', headers: { 'X-CSRFToken': csrf }, credentials: 'include', body: fd,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const err = new Error(data.error || (res.status === 413 ? 'The file exceeds the server upload limit.' : `Upload failed (${res.status}).`));
-      err.status = res.status;
-      throw err;
-    }
-    return data;
+  adminUploadTeacherDocument: async (userId, file, kind, reason, options = {}) => {
+    return sendMultipart(`/admin/teachers/${userId}/documents`, () => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', kind);
+      fd.append('reason', reason);
+      return fd;
+    }, { ...options, failureLabel: 'Upload failed' });
   },
   startTeacherReview: (userId) => apiFetch(`/admin/teachers/${userId}/start-review`, { method: 'POST' }),
   requestTeacherRevision: (userId, note) => apiFetch(`/admin/teachers/${userId}/request-revision`, { method: 'POST', body: { note } }),

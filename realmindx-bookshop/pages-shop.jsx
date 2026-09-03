@@ -948,7 +948,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
     const rid = ++requestIdRef.current;
     try {
       const qs = buildSearchQuery(page, BATCH);
-      const data = await api.fetchProductSearch(`?${qs}`);
+      const data = await api.fetchProductSearch(`?${qs}`, { signal: controller.signal });
       if (controller.signal.aborted || rid !== requestIdRef.current) return;
       clearTimeout(skeletonTimer);
       const items = (data.items || []).map(fromApiProduct);
@@ -1488,9 +1488,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
               </div>
             </div>
           ) : shown.length === 0 && (requestStatus === 'loading' || requestStatus === 'idle') ? (
-            <div className="bs-product-grid" aria-busy="true" role="status" aria-label="Loading products">
-              {Array.from({ length: isMobile ? SKELETON_COUNT_MOBILE : SKELETON_COUNT_DESKTOP }, (_, i) => <ProductCardSkeleton key={i} />)}
-            </div>
+            <LoadingState minimal title="Loading books" />
           ) : shown.length === 0 && requestStatus === 'success' && totalCount === 0 ? (
             <div className="bs-empty-state">
               <div className="bs-empty-icon"><Icon name="search" size={36} /></div>
