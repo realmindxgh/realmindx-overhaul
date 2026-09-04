@@ -824,7 +824,7 @@ const FilterPanel = ({ filters, setFilters, ceiling = 80, hiddenTaxonomy = '', s
   );
 };
 
-const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = true, scrollContainerRef, initialFilters = {}, examPicks = false }) => {
+const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', searchRequestKey = '', active = true, scrollContainerRef, initialFilters = {}, examPicks = false }) => {
   const { books, taxonomies, priceCeiling, loading: catalogLoading } = useCatalog();
   const rangeCeiling = safeCeilingValue(priceCeiling);
   const [filters, setFilters] = React.useState(() => createFilterState(rangeCeiling, initialBrowse, initialQuery, initialFilters));
@@ -1001,7 +1001,7 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
   // ---- Browse-scope reset ----
   // When the user navigates to a different browse scope while Shop stays
   // mounted (e.g. /category/math → /category/science), reset state.
-  const browseScopeKey = `${initialBrowse.taxonomy || ''}::${initialBrowse.value || ''}::${initialQuery || ''}`;
+  const browseScopeKey = `${initialBrowse.taxonomy || ''}::${initialBrowse.value || ''}::${initialQuery || ''}::${searchRequestKey || ''}`;
   const prevBrowseKeyRef = React.useRef(browseScopeKey);
 
   React.useEffect(() => {
@@ -1018,8 +1018,9 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
     fetchingRef.current = false;
     sentinelKeyRef.current += 1;
     window.scrollTo(0, 0);
-    fetchPage(1).catch(() => {});
-  }, [browseScopeKey, fetchPage]);
+    // The filter effect below starts the request after React has committed the
+    // new query. Calling fetchPage here would use the previous render's filters.
+  }, [browseScopeKey, rangeCeiling]);
 
   // ---- Filter/sort reset (debounced 300ms) ----
   // Rapid checkbox clicks are batched into a single request. Old results stay
@@ -1567,7 +1568,14 @@ const ShopPage = ({ navigate, initialBrowse = {}, initialQuery = '', active = tr
       </div>
 
       <div className={`bs-drawer-scrim${drawer ? ' open' : ''}`} onClick={() => setDrawer(false)} />
-      <div className={`bs-filter-drawer${drawer ? ' open' : ''}`} role="dialog" aria-modal="true" aria-labelledby="bs-mobile-filter-title">
+      <div
+        className={`bs-filter-drawer${drawer ? ' open' : ''}`}
+        role={drawer ? 'dialog' : undefined}
+        aria-modal={drawer ? 'true' : undefined}
+        aria-hidden={drawer ? undefined : 'true'}
+        inert={drawer ? undefined : ''}
+        aria-labelledby={drawer ? 'bs-mobile-filter-title' : undefined}
+      >
         <header className="bs-filter-drawer-head">
           <div className="bs-drawer-handle" aria-hidden="true" />
           <h3 className="bs-h3" id="bs-mobile-filter-title">Filter Products</h3>

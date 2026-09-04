@@ -369,9 +369,17 @@ const PersistentHomeTab = React.memo(({ navigate, isActive, onLoadingChange, hom
   </div>
 ));
 
-const PersistentShopTab = React.memo(({ navigate, initialBrowse, initialQuery, isActive, scrollContainerRef }) => (
+const PersistentShopTab = React.memo(({ navigate, initialBrowse, initialQuery, searchRequestKey, isActive, scrollContainerRef }) => (
   <div ref={isActive ? scrollContainerRef : null} className={`bs-tab-panel${isActive ? ' active' : ''}`} role="tabpanel" data-tab="shop" aria-hidden={!isActive}>
-    <ShopPage navigate={navigate} initialBrowse={initialBrowse} initialQuery={initialQuery} active={isActive} scrollContainerRef={scrollContainerRef} />
+    <ShopPage
+      key={`shop:${searchRequestKey || ''}:${initialBrowse.taxonomy || ''}:${initialBrowse.value || ''}:${initialQuery || ''}`}
+      navigate={navigate}
+      initialBrowse={initialBrowse}
+      initialQuery={initialQuery}
+      searchRequestKey={searchRequestKey}
+      active={isActive}
+      scrollContainerRef={scrollContainerRef}
+    />
     <Footer navigate={navigate} />
   </div>
 ));
@@ -906,7 +914,7 @@ const App = () => {
               <PersistentHomeTab navigate={navigate} isActive={route === 'home'} homeLoading={homeLoading} onLoadingChange={setHomeLoading} />
             )}
             {persistentShopRef.current && (
-              <PersistentShopTab navigate={navigate} initialBrowse={initialBrowse} initialQuery={params.q || ''} isActive={route === 'shop'} scrollContainerRef={shopScrollRef} />
+              <PersistentShopTab navigate={navigate} initialBrowse={initialBrowse} initialQuery={params.q || ''} searchRequestKey={params.sq || ''} isActive={route === 'shop'} scrollContainerRef={shopScrollRef} />
             )}
             {persistentCartRef.current && (
               <PersistentCartTab navigate={navigate} isActive={route === 'cart'} />
@@ -945,7 +953,15 @@ const App = () => {
         )}
         {persistentShopRef.current && (
           <div style={route !== 'shop' ? { display: 'none' } : undefined}>
-            <ShopPage navigate={navigate} initialBrowse={initialBrowse} initialQuery={params.q || ''} active={route === 'shop'} scrollContainerRef={shopScrollRef} />
+            <ShopPage
+              key={`shop:${params.sq || ''}:${initialBrowse.taxonomy || ''}:${initialBrowse.value || ''}:${params.q || ''}`}
+              navigate={navigate}
+              initialBrowse={initialBrowse}
+              initialQuery={params.q || ''}
+              searchRequestKey={params.sq || ''}
+              active={route === 'shop'}
+              scrollContainerRef={shopScrollRef}
+            />
           </div>
         )}
         {persistentCartRef.current && (

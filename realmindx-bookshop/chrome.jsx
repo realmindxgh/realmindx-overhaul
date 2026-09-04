@@ -749,6 +749,7 @@ const Navbar = ({ route, navigate }) => {
     setSearchSurface('');
     setSuggestionsSurface('');
     setMenuQuery('');
+    setNavQuery('');
   };
 
   const selectSuggestion = (event, book) => {
@@ -796,10 +797,15 @@ const Navbar = ({ route, navigate }) => {
           <Logo href={hrefForRoute('home')} onClick={(e) => go('home', e)} />
 
           <div className="bs-nav-search-wrap">
-            <form className="bs-nav-search" onSubmit={(e) => submitSearch(e, navQuery)} autoComplete="off">
+            <form
+              className="bs-nav-search"
+              onSubmit={(e) => submitSearch(e, e.currentTarget.elements.shopSearch?.value ?? navQuery)}
+              autoComplete="off"
+            >
               <Icon name="search" size={19} className="bs-search-icn" />
               <input
                 type="search"
+                name="shopSearch"
                 data-form-icon="none"
                 value={navQuery}
                 onChange={e => {
@@ -812,6 +818,9 @@ const Navbar = ({ route, navigate }) => {
                   if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
                   setSearchSurface('nav');
                   setSuggestionsSurface('nav');
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') submitSearch(event, event.currentTarget.value);
                 }}
                 onBlur={() => {
                   if (suggestionClickRef.current) return;
@@ -863,10 +872,15 @@ const Navbar = ({ route, navigate }) => {
               </button>
               <div className={`bs-cats-menu${catsOpen ? ' open' : ''}`}>
                 <div className="bs-cats-search-wrap">
-                  <form className="bs-cats-search-form" onSubmit={(e) => submitSearch(e, menuQuery)} autoComplete="off">
+                  <form
+                    className="bs-cats-search-form"
+                    onSubmit={(e) => submitSearch(e, e.currentTarget.elements.shopMenuSearch?.value ?? menuQuery)}
+                    autoComplete="off"
+                  >
                     <Icon name="search" size={18} className="bs-search-icn" />
                     <input
                       type="search"
+                      name="shopMenuSearch"
                       data-form-icon="none"
                       ref={catsSearchRef}
                       value={menuQuery}
@@ -876,7 +890,7 @@ const Navbar = ({ route, navigate }) => {
                         setSuggestionsSurface('menu');
                       }}
                       onKeyDown={event => {
-                        if (event.key === 'Enter') submitSearch(event, menuQuery);
+                        if (event.key === 'Enter') submitSearch(event, event.currentTarget.value);
                       }}
                       onFocus={() => {
                         suggestionClickRef.current = false;

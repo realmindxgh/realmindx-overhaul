@@ -43,7 +43,7 @@ const DonatePage = React.lazy(() => import('../realmindx-site/pages/DonatePage.j
 
 const RouteLoading = () => (
   <main className="route-page route-loading-shell" aria-busy="true">
-    <AsyncState loading loadingLabel="Opening this page…" skeleton="cards" skeletonCount={3} />
+    <AsyncState loading loadingLabel="Opening this page…" delay={700} />
   </main>
 );
 
