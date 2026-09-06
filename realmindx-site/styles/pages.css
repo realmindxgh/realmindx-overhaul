@@ -4363,6 +4363,7 @@ input, textarea, select { font-family: inherit; }
 .phone-verification-actions .is-primary { min-width: 145px; background: #082f6f; border-color: #082f6f; }
 .phone-verification-actions .is-primary svg { width: 15px; height: 15px; }
 .phone-verification-send-code-label { display: inline-flex; align-items: center; gap: 8px; }
+.phone-verification-send-code-label svg { width: 19px; height: 19px; flex: 0 0 19px; }
 .phone-verification-footnote { margin: 32px 0 0; color: #6680a4; font-size: .7rem; line-height: 1.4; }
 .phone-verification-footnote { display: flex; align-items: center; gap: 7px; }
 .phone-verification-footnote svg { width: 16px; height: 16px; color: #1766dc; }
