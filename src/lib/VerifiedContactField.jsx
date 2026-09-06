@@ -528,7 +528,7 @@ export default function VerifiedContactField({
               </div></fieldset>
               {error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}
               {message && <p className="verified-contact-feedback">{message}</p>}
-              <footer className="phone-verification-actions"><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Sending code"><VerificationMiniGlyph type="lock" /> Send code</AsyncButtonContent></button></footer>
+              <footer className="phone-verification-actions"><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Sending code"><span className="phone-verification-send-code-label"><VerificationMiniGlyph type="lock" /><span>Send code</span></span></AsyncButtonContent></button></footer>
               <p className="phone-verification-footnote"><VerificationMiniGlyph type="lock" /> {isChangingPhone ? 'Your current number will remain active until you verify the new one.' : 'Your phone number will be added to your account after verification.'}</p>
             </main>
             <VerificationAside changing={isChangingPhone} />

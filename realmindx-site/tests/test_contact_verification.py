@@ -100,7 +100,7 @@ class ContactVerificationTests(unittest.TestCase):
         self.assertEqual(data["next_request_in_seconds"], 45)
         self.assertIn("prefilled verification message", data["message"])
 
-    def test_whatsapp_phone_verification_can_be_disabled(self):
+    def test_whatsapp_phone_verification_remains_available_when_legacy_gate_is_disabled(self):
         self.app.config["WHATSAPP_PHONE_VERIFICATION_ENABLED"] = False
 
         response = self.client.post(
@@ -108,8 +108,8 @@ class ContactVerificationTests(unittest.TestCase):
             json={"field": "phone", "value": "024 000 0000", "channel": "whatsapp"},
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("temporarily unavailable", response.get_json()["error"])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["delivery_channel"], "whatsapp_inbound")
 
     def test_whatsapp_phone_verification_is_available_to_all_enabled_users(self):
         self.app.config["WHATSAPP_PHONE_VERIFICATION_TEST_EMAILS"] = "someone-else@example.com"
