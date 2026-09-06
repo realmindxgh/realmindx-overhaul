@@ -79,7 +79,7 @@ const VerificationAside = ({ changing = false, whatsapp = false }) => (
       ] : [
         ['message', '', 'We send a one-time code to verify your number.'],
         ['lock', '', changing ? 'Your old number stays unchanged until confirmed.' : 'Your number will be added after it is confirmed.'],
-        ['bolt', '', 'WhatsApp may be faster in most cases.'],
+        ['bolt', '', 'WhatsApp verifies your number after you send a prepared message.'],
       ]).map(([icon, title, copy]) => <div key={copy}><span aria-hidden="true"><VerificationMiniGlyph type={icon} /></span><p>{title && <strong>{title}</strong>}{copy}</p></div>)}
     </div>
   </aside>
@@ -524,11 +524,11 @@ export default function VerifiedContactField({
               <label className="phone-verification-number-field"><span>{isChangingPhone ? 'New phone number' : 'Phone number'}</span><div><span className="phone-country-prefix"><span className="ghana-flag" aria-label="Ghana"><i /></span> +233 <em>⌄</em></span><input type="tel" inputMode="tel" autoComplete="tel" maxLength={11} placeholder="554 529 493" value={phoneNationalValue} onChange={updateNationalPhone} autoFocus /></div><small>Enter the {isChangingPhone ? 'new ' : ''}phone number you want to {isChangingPhone ? 'use' : 'verify'}.</small></label>
               <fieldset className="phone-verification-channels"><legend>Choose verification method</legend><div>
                 <label className={channel === 'sms' ? 'is-selected' : ''}><input type="radio" name="verification-channel-reference" value="sms" checked={channel === 'sms'} onChange={() => setChannel('sms')} /><span className="phone-channel-check">✓</span><SmsGlyph className="phone-channel-icon is-sms" /><strong>SMS</strong><small>Receive a 6-digit code<br />via text message.</small></label>
-                {canUseWhatsApp && <label className={channel === 'whatsapp' ? 'is-selected' : ''}><input type="radio" name="verification-channel-reference" value="whatsapp" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} /><span className="phone-channel-check">✓</span><WhatsAppGlyph className="phone-channel-icon is-whatsapp" /><strong>WhatsApp</strong><small>Receive a 6-digit code<br />on WhatsApp.</small></label>}
+                {canUseWhatsApp && <label className={channel === 'whatsapp' ? 'is-selected' : ''}><input type="radio" name="verification-channel-reference" value="whatsapp" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} /><span className="phone-channel-check">✓</span><WhatsAppGlyph className="phone-channel-icon is-whatsapp" /><strong>WhatsApp</strong><small>Send the prepared message<br />to verify your number.</small></label>}
               </div></fieldset>
               {error && <p className="verified-contact-feedback is-error" role="alert">{error}</p>}
               {message && <p className="verified-contact-feedback">{message}</p>}
-              <footer className="phone-verification-actions"><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel="Sending code"><span className="phone-verification-send-code-label"><VerificationMiniGlyph type="lock" /><span>Send code</span></span></AsyncButtonContent></button></footer>
+              <footer className="phone-verification-actions"><button type="button" className="verified-contact-modal-btn is-outline" onClick={reset}>Cancel</button><button type="submit" className="verified-contact-modal-btn is-primary" disabled={busy}><AsyncButtonContent pending={busy} pendingLabel={channel === 'whatsapp' ? 'Opening WhatsApp' : 'Sending code'}><span className="phone-verification-send-code-label">{channel === 'whatsapp' ? <WhatsAppGlyph /> : <VerificationMiniGlyph type="lock" />}<span>{channel === 'whatsapp' ? 'Continue with WhatsApp' : 'Send code'}</span></span></AsyncButtonContent></button></footer>
               <p className="phone-verification-footnote"><VerificationMiniGlyph type="lock" /> {isChangingPhone ? 'Your current number will remain active until you verify the new one.' : 'Your phone number will be added to your account after verification.'}</p>
             </main>
             <VerificationAside changing={isChangingPhone} />
