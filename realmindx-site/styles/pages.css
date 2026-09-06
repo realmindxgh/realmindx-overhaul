@@ -2656,7 +2656,57 @@ input, textarea, select { font-family: inherit; }
 .portal-alert-actions { display: flex; align-items: center; gap: 8px; }
 .portal-alert-delete { border: 0; background: none; color: var(--danger); font-size: .75rem; font-weight: 700; cursor: pointer; }
 .profile-section-card .verified-contact { padding: 14px 0; border-bottom: 1px solid var(--gray-100); }
-.profile-section-card .verified-contact-main { align-items: flex-start; }
+.profile-section-card .verified-contact-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.profile-section-card .verified-contact-main > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.profile-section-card .verified-contact-label {
+  color: var(--gray-600);
+  font-size: 0.69rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.profile-section-card .verified-contact-value {
+  color: var(--navy);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.profile-section-card .verified-contact-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.profile-section-card .verified-contact-badge {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #fff4d2;
+  color: #835f00;
+  font-size: 0.69rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.profile-section-card .verified-contact-badge.is-verified { background: #eaf6ee; color: #267245; }
+.profile-section-card .verified-contact-edit {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.profile-section-card .verified-contact-edit:hover { text-decoration: underline; }
 .profile-section-card .verified-contact-form { background: var(--gray-50); }
 .profile-section-card .verified-contact-form-actions .btn { padding: 8px 12px; }
 .verified-contact-channel-icon {
