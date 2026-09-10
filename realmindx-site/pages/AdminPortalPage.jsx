@@ -4716,6 +4716,11 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [showNewsletterSubscribers, setShowNewsletterSubscribers] = React.useState(false);
   const [pendingBookRequests, setPendingBookRequests] = React.useState(0);
   const [actionStatus, setActionStatus] = React.useState(null);
+  const [jobNotification, setJobNotification] = React.useState(null);
+  const [jobNotificationAudience, setJobNotificationAudience] = React.useState('all');
+  const [jobNotificationPreview, setJobNotificationPreview] = React.useState(null);
+  const [jobNotificationBusy, setJobNotificationBusy] = React.useState(false);
+  const [jobNotificationError, setJobNotificationError] = React.useState('');
   const [missingImageStats, setMissingImageStats] = React.useState(null);
   const [showMissingImageConfirm, setShowMissingImageConfirm] = React.useState(false);
   const [bulkUnpublishing, setBulkUnpublishing] = React.useState(false);
@@ -4954,6 +4959,43 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     });
   };
 
+  const loadJobNotificationPreview = async (row, audience) => {
+    setJobNotificationAudience(audience);
+    setJobNotificationPreview(null);
+    setJobNotificationError('');
+    setJobNotificationBusy(true);
+    try {
+      setJobNotificationPreview(await api.adminPreviewJobNotifications(row.id, audience));
+    } catch (err) {
+      setJobNotificationError(err?.message || 'Could not calculate the teacher audience.');
+    } finally {
+      setJobNotificationBusy(false);
+    }
+  };
+
+  const openJobNotifications = row => {
+    setJobNotification(row);
+    loadJobNotificationPreview(row, 'all');
+  };
+
+  const sendJobNotificationEmails = async () => {
+    if (!jobNotification || jobNotificationBusy) return;
+    setJobNotificationBusy(true);
+    setJobNotificationError('');
+    try {
+      const result = await api.adminSendJobNotifications(jobNotification.id, jobNotificationAudience);
+      setActionStatus({
+        type: result.failed ? 'error' : 'success',
+        message: `${result.accepted + result.mocked} teacher email${result.accepted + result.mocked === 1 ? '' : 's'} processed${result.already_notified ? `; ${result.already_notified} already notified` : ''}${result.failed ? `; ${result.failed} failed` : ''}.`,
+      });
+      setJobNotification(null);
+    } catch (err) {
+      setJobNotificationError(err?.message || 'Could not send the job notification.');
+    } finally {
+      setJobNotificationBusy(false);
+    }
+  };
+
   const handleReply = async () => {
     if (!replying || !replyText.trim()) {
       setReplyError('Write a reply before sending.');
@@ -4990,6 +5032,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const canDelete = config.allowDelete !== false && !config.readOnly && hasSessionPermission(session, `${permissionKey}.delete`);
   const canReply = config.collection === 'messages' && !config.readOnly && hasSessionPermission(session, `${permissionKey}.edit`);
   const canPublish = PUBLISHABLE_COLLECTIONS.has(config.collection) && !config.readOnly && !config.statusOnly && hasSessionPermission(session, `${permissionKey}.edit`);
+  const canNotifyJobs = config.collection === 'jobs' && canUpdate;
   const isStatusOnly = Boolean(config.statusOnly);          // orders: status + archive only
   const isModerationOnly = Boolean(config.moderationOnly);  // reviews: approve/reject/delete
   const allowArchive = Boolean(config.allowArchive);
@@ -5003,7 +5046,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
     && hasSessionPermission(session, 'delivery.override_otp')
     && hasSessionPermission(session, 'orders.edit');
   const canViewSettlements = config.collection === 'deliverySettlements' && hasSessionPermission(session, 'delivery.settlements.view');
-  const hasActions = canUpdate || canDelete || canReply || canPublish || canStatusEdit || canModerate || canAssignDelivery || canViewDelivery || canOverrideOtp || canViewDeliveryCompanies || canViewSettlements;
+  const hasActions = canUpdate || canDelete || canReply || canPublish || canNotifyJobs || canStatusEdit || canModerate || canAssignDelivery || canViewDelivery || canOverrideOtp || canViewDeliveryCompanies || canViewSettlements;
 
   const refreshMissingImageStats = React.useCallback(async () => {
     if (config.collection !== 'products' || !isApiMode()) return;
@@ -5762,6 +5805,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
                         )}
                         {canReply && <button className="table-action-btn" onClick={() => { setReplying(row); setReplyText(''); setReplyError(''); setEditing(null); setCreating(false); }}>Reply</button>}
                         {'status' in row && canPublish && <button className="table-action-btn" disabled={isRowActionPending('publish', row)} aria-busy={isRowActionPending('publish', row)} onClick={() => togglePublish(row)}><AsyncButtonContent pending={isRowActionPending('publish', row)} pendingLabel={row.status === 'published' || row.status === 'active' ? 'Unpublishing...' : 'Publishing...'}>{row.status === 'published' || row.status === 'active' ? 'Unpublish' : 'Publish'}</AsyncButtonContent></button>}
+                        {canNotifyJobs && row.status === 'published' && <button className="table-action-btn" onClick={() => openJobNotifications(row)}><Icon name="mail" size={14} /> Email Teachers</button>}
 
                         {/* Status-only tables: inline status selector, with archive where enabled */}
                         {canStatusEdit && !row.delivery?.company_id && row.status !== 'archived' && (
@@ -5811,6 +5855,37 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
         </div>
       )}
       </div></section></div>}
+
+      {jobNotification && (
+        <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (!jobNotificationBusy && event.target === event.currentTarget) setJobNotification(null); }}>
+          <section className="admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="job-notification-title" style={{ maxWidth: 560 }}>
+            <button className="admin-modal-close" type="button" disabled={jobNotificationBusy} onClick={() => setJobNotification(null)} aria-label="Close"><Icon name="x" size={16} /></button>
+            <p className="overline">Job email notification</p>
+            <h2 id="job-notification-title" className="admin-page-title">Email teachers about this job?</h2>
+            <p style={{ color:'var(--gray-600)', lineHeight:1.6, marginBottom:20 }}><strong style={{ color:'var(--navy)' }}>{jobNotification.title}</strong><br />Choose who should receive this published opportunity.</p>
+            <fieldset style={{ border:0, padding:0, margin:'0 0 18px' }}>
+              <legend className="form-label" style={{ marginBottom:10 }}>Recipients</legend>
+              <label className="permission-action" style={{ alignItems:'flex-start', padding:'12px 14px', border:'1px solid #dbe4f0', borderRadius:12, marginBottom:10 }}>
+                <input type="radio" name="job-notification-audience" value="all" checked={jobNotificationAudience === 'all'} disabled={jobNotificationBusy} onChange={() => loadJobNotificationPreview(jobNotification, 'all')} />
+                <span><strong>All teachers</strong><small style={{ display:'block', marginTop:4, color:'var(--gray-600)', lineHeight:1.45 }}>Every active teacher account with an email, including incomplete, unsubmitted, unverified, non-matching, opted-out, and preference-free accounts.</small></span>
+              </label>
+              <label className="permission-action" style={{ alignItems:'flex-start', padding:'12px 14px', border:'1px solid #dbe4f0', borderRadius:12 }}>
+                <input type="radio" name="job-notification-audience" value="matching" checked={jobNotificationAudience === 'matching'} disabled={jobNotificationBusy} onChange={() => loadJobNotificationPreview(jobNotification, 'matching')} />
+                <span><strong>Matching teachers only</strong><small style={{ display:'block', marginTop:4, color:'var(--gray-600)', lineHeight:1.45 }}>Requires a complete profile, enabled instant alerts, and a match across the saved job criteria.</small></span>
+              </label>
+            </fieldset>
+            <div aria-live="polite" style={{ background:'#f8fafc', border:'1px solid #dbe4f0', borderRadius:12, padding:'14px 16px', marginBottom:18 }}>
+              {jobNotificationBusy && !jobNotificationPreview ? <span>Calculating recipients…</span> : jobNotificationPreview ? <><strong style={{ color:'var(--navy)' }}>{jobNotificationPreview.pending} email{jobNotificationPreview.pending === 1 ? '' : 's'} ready to send</strong><span style={{ display:'block', color:'var(--gray-600)', fontSize:'0.82rem', marginTop:4 }}>{jobNotificationPreview.recipients} account{jobNotificationPreview.recipients === 1 ? '' : 's'} in this audience{jobNotificationPreview.already_notified ? `; ${jobNotificationPreview.already_notified} already notified and will not receive a duplicate` : ''}.</span></> : <span>Recipient count unavailable.</span>}
+            </div>
+            {jobNotificationAudience === 'all' && <p style={{ color:'#9a5b00', background:'#fff8e1', border:'1px solid #f2ce64', borderRadius:10, padding:'10px 12px', fontSize:'0.82rem', lineHeight:1.5, marginBottom:16 }}><strong>Broad send:</strong> this intentionally overrides job-alert eligibility and preferences. Disabled accounts and staff/admin accounts remain excluded.</p>}
+            {jobNotificationError && <p className="form-error" role="alert" style={{ marginBottom:14 }}>{jobNotificationError}</p>}
+            <div className="admin-modal-actions-sticky" style={{ display:'flex', gap:10 }}>
+              <button className="btn btn-primary" type="button" disabled={jobNotificationBusy || !jobNotificationPreview || jobNotificationPreview.pending === 0} aria-busy={jobNotificationBusy} onClick={sendJobNotificationEmails}><AsyncButtonContent pending={jobNotificationBusy && Boolean(jobNotificationPreview)} pendingLabel="Sending emails…">Send {jobNotificationPreview?.pending || 0} Email{jobNotificationPreview?.pending === 1 ? '' : 's'}</AsyncButtonContent></button>
+              <button className="btn btn-outline-navy" type="button" disabled={jobNotificationBusy} onClick={() => setJobNotification(null)}>Cancel</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {orderDetail && (
         <div className="admin-receipt-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && setOrderDetail(null)}>

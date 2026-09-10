@@ -8,10 +8,10 @@ if str(SITE_ROOT) not in sys.path:
     sys.path.insert(0, str(SITE_ROOT))
 
 from backend import create_app
-from backend.api.admin import _matches_job_alert, dispatch_job_alerts
+from backend.api.admin import _matches_job_alert, dispatch_job_alerts, dispatch_job_notifications
 from backend.config import Config
 from backend.extensions import db
-from backend.models import DeliveryZone, Job, JobAlertPreference, Role, UploadedFile, User, UserProfile
+from backend.models import CommunicationAttempt, DeliveryZone, Job, JobAlertPreference, Role, UploadedFile, User, UserProfile
 
 
 class JobAlertTestConfig(Config):
@@ -122,6 +122,89 @@ class JobAlertMatchingTests(unittest.TestCase):
         self.add_teacher("skgasante@gmail.com")
         self.assertEqual(dispatch_job_alerts(self.job), 0)
         self.assertEqual(send_email_mock.call_count, 1)
+
+    @patch("backend.api.admin.log_action")
+    @patch("backend.api.admin.send_email", return_value=Mock(status="sent"))
+    def test_all_teacher_dispatch_includes_ineligible_accounts(self, send_email_mock, _log_action_mock):
+        complete_user, _ = self.add_teacher("complete@example.com")
+        incomplete_user, incomplete_pref = self.add_teacher(
+            "incomplete@example.com", complete=False, subject="English Language"
+        )
+        incomplete_user.is_verified = False
+        incomplete_pref.alert_by_email = False
+        no_pref_user, no_pref = self.add_teacher("no-preference@example.com", complete=False)
+        db.session.delete(no_pref)
+        db.session.commit()
+
+        result = dispatch_job_notifications(self.job, "all")
+
+        self.assertEqual(result["eligible"], 3)
+        self.assertEqual(result["accepted"], 3)
+        self.assertEqual(
+            {call.args[0].to for call in send_email_mock.call_args_list},
+            {complete_user.email, incomplete_user.email, no_pref_user.email},
+        )
+        for call in send_email_mock.call_args_list:
+            self.assertIn("New teaching opportunity", call.args[0].subject)
+            self.assertNotIn("matches your preferences", call.args[0].subject)
+
+    @patch("backend.api.admin.log_action")
+    @patch("backend.api.admin.send_email", return_value=Mock(status="sent"))
+    def test_all_teacher_dispatch_skips_disabled_internal_and_previously_notified_accounts(self, send_email_mock, _log_action_mock):
+        notified_user, _ = self.add_teacher("notified@example.com", complete=False)
+        disabled_user, _ = self.add_teacher("disabled@example.com", complete=False)
+        disabled_user.is_active = False
+        admin_role = Role(name="admin", description="Admin")
+        internal_user = User(
+            email="internal@example.com", first_name="Internal", role=admin_role,
+            is_active=True, is_verified=True, teacher_service_enabled=True,
+        )
+        internal_user.set_password("AdminPassword1")
+        db.session.add_all([admin_role, internal_user, CommunicationAttempt(
+            channel="email", purpose="service_reminder", recipient_user_id=notified_user.id,
+            masked_destination="no******@example.com", template_name="job_alert_all_teachers",
+            provider="test", mode="live", status="accepted",
+            idempotency_key=f"job-notification:{self.job.id}:{notified_user.id}",
+            requested_at=self.job.created_at,
+        )])
+        db.session.commit()
+
+        result = dispatch_job_notifications(self.job, "all")
+
+        self.assertEqual(result["eligible"], 1)
+        self.assertEqual(result["already_notified"], 1)
+        self.assertEqual(result["pending"], 0)
+        send_email_mock.assert_not_called()
+
+    @patch("backend.api.admin.log_action")
+    @patch("backend.api.admin.send_email", return_value=Mock(status="sent"))
+    def test_admin_can_preview_and_send_all_teacher_job_notification(self, send_email_mock, _log_action_mock):
+        self.add_teacher("broadcast@example.com", complete=False, subject="English Language")
+        admin_role = Role(name="admin", description="Admin")
+        admin = User(
+            email="admin@example.com", first_name="Admin", role=admin_role,
+            is_active=True, is_verified=True, teacher_service_enabled=False,
+        )
+        admin.set_password("AdminPassword1")
+        db.session.add_all([admin_role, admin])
+        db.session.commit()
+        client = self.app.test_client()
+        self.assertEqual(client.post(
+            "/api/auth/login",
+            json={"email": admin.email, "password": "AdminPassword1"},
+        ).status_code, 200)
+
+        preview = client.get(f"/api/admin/jobs/{self.job.id}/notifications/preview?audience=all")
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview.get_json()["pending"], 1)
+
+        response = client.post(
+            f"/api/admin/jobs/{self.job.id}/notifications",
+            json={"audience": "all", "confirm": True},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["accepted"], 1)
+        send_email_mock.assert_called_once()
 
     @patch("backend.api.jobs.send_admin_alert", return_value=Mock(status="accepted"))
     @patch("backend.api.jobs.send_email", return_value=Mock(status="accepted"))

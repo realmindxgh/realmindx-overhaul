@@ -1075,9 +1075,7 @@ def _matches_job_alert(job, preference, user=None):
     return subject_match and location_match and level_match and curriculum_match and type_match and sex_match and age_match
 
 
-def dispatch_job_alerts(job):
-    if job.status != "published":
-        return 0
+def _matching_job_notification_users(job):
     preferences = (
         JobAlertPreference.query
         .join(User, JobAlertPreference.user_id == User.id)
@@ -1089,7 +1087,7 @@ def dispatch_job_alerts(job):
         )
         .all()
     )
-    sent = 0
+    users = []
     processed_user_ids = set()
     for preference in preferences:
         user = db.session.get(User, preference.user_id)
@@ -1101,37 +1099,107 @@ def dispatch_job_alerts(job):
         ):
             continue
         processed_user_ids.add(user.id)
+        users.append(user)
+    return users
+
+
+def _all_teacher_notification_users():
+    """Every active teacher account with an address, regardless of eligibility."""
+    return (
+        User.query
+        .join(User.role)
+        .filter(
+            Role.name == "user",
+            User.teacher_service_enabled.is_(True),
+            User.is_active.is_(True),
+            User.email.isnot(None),
+        )
+        .order_by(User.id.asc())
+        .all()
+    )
+
+
+def _job_notification_key(job_id, user_id):
+    return f"job-notification:{job_id}:{user_id}"
+
+
+def _job_notification_candidates(job, audience):
+    if audience == "matching":
+        users = _matching_job_notification_users(job)
+    elif audience == "all":
+        users = _all_teacher_notification_users()
+    else:
+        raise ValueError("Choose matching teachers or all teachers.")
+
+    keys = [_job_notification_key(job.id, user.id) for user in users]
+    already_notified = set()
+    if keys:
+        already_notified = {
+            attempt.idempotency_key
+            for attempt in CommunicationAttempt.query.filter(
+                CommunicationAttempt.idempotency_key.in_(keys),
+                CommunicationAttempt.status.in_(SUCCESSFUL_COMMUNICATION_STATUSES),
+            ).all()
+        }
+    pending = [user for user in users if _job_notification_key(job.id, user.id) not in already_notified]
+    return users, pending, len(already_notified)
+
+
+def dispatch_job_notifications(job, audience="matching", *, initiated_by=None):
+    if job.status != "published":
+        return {
+            "audience": audience, "eligible": 0, "pending": 0,
+            "already_notified": 0, "accepted": 0, "mocked": 0,
+            "failed": 0, "batch_id": None,
+        }
+
+    users, pending_users, already_notified = _job_notification_candidates(job, audience)
+    batch_id = generate_batch_id()
+    accepted = mocked = failed = 0
+    for user in pending_users:
         job_url = f"{current_app.config['BASE_URL'].rstrip('/')}/jobs#{job.id}"
+        matching = audience == "matching"
+        intro_html = (
+            "<p>We found a teaching opportunity that matches all of your saved preferences.</p>"
+            if matching
+            else "<p>RealMindX has published a teaching opportunity that may interest you.</p>"
+        )
+        body_html = (
+            f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
+            f"{intro_html}"
+            f"<p><strong>{escape(job.title)}</strong><br>{escape(job.location)}</p>"
+            "<p>Take a look at the role and apply if it feels like the right next step for you. We are rooting for you!</p>"
+        )
         try:
             result = send_email(
                 OutboundEmail(
                     to=user.email,
                     from_email=current_app.config["JOBS_FROM_EMAIL"],
-                    subject=f"A teaching opportunity matches your preferences: {job.title}",
+                    subject=(
+                        f"A teaching opportunity matches your preferences: {job.title}"
+                        if matching else f"New teaching opportunity: {job.title}"
+                    ),
                     html=app_email_shell(
-                        "Good news: a teaching opportunity matches you",
-                        f"<p>Hello {escape(user.first_name or 'Teacher')},</p>"
-                        "<p>We found a teaching opportunity that matches all of your saved preferences.</p>"
-                        f"<p><strong>{escape(job.title)}</strong><br>{escape(job.location)}</p>"
-                        "<p>Take a look at the role and apply if it feels like the right next step for you. We are rooting for you!</p>",
+                        "Good news: a teaching opportunity matches you" if matching else "A new teaching opportunity is available",
+                        body_html,
                         "View Job & Apply",
                         job_url,
-                        preheader=f"{job.title} matches your saved teaching preferences.",
+                        preheader=(f"{job.title} matches your saved teaching preferences." if matching else f"A new RealMindX teaching opportunity: {job.title}."),
                     ),
                 ),
                 purpose="service_reminder",
                 recipient_user_id=user.id,
-                template_name="job_alert_match",
+                template_name="job_alert_match" if matching else "job_alert_all_teachers",
+                initiated_by=initiated_by,
+                batch_id=batch_id,
+                idempotency_key=_job_notification_key(job.id, user.id),
             )
         except Exception:
             current_app.logger.exception("Job alert delivery failed for user %s and job %s", user.id, job.id)
+            failed += 1
             continue
         if result.status == "mocked":
-            current_app.logger.info(
-                "Job alert recorded in mock mode for user %s and job %s",
-                user.id,
-                job.id,
-            )
+            mocked += 1
             continue
         if result.status not in ("queued", "accepted", "sent", "delivered"):
             current_app.logger.warning(
@@ -1141,16 +1209,41 @@ def dispatch_job_alerts(job):
                 result.status,
                 result.error_code,
             )
+            failed += 1
             continue
-        preference.last_sent_at = datetime.now(timezone.utc)
-        log_action("job_alert_email_sent", "job_alert_preference", preference.id, {
+        if matching:
+            sent_at = datetime.now(timezone.utc)
+            matching_preferences = JobAlertPreference.query.filter_by(
+                user_id=user.id,
+                alert_by_email=True,
+                frequency="instant",
+            ).all()
+            for preference in matching_preferences:
+                if _matches_job_alert(job, preference, user):
+                    preference.last_sent_at = sent_at
+        log_action("job_alert_email_sent", "job", job.id, {
             "job_id": job.id,
             "job_title": job.title,
             "user_id": user.id,
-            "email": user.email,
+            "audience": audience,
+            "batch_id": batch_id,
         })
-        sent += 1
-    return sent
+        accepted += 1
+    return {
+        "audience": audience,
+        "eligible": len(users),
+        "pending": len(pending_users),
+        "already_notified": already_notified,
+        "accepted": accepted,
+        "mocked": mocked,
+        "failed": failed,
+        "batch_id": batch_id,
+    }
+
+
+def dispatch_job_alerts(job):
+    """Backward-compatible automatic matched-alert dispatcher."""
+    return dispatch_job_notifications(job, "matching")["accepted"]
 
 
 @admin_bp.get("/dashboard")
@@ -1447,6 +1540,61 @@ def update_job(job_id):
     return jsonify(job=job_json(job), alerts_sent=alerts_sent)
 
 
+@admin_bp.get("/jobs/<int:job_id>/notifications/preview")
+@login_required
+@permission_required("jobs.edit")
+def preview_job_notifications(job_id):
+    job = db.get_or_404(Job, job_id)
+    if job.status != "published":
+        return jsonify(error="Publish this job before emailing teachers."), 409
+    audience = str(request.args.get("audience") or "matching").strip().lower()
+    try:
+        users, pending_users, already_notified = _job_notification_candidates(job, audience)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(
+        job_id=job.id,
+        job_title=job.title,
+        audience=audience,
+        recipients=len(users),
+        pending=len(pending_users),
+        already_notified=already_notified,
+    )
+
+
+@admin_bp.post("/jobs/<int:job_id>/notifications")
+@login_required
+@permission_required("jobs.edit")
+def send_job_notifications(job_id):
+    job = db.get_or_404(Job, job_id)
+    if job.status != "published":
+        return jsonify(error="Publish this job before emailing teachers."), 409
+    payload = request.get_json(silent=True) or {}
+    if payload.get("confirm") is not True:
+        return jsonify(error="Confirm the recipient audience before sending."), 400
+    audience = str(payload.get("audience") or "matching").strip().lower()
+    try:
+        result = dispatch_job_notifications(job, audience, initiated_by=current_user.id)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    log_action("send_job_notifications", "job", job.id, {
+        "audience": audience,
+        "batch_id": result["batch_id"],
+        "recipients": result["eligible"],
+        "accepted": result["accepted"],
+        "mocked": result["mocked"],
+        "failed": result["failed"],
+        "already_notified": result["already_notified"],
+    })
+    db.session.commit()
+    return jsonify(
+        message=(
+            f"Job notification processed for {result['accepted'] + result['mocked']} teacher account(s)."
+        ),
+        **result,
+    )
+
+
 @admin_bp.delete("/jobs/<int:job_id>")
 @login_required
 @permission_required("jobs.delete")
@@ -1655,6 +1803,22 @@ def _reminder_eligibility(user) -> dict:
         return {
             "eligible": False,
             "reason": f"profile_{profile_status}",
+            "status_data": status,
+            "reminder_kind": None,
+        }
+
+    # submitted_at is durable evidence that this profile entered the review
+    # queue. If a legacy or inconsistent row later regresses to "incomplete",
+    # do not send a contradictory completion reminder.
+    profile = getattr(user, "profile", None)
+    if (
+        profile
+        and getattr(profile, "submitted_at", None)
+        and profile_status not in ("revision_required", "reopened")
+    ):
+        return {
+            "eligible": False,
+            "reason": "profile_previously_submitted",
             "status_data": status,
             "reminder_kind": None,
         }
@@ -1884,6 +2048,23 @@ def _send_teacher_profile_reminder(user, *, template_name=None, enforce_cooldown
             f"Sign in and finish here: {sign_in_url}"
         )
 
+    account_reference = user.application_id or f"Account {user.id}"
+    masked_account_email = mask_destination("email", user.email or "")
+    identity_html = (
+        "<hr style='border:0;border-top:1px solid #dbe4f0;margin:24px 0'>"
+        f"<p style='font-size:13px;color:#526277'><strong>Account reference:</strong> "
+        f"{escape(account_reference)} · {escape(masked_account_email)}.</p>"
+        "<p style='font-size:13px;color:#526277'>If you already submitted a profile using another "
+        "email address, do not create or complete a second profile. Contact RealMindX so we can "
+        "safely reconcile the accounts.</p>"
+    )
+    body_html += identity_html
+    text_body += (
+        f"\n\nAccount reference: {account_reference} · {masked_account_email}."
+        "\nIf you already submitted a profile using another email address, do not create or "
+        "complete a second profile. Contact RealMindX so we can safely reconcile the accounts."
+    )
+
     result = send_email(
         OutboundEmail(
             to=user.email,
@@ -1905,6 +2086,7 @@ def _send_teacher_profile_reminder(user, *, template_name=None, enforce_cooldown
     if result.status == "mocked":
         log_action("mock_teacher_profile_reminder", "user", user.id, {
             "email": user.email,
+            "application_id": user.application_id,
             "profile_completion": completion,
             "missing_fields": reminder_items,
             "reminder_kind": reminder_kind,
@@ -1921,6 +2103,7 @@ def _send_teacher_profile_reminder(user, *, template_name=None, enforce_cooldown
     if result.status in ("queued", "accepted", "sent", "delivered"):
         log_action("send_teacher_profile_reminder", "user", user.id, {
             "email": user.email,
+            "application_id": user.application_id,
             "profile_completion": completion,
             "missing_fields": reminder_items,
             "reminder_kind": reminder_kind,
@@ -2048,6 +2231,7 @@ def send_profile_reminder(user_id):
             "profile_under_review": "This teacher's profile is under review.",
             "profile_verified": "This teacher's profile is verified.",
             "profile_rejected": "This teacher's profile was rejected and cannot receive a submission reminder.",
+            "profile_previously_submitted": "This teacher has already submitted this profile.",
             "account_disabled": "Enable this teacher account before sending a profile reminder.",
             "teacher_service_disabled": "Teacher services are not enabled for this account.",
             "not_teacher_role": "Profile reminders can only be sent to teacher accounts.",

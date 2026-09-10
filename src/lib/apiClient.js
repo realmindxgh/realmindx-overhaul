@@ -327,6 +327,8 @@ export const api = {
   // admin - write (collection: 'jobs'|'products'|'categories'|'news'|'gallery'|'resources')
   adminCreate: (collection, payload) => apiFetch(`/admin/${collection}`, { method: 'POST', body: payload }),
   adminUpdate: (collection, id, payload) => apiFetch(`/admin/${collection}/${id}`, { method: 'PUT', body: payload }),
+  adminPreviewJobNotifications: (jobId, audience) => apiFetch(`/admin/jobs/${jobId}/notifications/preview?audience=${encodeURIComponent(audience)}`),
+  adminSendJobNotifications: (jobId, audience) => apiFetch(`/admin/jobs/${jobId}/notifications`, { method: 'POST', body: { audience, confirm: true } }),
   adminPatch: (collection, id, payload) => apiFetch(`/admin/${collection}/${id}`, { method: 'PATCH', body: payload }),
   adminDelete: (collection, id) => apiFetch(`/admin/${collection}/${id}`, { method: 'DELETE' }),
   adminReplyMessage: (id, message) => apiFetch(`/admin/messages/${id}/reply`, { method: 'POST', body: { message } }),

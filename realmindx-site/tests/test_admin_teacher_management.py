@@ -173,7 +173,24 @@ class AdminTeacherManagementTests(unittest.TestCase):
         self.assertIn("does not automatically submit your profile", message.html)
         self.assertIn("Submit Profile for Review", message.html)
         self.assertIn("does not automatically submit your profile", message.text)
+        self.assertIn("Account reference", message.html)
+        self.assertIn("already submitted a profile using another email", message.html)
         self.assertIn("https://realmindxgh.com/logo-white.png", message.html)
+
+    @patch("backend.api.admin.send_email")
+    def test_previously_submitted_profile_never_gets_completion_reminder(self, send_email_mock):
+        self.active_teacher.profile.profile_status = "incomplete"
+        self.active_teacher.profile.submitted_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        response = self.client.post(
+            f"/api/admin/users/{self.active_teacher.id}/profile-reminder",
+            json={},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("already submitted", response.get_json()["error"].lower())
+        send_email_mock.assert_not_called()
 
     def test_automatic_profile_reminder_stages_use_24h_then_7d_then_30d(self):
         from backend.api.admin import _automated_profile_reminder_due
