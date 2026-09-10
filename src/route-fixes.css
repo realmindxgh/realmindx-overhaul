@@ -7089,7 +7089,7 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
     .form-group > .form-textarea,
     .password-field > .form-input,
     .verified-contact-form input:not([type="radio"]),
-    .bs form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([data-form-icon="none"]),
+    .bs form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="email"]):not([type="tel"]):not([type="password"]):not([data-form-icon="none"]),
     .bs form textarea
   ) {
     padding-left: 14px !important;
