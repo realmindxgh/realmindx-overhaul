@@ -229,6 +229,41 @@ REQUESTED_DELIVERY_LOCATIONS = [
     _delivery_seed("Opah", fee=45, **SAPEIMAN_META),
 ]
 
+# Shared catalogue entries that are ready for job posts but must not appear at
+# bookshop checkout until an administrator assigns a delivery fee and enables
+# "Show at checkout". Aliases preserve common local spelling variations.
+JOB_LOCATION_SEEDS = [
+    ("Abofu", []), ("Accra Central", []), ("Addogonno", []), ("Adiembra", []),
+    ("Agbogba", []), ("Agbogbloshie", ["Old Fadama"]),
+    ("Airport City", []), ("Airport Hills", []), ("Airport West", []),
+    ("Alajo North", []), ("Alogboshie", ["Algoboshie"]),
+    ("Amamoley", ["Amamole", "Amamorley"]), ("Asofan", ["Asofaa"]),
+    ("Atomic", []), ("Avenor", []), ("Awoshie", ["Awoshi"]),
+    ("Awudome", ["Awudome Estate"]), ("Ayi Mensah", ["Ayimensa"]),
+    ("Banana Inn", []), ("Borteyman", []), ("Bukom", []), ("Chantan", []),
+    ("Christian Village", ["Christians Village"]), ("Domeabra", []),
+    ("Dzen Ayor", []), ("Dzornaman", []), ("East Airport", []),
+    ("East Legon Extension", []), ("Fise", []), ("Gbetsile", []),
+    ("Klagon", []), ("Korle Bu", ["Korle-Bu"]),
+    ("Korle Dudor", ["Ussher Town"]), ("Kwashiebu", []), ("Labone", []),
+    ("Martey Tsuru", []), ("Mendskrom", []), ("Mpoase", ["Mpuase"]),
+    ("Nanakrom", ["NanaKrom Estates"]), ("New Achimota", []),
+    ("New Aplaku", []), ("New Gbawe", []), ("New Legon", []),
+    ("New Mamprobi", []), ("New Russia", []), ("Nii Boi Town", ["Niiboye Town"]),
+    ("Nmai Dzorn", ["Nmai Dzorm"]), ("North Industrial Area", []),
+    ("North Ridge", []), ("Nyamekye", []), ("Nyaniba Estates", []),
+    ("Odorkor", ["North Odorkor", "South Odorkor"]),
+    ("Ogbodjo", ["Ogbojo", "Ogbodzo"]), ("Okpoi Gonno", []),
+    ("Otaten", []), ("Otanor", []), ("Pig Farm", []), ("Ridge", []),
+    ("Ringway Estates", ["Ringway Estate"]), ("Sabon Zongo", []),
+    ("Sakaman", []), ("Santa Maria", []), ("South Industrial Area", []),
+    ("South Legon", []), ("Tabora", []), ("Tantra Hill", []),
+    ("Teiman", []), ("Tema New Town", ["Tema Newtown"]), ("Tetegu", ["Tetegbu"]),
+    ("Trasacco Valley", ["Trasacco"]), ("Tse Addo", ["Tse-Addo"]),
+    ("Tudu", []), ("West Ridge", []), ("Westland", []),
+    *[(f"Tema Community {number}", [f"Community {number}"]) for number in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 25]],
+]
+
 
 def _default_delivery_seed(town):
     return _delivery_seed(
@@ -245,6 +280,18 @@ def delivery_zone_seed_items():
     }
     for location in REQUESTED_DELIVERY_LOCATIONS:
         seeds_by_key[normalize_location_key(location["name"])] = location
+    for name, aliases in JOB_LOCATION_SEEDS:
+        key = normalize_location_key(name)
+        if key in seeds_by_key:
+            seeds_by_key[key]["aliases"] = [*seeds_by_key[key].get("aliases", []), *aliases]
+            continue
+        seeds_by_key[key] = _delivery_seed(
+            name,
+            aliases=aliases,
+            fee=0,
+            description="Available for job postings. Configure a delivery fee before enabling checkout delivery.",
+            delivery_area=False,
+        )
     return sorted(seeds_by_key.values(), key=lambda item: normalize_location_key(item["name"]))
 
 

@@ -9,6 +9,7 @@ if str(SITE_ROOT) not in sys.path:
 
 from backend import create_app
 from backend.api.admin import _matches_job_alert, dispatch_job_alerts, dispatch_job_notifications
+from backend.cli import delivery_zone_seed_items
 from backend.config import Config
 from backend.extensions import db
 from backend.models import CommunicationAttempt, DeliveryZone, Job, JobAlertPreference, Role, UploadedFile, User, UserProfile
@@ -77,6 +78,23 @@ class JobAlertMatchingTests(unittest.TestCase):
         db.session.add_all([profile, pref])
         db.session.commit()
         return user, pref
+
+    def login_admin(self):
+        admin_role = Role(name="admin", description="Admin")
+        admin = User(
+            email="admin@example.com", first_name="Admin", role=admin_role,
+            is_active=True, is_verified=True, teacher_service_enabled=False,
+        )
+        admin.set_password("AdminPassword1")
+        db.session.add_all([admin_role, admin])
+        db.session.commit()
+        client = self.app.test_client()
+        response = client.post(
+            "/api/auth/login",
+            json={"email": admin.email, "password": "AdminPassword1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        return client
 
     def test_exact_match_and_legacy_level_alias(self):
         user, pref = self.add_teacher("exact@example.com", level="JHS")
@@ -180,19 +198,7 @@ class JobAlertMatchingTests(unittest.TestCase):
     @patch("backend.api.admin.send_email", return_value=Mock(status="sent"))
     def test_admin_can_preview_and_send_all_teacher_job_notification(self, send_email_mock, _log_action_mock):
         self.add_teacher("broadcast@example.com", complete=False, subject="English Language")
-        admin_role = Role(name="admin", description="Admin")
-        admin = User(
-            email="admin@example.com", first_name="Admin", role=admin_role,
-            is_active=True, is_verified=True, teacher_service_enabled=False,
-        )
-        admin.set_password("AdminPassword1")
-        db.session.add_all([admin_role, admin])
-        db.session.commit()
-        client = self.app.test_client()
-        self.assertEqual(client.post(
-            "/api/auth/login",
-            json={"email": admin.email, "password": "AdminPassword1"},
-        ).status_code, 200)
+        client = self.login_admin()
 
         preview = client.get(f"/api/admin/jobs/{self.job.id}/notifications/preview?audience=all")
         self.assertEqual(preview.status_code, 200)
@@ -205,6 +211,69 @@ class JobAlertMatchingTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["accepted"], 1)
         send_email_mock.assert_called_once()
+
+    def test_job_locations_include_active_non_delivery_areas(self):
+        job_only = DeliveryZone(
+            name="Ogbodjo", aliases="Ogbojo\nOgbodzo", fee=0,
+            is_active=True, is_delivery_area=False, is_search_alias_only=False,
+        )
+        alias_only = DeliveryZone(
+            name="Hidden alias", fee=0, is_active=True,
+            is_delivery_area=False, is_search_alias_only=True,
+        )
+        db.session.add_all([job_only, alias_only])
+        db.session.commit()
+        client = self.login_admin()
+
+        response = client.get("/api/admin/job-locations")
+
+        self.assertEqual(response.status_code, 200)
+        names = {item["name"] for item in response.get_json()["items"]}
+        self.assertIn("Ogbodjo", names)
+        self.assertNotIn("Hidden alias", names)
+
+    @patch("backend.api.admin.dispatch_job_alerts", return_value=0)
+    def test_competitive_salary_and_blank_subject_are_saved(self, _dispatch_mock):
+        client = self.login_admin()
+
+        response = client.post("/api/admin/jobs", json={
+            "title": "Nursery Teacher",
+            "organisation": "Test School",
+            "delivery_zone_id": self.zone.id,
+            "subject": "",
+            "description": "Support early years learners.",
+            "salary_display_mode": "competitive",
+            "salary_min": 2000,
+            "salary_max": 3000,
+            "status": "draft",
+        })
+
+        self.assertEqual(response.status_code, 201)
+        job = response.get_json()["job"]
+        self.assertIsNone(job["subject"])
+        self.assertEqual(job["salary_display_mode"], "competitive")
+        self.assertIsNone(job["salary_min"])
+        self.assertIsNone(job["salary_max"])
+
+    def test_salary_range_requires_an_amount(self):
+        client = self.login_admin()
+
+        response = client.post("/api/admin/jobs", json={
+            "title": "Teacher",
+            "delivery_zone_id": self.zone.id,
+            "description": "Description",
+            "salary_display_mode": "range",
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("at least one salary amount", response.get_json()["error"])
+
+    def test_reviewed_location_seed_is_job_only_until_delivery_is_configured(self):
+        seeds = {item["name"]: item for item in delivery_zone_seed_items()}
+
+        self.assertIn("Ogbodjo", seeds)
+        self.assertFalse(seeds["Ogbodjo"]["is_delivery_area"])
+        self.assertIn("Ogbojo", seeds["Ogbodjo"]["aliases"])
 
     @patch("backend.api.jobs.send_admin_alert", return_value=Mock(status="accepted"))
     @patch("backend.api.jobs.send_email", return_value=Mock(status="accepted"))

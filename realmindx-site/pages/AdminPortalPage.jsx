@@ -209,15 +209,28 @@ const CONFIG = {
     fields: [
       field('title', 'Job Title'),
       field('organisation', 'School / Organisation'),
-      field('delivery_zone_id', 'Location', 'delivery-zone-select', { help: 'Uses the same canonical area list as bookshop delivery and teacher alerts.' }),
-      field('subject', 'Subject', 'select', { options: JOB_SUBJECTS }),
+      field('delivery_zone_id', 'Location', 'delivery-zone-select', { help: 'Uses the shared location catalogue. Some job locations may not yet be enabled for bookshop delivery.' }),
+      field('subject', 'Subject / Specialism', 'select', {
+        options: JOB_SUBJECTS,
+        allowBlank: true,
+        blankLabel: 'No subject - this role is not subject-specific',
+        help: 'Optional. Leave blank for nursery, class-teacher, leadership, or other roles that are not tied to one subject.',
+      }),
       field('level', 'Level', 'select', { options: JOB_LEVELS }),
       field('curriculum', 'Curriculum', 'select', { options: TEACHING_CURRICULA }),
       field('employment_type', 'Employment Type', 'select', { options: JOB_TYPES }),
       field('preferred_sex', 'Preferred Sex', 'select', { options: ['any', 'female', 'male', 'other'], help: 'Use Any unless the school has a lawful role-specific requirement.' }),
       field('preferred_age_range', 'Preferred Age Range', 'select', { options: ['any', '18_24', '25_34', '35_44', '45_54', '55_64', '65_plus'] }),
-      field('salary_min', 'Minimum Salary (GHS)', 'number', { help: 'Monthly salary range shown to applicants. Leave both blank to show "Available on request".' }),
-      field('salary_max', 'Maximum Salary (GHS)', 'number'),
+      field('salary_display_mode', 'Salary Display', 'select', {
+        defaultValue: 'on_request',
+        options: [
+          { value: 'range', label: 'Salary range' },
+          { value: 'competitive', label: 'Competitive' },
+          { value: 'on_request', label: 'Available on request' },
+        ],
+      }),
+      field('salary_min', 'Minimum Salary (GHS)', 'number', { help: 'Monthly salary range shown to applicants.', visibleWhen: form => form.salary_display_mode === 'range' }),
+      field('salary_max', 'Maximum Salary (GHS)', 'number', { visibleWhen: form => form.salary_display_mode === 'range' }),
       field('deadline', 'Deadline', 'date', { placeholder: 'No application deadline' }),
       field('description', 'Description', 'textarea'),
       field('requirements', 'Requirements', 'textarea', { help: 'One requirement per line. Shown as a bullet list to applicants.' }),
@@ -357,7 +370,7 @@ const CONFIG = {
       field('delivery_zone_label', 'Delivery Belt'),
       field('description', 'Checkout / Admin Note', 'textarea'),
       field('sort_order', 'Sort Order', 'number'),
-      field('is_active', 'Active', 'checkbox', { toggleLabel: 'Available in admin and checkout' }),
+      field('is_active', 'Active', 'checkbox', { toggleLabel: 'Available in the shared location catalogue' }),
       field('is_delivery_area', 'Show at checkout', 'checkbox', { toggleLabel: 'Show this location in checkout search' }),
       field('is_search_alias_only', 'Alias Only', 'checkbox', { toggleLabel: 'Use only as a hidden search alias' }),
     ],
@@ -1047,7 +1060,7 @@ const valueForInput = (value, itemField) => {
   if (itemField.type === 'category-select' || itemField.type === 'delivery-zone-select') return value ?? '';
   if (itemField.type === 'permission-list') return Array.isArray(value) ? value : [];
   if (itemField.type === 'article-sections') return Array.isArray(value) ? value : [];
-  if (itemField.type === 'select' && (value === null || value === undefined || value === '') && itemField.options?.length) {
+  if (itemField.type === 'select' && !itemField.allowBlank && (value === null || value === undefined || value === '') && itemField.options?.length) {
     // A <select> always shows its first <option> when value doesn't match any option, so make
     // that the real default too - otherwise an untouched dropdown silently submits ''.
     return optionValue(itemField.options[0]);
@@ -2581,7 +2594,8 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate, onAuto
   React.useEffect(() => {
     if (!config.fields.some(itemField => itemField.type === 'delivery-zone-select')) return;
     let alive = true;
-    api.fetchDeliveryZones()
+    const locationRequest = isApiMode() ? api.adminJobLocations() : api.fetchDeliveryZones();
+    locationRequest
       .then(data => {
         if (alive) {
           setDeliveryZoneOptions(
@@ -2677,6 +2691,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate, onAuto
         ) : null}
         {config.fields.map(itemField => (
           itemField.advanced && !showAdvanced ? null :
+          itemField.visibleWhen && !itemField.visibleWhen(form) ? null :
           <div key={itemField.name} className="form-group" style={(itemField.type === 'textarea' || itemField.type === 'image' || itemField.type === 'file' || itemField.type === 'permission-list' || itemField.type === 'article-sections') ? { gridColumn: '1 / -1' } : null}>
             <label className="form-label">{itemField.label}</label>
             {itemField.type === 'image' ? (
@@ -2787,7 +2802,9 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate, onAuto
                         { value: '', label: deliveryZoneOptions.length ? 'Select the exact teaching location' : 'No active delivery areas available' },
                         ...deliveryZoneOptions.map(zone => ({ value: zone.id, label: zone.name })),
                       ]
-                  : itemField.options
+                  : itemField.allowBlank
+                    ? [{ value: '', label: itemField.blankLabel || `Select ${itemField.label.toLowerCase()}` }, ...itemField.options]
+                    : itemField.options
                 ).map(option => (
                   <option key={optionValue(option)} value={optionValue(option)}>
                     {optionLabel(option)}
@@ -7717,15 +7734,15 @@ const AccountView = ({ session, onPasswordChanged, onTwoFactorChanged }) => {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
             Current Password
-            <PasswordRevealInput name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-200)', fontSize: '0.9rem' }} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
             New Password
-            <PasswordRevealInput name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" required minLength={8} style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" required minLength={8} style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-200)', fontSize: '0.9rem' }} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
             Confirm New Password
-            <PasswordRevealInput name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-200)', fontSize: '0.9rem' }} />
           </label>
           {status?.error && <InlineStatus tone="error">{status.error}</InlineStatus>}
           {status?.success && <InlineStatus tone="success">{status.success}</InlineStatus>}
@@ -8741,6 +8758,7 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const [sessionChecked, setSessionChecked] = React.useState(!isApiMode());
+  const [mfaPromptDismissed, setMfaPromptDismissed] = React.useState(false);
   const isInternalSession = ['admin', 'staff'].includes(session?.role);
   const adminName = isInternalSession ? (session.firstName || portalLabel) : portalLabel;
   const adminInitials = isInternalSession ? (session.initials || (requiredRole === 'staff' ? 'ST' : 'AD')) : (requiredRole === 'staff' ? 'ST' : 'AD');
@@ -8768,6 +8786,30 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
       return nextSession;
     });
   }, []);
+
+  React.useEffect(() => {
+    if (!session?.email) return;
+    const key = `rmx-mfa-prompt-dismissed:${session.email.toLowerCase()}`;
+    try {
+      const dismissedAt = Number(window.localStorage.getItem(key) || 0);
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+      setMfaPromptDismissed(dismissedAt > 0 && Date.now() - dismissedAt < thirtyDays);
+    } catch {
+      setMfaPromptDismissed(false);
+    }
+  }, [session?.email]);
+
+  const dismissMfaPrompt = React.useCallback(() => {
+    if (session?.email) {
+      const key = `rmx-mfa-prompt-dismissed:${session.email.toLowerCase()}`;
+      try {
+        window.localStorage.setItem(key, String(Date.now()));
+      } catch {
+        // Dismiss for this page view even when storage is unavailable.
+      }
+    }
+    setMfaPromptDismissed(true);
+  }, [session?.email]);
 
   const canViewActive = React.useCallback((key, nextSession = session) => {
     const item = NAV.find(entry => entry.key === key);
@@ -8927,16 +8969,15 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
             </button>
           </div>
         </div>
-        {session?.mfaRecommended === true && activeView !== 'account' ? (
-          <div
-            role="status"
-            style={{ margin: '18px 28px 0', padding: '14px 16px', border: '1px solid #fed7aa', borderRadius: 12, background: '#fff7ed', color: '#9a3412', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: '1 1 360px' }}>
-              <Icon name="shield" size={19} />
-              <span style={{ fontSize: '0.84rem', lineHeight: 1.55 }}><strong>Protect this internal account.</strong> Add an emailed security code to sign-in; setup takes about a minute and will not interrupt this session.</span>
+        {session?.mfaRecommended === true && !mfaPromptDismissed && activeView === 'dashboard' ? (
+          <div className="admin-mfa-prompt" role="status">
+            <span className="admin-mfa-prompt-icon" aria-hidden="true"><Icon name="shield" size={17} /></span>
+            <div className="admin-mfa-prompt-copy">
+              <strong>Secure your account with email 2FA</strong>
+              <span>Add an extra sign-in step in about a minute.</span>
             </div>
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => setActiveView('account')}>Set up 2FA</button>
+            <button type="button" className="admin-mfa-prompt-action" onClick={() => setActiveView('account')}>Set up</button>
+            <button type="button" className="admin-mfa-prompt-close" onClick={dismissMfaPrompt} aria-label="Dismiss two-factor authentication reminder for 30 days"><Icon name="x" size={16} /></button>
           </div>
         ) : null}
         {view}
@@ -8962,6 +9003,14 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
         .admin-file-upload-copy a { color: #1976c9; font-size: 0.78rem; font-weight: 800; text-decoration: none; }
         .admin-file-upload-copy p { color: var(--gray-600); font-size: 0.76rem; line-height: 1.45; margin: 0; }
         .password-field .form-input { width: 100%; }
+        .admin-mfa-prompt { margin: 14px 28px 4px; padding: 10px 12px; border: 1px solid #f7d77b; border-radius: 10px; background: #fffaf0; color: var(--navy); display: flex; align-items: center; gap: 10px; }
+        .admin-mfa-prompt-icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex: 0 0 auto; background: #fff1bf; color: #8a5a00; }
+        .admin-mfa-prompt-copy { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 0.78rem; line-height: 1.4; }
+        .admin-mfa-prompt-copy strong { font-size: 0.8rem; }
+        .admin-mfa-prompt-copy span { color: var(--gray-600); }
+        .admin-mfa-prompt-action { border: 0; background: transparent; color: var(--navy); padding: 6px 8px; font-size: 0.76rem; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; white-space: nowrap; }
+        .admin-mfa-prompt-close { width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--gray-500); display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; }
+        .admin-mfa-prompt-action:hover, .admin-mfa-prompt-action:focus-visible, .admin-mfa-prompt-close:hover, .admin-mfa-prompt-close:focus-visible { background: rgba(20, 54, 112, 0.08); outline: none; }
         .admin-stat { border: 0; text-align: left; cursor: pointer; }
         .admin-thumb { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; border: 1px solid var(--gray-200); display: block; }
         .td-muted { color: var(--gray-600); font-size: 0.78rem; font-weight: 700; }

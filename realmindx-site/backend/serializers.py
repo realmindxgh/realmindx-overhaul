@@ -73,6 +73,7 @@ def job_json(job):
         "salary_min": float(job.salary_min) if job.salary_min is not None else None,
         "salary_max": float(job.salary_max) if job.salary_max is not None else None,
         "salary_currency": job.salary_currency,
+        "salary_display_mode": job.salary_display_mode or "on_request",
         "status": job.status,
         "created_at": job.created_at.isoformat() if job.created_at else None,
     }

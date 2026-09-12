@@ -323,6 +323,7 @@ export const api = {
   adminProductMissingImages: () => apiFetch('/admin/products/missing-images'),
   adminUnpublishProductsMissingImages: () => apiFetch('/admin/products/missing-images/unpublish', { method: 'POST' }),
   adminList: (collection) => apiFetch(`/admin/${collection}`),
+  adminJobLocations: () => apiFetch('/admin/job-locations'),
   adminListWithQuery: (collection, qs = '') => apiFetch(`/admin/${collection}${qs ? '?' + qs : ''}`),
   // admin - write (collection: 'jobs'|'products'|'categories'|'news'|'gallery'|'resources')
   adminCreate: (collection, payload) => apiFetch(`/admin/${collection}`, { method: 'POST', body: payload }),

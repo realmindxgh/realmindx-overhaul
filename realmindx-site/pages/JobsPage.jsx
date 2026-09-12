@@ -461,6 +461,9 @@ const splitLines = value => (
 
 const formatSalary = job => {
   if (job.salary) return job.salary;
+  const displayMode = job.salary_display_mode || (job.salary_min != null || job.salary_max != null ? 'range' : 'on_request');
+  if (displayMode === 'competitive') return 'Competitive';
+  if (displayMode === 'on_request') return 'Available on request';
   const currency = job.salary_currency || 'GHS';
   const { salary_min: min, salary_max: max } = job;
   const fmt = n => Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });

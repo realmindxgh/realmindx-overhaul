@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "dev": "node scripts/run-vite.mjs --host 127.0.0.1",
+    "build": "node scripts/run-vite.mjs build",
+    "preview": "node scripts/run-vite.mjs preview --host 127.0.0.1",
+    "doctor:esbuild": "node scripts/run-vite.mjs --health-check",
     "test:async-ui": "node --test scripts/test-async-ui.mjs",
     "test:bookshop-search": "node scripts/test-bookshop-exam-search.mjs"
   },
@@ -20,6 +21,9 @@
   },
   "devDependencies": {
     "esbuild": "0.25.10"
+  },
+  "engines": {
+    "node": ">=20 <25"
   },
   "overrides": {
     "nanoid": "3.3.18"

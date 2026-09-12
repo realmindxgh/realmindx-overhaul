@@ -899,7 +899,7 @@ def job_public_page(segment):
         },
         "url": canonical,
     }
-    if job.salary_min is not None or job.salary_max is not None:
+    if (job.salary_display_mode or "on_request") == "range" and (job.salary_min is not None or job.salary_max is not None):
         minimum = float(job.salary_min) if job.salary_min is not None else float(job.salary_max)
         maximum = float(job.salary_max) if job.salary_max is not None else float(job.salary_min)
         schema["baseSalary"] = {

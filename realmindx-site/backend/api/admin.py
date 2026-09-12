@@ -1475,20 +1475,63 @@ def list_jobs():
     return jsonify(items=[job_json(row) for row in rows])
 
 
+@admin_bp.get("/job-locations")
+@login_required
+@permission_required("jobs.view")
+def list_job_locations():
+    rows = (
+        DeliveryZone.query
+        .filter(
+            DeliveryZone.is_active.is_(True),
+            DeliveryZone.is_search_alias_only.is_(False),
+            ~func.lower(DeliveryZone.name).contains("pickup"),
+        )
+        .order_by(DeliveryZone.name.asc())
+        .all()
+    )
+    return jsonify(items=[delivery_zone_json(row) for row in rows])
+
+
+def _job_salary_values(payload, existing_job=None):
+    mode = str(payload.get("salary_display_mode") or getattr(existing_job, "salary_display_mode", None) or "on_request").strip().lower()
+    if mode not in {"range", "competitive", "on_request"}:
+        raise ValueError("Choose salary range, competitive, or available on request.")
+    if mode != "range":
+        return mode, None, None
+    salary_min = payload.get("salary_min") if "salary_min" in payload else getattr(existing_job, "salary_min", None)
+    salary_max = payload.get("salary_max") if "salary_max" in payload else getattr(existing_job, "salary_max", None)
+    if salary_min in {"", None} and salary_max in {"", None}:
+        raise ValueError("Enter at least one salary amount when salary range is selected.")
+    try:
+        salary_min = float(salary_min) if salary_min not in {"", None} else None
+        salary_max = float(salary_max) if salary_max not in {"", None} else None
+    except (TypeError, ValueError):
+        raise ValueError("Salary amounts must be valid numbers.")
+    if (salary_min is not None and salary_min < 0) or (salary_max is not None and salary_max < 0):
+        raise ValueError("Salary amounts cannot be negative.")
+    if salary_min is not None and salary_max is not None and salary_max < salary_min:
+        raise ValueError("Maximum salary cannot be lower than minimum salary.")
+    return mode, salary_min, salary_max
+
+
 @admin_bp.post("/jobs")
 @login_required
 @permission_required("jobs.create")
 def create_job():
     payload = request.get_json(silent=True) or {}
     delivery_zone = db.session.get(DeliveryZone, payload.get("delivery_zone_id")) if payload.get("delivery_zone_id") else None
-    if not delivery_zone or not delivery_zone.is_active or "pickup" in delivery_zone.name.lower():
-        return jsonify(error="Choose a valid job location from the delivery-area list."), 400
+    if not delivery_zone or not delivery_zone.is_active or delivery_zone.is_search_alias_only or "pickup" in delivery_zone.name.lower():
+        return jsonify(error="Choose a valid job location from the shared location list."), 400
+    try:
+        salary_display_mode, salary_min, salary_max = _job_salary_values(payload)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
     job = Job(
         title=payload.get("title"),
         organisation=payload.get("organisation") or payload.get("school"),
         location=delivery_zone.name,
         delivery_zone_id=delivery_zone.id,
-        subject=payload.get("subject"),
+        subject=(payload.get("subject") or "").strip() or None,
         level=payload.get("level"),
         curriculum=payload.get("curriculum"),
         employment_type=payload.get("employment_type"),
@@ -1498,8 +1541,9 @@ def create_job():
         requirements=payload.get("requirements"),
         responsibilities=payload.get("responsibilities"),
         deadline=date.fromisoformat(payload["deadline"]) if payload.get("deadline") else None,
-        salary_min=payload.get("salary_min"),
-        salary_max=payload.get("salary_max"),
+        salary_min=salary_min,
+        salary_max=salary_max,
+        salary_display_mode=salary_display_mode,
         status=payload.get("status") or "draft",
         created_by_id=current_user.id,
     )
@@ -1523,13 +1567,22 @@ def update_job(job_id):
     payload = request.get_json(silent=True) or {}
     if "delivery_zone_id" in payload:
         delivery_zone = db.session.get(DeliveryZone, payload.get("delivery_zone_id")) if payload.get("delivery_zone_id") else None
-        if not delivery_zone or not delivery_zone.is_active or "pickup" in delivery_zone.name.lower():
-            return jsonify(error="Choose a valid job location from the delivery-area list."), 400
+        if not delivery_zone or not delivery_zone.is_active or delivery_zone.is_search_alias_only or "pickup" in delivery_zone.name.lower():
+            return jsonify(error="Choose a valid job location from the shared location list."), 400
         job.delivery_zone_id = delivery_zone.id
         job.location = delivery_zone.name
-    for field in ["title", "organisation", "subject", "level", "curriculum", "employment_type", "preferred_sex", "preferred_age_range", "description", "requirements", "responsibilities", "salary_min", "salary_max", "status"]:
+    try:
+        salary_display_mode, salary_min, salary_max = _job_salary_values(payload, job)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    for field in ["title", "organisation", "level", "curriculum", "employment_type", "preferred_sex", "preferred_age_range", "description", "requirements", "responsibilities", "status"]:
         if field in payload:
             setattr(job, field, payload[field])
+    if "subject" in payload:
+        job.subject = (payload.get("subject") or "").strip() or None
+    job.salary_display_mode = salary_display_mode
+    job.salary_min = salary_min
+    job.salary_max = salary_max
     if "deadline" in payload:
         job.deadline = date.fromisoformat(payload["deadline"]) if payload["deadline"] else None
     alerts_sent = dispatch_job_alerts(job) if payload.get("send_alerts") else 0
@@ -4599,7 +4652,7 @@ def export_jobs():
     headers = [
         "id", "title", "organisation", "location", "delivery_zone", "subject", "level", "curriculum",
         "employment_type", "preferred_sex", "preferred_age_range", "description", "requirements",
-        "responsibilities", "salary_min", "salary_max", "salary_currency", "deadline", "status",
+        "responsibilities", "salary_display_mode", "salary_min", "salary_max", "salary_currency", "deadline", "status",
         "created_by_user_id", "created_at", "updated_at",
     ]
 
@@ -4619,6 +4672,7 @@ def export_jobs():
             "description": j.description or "",
             "requirements": j.requirements or "",
             "responsibilities": j.responsibilities or "",
+            "salary_display_mode": j.salary_display_mode or "on_request",
             "salary_min": float(j.salary_min) if j.salary_min is not None else "",
             "salary_max": float(j.salary_max) if j.salary_max is not None else "",
             "salary_currency": j.salary_currency or "",

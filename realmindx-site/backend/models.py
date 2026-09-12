@@ -228,6 +228,7 @@ class Job(TimestampMixin, db.Model):
     salary_min = db.Column(db.Numeric(12, 2), nullable=True)
     salary_max = db.Column(db.Numeric(12, 2), nullable=True)
     salary_currency = db.Column(db.String(10), default="GHS", nullable=False)
+    salary_display_mode = db.Column(db.String(24), default="on_request", nullable=False)
     status = db.Column(db.String(30), default="draft", nullable=False, index=True)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     delivery_zone = db.relationship("DeliveryZone")
