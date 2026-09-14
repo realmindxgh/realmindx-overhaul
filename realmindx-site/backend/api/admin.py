@@ -6621,6 +6621,11 @@ def _content_payload(model, payload, fields):
     return row
 
 
+def _clean_news_body(value):
+    value = (value or "").strip()
+    return sanitize_rich_html(value) if contains_rich_html(value) else value
+
+
 def _clean_news_sections(sections):
     cleaned = []
     if not isinstance(sections, list):
@@ -6629,7 +6634,7 @@ def _clean_news_sections(sections):
         if not isinstance(section, dict):
             continue
         heading = (section.get("heading") or "").strip()
-        body = (section.get("body") or "").strip()
+        body = _clean_news_body(section.get("body"))
         caption = (section.get("caption") or "").strip()
         image_position = (section.get("image_position") or "auto").strip().lower()
         image_size = (section.get("image_size") or "medium").strip().lower()
@@ -6709,7 +6714,7 @@ def create_news():
         slug=payload.get("slug") or slugify(payload.get("title")),
         category=payload.get("category"),
         summary=payload.get("summary"),
-        body=payload.get("body") or "",
+        body=_clean_news_body(payload.get("body")),
         sections=_clean_news_sections(payload.get("sections")),
         image_file_id=payload.get("image_file_id") or None,
         status=payload.get("status") or "draft",
@@ -6734,7 +6739,7 @@ def update_news(news_id):
     payload = request.get_json(silent=True) or {}
     for field in ["title", "slug", "category", "summary", "body", "image_file_id", "status"]:
         if field in payload:
-            setattr(row, field, payload[field])
+            setattr(row, field, _clean_news_body(payload[field]) if field == "body" else payload[field])
     if "sections" in payload:
         row.sections = _clean_news_sections(payload.get("sections"))
     if "date" in payload:
@@ -7565,13 +7570,13 @@ def _render_newsletter_sections(sections, *, asset_base_url=None):
 
 
 def _campaign_from_email(sender):
-    sender = (sender or "news").strip().lower()
+    sender = (sender or "default").strip().lower()
     if sender == "sales":
         return current_app.config.get("SALES_FROM_EMAIL") or "RealMindX Sales <sales@send.realmindxgh.com>"
     if sender == "bookshop":
         return current_app.config.get("BOOKSHOP_FROM_EMAIL")
     if sender == "default":
-        return current_app.config.get("DEFAULT_FROM_EMAIL")
+        return current_app.config.get("OUTREACH_FROM_EMAIL") or "RealMindX <hello@send.realmindxgh.com>"
     return current_app.config.get("NEWSLETTER_FROM_EMAIL")
 
 
@@ -7721,7 +7726,7 @@ def _send_saved_newsletter_recipient(campaign, recipient):
     body = (content.get("body") or "").strip()
     body_html = _render_newsletter_sections(sections) if sections else _render_newsletter_body(body)
     brand = (campaign.brand or content.get("brand") or "realmindx").strip().lower()
-    sender = (campaign.sender or content.get("sender") or "news").strip().lower()
+    sender = (campaign.sender or content.get("sender") or "default").strip().lower()
     shell = bookshop_email_shell if brand == "bookshop" else app_email_shell
     hero_image_url = None
     if content.get("image_file_id"):
@@ -7904,7 +7909,7 @@ def preview_newsletter_campaign():
     brand = (payload.get("brand") or "realmindx").strip().lower()
     is_bookshop = brand == "bookshop"
     shell = bookshop_email_shell if is_bookshop else app_email_shell
-    sender = (payload.get("sender") or ("bookshop" if is_bookshop else "news")).strip().lower()
+    sender = (payload.get("sender") or ("bookshop" if is_bookshop else "default")).strip().lower()
     html = shell(
         title,
         body_html,
@@ -8159,7 +8164,7 @@ def send_newsletter_campaign():
     brand = (payload.get("brand") or "realmindx").strip().lower()
     is_bookshop = brand == "bookshop"
     shell = bookshop_email_shell if is_bookshop else app_email_shell
-    sender = (payload.get("sender") or payload.get("purpose") or ("bookshop" if is_bookshop else "news")).strip().lower()
+    sender = (payload.get("sender") or payload.get("purpose") or ("bookshop" if is_bookshop else "default")).strip().lower()
     from_email = _campaign_from_email(sender)
     contact_ids = payload.get("contact_ids") or []
     recipient_ids = payload.get("recipient_ids") or []  # legacy subscriber IDs
@@ -9000,7 +9005,7 @@ def _newsletter_draft_json(row):
         "subject": row.subject or "",
         "title": row.title or "",
         "brand": row.brand or "realmindx",
-        "sender": row.sender or "news",
+        "sender": row.sender or "default",
         "sms_sender_id": row.sms_sender_id or "",
         "content": row.content or {},
         "audience": row.audience or {},
@@ -9041,7 +9046,7 @@ def save_newsletter_draft():
     row.subject = (payload.get("subject") or "").strip()
     row.title = (payload.get("title") or "").strip()
     row.brand = (payload.get("brand") or "realmindx").strip()
-    row.sender = (payload.get("sender") or "news").strip()
+    row.sender = (payload.get("sender") or "default").strip()
     row.sms_sender_id = (payload.get("sms_sender_id") or "").strip() or None
     row.content = payload.get("content") or {}
     row.audience = payload.get("audience") or {}

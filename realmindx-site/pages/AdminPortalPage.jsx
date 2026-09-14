@@ -597,7 +597,7 @@ const CONFIG = {
         { icon: 'check',    text: 'This image also appears in newsletters when the post is reused. Make it recognisable and eye-catching at small sizes.' },
       ] }),
       field('summary', 'Summary', 'textarea'),
-      field('body', 'Intro / Fallback Body', 'textarea', { help: 'Shown before the sections, or used as the full article if no sections are added.' }),
+      field('body', 'Intro / Fallback Body', 'rich-text', { help: 'Shown before the sections, or used as the full article if no sections are added.' }),
       field('sections', 'Article Sections', 'article-sections', { help: 'Add headings, body text, images, and captions for the full news article.' }),
       field('date', 'Display Date', 'date', { placeholder: 'No display date set' }),
       field('status', 'Status', 'select', { options: ['draft', 'published'] }),
@@ -978,6 +978,7 @@ const RichTextEditor = ({ value, onChange, placeholder = 'Write here…' }) => {
   const editorRef = React.useRef(null);
   const selectionRef = React.useRef(null);
   const [serviceHref, setServiceHref] = React.useState('');
+  const [linkDialog, setLinkDialog] = React.useState(null);
   React.useEffect(() => {
     if (!serviceHref && services.length) setServiceHref(services[0]?.href || '');
   }, [serviceHref, services]);
@@ -1002,9 +1003,37 @@ const RichTextEditor = ({ value, onChange, placeholder = 'Write here…' }) => {
     onChange(richTextHtml(editorRef.current?.innerHTML || ''));
     rememberSelection();
   };
-  const addLink = () => {
-    const url = window.prompt('Paste the link URL');
-    if (url) run('createLink', url.trim());
+  const openLinkDialog = () => {
+    rememberSelection();
+    const selection = window.getSelection();
+    const anchor = selection?.anchorNode?.parentElement?.closest?.('a');
+    setLinkDialog({
+      text: selection && !selection.isCollapsed ? selection.toString() : (anchor?.textContent || ''),
+      url: anchor?.getAttribute('href') || '',
+      error: '',
+    });
+  };
+  const saveLink = event => {
+    event.preventDefault();
+    let url = String(linkDialog?.url || '').trim();
+    const text = String(linkDialog?.text || '').trim();
+    if (url && !/^(https?:|mailto:|tel:|\/|#)/i.test(url)) url = `https://${url}`;
+    if (!url || !/^(https?:|mailto:|tel:|\/|#)/i.test(url)) {
+      setLinkDialog(current => ({ ...current, error: 'Enter a valid web, email, or telephone link.' }));
+      return;
+    }
+    editorRef.current?.focus();
+    restoreSelection();
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && !text) document.execCommand('createLink', false, url);
+    else {
+      const safeText = (text || url).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeUrl = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      document.execCommand('insertHTML', false, `<a href="${safeUrl}">${safeText}</a>`);
+    }
+    onChange(richTextHtml(editorRef.current?.innerHTML || ''));
+    rememberSelection();
+    setLinkDialog(null);
   };
   const insertServiceLink = () => {
     const service = services.find(item => item.href === serviceHref) || services[0];
@@ -1025,8 +1054,8 @@ const RichTextEditor = ({ value, onChange, placeholder = 'Write here…' }) => {
       </select>
       <span className="rich-editor-divider" />
       {button(<strong>B</strong>, 'bold', 'Bold')}{button(<em>I</em>, 'italic', 'Italic')}{button(<u>U</u>, 'underline', 'Underline')}{button(<s>S</s>, 'strikeThrough', 'Strikethrough')}
-      <button type="button" className="rich-editor-button" title="Insert link" aria-label="Insert link" onMouseDown={event => event.preventDefault()} onClick={addLink}>↗</button>
-      <button type="button" className="rich-editor-button" title="Remove link" aria-label="Remove link" onMouseDown={event => event.preventDefault()} onClick={() => run('unlink')}>×↗</button>
+      <button type="button" className="rich-editor-button" title="Insert link" aria-label="Insert link" onMouseDown={event => event.preventDefault()} onClick={openLinkDialog}>Link</button>
+      <button type="button" className="rich-editor-button" title="Remove link" aria-label="Remove link" onMouseDown={event => event.preventDefault()} onClick={() => run('unlink')}>Unlink</button>
       <span className="rich-editor-divider" />
       {button('• List', 'insertUnorderedList', 'Bulleted list')}{button('1. List', 'insertOrderedList', 'Numbered list')}
       <span className="rich-editor-divider" />
@@ -1036,6 +1065,19 @@ const RichTextEditor = ({ value, onChange, placeholder = 'Write here…' }) => {
       {services.length ? <><span className="rich-editor-divider" /><select className="rich-editor-service" aria-label="Service link" value={serviceHref} onChange={event => setServiceHref(event.target.value)}>{services.map(service => <option key={service.href || service.id} value={service.href}>{service.label}</option>)}</select><button type="button" className="rich-editor-service-button" onMouseDown={event => event.preventDefault()} onClick={insertServiceLink}>Insert service link</button></> : null}
     </div>
     <div ref={editorRef} className="rich-editor-content" contentEditable suppressContentEditableWarning data-placeholder={placeholder} onInput={event => { rememberSelection(); onChange(richTextHtml(event.currentTarget.innerHTML)); }} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onFocus={rememberSelection} />
+    {linkDialog && ReactDOM.createPortal(
+      <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setLinkDialog(null); }}>
+        <form role="dialog" aria-modal="true" aria-labelledby="rich-link-dialog-title" onSubmit={saveLink} style={{ position:'relative', background:'#fff', borderRadius:18, padding:28, width:'min(500px, 94vw)', boxShadow:'0 24px 72px rgba(0,0,0,.3)', display:'grid', gap:16 }}>
+          <button className="admin-modal-close" type="button" onClick={() => setLinkDialog(null)} aria-label="Close"><Icon name="x" size={16}/></button>
+          <div><p className="overline">External link</p><h3 id="rich-link-dialog-title" style={{ margin:'6px 0 0' }}>Insert a hyperlink</h3></div>
+          <label className="form-group"><span className="form-label">Link text</span><input className="form-input" autoFocus value={linkDialog.text} onChange={event => setLinkDialog(current => ({ ...current, text:event.target.value, error:'' }))} placeholder="Words readers will see" /></label>
+          <label className="form-group"><span className="form-label">External URL</span><input className="form-input" value={linkDialog.url} onChange={event => setLinkDialog(current => ({ ...current, url:event.target.value, error:'' }))} placeholder="https://example.com/page" inputMode="url" /></label>
+          <small>Web addresses without https:// will be completed automatically. Links open in a new tab.</small>
+          {linkDialog.error && <p className="form-error" role="alert">{linkDialog.error}</p>}
+          <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}><button className="btn btn-outline-navy" type="button" onClick={() => setLinkDialog(null)}>Cancel</button><button className="btn btn-primary" type="submit">Insert link</button></div>
+        </form>
+      </div>, document.body
+    )}
   </div>;
 };
 
@@ -2692,7 +2734,7 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate, onAuto
         {config.fields.map(itemField => (
           itemField.advanced && !showAdvanced ? null :
           itemField.visibleWhen && !itemField.visibleWhen(form) ? null :
-          <div key={itemField.name} className="form-group" style={(itemField.type === 'textarea' || itemField.type === 'image' || itemField.type === 'file' || itemField.type === 'permission-list' || itemField.type === 'article-sections') ? { gridColumn: '1 / -1' } : null}>
+          <div key={itemField.name} className="form-group" style={(itemField.type === 'textarea' || itemField.type === 'rich-text' || itemField.type === 'image' || itemField.type === 'file' || itemField.type === 'permission-list' || itemField.type === 'article-sections') ? { gridColumn: '1 / -1' } : null}>
             <label className="form-label">{itemField.label}</label>
             {itemField.type === 'image' ? (
               <ImageUploadField
@@ -2765,6 +2807,12 @@ const ManagedForm = ({ config, initialItem, onCancel, onCreate, onUpdate, onAuto
                   </section>
                 ))}
               </div>
+            ) : itemField.type === 'rich-text' ? (
+              <RichTextEditor
+                value={form[itemField.name] || ''}
+                onChange={value => setForm(prev => ({ ...prev, [itemField.name]: value }))}
+                placeholder={itemField.placeholder || 'Write and format this content.'}
+              />
             ) : itemField.type === 'article-sections' ? (
               <ArticleSectionsField
                 sections={form[itemField.name]}
@@ -3706,7 +3754,7 @@ const splitSmsNumbers = value => String(value || '').split(/[\n,;]+/).map(item =
 
 const NewsletterWorkspace = ({ onSent }) => {
   const emptySection = () => ({ heading: '', body: '', caption: '', image_position: 'top', image_size: 'medium', image_file_id: '', image_url: '' });
-  const emptyForm = { channel: 'email', brand: 'realmindx', sender: 'news', sms_sender_id: 'RealMindX', subject: '', title: '', preheader: '', sections: [emptySection()], sms_message: '', cta_label: '', cta_url: '', image_file_id: '', manual_recipients: '', manual_numbers: '' };
+  const emptyForm = { channel: 'email', brand: 'realmindx', sender: 'default', sms_sender_id: 'RealMindX', subject: '', title: '', preheader: '', sections: [emptySection()], sms_message: '', cta_label: '', cta_url: '', image_file_id: '', manual_recipients: '', manual_numbers: '' };
   const [tab, setTab] = React.useState('compose');
   const [form, setForm] = React.useState(emptyForm);
   const [contacts, setContacts] = React.useState([]);
@@ -3800,7 +3848,7 @@ const NewsletterWorkspace = ({ onSent }) => {
         subject: recoveryDraft.subject || '',
         title: recoveryDraft.title || content.title || '',
         brand: recoveryDraft.brand || 'realmindx',
-        sender: recoveryDraft.sender || 'news',
+        sender: recoveryDraft.sender || 'default',
         sections: content.sections?.length ? content.sections : [emptySection()],
         manual_recipients: (recoveryDraft.audience?.recipient_emails || []).join('\n'),
       });
@@ -3933,7 +3981,7 @@ const NewsletterWorkspace = ({ onSent }) => {
   const selectBrand = brand => setForm(previous => ({
     ...previous,
     brand,
-    sender: brand === 'bookshop' ? 'bookshop' : 'news',
+    sender: brand === 'bookshop' ? 'bookshop' : 'default',
   }));
   const loadCampaign = campaign => {
     const content = campaign.content || {};
@@ -4161,7 +4209,7 @@ const NewsletterWorkspace = ({ onSent }) => {
     {tab === 'compose' && <div className="newsletter-panel newsletter-compose-panel">
       {!isSms ? <>
         <div className="newsletter-compact-grid">
-          <label className="form-group"><span className="form-label">Sender address</span><select className="form-select" value={form.sender} onChange={e => setForm(p => ({ ...p, sender: e.target.value }))}><option value="news">news@send.realmindxgh.com</option><option value="sales">sales@send.realmindxgh.com</option><option value="bookshop">Bookshop sender</option><option value="default">Default RealMindX sender</option></select></label>
+          <label className="form-group"><span className="form-label">Sender address</span><select className="form-select" value={form.sender} onChange={e => setForm(p => ({ ...p, sender: e.target.value }))}><option value="default">RealMindX — hello@send.realmindxgh.com (Default)</option><option value="news">RealMindX News — news@send.realmindxgh.com</option><option value="sales">RealMindX Sales — sales@send.realmindxgh.com</option><option value="bookshop">RealMindX Bookshop — bookshop@send.realmindxgh.com</option></select></label>
           <label className="form-group"><span className="form-label">Letterhead</span><select className="form-select" value={form.brand} onChange={e => selectBrand(e.target.value)}><option value="realmindx">RealMindX Education</option><option value="bookshop">RealMindX Bookshop</option></select></label>
           <label className="form-group newsletter-subject"><span className="form-label">Subject</span><input className="form-input" value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} placeholder="What should recipients see in their inbox?" /></label>
         </div>
@@ -4263,7 +4311,7 @@ const NewsletterWorkspace = ({ onSent }) => {
 const LegacyNewsletterComposer = ({ onSent }) => {
   const [form, setForm] = React.useState({
     brand: 'realmindx',
-    sender: 'news',
+    sender: 'default',
     subject: '',
     title: '',
     preheader: '',
@@ -4363,7 +4411,7 @@ const LegacyNewsletterComposer = ({ onSent }) => {
         })),
       });
       setStatus(result.message || 'Newsletter sent.');
-      setForm({ brand: 'realmindx', sender: 'news', subject: '', title: '', preheader: '', sections: [], cta_label: '', cta_url: '', image_file_id: '', manual_recipients: '' });
+      setForm({ brand: 'realmindx', sender: 'default', subject: '', title: '', preheader: '', sections: [], cta_label: '', cta_url: '', image_file_id: '', manual_recipients: '' });
       setImageUrl('');
       setSelectedContacts(new Set());
       onSent?.();

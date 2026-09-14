@@ -103,6 +103,7 @@ class Config:
     ADMIN_ALERT_EMAIL = os.getenv("ADMIN_ALERT_EMAIL", "info@realmindxgh.com")
     ADMIN_ALERT_EMAILS = os.getenv("ADMIN_ALERT_EMAILS", "info@realmindxgh.com,iasare@realmindxgh.com")
     JOBS_FROM_EMAIL = os.getenv("JOBS_FROM_EMAIL", "RealMindX Jobs <jobs@send.realmindxgh.com>")
+    OUTREACH_FROM_EMAIL = os.getenv("OUTREACH_FROM_EMAIL", "RealMindX <hello@send.realmindxgh.com>")
     BOOKSHOP_FROM_EMAIL = os.getenv("BOOKSHOP_FROM_EMAIL", "RealMindX Bookshop <bookshop@send.realmindxgh.com>")
     NEWSLETTER_FROM_EMAIL = os.getenv("NEWSLETTER_FROM_EMAIL", "RealMindX News <news@send.realmindxgh.com>")
     SALES_FROM_EMAIL = os.getenv("SALES_FROM_EMAIL", "RealMindX Sales <sales@send.realmindxgh.com>")

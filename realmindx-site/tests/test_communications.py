@@ -43,6 +43,7 @@ class CommunicationTestConfig(Config):
     ENV = "development"
     COMMUNICATION_MODE = "mock"
     DEFAULT_FROM_EMAIL = "noreply@realmindxgh.com"
+    OUTREACH_FROM_EMAIL = "RealMindX <hello@send.realmindxgh.com>"
     DEFAULT_REPLY_TO_EMAIL = "support@realmindxgh.com"
     RESEND_API_KEY = ""
     MAIL_SERVER = ""
@@ -60,6 +61,17 @@ class CommunicationTestConfig(Config):
 
 
 class CommunicationContractTests(unittest.TestCase):
+    def test_news_rich_text_keeps_safe_external_links(self):
+        from backend.api.admin import _clean_news_body
+
+        cleaned = _clean_news_body(
+            '<p>Visit <a href="https://example.com/story">our partner</a>'
+            '<script>alert(1)</script></p>'
+        )
+        self.assertIn('href="https://example.com/story"', cleaned)
+        self.assertIn('target="_blank"', cleaned)
+        self.assertNotIn("script", cleaned)
+
     def test_valid_result_defaults(self):
         r = CommunicationResult(
             channel="email", purpose="transactional", provider="mock",
@@ -809,6 +821,18 @@ class AdminProfileReminderEndpointTests(unittest.TestCase):
         db.session.commit()
         db.drop_all()
         self.context.pop()
+
+    def test_general_campaign_uses_outreach_sender_by_default(self):
+        from backend.api.admin import _campaign_from_email
+
+        self.assertEqual(
+            _campaign_from_email(None),
+            "RealMindX <hello@send.realmindxgh.com>",
+        )
+        self.assertEqual(
+            _campaign_from_email("default"),
+            "RealMindX <hello@send.realmindxgh.com>",
+        )
 
     def test_individual_reminder_success_mock(self):
         resp = self.client.post(f"/api/admin/users/{self.teacher.id}/profile-reminder", json={})
