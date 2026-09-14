@@ -9,7 +9,8 @@
     "preview": "node scripts/run-vite.mjs preview --host 127.0.0.1",
     "doctor:esbuild": "node scripts/run-vite.mjs --health-check",
     "test:async-ui": "node --test scripts/test-async-ui.mjs",
-    "test:bookshop-search": "node scripts/test-bookshop-exam-search.mjs"
+    "test:bookshop-search": "node scripts/test-bookshop-exam-search.mjs",
+    "test:teaching-options": "node scripts/test-teaching-options.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.4",

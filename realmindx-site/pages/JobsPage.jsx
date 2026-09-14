@@ -7,6 +7,7 @@ import { getDemoSession } from '../../src/lib/demoAccounts.js';
 import { syncSessionFromApi } from '../../src/lib/authClient.js';
 import { rankByFuzzyMatch } from '../../src/lib/fuzzySearch.js';
 import { AsyncButtonContent, AsyncState, ContentSkeleton } from '../../src/lib/AsyncUI.jsx';
+import { teachingSubjectsCompatible } from '../../src/lib/teachingOptions.js';
 
 /* â”€â”€ Sample data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const SAMPLE_JOBS = [
@@ -364,7 +365,7 @@ const SubjectFilterCard = ({ selected = [], jobs = [], onToggle, idPrefix = 'sub
                 onChange={() => onToggle(subject)}
               />
               <label htmlFor={inputId}>{subject}</label>
-              <span className="count">{jobs.filter(job => job.subject === subject).length}</span>
+              <span className="count">{jobs.filter(job => teachingSubjectsCompatible(job.subject, subject)).length}</span>
             </div>
           );
         })}
@@ -619,7 +620,7 @@ const JobsPage = () => {
   // Filter logic
   const filterEligibleJobs = jobs.filter(j => {
     const matchType    = !filters.type.length    || filters.type.includes(j.type);
-    const matchSubject = !filters.subject.length || filters.subject.includes(j.subject);
+    const matchSubject = !filters.subject.length || filters.subject.some(subject => teachingSubjectsCompatible(j.subject, subject));
     const matchLevel   = !filters.level.length   || filters.level.includes(j.level);
     return matchType && matchSubject && matchLevel;
   });

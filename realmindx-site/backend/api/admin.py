@@ -1042,6 +1042,9 @@ def _matches_job_alert(job, preference, user=None):
         normalised = re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
         alias_map = {
             "english": "english language",
+            "maths": "mathematics",
+            "core maths": "core mathematics",
+            "elective maths": "elective mathematics",
             "jhs": "junior high lower secondary",
             "shs": "senior high upper secondary",
             "primary": "upper primary",
@@ -1050,9 +1053,26 @@ def _matches_job_alert(job, preference, user=None):
         }
         return alias_map.get(normalised, normalised)
 
-    pref_subjects = {aliases(item) for item in values(preference.subject)}
-    job_subject = aliases(job.subject)
-    subject_match = not job_subject or job_subject in pref_subjects
+    def subject_parts(value):
+        normalised = aliases(value)
+        for track in ("core", "elective"):
+            prefix = f"{track} "
+            if normalised.startswith(prefix):
+                return track, normalised[len(prefix):]
+        return None, normalised
+
+    def subjects_compatible(job_value, preference_value):
+        job_track, job_family = subject_parts(job_value)
+        preference_track, preference_family = subject_parts(preference_value)
+        return (
+            bool(job_family)
+            and job_family == preference_family
+            and (not job_track or not preference_track or job_track == preference_track)
+        )
+
+    pref_subjects = values(preference.subject)
+    job_subject = (job.subject or "").strip()
+    subject_match = not job_subject or any(subjects_compatible(job_subject, item) for item in pref_subjects)
     pref_location_ids = set(parse_location_ids(preference.location_ids))
     if pref_location_ids:
         location_match = bool(job.delivery_zone_id and job.delivery_zone_id in pref_location_ids)

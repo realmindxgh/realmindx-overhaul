@@ -110,6 +110,32 @@ class JobAlertMatchingTests(unittest.TestCase):
         pref.location = None
         self.assertFalse(_matches_job_alert(self.job, pref, user))
 
+    def test_core_and_elective_subjects_do_not_cross_match(self):
+        user, pref = self.add_teacher("elective-maths@example.com", subject="Elective Mathematics")
+        self.job.subject = "Core Mathematics"
+        self.assertFalse(_matches_job_alert(self.job, pref, user))
+
+    def test_exact_subject_track_matches(self):
+        user, pref = self.add_teacher("core-maths@example.com", subject="Core Mathematics")
+        self.job.subject = "Core Mathematics"
+        self.assertTrue(_matches_job_alert(self.job, pref, user))
+
+    def test_legacy_broad_subject_bridges_to_specific_track(self):
+        user, pref = self.add_teacher("legacy-maths@example.com", subject="Mathematics")
+        self.job.subject = "Elective Mathematics"
+        self.assertTrue(_matches_job_alert(self.job, pref, user))
+
+        pref.subject = "Core Mathematics"
+        self.job.subject = "Mathematics"
+        self.assertTrue(_matches_job_alert(self.job, pref, user))
+
+    def test_maths_alias_respects_track(self):
+        user, pref = self.add_teacher("core-maths-alias@example.com", subject="Core Maths")
+        self.job.subject = "Core Mathematics"
+        self.assertTrue(_matches_job_alert(self.job, pref, user))
+        self.job.subject = "Elective Mathematics"
+        self.assertFalse(_matches_job_alert(self.job, pref, user))
+
     @patch("backend.api.admin.log_action")
     @patch("backend.api.admin.send_email", return_value=Mock(status="sent"))
     def test_dispatch_only_complete_exact_matches_and_deduplicates(self, send_email_mock, _log_action_mock):
