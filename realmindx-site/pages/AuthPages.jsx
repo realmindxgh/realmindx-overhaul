@@ -175,7 +175,6 @@ const InternalLoginPage = ({ role = 'admin' }) => {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   autoComplete="current-password"
-                  style={{ paddingRight: 44 }}
                 />
                 <button
                   type="button"
@@ -631,7 +630,6 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       autoComplete="current-password"
-                      style={{ paddingRight: 44 }}
                     />
                     <button type="button" className="password-toggle" onClick={() => setShowPass(!showPass)}>
                       <Icon name={showPass ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
@@ -711,7 +709,6 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       autoComplete="new-password"
-                      style={{ paddingRight: 44 }}
                     />
                     <button type="button" className="password-toggle" onClick={() => setShowPass(!showPass)}>
                       <Icon name={showPass ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
@@ -724,7 +721,7 @@ export const UserLoginPage = ({ initialMode = 'login' }) => {
                   <label className="form-label">Confirm Password *</label>
                   <div className="password-field">
                     <input className="form-input" ref={confirmRef} aria-invalid={Boolean(fieldErrors.confirmPass)} type={showPass ? 'text' : 'password'} placeholder="Repeat your password"
-                      value={confirmPass} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" style={{ paddingRight: 44 }} />
+                      value={confirmPass} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" />
                     <button type="button" className="password-toggle" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Hide password' : 'Show password'}>
                       <Icon name={showPass ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />
                     </button>
@@ -971,7 +968,6 @@ export const PasswordResetPage = () => {
                       autoComplete="new-password"
                       placeholder="Repeat your new password"
                       required
-                      style={{ paddingRight: 44 }}
                     />
                     <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
                       <Icon name={showPassword ? 'eyeOff' : 'eye'} size={15} stroke={1.9} />

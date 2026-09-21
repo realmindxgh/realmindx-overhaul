@@ -10,7 +10,8 @@
     "doctor:esbuild": "node scripts/run-vite.mjs --health-check",
     "test:async-ui": "node --test scripts/test-async-ui.mjs",
     "test:bookshop-search": "node scripts/test-bookshop-exam-search.mjs",
-    "test:teaching-options": "node scripts/test-teaching-options.mjs"
+    "test:teaching-options": "node scripts/test-teaching-options.mjs",
+    "test:admin-navigation": "node --test scripts/test-admin-navigation.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.4",

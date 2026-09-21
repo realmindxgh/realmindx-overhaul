@@ -1848,7 +1848,38 @@ input, textarea, select { font-family: inherit; }
 
 .auth-footer-link a:hover { color: var(--yellow-dark); }
 
-.password-field { position: relative; }
+.auth-field-control,
+.password-field {
+  position: relative;
+}
+
+.auth-field-control .form-input {
+  min-height: 44px;
+  padding-left: 42px !important;
+}
+
+.auth-field-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--gray-500);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.password-field .form-input {
+  padding-right: 48px !important;
+}
+
+.password-field.auth-field-control .form-input {
+  padding-left: 42px !important;
+  padding-right: 48px !important;
+}
 
 .password-toggle {
   position: absolute;

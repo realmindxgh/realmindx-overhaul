@@ -7088,7 +7088,7 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
   :is(
     .form-group > .form-input:not(select),
     .form-group > .form-textarea,
-    .password-field > .form-input,
+    .password-field:not(.auth-field-control) > .form-input,
     .verified-contact-form input:not([type="radio"]),
     .bs form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="email"]):not([type="tel"]):not([type="password"]):not([data-form-icon="none"]),
     .bs form textarea
@@ -7636,6 +7636,33 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 .newsletter-group-load .form-select { max-width: 220px; font-size: .78rem; }
 .newsletter-group-save { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .newsletter-group-save .form-input { max-width: 180px; font-size: .78rem; }
+
+/* Auth sign-in overlap guard: these screens use inline SVG icons and a
+   password reveal button, so the text field must reserve physical and logical
+   padding even after later mobile form-normalisation rules run. */
+.auth-field-control > input.form-input,
+.auth-field-control > .form-input {
+  padding-left: 42px !important;
+  padding-inline-start: 42px !important;
+  background-image: none !important;
+}
+
+.password-field > input.form-input,
+.password-field > .form-input {
+  padding-right: 48px !important;
+  padding-inline-end: 48px !important;
+}
+
+.password-field.auth-field-control > input.form-input,
+.password-field.auth-field-control > .form-input,
+.auth-field-control.password-field > input.form-input,
+.auth-field-control.password-field > .form-input {
+  padding-left: 42px !important;
+  padding-inline-start: 42px !important;
+  padding-right: 48px !important;
+  padding-inline-end: 48px !important;
+  background-image: none !important;
+}
 
 /* ================================================================
    Shared asynchronous feedback
