@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Icon, DatePickerField } from '../assets/components.jsx';
 import { resetManagedContent, JOB_LEVELS, JOB_SUBJECTS, JOB_TYPES } from '../../src/lib/managedContent.js';
 import { useAdminContent, publicItems } from '../../src/lib/useAdminContent.js';
@@ -9,7 +10,14 @@ import { clearDemoSession, getDemoSession, saveDemoSession } from '../../src/lib
 import { signOut } from '../../src/lib/authClient.js';
 import { dashboardPathForRole, loginPathForRole } from '../../src/lib/sessionRoutes.js';
 import AnalyticsView from '../../src/admin/AnalyticsView.jsx';
-import logoWhite from '../assets/logo-white.png';
+import AdminShell from '../../src/admin/AdminShell.jsx';
+import {
+  ADMIN_PAGES,
+  adminPathFor,
+  defaultPageForWorkspace,
+  resolveAdminRoute,
+  visibleAdminWorkspaces,
+} from '../../src/admin/adminNavigation.js';
 import ImageCropModal from '../../src/lib/ImageCropModal.jsx';
 import { TEACHING_CURRICULA, TEACHING_SUBJECTS } from '../../src/lib/teachingOptions.js';
 import { PRODUCT_CURRICULUM_OPTIONS, PRODUCT_LEVEL_OPTIONS, PRODUCT_SUBJECT_OPTIONS } from '../../src/lib/bookshopTaxonomy.js';
@@ -26,45 +34,7 @@ import {
   RefreshingIndicator,
 } from '../../src/lib/AsyncUI.jsx';
 
-const NAV = [
-  { key: 'dashboard', label: 'Dashboard', group: 'Overview', icon: 'grid' },
-  { key: 'analytics', label: 'Analytics', group: 'Overview', icon: 'chart' },
-  { key: 'jobs', label: 'Jobs', group: 'Jobs', icon: 'briefcase' },
-  { key: 'applications', label: 'Applications', group: 'Jobs', icon: 'clipboard' },
-  { key: 'products', label: 'Products', group: 'Bookshop', icon: 'book' },
-  { key: 'productReviews', label: 'Product Reviews', group: 'Bookshop', icon: 'award' },
-  { key: 'categories', label: 'Categories', group: 'Bookshop', icon: 'package' },
-  { key: 'flyers', label: 'Flyers', group: 'Bookshop', icon: 'image' },
-  { key: 'deliveryZones', label: 'Delivery Prices', group: 'Bookshop', icon: 'money' },
-  { key: 'deliveryCompanies', label: 'Delivery Companies', group: 'Bookshop', icon: 'briefcase' },
-  { key: 'deliverySettlements', label: 'Delivery Settlements', group: 'Bookshop', icon: 'money' },
-  { key: 'priceAdjustment', label: 'Price Adjustment', group: 'Bookshop', icon: 'money' },
-  { key: 'orders', label: 'Orders', group: 'Bookshop', icon: 'clipboard' },
-  { key: 'bookshopCustomers', label: 'Bookshop Customers', group: 'Bookshop', icon: 'users' },
-  { key: 'receiptsInvoices', label: 'Receipts & Invoices', group: 'Bookshop', icon: 'receipt' },
-  { key: 'orderReviews', label: 'Order Reviews', group: 'Bookshop', icon: 'message' },
-  { key: 'services', label: 'Services', group: 'Content', icon: 'consulting' },
-  { key: 'partners', label: 'Partners', group: 'Content', icon: 'users' },
-  { key: 'people', label: 'The People', group: 'Content', icon: 'users' },
-  { key: 'testimonials', label: 'Testimonials', group: 'Content', icon: 'message' },
-  { key: 'homeHeroSlides', label: 'Home Hero', group: 'Content', icon: 'image' },
-  { key: 'donationSlides', label: 'Donation Slides', group: 'Content', icon: 'image' },
-  { key: 'siteCopy', label: 'Page Text', group: 'Content', icon: 'file' },
-  { key: 'news', label: 'News', group: 'Content', icon: 'newspaper' },
-  { key: 'gallery', label: 'Gallery', group: 'Content', icon: 'image' },
-  { key: 'resources', label: 'Resources', group: 'Content', icon: 'file' },
-  { key: 'messages', label: 'Tickets', group: 'Comms', icon: 'message' },
-  { key: 'newsletters', label: 'Newsletters', group: 'Comms', icon: 'mail' },
-  { key: 'alerts', label: 'Job Alerts', group: 'Comms', icon: 'bell' },
-  { key: 'settings', label: 'Contact & Site Details', group: 'System', icon: 'settings' },
-  { key: 'admins', label: 'Admin Accounts', group: 'System', icon: 'shield' },
-  { key: 'staff', label: 'Staff Accounts', group: 'System', icon: 'shield' },
-  { key: 'teachers', label: 'Active Teachers', group: 'System', icon: 'teacher' },
-  { key: 'teacherReview', label: 'Teacher Review', group: 'System', icon: 'clipboard' },
-  { key: 'whatsappDiagnostics', label: 'WhatsApp Logs', group: 'System', icon: 'whatsapp' },
-  { key: 'auditLogs', label: 'Audit Log', group: 'System', icon: 'clipboard' },
-  { key: 'account', label: 'My Account', group: 'System', icon: 'user' },
-];
+const NAV = ADMIN_PAGES;
 
 const field = (name, label, type = 'text', options = {}) => ({ name, label, type, ...options });
 
@@ -1186,54 +1156,6 @@ const EmptySection = ({ title, body, action, onAction }) => (
   </div>
 );
 
-const AdminSidebar = ({ active, setActive, open, setOpen, session, portalLabel }) => {
-  const visibleNav = NAV.filter(item => canAccessAdminItem(item, session));
-  const groups = visibleNav.reduce((acc, item) => {
-    acc[item.group] = [...(acc[item.group] || []), item];
-    return acc;
-  }, {});
-
-  return (
-    <>
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 99 }}
-          className="sidebar-overlay"
-        />
-      )}
-      <aside className={`admin-sidebar${open ? ' open' : ''}`}>
-      <div className="admin-sidebar-logo">
-        <img src={logoWhite} alt="RealMindX Education" className="admin-sidebar-logo-img" />
-        <div>
-          <span className="admin-logo-tag">{portalLabel}</span>
-        </div>
-      </div>
-      <nav className="admin-nav">
-        {Object.entries(groups).map(([group, items]) => (
-          <div key={group} className="admin-nav-group">
-            <div className="admin-nav-group-label">{group}</div>
-            {items.map(item => (
-              <button
-                key={item.key}
-                className={`admin-nav-item${active === item.key ? ' active' : ''}`}
-                onClick={() => { setActive(item.key); setOpen(false); }}
-              >
-                <span className="ani-icon"><Icon name={item.icon} size={16} stroke={2} /></span>
-                {item.label}
-              </button>
-            ))}
-          </div>
-        ))}
-      </nav>
-      <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        <a href="/" className="admin-nav-item" style={{ textDecoration: 'none' }}><span className="ani-icon"><Icon name="arrow" size={16} stroke={2} /></span> View Site</a>
-      </div>
-    </aside>
-    </>
-  );
-};
-
 const DashboardView = ({ content, setActive, session }) => {
   // Keep the WHOLE dashboard payload — summary feeds the stat cards and
   // recent_jobs/recent_orders feed the tables (they were being thrown
@@ -1286,33 +1208,59 @@ const DashboardView = ({ content, setActive, session }) => {
     );
   }
 
+  const todayLabel = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date());
+
   return (
-    <div>
-      <div className="admin-stats-row">
-        {stats.map(({ label, value, note, icon, target }) => (
-          <button key={label} className="admin-stat" onClick={() => setActive(target)}>
-            <div className="admin-stat-icon asi-navy"><Icon name={icon} size={22} stroke={1.9} /></div>
-            <div className="admin-stat-info">
-              <div className="ast-value">{value}</div>
-              <div className="ast-label">{label}</div>
-              <div className="ast-change ast-up">{note}</div>
-            </div>
-          </button>
-        ))}
+    <div className="admin-dashboard">
+      <div className="admin-dashboard-heading">
+        <div>
+          <p className="admin-dashboard-kicker">Workspace snapshot</p>
+          <h1>Overview</h1>
+        </div>
+        <p>{todayLabel}</p>
       </div>
 
-      {quickActions.length ? (
-      <div className="quick-actions-row">
-        {quickActions.map(([label, key, icon]) => (
-          <button key={label} className="quick-action-btn" onClick={() => setActive(key)}>
-            <div className="qab-icon"><Icon name={icon} size={20} stroke={2} /></div>
-            <div className="qab-label">{label}</div>
-          </button>
-        ))}
-      </div>
+      {stats.length ? (
+        <section className="admin-dashboard-summary" aria-label="Operational summary">
+          {stats.map(({ label, value, note, icon, target }) => (
+            <button key={label} className="admin-dashboard-stat" type="button" onClick={() => setActive(target)}>
+              <span className="admin-dashboard-stat-icon" aria-hidden="true">
+                <Icon name={icon} size={20} stroke={2} />
+              </span>
+              <span className="admin-dashboard-stat-copy">
+                <strong>{value}</strong>
+                <span>{label}</span>
+                <small>{note}</small>
+              </span>
+            </button>
+          ))}
+        </section>
       ) : null}
 
-      <div className="admin-grid-2">
+      {quickActions.length ? (
+        <section className="admin-dashboard-actions" aria-label="Quick actions">
+          <div className="admin-dashboard-section-header">
+            <div>
+              <p className="admin-dashboard-kicker">Frequent work</p>
+              <h2>Quick actions</h2>
+            </div>
+          </div>
+          <div className="admin-dashboard-action-grid">
+            {quickActions.map(([label, key, icon]) => (
+              <button key={label} className="admin-dashboard-action" type="button" onClick={() => setActive(key)}>
+                <span aria-hidden="true"><Icon name={icon} size={19} stroke={2} /></span>
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="admin-grid-2 admin-dashboard-recent">
         {canSeeRecentJobs ? (
           <div className="admin-table-card">
             <div className="atc-header"><h3>Recent Job Posts</h3><button className="btn btn-sm btn-outline-navy" onClick={() => setActive('jobs')}>Manage</button></div>
@@ -2141,7 +2089,7 @@ const ReceiptsInvoicesView = ({ content, session }) => {
           <div style={{ padding: 30, color: '#b42318', fontWeight: 800 }}>{error}</div>
         ) : filteredRows.length ? (
           <AdminTableScroll>
-            <table className="admin-table">
+            <table className="admin-table" data-collection={config.collection}>
               <thead>
                 <tr>
                   <th>Document</th>
@@ -4760,7 +4708,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
   const [search, setSearch] = React.useState('');
   const [filterStatus, setFilterStatus] = React.useState('');
   const [productCategory, setProductCategory] = React.useState('');
-  const [showProductFilters, setShowProductFilters] = React.useState(true);
+  const [showProductFilters, setShowProductFilters] = React.useState(false);
   const [productExportOpen, setProductExportOpen] = React.useState(false);
   const [productMenuId, setProductMenuId] = React.useState(null);
   const [selectedProductIds, setSelectedProductIds] = React.useState(() => new Set());
@@ -5549,7 +5497,8 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
       {config.collection === 'products' ? (
         <div className="product-page-heading">
           <div className="product-page-copy">
-            <h2 className="admin-page-title">Bookshop Products</h2>
+            <h2 className="admin-page-title">Products</h2>
+            <p className="product-item-count">{sorted.length} item{sorted.length === 1 ? '' : 's'}</p>
             <p>Manage books, stationery, and learning materials in the public bookshop.</p>
             <span className="product-save-note"><Icon name="check" size={13} stroke={2.4} /> Changes saved here update the live website once published.</span>
           </div>
@@ -5718,7 +5667,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
 
       {config.collection === 'products' && (
         <section className="admin-table-card product-table-card">
-          <div className="product-filter-bar">
+          <div className={`product-filter-bar${showProductFilters ? ' is-expanded' : ''}`}>
             <label className="product-search-field"><Icon name="search" size={18} stroke={2} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search products by title, author, ISBN..." /></label>
             <select aria-label="Product status" value={filterStatus} onChange={event => setFilterStatus(event.target.value)}><option value="">All Statuses</option><option value="published">Published</option><option value="draft">Draft</option></select>
             <select aria-label="Product category" value={productCategory} onChange={event => setProductCategory(event.target.value)}><option value="">All Categories</option>{productCategories.map(category => <option key={category} value={category}>{category}</option>)}</select>
@@ -5748,7 +5697,7 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               </tr></thead>
               <tbody>{paginatedRows.map(row => <tr key={row.id}>
                 <td className="product-check-cell"><input type="checkbox" checked={selectedProductIds.has(row.id)} onChange={() => toggleProductSelection(row.id)} aria-label={`Select ${row.name}`} /></td>
-                <td><div className="product-name-cell">{rowImageUrl(row) ? <img src={rowImageUrl(row)} alt="" loading="lazy" decoding="async" /> : <span className="product-cover-placeholder"><Icon name="book" size={20} /></span>}<span><strong>{row.name}</strong><small>{row.author ? `Author: ${row.author}` : row.short_description || `Product ID: ${row.id}`}</small></span></div></td>
+                <td><div className="product-name-cell">{rowImageUrl(row) ? <img src={rowImageUrl(row)} alt="" loading="lazy" decoding="async" /> : <span className="product-cover-placeholder"><Icon name="book" size={20} /></span>}<span><strong>{row.name}</strong><small>{[row.author, row.publisher].filter(Boolean).join(' · ') || row.short_description || `Product ID: ${row.id}`}</small></span></div></td>
                 <td>{row.category || 'Uncategorised'}</td><td>{row.curriculum || '-'}</td><td>{row.publisher || '-'}</td><td className="product-price-cell">GH₵{Number(row.price || 0).toFixed(2)}</td>
                 <td><span className={`product-stock-badge is-${row.stock_status || 'out_of_stock'}`}>{statusLabel(row.stock_status || 'out_of_stock')}</span></td><td className="admin-activity-date">{formatActivityDate(row.updated_at || row.created_at)}</td>
                 <td className="admin-actions-column"><div className="product-row-actions">{canUpdate && <button type="button" onClick={() => { setEditing(row); setCreating(false); }}><Icon name="edit" size={15} stroke={2} /> Edit</button>}<div className="product-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${row.name}`} onClick={() => setProductMenuId(current => current === row.id ? null : row.id)}><Icon name="more" size={18} /></button>{productMenuId === row.id && <div className="product-row-menu">{canPublish && <button type="button" disabled={isRowActionPending('publish', row)} onClick={async () => { await togglePublish(row); setProductMenuId(null); }}><AsyncButtonContent pending={isRowActionPending('publish', row)} pendingLabel={row.status === 'published' ? 'Unpublishing...' : 'Publishing...'}>{row.status === 'published' ? 'Unpublish' : 'Publish'}</AsyncButtonContent></button>}{canDelete && <button className="danger" type="button" onClick={() => { handleDelete(row); setProductMenuId(null); }}>Delete</button>}</div>}</div></div></td>
@@ -5851,13 +5800,13 @@ const ManagedTableView = ({ config, rows: rowsProp, session }) => {
               {paginatedRows.map(row => (
                 <tr key={row.id}>
                   {config.columns.map(column => (
-                    <td key={column}>
+                    <td key={column} data-label={columnLabel(config, column)}>
                       {renderCell(row, column, column === config.columns[0] || column === 'title' || column === 'name' || column === 'label')}
                     </td>
                   ))}
-                  <td className="admin-activity-date">{formatActivityDate(row.updated_at || row.created_at)}</td>
+                  <td className="admin-activity-date" data-label="Last activity">{formatActivityDate(row.updated_at || row.created_at)}</td>
                   {hasActions && (
-                    <td className="admin-actions-column">
+                    <td className="admin-actions-column" data-label="Actions">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {/* Standard edit/publish */}
                         {canUpdate && <button className="table-action-btn" onClick={() => { setEditing(row); setCreating(false); }}>Edit</button>}
@@ -7224,13 +7173,13 @@ const TeachersView = ({ session }) => {
               const initials = [t.first_name, t.last_name].filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase() || 'T';
               const completion = Math.max(0, Math.min(100, t.profile_completion ?? 0));
               const rowBusy = toggling === t.id || reminding === t.id || deleting === t.id;
-              return <tr key={t.id} className={selectedTeacherIds.has(t.id) ? 'is-selected' : ''} aria-busy={rowBusy}><td className="teacher-check-cell"><input type="checkbox" checked={selectedTeacherIds.has(t.id)} disabled={rowBusy} onChange={() => toggleTeacherSelection(t.id)} aria-label={`Select ${name}`} /></td>
-                <td><div className="teacher-name-cell"><span className={`teacher-avatar tone-${(t.id || index) % 5}`}>{initials}</span><strong>{name}</strong></div></td>
-                <td><VerifiedContactValue value={t.email} verified={t.is_verified} type="Email" /></td><td><VerifiedContactValue value={t.phone} verified={t.phone_verified} type="Phone" /></td>
-                <td><span className={`teacher-completion-ring ${completion >= 100 ? 'is-complete' : ''}`} style={{ '--completion': `${completion * 3.6}deg` }}><b>{completion}%</b></span></td>
-                <td><span className={`teacher-status-pill ${t.is_active === false ? 'is-disabled' : ''}`}>{rowBusy ? (toggling === t.id ? 'Updating' : reminding === t.id ? 'Sending reminder' : 'Deleting') : t.is_active === false ? 'Disabled' : 'Active'}</span></td>
-                <td>{t.created_at ? new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}</td>
-                <td><div className="teacher-row-actions"><button type="button" onClick={() => openDetail(t)}>View Profile</button><div className="teacher-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${name}`} onClick={() => setTeacherMenuId(current => current === t.id ? null : t.id)}><Icon name="more" size={18} /></button>{teacherMenuId === t.id && <div className="teacher-row-menu">{canEditTeachers && <><button type="button" onClick={() => { sendProfileReminder(t); setTeacherMenuId(null); }}>Send Profile Reminder</button><button type="button" onClick={() => { toggleActive(t); setTeacherMenuId(null); }}>{t.is_active === false ? 'Enable' : 'Disable'}</button></>}{canDeleteTeachers && <button className="danger" type="button" onClick={() => { deleteTeacher(t); setTeacherMenuId(null); }}>Delete</button>}</div>}</div></div></td>
+              return <tr key={t.id} className={selectedTeacherIds.has(t.id) ? 'is-selected' : ''} aria-busy={rowBusy}><td className="teacher-check-cell" data-label="Select"><input type="checkbox" checked={selectedTeacherIds.has(t.id)} disabled={rowBusy} onChange={() => toggleTeacherSelection(t.id)} aria-label={`Select ${name}`} /></td>
+                <td data-label="Teacher"><div className="teacher-name-cell"><span className={`teacher-avatar tone-${(t.id || index) % 5}`}>{initials}</span><strong>{name}</strong></div></td>
+                <td data-label="Email"><VerifiedContactValue value={t.email} verified={t.is_verified} type="Email" /></td><td data-label="Phone"><VerifiedContactValue value={t.phone} verified={t.phone_verified} type="Phone" /></td>
+                <td data-label="Profile"><span className={`teacher-completion-ring ${completion >= 100 ? 'is-complete' : ''}`} style={{ '--completion': `${completion * 3.6}deg` }}><b>{completion}%</b></span></td>
+                <td data-label="Status"><span className={`teacher-status-pill ${t.is_active === false ? 'is-disabled' : ''}`}>{rowBusy ? (toggling === t.id ? 'Updating' : reminding === t.id ? 'Sending reminder' : 'Deleting') : t.is_active === false ? 'Disabled' : 'Active'}</span></td>
+                <td data-label="Registered">{t.created_at ? new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}</td>
+                <td className="admin-actions-column" data-label="Actions"><div className="teacher-row-actions"><button type="button" onClick={() => openDetail(t)}>View Profile</button><div className="teacher-row-menu-wrap"><button className="is-menu" type="button" aria-label={`More actions for ${name}`} onClick={() => setTeacherMenuId(current => current === t.id ? null : t.id)}><Icon name="more" size={18} /></button>{teacherMenuId === t.id && <div className="teacher-row-menu">{canEditTeachers && <><button type="button" onClick={() => { sendProfileReminder(t); setTeacherMenuId(null); }}>Send Profile Reminder</button><button type="button" onClick={() => { toggleActive(t); setTeacherMenuId(null); }}>{t.is_active === false ? 'Enable' : 'Disable'}</button></>}{canDeleteTeachers && <button className="danger" type="button" onClick={() => { deleteTeacher(t); setTeacherMenuId(null); }}>Delete</button>}</div>}</div></div></td>
               </tr>;
             })}</tbody>
           </table></AdminTableScroll>}
@@ -7772,92 +7721,101 @@ const AccountView = ({ session, onPasswordChanged, onTwoFactorChanged }) => {
   };
 
   return (
-    <div style={{ padding: '32px 28px' }}>
-      <div className="admin-table-card" style={{ maxWidth: 720, padding: '32px 36px', marginBottom: 20 }}>
-        <h3 style={{ margin: '0 0 4px' }}>My Account</h3>
-        <p style={{ color: 'var(--gray-600)', fontSize: '0.88rem', margin: '0 0 28px' }}>
-          Signed in as <strong>{session?.firstName} {session?.lastName}</strong>{session?.email ? ` (${session.email})` : ''}
-        </p>
-        <h4 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 700 }}>Change Password</h4>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
+    <div className="admin-account-page">
+      <header className="admin-account-hero">
+        <div>
+          <p className="admin-dashboard-kicker">Account security</p>
+          <h1>My Account</h1>
+          <p>
+            Signed in as <strong>{session?.firstName} {session?.lastName}</strong>{session?.email ? ` (${session.email})` : ''}
+          </p>
+        </div>
+      </header>
+
+      <div className="admin-account-grid">
+        <section className="admin-table-card admin-account-card">
+          <div className="admin-account-card-header">
+            <span className="admin-account-card-icon" aria-hidden="true"><Icon name="lock" size={19} /></span>
+            <div>
+              <h2>Change Password</h2>
+              <p>Update your internal portal password.</p>
+            </div>
+          </div>
+          <form className="admin-account-form" onSubmit={handleSubmit}>
+            <label>
             Current Password
-            <PasswordRevealInput name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-200)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="current_password" value={form.current_password} onChange={handleChange} autoComplete="current-password" required />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
+          <label>
             New Password
-            <PasswordRevealInput name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" required minLength={8} style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-200)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="new_password" value={form.new_password} onChange={handleChange} autoComplete="new-password" required minLength={8} />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: '0.85rem', fontWeight: 600, color: 'var(--navy)' }}>
+          <label>
             Confirm New Password
-            <PasswordRevealInput name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required style={{ fontWeight: 400, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--gray-200)', fontSize: '0.9rem' }} />
+            <PasswordRevealInput name="confirm_password" value={form.confirm_password} onChange={handleChange} autoComplete="new-password" required />
           </label>
           {status?.error && <InlineStatus tone="error">{status.error}</InlineStatus>}
           {status?.success && <InlineStatus tone="success">{status.success}</InlineStatus>}
-          <button type="submit" className="btn btn-primary" disabled={saving} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
             <AsyncButtonContent pending={saving} pendingLabel="Updating password">Update Password</AsyncButtonContent>
           </button>
         </form>
-      </div>
+        </section>
 
-      <div className="admin-table-card" style={{ maxWidth: 720, padding: '28px 36px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 360px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <span style={{ width: 34, height: 34, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: security.enabled ? '#ecfdf3' : '#fff7ed', color: security.enabled ? '#027a48' : '#b54708' }}>
+        <section className="admin-table-card admin-account-card admin-account-security-card">
+          <div className="admin-account-card-header">
+              <span className={`admin-account-card-icon ${security.enabled ? 'is-on' : 'is-recommended'}`} aria-hidden="true">
                 <Icon name={security.enabled ? 'check' : 'shield'} size={18} />
               </span>
               <div>
-                <h4 style={{ margin: 0, fontSize: '0.98rem', color: 'var(--navy)' }}>Email two-factor authentication</h4>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: security.enabled ? '#027a48' : '#b54708' }}>
+                <h2>Email two-factor authentication</h2>
+                <span className={`admin-account-security-status ${security.enabled ? 'is-on' : 'is-recommended'}`}>
                   {security.loading ? 'Checking security status' : security.enabled ? 'On' : 'Recommended for internal accounts'}
                 </span>
               </div>
             </div>
-            <p style={{ color: 'var(--gray-600)', fontSize: '0.86rem', lineHeight: 1.65, margin: 0 }}>
+            <p>
               {security.enabled
                 ? 'Each sign-in requires a short-lived code sent to your verified email after your password.'
                 : 'Add a second sign-in step to protect administrative access if a password is exposed. Setup takes about a minute and does not sign you out.'}
             </p>
             {security.error ? <ErrorState compact message={security.error} onRetry={loadSecurity} /> : null}
-          </div>
           <button type="button" className={security.enabled ? 'btn btn-outline-navy' : 'btn btn-primary'} onClick={openTwoFactorModal} disabled={security.loading}>
             <AsyncButtonContent pending={security.loading} pendingLabel="Checking security status">{security.enabled ? 'Manage 2FA' : 'Turn on 2FA'}</AsyncButtonContent>
           </button>
-        </div>
+        </section>
       </div>
 
       {securityModal ? (
         <div
+          className="admin-two-factor-scrim"
           role="presentation"
           onMouseDown={event => { if (event.target === event.currentTarget && !twoFactorForm.saving) setSecurityModal(false); }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(12, 22, 46, 0.62)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
         >
           <form
-            className="admin-table-card"
+            className="admin-table-card admin-two-factor-modal"
             onSubmit={twoFactorForm.step === 'code' ? confirmTwoFactorChange : requestTwoFactorChange}
             role="dialog"
             aria-modal="true"
             aria-labelledby="two-factor-modal-title"
-            style={{ position: 'relative', width: '100%', maxWidth: 540, padding: '30px 32px 26px', borderRadius: 20, boxShadow: '0 28px 80px rgba(9, 20, 43, 0.24)' }}
           >
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 22 }}>
+            <button type="button" className="admin-two-factor-close" onClick={() => setSecurityModal(false)} disabled={twoFactorForm.saving} aria-label="Close two-factor settings"><Icon name="x" size={15} /></button>
+            <div className="admin-two-factor-head">
+              <span className="admin-two-factor-kicker">Account security</span>
               <div>
-                <span className="auth-badge" style={{ display: 'inline-flex', marginBottom: 10 }}>Account security</span>
-                <h3 id="two-factor-modal-title" style={{ margin: '0 0 7px', color: 'var(--navy)' }}>
-                  {security.enabled ? 'Turn off two-factor authentication' : 'Turn on two-factor authentication'}
+                <h3 id="two-factor-modal-title">
+                  {security.enabled ? 'Turn off email 2FA' : 'Turn on email 2FA'}
                 </h3>
-                <p style={{ margin: 0, color: 'var(--gray-600)', fontSize: '0.86rem', lineHeight: 1.6 }}>
+                <p className="admin-two-factor-copy">
                   {twoFactorForm.step === 'code'
                     ? <>Enter the 6 digit code sent to <strong>{session?.email}</strong>.</>
                     : <>Confirm with your current password. We will send a short-lived code to <strong>{session?.email}</strong>.</>}
                 </p>
               </div>
-              <button type="button" className="admin-modal-close" onClick={() => setSecurityModal(false)} disabled={twoFactorForm.saving} aria-label="Close two-factor settings"><Icon name="x" size={16} /></button>
             </div>
 
             {twoFactorForm.step === 'code' ? (
-              <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
+              <label className="admin-two-factor-field">
                 Security code
                 <input
                   autoFocus
@@ -7867,26 +7825,26 @@ const AccountView = ({ session, onPasswordChanged, onTwoFactorChanged }) => {
                   value={twoFactorForm.otp}
                   onChange={event => setTwoFactorForm(current => ({ ...current, otp: event.target.value.replace(/\D/g, '').slice(0, 6) }))}
                   required
-                  style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid var(--gray-300)', fontSize: '1rem', letterSpacing: '0.16em' }}
+                  className="admin-two-factor-code"
                 />
               </label>
             ) : (
-              <label style={{ display: 'grid', gap: 6, fontSize: '0.86rem', fontWeight: 600, color: 'var(--navy)' }}>
+              <label className="admin-two-factor-field">
                 Current password
                 <PasswordRevealInput autoFocus name="two_factor_password" value={twoFactorForm.currentPassword} onChange={event => setTwoFactorForm(current => ({ ...current, currentPassword: event.target.value }))} autoComplete="current-password" required />
               </label>
             )}
-            {twoFactorForm.message ? <p style={{ margin: '12px 0 0', color: '#027a48', fontSize: '0.83rem' }}>{twoFactorForm.message}</p> : null}
-            {twoFactorForm.error ? <p style={{ margin: '12px 0 0', color: '#b42318', fontSize: '0.83rem' }}>{twoFactorForm.error}</p> : null}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24, flexWrap: 'wrap' }}>
-              {twoFactorForm.step === 'code' ? (
-                <button type="button" className="btn btn-outline-navy" disabled={twoFactorForm.saving} onClick={() => setTwoFactorForm(current => ({ ...current, step: 'password', otp: '', message: '', error: '' }))}>Start again</button>
-              ) : (
-                <button type="button" className="btn btn-outline-navy" disabled={twoFactorForm.saving} onClick={() => setSecurityModal(false)}>Cancel</button>
-              )}
-              <button type="submit" className={security.enabled && twoFactorForm.step === 'password' ? 'btn btn-outline-navy' : 'btn btn-primary'} disabled={twoFactorForm.saving}>
+            {twoFactorForm.message ? <p className="admin-two-factor-status is-success">{twoFactorForm.message}</p> : null}
+            {twoFactorForm.error ? <p className="admin-two-factor-status is-error">{twoFactorForm.error}</p> : null}
+            <div className="admin-two-factor-actions">
+              <button type="submit" className={security.enabled && twoFactorForm.step === 'password' ? 'btn btn-outline-navy admin-two-factor-primary is-caution' : 'btn btn-primary admin-two-factor-primary'} disabled={twoFactorForm.saving}>
                 <AsyncButtonContent pending={twoFactorForm.saving} pendingLabel={twoFactorForm.step === 'code' ? 'Confirming security code' : security.enabled ? 'Preparing to disable 2FA' : 'Sending security code'}>{twoFactorForm.step === 'code' ? 'Confirm code' : security.enabled ? 'Continue to disable' : 'Send security code'}</AsyncButtonContent>
               </button>
+              {twoFactorForm.step === 'code' ? (
+                <button type="button" className="btn btn-outline-navy admin-two-factor-secondary" disabled={twoFactorForm.saving} onClick={() => setTwoFactorForm(current => ({ ...current, step: 'password', otp: '', message: '', error: '' }))}>Start again</button>
+              ) : (
+                <button type="button" className="btn btn-outline-navy admin-two-factor-secondary" disabled={twoFactorForm.saving} onClick={() => setSecurityModal(false)}>Cancel</button>
+              )}
             </div>
           </form>
         </div>
@@ -8799,17 +8757,37 @@ const TeacherReviewView = ({ session }) => {
 
 const AdminPortalPage = ({ portalRole = 'admin' }) => {
   const { content } = useAdminContent();
+  const location = useLocation();
+  const navigate = useNavigate();
   const requiredRole = portalRole === 'staff' ? 'staff' : 'admin';
   const portalLabel = requiredRole === 'staff' ? 'Staff' : 'Admin';
   const loginPath = loginPathForRole(requiredRole);
-  const [activeView, setActiveView] = React.useState('dashboard');
-  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [session, setSession] = React.useState(() => (isApiMode() ? null : getDemoSession()));
   const [sessionChecked, setSessionChecked] = React.useState(!isApiMode());
   const [mfaPromptDismissed, setMfaPromptDismissed] = React.useState(false);
   const isInternalSession = ['admin', 'staff'].includes(session?.role);
   const adminName = isInternalSession ? (session.firstName || portalLabel) : portalLabel;
   const adminInitials = isInternalSession ? (session.initials || (requiredRole === 'staff' ? 'ST' : 'AD')) : (requiredRole === 'staff' ? 'ST' : 'AD');
+  const canAccessPage = React.useCallback(
+    item => !sessionChecked || canAccessAdminItem(item, session),
+    [session, sessionChecked],
+  );
+  const workspaces = React.useMemo(() => visibleAdminWorkspaces(canAccessPage), [canAccessPage]);
+  const routeState = React.useMemo(
+    () => resolveAdminRoute(location.pathname, requiredRole, canAccessPage),
+    [canAccessPage, location.pathname, requiredRole],
+  );
+  const activeView = routeState.page?.key || 'dashboard';
+  const activeWorkspace = workspaces.find(workspace => workspace.key === routeState.workspace?.key) || workspaces[0];
+
+  const setActiveView = React.useCallback((pageKey, options = {}) => {
+    navigate(adminPathFor(requiredRole, pageKey), options);
+  }, [navigate, requiredRole]);
+
+  const selectWorkspace = React.useCallback((workspaceKey) => {
+    const nextPage = defaultPageForWorkspace(workspaceKey, canAccessPage);
+    if (nextPage) setActiveView(nextPage.key);
+  }, [canAccessPage, setActiveView]);
 
   const redirectToCorrectPortal = React.useCallback((role) => {
     if (role === 'admin' || role === 'staff') {
@@ -8859,11 +8837,6 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
     setMfaPromptDismissed(true);
   }, [session?.email]);
 
-  const canViewActive = React.useCallback((key, nextSession = session) => {
-    const item = NAV.find(entry => entry.key === key);
-    return !item || canAccessAdminItem(item, nextSession);
-  }, [session]);
-
   React.useEffect(() => {
     if (!isApiMode()) {
       if (!session || !['admin', 'staff'].includes(session.role)) {
@@ -8904,10 +8877,9 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
   }, [loginPath, portalLabel, redirectToCorrectPortal, requiredRole]);
 
   React.useEffect(() => {
-    if (sessionChecked && !canViewActive(activeView)) {
-      setActiveView('dashboard');
-    }
-  }, [activeView, canViewActive, sessionChecked]);
+    if (!sessionChecked || !routeState.needsRedirect || !routeState.page) return;
+    navigate(routeState.canonicalPath, { replace: true });
+  }, [navigate, routeState.canonicalPath, routeState.needsRedirect, routeState.page, sessionChecked]);
 
   React.useEffect(() => {
     const handler = () => {
@@ -8964,60 +8936,7 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
             ? <ManagedTableView config={CONFIG[activeView]} rows={content[CONFIG[activeView].collection] || []} session={session} />
             : null;
 
-  return (
-    <div className="admin-portal-layout">
-      <AdminSidebar active={activeView} setActive={setActiveView} open={sidebarOpen} setOpen={setSidebarOpen} session={session} portalLabel={portalLabel} />
-      <main className="admin-main">
-        <div className="admin-topbar">
-          <div className="admin-topbar-left" style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, overflow: 'hidden' }}>
-            {/* Desktop-only back button: visible on non-dashboard views */}
-            {activeView !== 'dashboard' && (
-              <button
-                type="button"
-                className="portal-desktop-back-btn"
-                onClick={() => setActiveView('dashboard')}
-                aria-label="Back to dashboard"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                <span>Dashboard</span>
-              </button>
-            )}
-            {/* Mobile-only SchoolMS-style back button on subpages; the hamburger
-                stays available at the far right of the topbar */}
-            {activeView !== 'dashboard' && (
-              <button
-                onClick={() => setActiveView('dashboard')}
-                className="mobile-menu-toggle"
-                style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                aria-label="Back to dashboard"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
-            )}
-            <h2 className="admin-topbar-title">
-              {(NAV.find(n => n.key === activeView) || { label: 'Dashboard' }).label}
-            </h2>
-          </div>
-          <div className="admin-topbar-right">
-            {!isApiMode() && (
-              <button className="table-action-btn" onClick={resetManagedContent}>Restore Local Demo Data</button>
-            )}
-            <div className="admin-user-chip">
-              <div className="admin-chip-avatar">{adminInitials}</div>
-              <span className="admin-chip-name">{adminName}</span>
-            </div>
-            {/* Mobile-only hamburger at the far right corner; pushes the chip left */}
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="mobile-menu-toggle"
-              style={{ display: 'none', background: 'none', border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-              aria-label="Open menu"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
-          </div>
-        </div>
-        {session?.mfaRecommended === true && !mfaPromptDismissed && activeView === 'dashboard' ? (
+  const mfaNotice = session?.mfaRecommended === true && !mfaPromptDismissed && activeView === 'dashboard' ? (
           <div className="admin-mfa-prompt" role="status">
             <span className="admin-mfa-prompt-icon" aria-hidden="true"><Icon name="shield" size={17} /></span>
             <div className="admin-mfa-prompt-copy">
@@ -9027,9 +8946,24 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
             <button type="button" className="admin-mfa-prompt-action" onClick={() => setActiveView('account')}>Set up</button>
             <button type="button" className="admin-mfa-prompt-close" onClick={dismissMfaPrompt} aria-label="Dismiss two-factor authentication reminder for 30 days"><Icon name="x" size={16} /></button>
           </div>
-        ) : null}
+        ) : null;
+
+  return (
+    <>
+      <AdminShell
+        portalLabel={portalLabel}
+        adminName={adminName}
+        adminInitials={adminInitials}
+        workspaces={workspaces}
+        activeWorkspace={activeWorkspace}
+        activePage={routeState.page}
+        onWorkspaceChange={selectWorkspace}
+        onPageChange={setActiveView}
+        demoReset={!isApiMode() ? resetManagedContent : null}
+        notice={mfaNotice}
+      >
         {view}
-      </main>
+      </AdminShell>
       {session?.mustChangePassword ? (
         <ForcedPasswordChangeModal
           session={session}
@@ -9145,7 +9079,7 @@ const AdminPortalPage = ({ portalRole = 'admin' }) => {
           .admin-modal-backdrop { padding: 12px; }
         }
       `}</style>
-    </div>
+    </>
   );
 };
 
