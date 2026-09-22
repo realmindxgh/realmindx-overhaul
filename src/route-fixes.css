@@ -4717,7 +4717,6 @@ html {
   }
 
   .bs .bs-track-input-row {
-    grid-template-columns: 1fr !important;
     gap: 8px !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -4730,12 +4729,15 @@ html {
   }
 
   .bs .bs-track-input-row .bs-btn {
-    width: 100% !important;
-    min-width: 0 !important;
-    height: 50px !important;
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-    white-space: normal !important;
+    width: auto !important;
+    min-width: 140px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+    border-radius: 8px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
   }
 
   .bs .bs-fade-page {
@@ -4886,9 +4888,60 @@ html {
   }
 }
 
+@media (max-width: 540px) {
+  .bs .bs-track-input-row {
+    flex-direction: column !important;
+  }
+
+  .bs .bs-track-input-row .bs-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
 @media (max-width: 430px) {
   .bs .bs-track-input-row {
     grid-template-columns: 1fr !important;
+  }
+}
+
+/* Shared button proportion pass: short text actions should read like buttons,
+   not squat blocks. Icon-only controls keep their square sizing elsewhere. */
+.bs .bs-track-input-row .bs-btn {
+  width: auto !important;
+  min-width: 140px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+  border-radius: 8px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.bs .bs-newsletter-form .bs-btn {
+  min-width: 170px !important;
+  min-height: 50px !important;
+}
+
+.bs .bs-empty-state .bs-btn.bs-btn-lg {
+  min-width: 154px !important;
+  min-height: 46px !important;
+  padding: 12px 26px !important;
+  line-height: 1.1 !important;
+}
+
+body:not(.bookshop-body) .btn.btn-lg {
+  min-width: 160px;
+}
+
+@media (max-width: 540px) {
+  .bs .bs-track-input-row .bs-btn,
+  .bs .bs-newsletter-form .bs-btn,
+  .bs .bs-empty-state .bs-btn.bs-btn-lg,
+  body:not(.bookshop-body) .btn.btn-lg {
+    width: 100% !important;
+    min-width: 0 !important;
   }
 }
 

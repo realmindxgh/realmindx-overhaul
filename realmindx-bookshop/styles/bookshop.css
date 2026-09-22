@@ -2240,6 +2240,7 @@
 .bs-track-input-row { display: flex; gap: 10px; margin-top: 20px; }
 .bs-track-input-row input { flex: 1; height: 50px; border: 1.5px solid var(--bs-border); border-radius: var(--bs-radius-sm); padding: 0 16px; font-size: 15px; }
 .bs-track-input-row input:focus { outline: none; border-color: var(--bs-navy); box-shadow: 0 0 0 3px rgba(20,54,112,.1); }
+.bs-track-input-row .bs-btn { flex: 0 0 auto; align-self: center; min-width: 140px; min-height: 40px; height: 40px; padding: 0 24px; border-radius: 8px; line-height: 1; white-space: nowrap; }
 .bs-timeline { display: flex; flex-direction: column; margin: 28px 0; }
 .bs-tl-step { display: grid; grid-template-columns: 40px 1fr; gap: 16px; }
 .bs-tl-marker { display: flex; flex-direction: column; align-items: center; }
