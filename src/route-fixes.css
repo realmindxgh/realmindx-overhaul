@@ -7728,17 +7728,22 @@ body:not(.bookshop-body) :where(.contact-hero, .route-page-hero, .page-hero, .se
 .rmx-button-content {
   display: inline-grid;
   place-items: center;
+  position: relative;
   max-width: 100%;
 }
 .rmx-button-label-sizer,
 .rmx-button-visible { grid-area: 1 / 1; }
 .rmx-button-label-sizer { visibility: hidden; white-space: nowrap; }
 .rmx-button-visible {
+  position: absolute;
+  inset: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: .5em;
   max-width: 100%;
+  line-height: 1;
+  transform: translateY(-1px);
 }
 button[aria-busy='true'] { cursor: wait; }
 

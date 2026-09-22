@@ -47,6 +47,56 @@ final result: passed
 
 ---
 
+# Shared Button Centering and Request Form Radius - 2026-09-22
+
+- Source visual truth paths:
+  - `C:\Users\skgas\AppData\Local\Temp\codex-clipboard-5394aa3d-8047-45e7-871f-d6a608ad7d26.png`
+  - `C:\Users\skgas\AppData\Local\Temp\codex-clipboard-55951be3-8a95-4ed3-898b-db22ca9c0d07.png`
+- Implementation screenshot folder: `C:\Users\skgas\.codex\visualizations\2026\09\20\01a0be0d-63e3-7733-8a28-18fda0486c33\button-centering-radius-2026-09-22\after`
+- Machine-readable measurements: `C:\Users\skgas\.codex\visualizations\2026\09\20\01a0be0d-63e3-7733-8a28-18fda0486c33\button-centering-radius-2026-09-22\after\metrics.json`
+- Source pixels: 1920 x 1032 for both user screenshots.
+- Implementation desktop pixels/CSS viewport: 1904 x 929, device scale factor 1.
+- Implementation mobile pixels/CSS viewport: 500 x 693, device scale factor 1.
+- State: unloaded Track and Invoice lookups, empty Request a Book form, and empty public/auth forms.
+
+## Full-view and focused comparison evidence
+
+The user screenshots and post-fix renders were opened together. The earlier Track and Verify labels visibly sat to the right because the hidden pending label sized the shared asynchronous-content grid. The post-fix Track, Invoice, and Request a Book captures show the live label centered within each action. Request a Book inputs and textarea now use a consistent 8px radius instead of square corners.
+
+Focused DOM measurements were used because the alignment error was sub-component-specific. Before the shared fix, Track was 21.76px right of the button center and Verify was 26.8px right. After the fix, Track, Verify, Request a Book, admin login, staff login, user login, Contact, and Donate labels measured between 0 and 0.008px from horizontal center at desktop and mobile widths. The label line box is intentionally 1px above the mathematical vertical center for optical alignment with Montserrat.
+
+## Findings and comparison history
+
+- P1: Shared asynchronous button labels were not horizontally centered.
+  - Earlier evidence: Track delta +21.76px; Verify delta +26.8px.
+  - Root cause: the invisible longest-label sizing node and visible label occupied the same constrained grid area without an anchored overlay.
+  - Fix made: the shared button-content wrapper is now positioned, and the visible label is an absolute inset flex overlay centered over the full reserved area.
+  - Post-fix evidence: all sampled shared action labels measure within 0.008px of horizontal center and 1px above vertical center.
+- P2: Request a Book controls had visually hard square corners.
+  - Fix made: all Request a Book text inputs and textarea use an 8px radius.
+  - Post-fix evidence: desktop and mobile renders show consistent softened corners; computed radius is 8px.
+
+## Required fidelity surfaces
+
+- Fonts and typography: Montserrat family, sizes, weights, and copy are unchanged; only shared label positioning changed.
+- Spacing and layout rhythm: button outer dimensions and page spacing are unchanged.
+- Colors and visual tokens: unchanged.
+- Image quality and asset fidelity: existing Bookshop branding, Turnstile, and icons are unchanged.
+- Copy and content: unchanged.
+
+## Primary interactions and console
+
+- Routes checked: Bookshop Track, Invoice, Request a Book; admin, staff, and user login; Contact; Jobs; Donate.
+- Desktop and mobile captures were produced from the local Vite app.
+- A fresh console pass across Track, Invoice, Request a Book, admin/staff/user login, and Contact reported zero severe entries.
+- Production build and all available frontend test scripts passed.
+
+## Final result
+
+final result: passed
+
+---
+
 # Admin Console Balance Correction - 2026-09-20
 
 - Trigger: user review screenshots showed the My Account page, page selector, native dropdown behavior, and two-factor modal still felt visually unbalanced.
